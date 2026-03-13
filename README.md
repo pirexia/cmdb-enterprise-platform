@@ -564,6 +564,33 @@ npm run dev               # http://localhost:3001
 
 ---
 
+## 🛡️ Resetear vulnerabilidades (limpieza de entorno)
+
+Si necesitas limpiar los datos de prueba/simulación y volver a importar desde los conectores reales, usa el endpoint de administración:
+
+```bash
+# Obtén primero tu token JWT
+TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@cmdb.local","password":"admin123"}' | jq -r .token)
+
+# Limpia el campo vulnerabilities en TODOS los CIs (lo establece a [])
+curl -X POST http://localhost:3000/api/admin/reset-vulnerabilities \
+  -H "Authorization: Bearer $TOKEN"
+# → { "message": "Vulnerabilities cleared on N configuration item(s)", "reset": N }
+```
+
+Después del reset, ve a **Conectores** y reimporta los reportes de Greenbone y CrowdStrike.
+
+> ⚠️ **NOTA IMPORTANTE:** El 404 en `PATCH /api/vulnerabilities` es casi siempre causado por un **servidor backend no reiniciado** tras actualizar el código. Los endpoints existen en `index.ts` — simplemente reinicia el servidor:
+> ```bash
+> # Ctrl+C para parar el proceso actual, luego:
+> cd backend && npm run dev
+> # Confirma en los logs que aparecen TODOS los endpoints listados
+> ```
+
+---
+
 ## 🔧 Comandos útiles de mantenimiento
 
 ```bash

@@ -1,0 +1,19 @@
+# Normalize line endings to LF in the repository for all text files
+# (prevents LF↔CRLF churn between Windows and Unix contributors)
+
+* text=auto eol=lf
+
+# Explicitly mark binary files
+*.ico    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.svg    text eol=lf
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.eot    binary
+
+# Lock files — keep as-is, no diff needed
+package-lock.json  -diff

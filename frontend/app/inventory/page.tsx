@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   Search, RefreshCw, AlertTriangle, Plus,
-  Shield, ShieldAlert, ShieldCheck, ShieldOff, Scan, Loader2,
+  Shield, ShieldAlert, ShieldCheck, ShieldOff,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -14,9 +14,10 @@ import { apiFetch } from "@/lib/apiFetch";
 type Criticality  = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 type VulnSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+type VulnStatus   = "NUEVO" | "ASIGNADO" | "EN_CURSO" | "PARADO" | "RESUELTO";
 
 interface User          { id: string; username: string; email: string }
-interface Vulnerability { cve: string; severity: VulnSeverity; description: string; source?: string }
+interface Vulnerability { cve: string; severity: VulnSeverity; description: string; source?: string; status?: VulnStatus }
 
 interface AgentStatus {
   agentId:          string;
@@ -70,18 +71,17 @@ function CriticalityBadge({ level }: { level: Criticality }) {
 // ─── Greenbone vuln badge ──────────────────────────────────────────────────────
 
 function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
-  if (vulns === null) return <div className="flex items-center gap-1.5 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-xs">No escaneado</span></div>;
-  if (vulns.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">Limpio</span></div>;
+  if (vulns === null) return <div className="flex items-center gap-1.5 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-xs">Sin datos</span></div>;
+  const open = vulns.filter((v) => v.status !== "RESUELTO");
+  if (open.length === 0 && vulns.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">Limpio</span></div>;
+  if (open.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">Todo resuelto</span></div>;
 
-  const critical = vulns.filter((v) => v.severity === "CRITICAL").length;
-  const high     = vulns.filter((v) => v.severity === "HIGH").length;
-  const medium   = vulns.filter((v) => v.severity === "MEDIUM").length;
-  const low      = vulns.filter((v) => v.severity === "LOW").length;
+  const critical = open.filter((v) => v.severity === "CRITICAL").length;
+  const high     = open.filter((v) => v.severity === "HIGH").length;
+  const medium   = open.filter((v) => v.severity === "MEDIUM").length;
+  const low      = open.filter((v) => v.severity === "LOW").length;
   const topSev   = critical > 0 ? "CRITICAL" : high > 0 ? "HIGH" : medium > 0 ? "MEDIUM" : "LOW";
   const colors   = { CRITICAL: "text-red-600", HIGH: "text-orange-500", MEDIUM: "text-yellow-600", LOW: "text-slate-500" };
-
-  // Check if sourced from Greenbone
-  const hasGreenbone = vulns.some((v) => v.source === "greenbone");
 
   return (
     <div className={`flex items-center gap-1.5 ${colors[topSev]}`}>
@@ -91,7 +91,7 @@ function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
         {high     > 0 && <p className="text-orange-500">HIGH ×{high}</p>}
         {medium   > 0 && <p className="text-yellow-600">MEDIUM ×{medium}</p>}
         {low      > 0 && <p className="text-slate-500">LOW ×{low}</p>}
-        {hasGreenbone && <p className="text-slate-400 text-[10px]">via Greenbone</p>}
+        <p className="text-slate-400 text-[10px]">{open.length} abierto{open.length !== 1 ? "s" : ""}</p>
       </div>
     </div>
   );
@@ -112,7 +112,6 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
   const hasDetections = (agent.detections?.length ?? 0) > 0;
   const isActive      = agent.status === "normal" && agent.preventionPolicy === "active";
   const isReduced     = agent.status === "reduced_functionality" || agent.preventionPolicy === "disabled";
-
   const color = hasDetections ? "text-red-600" : isActive ? "text-emerald-600" : isReduced ? "text-orange-500" : "text-slate-500";
   const bg    = hasDetections ? "bg-red-50" : isActive ? "bg-emerald-50" : isReduced ? "bg-orange-50" : "bg-slate-50";
   const label = hasDetections
@@ -124,7 +123,7 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
       <Shield className="h-3.5 w-3.5 flex-shrink-0" />
       <div className="text-xs font-medium">
         <p>{label}</p>
-        <p className="text-[10px] text-slate-400">Falcon v{agent.agentVersion?.split(".").slice(0, 2).join(".")}</p>
+        {agent.agentVersion && <p className="text-[10px] text-slate-400">Falcon v{agent.agentVersion.split(".").slice(0, 2).join(".")}</p>}
       </div>
     </div>
   );
@@ -133,13 +132,12 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
-  const { isAdmin }                   = useAuth();
-  const [cis, setCis]                 = useState<CI[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [search, setSearch]           = useState("");
-  const [showModal, setShowModal]     = useState(false);
-  const [scanning, setScanning]       = useState<Set<string>>(new Set());
+  const { isAdmin }               = useAuth();
+  const [cis, setCis]             = useState<CI[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
+  const [search, setSearch]       = useState("");
+  const [showModal, setShowModal] = useState(false);
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -153,19 +151,6 @@ export default function InventoryPage() {
   };
 
   useEffect(() => { fetchCIs(); }, []);
-
-  const handleScan = async (ciId: string) => {
-    setScanning((prev) => new Set(prev).add(ciId));
-    try {
-      const res = await apiFetch(`/api/cis/${ciId}/scan`, { method: "POST" });
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const { vulnerabilities }: { vulnerabilities: Vulnerability[] } = await res.json();
-      setCis((prev) => prev.map((ci) => (ci.id === ciId ? { ...ci, vulnerabilities } : ci)));
-    } catch (err) { console.error("Scan failed:", err); }
-    finally {
-      setScanning((prev) => { const n = new Set(prev); n.delete(ciId); return n; });
-    }
-  };
 
   const filtered = cis.filter((ci) => ci.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -240,7 +225,6 @@ export default function InventoryPage() {
                       filtered.map((ci) => {
                         const type = ci.hardware ? "Hardware" : ci.software ? "Software" : "Otro";
                         const typeColor = ci.hardware ? "bg-emerald-50 text-emerald-700" : ci.software ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600";
-                        const isScanning = scanning.has(ci.id);
 
                         return (
                           <tr key={ci.id} className="group hover:bg-indigo-50/40 transition-colors">
@@ -251,27 +235,8 @@ export default function InventoryPage() {
                             <td className="px-6 py-4"><span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${typeColor}`}>{type}</span></td>
                             <td className="px-6 py-4"><EnvironmentBadge env={ci.environment} /></td>
                             <td className="px-6 py-4"><CriticalityBadge level={ci.criticality} /></td>
-
-                            {/* Greenbone / vulnerability column */}
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2">
-                                <VulnBadge vulns={ci.vulnerabilities} />
-                                {isAdmin && (
-                                  <button onClick={() => handleScan(ci.id)} disabled={isScanning}
-                                    title="Scan manual"
-                                    className="flex items-center gap-1 rounded border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                                    {isScanning ? <Loader2 className="h-3 w-3 animate-spin" /> : <Scan className="h-3 w-3" />}
-                                    {isScanning ? "…" : "Scan"}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-
-                            {/* CrowdStrike agent column */}
-                            <td className="px-6 py-4">
-                              <AgentBadge agent={ci.agentStatus} />
-                            </td>
-
+                            <td className="px-6 py-4"><VulnBadge vulns={ci.vulnerabilities} /></td>
+                            <td className="px-6 py-4"><AgentBadge agent={ci.agentStatus} /></td>
                             <td className="px-6 py-4">
                               {ci.technicalLead ? (
                                 <div>

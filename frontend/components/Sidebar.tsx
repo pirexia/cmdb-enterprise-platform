@@ -13,17 +13,19 @@ import {
   User,
   LogOut,
   Plug,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const NAV_ITEMS = [
-  { label: "Dashboard",            href: "/",             icon: LayoutDashboard },
-  { label: "Inventario de CIs",    href: "/inventory",    icon: Monitor },
-  { label: "Mapa de Dependencias", href: "/map",          icon: Network },
-  { label: "Conectores",           href: "/integrations", icon: Plug },
-  { label: "Contratos y Adendas",  href: "/contracts",    icon: FileText },
-  { label: "Entidades",            href: "/entities",     icon: Building2 },
-  { label: "Configuración",        href: "/settings",     icon: Settings },
+  { label: "Dashboard",              href: "/",               icon: LayoutDashboard },
+  { label: "Inventario de CIs",      href: "/inventory",      icon: Monitor },
+  { label: "Vulnerabilidades",       href: "/vulnerabilities", icon: Shield },
+  { label: "Mapa de Dependencias",   href: "/map",            icon: Network },
+  { label: "Conectores",             href: "/integrations",   icon: Plug },
+  { label: "Contratos y Adendas",    href: "/contracts",      icon: FileText },
+  { label: "Entidades",              href: "/entities",       icon: Building2 },
+  { label: "Configuración",          href: "/settings",       icon: Settings },
 ];
 
 export default function Sidebar() {

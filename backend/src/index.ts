@@ -101,37 +101,19 @@ const CONTRACT_INCLUDE = {
   addendums:      { select: { id: true, contractNumber: true } },
 } as const;
 
-// ─── Vulnerability mock catalog ───────────────────────────────────────────────
+// ─── Vulnerability types ──────────────────────────────────────────────────────
 
 type VulnSeverity = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+type VulnStatus   = 'NUEVO' | 'ASIGNADO' | 'EN_CURSO' | 'PARADO' | 'RESUELTO';
 
 interface Vulnerability {
   cve:         string;
   severity:    VulnSeverity;
   description: string;
-}
-
-const VULN_CATALOG: Vulnerability[] = [
-  { cve: 'CVE-2024-21413', severity: 'CRITICAL', description: 'Microsoft Outlook Remote Code Execution via MIME link parsing' },
-  { cve: 'CVE-2024-1709',  severity: 'CRITICAL', description: 'Authentication bypass in ConnectWise ScreenConnect' },
-  { cve: 'CVE-2023-34048', severity: 'CRITICAL', description: 'VMware vCenter Server DCERPC heap overflow — unauthenticated RCE' },
-  { cve: 'CVE-2024-27198', severity: 'CRITICAL', description: 'JetBrains TeamCity authentication bypass allows admin takeover' },
-  { cve: 'CVE-2024-0519',  severity: 'HIGH',     description: 'Out-of-bounds memory read in Google Chrome V8' },
-  { cve: 'CVE-2023-44487', severity: 'HIGH',     description: 'HTTP/2 Rapid Reset — amplified DDoS attack vector' },
-  { cve: 'CVE-2024-3094',  severity: 'HIGH',     description: 'Backdoor in XZ Utils 5.6.0/5.6.1 — SSH daemon compromise' },
-  { cve: 'CVE-2024-21338', severity: 'HIGH',     description: 'Windows kernel null pointer — local privilege escalation' },
-  { cve: 'CVE-2023-23376', severity: 'MEDIUM',   description: 'Windows CLFS Driver elevation of privilege' },
-  { cve: 'CVE-2023-36661', severity: 'MEDIUM',   description: 'OpenSSH server version banner exposed' },
-  { cve: 'CVE-2024-22024', severity: 'MEDIUM',   description: 'Ivanti ICS SAML authentication bypass' },
-  { cve: 'CVE-2023-48795', severity: 'MEDIUM',   description: 'Terrapin attack on SSH — prefix truncation' },
-  { cve: 'CVE-2024-26197', severity: 'LOW',      description: 'Windows Storage Management Service — DoS only' },
-  { cve: 'CVE-2023-20198', severity: 'LOW',      description: 'Cisco IOS XE — default credential exposure' },
-];
-
-function generateScanResults(): Vulnerability[] {
-  const count    = Math.floor(Math.random() * 6);
-  const shuffled = [...VULN_CATALOG].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+  source?:     string;
+  cvss_score?: number | null;
+  status:      VulnStatus;
+  importedAt:  string;
 }
 
 // ─── Public routes ────────────────────────────────────────────────────────────
@@ -285,29 +267,65 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
   }
 });
 
-// ── Scan ──────────────────────────────────────────────────────────────────────
+// ── Vulnerability Lifecycle ───────────────────────────────────────────────────
 
-app.post('/api/cis/:id/scan', authenticateToken, requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
-  const { id } = req.params;
-  console.log(`[POST /api/cis/${id}/scan] Starting mock scan…`);
+/**
+ * PATCH /api/vulnerabilities
+ * Updates the status of a single vulnerability within a CI's JSON array.
+ *
+ * Body: { ciId: string, cve: string, status: VulnStatus }
+ */
+app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: Response) => {
+  const { ciId, cve, status } = req.body as {
+    ciId:   string;
+    cve:    string;
+    status: VulnStatus;
+  };
+
+  if (!ciId || !cve || !status) {
+    res.status(400).json({ error: 'Missing required fields: ciId, cve, status' });
+    return;
+  }
+
+  const validStatuses: VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'RESUELTO'];
+  if (!validStatuses.includes(status)) {
+    res.status(400).json({ error: `Invalid status: ${status}. Must be one of ${validStatuses.join(', ')}` });
+    return;
+  }
 
   try {
-    const existing = await prisma.cI.findUnique({ where: { id } });
-    if (!existing) { res.status(404).json({ error: `CI with id ${id} not found` }); return; }
+    // Fetch current vulnerabilities
+    type VulnRow = { id: string; vulnerabilities: unknown };
+    const rows = await prisma.$queryRaw<VulnRow[]>`
+      SELECT id, vulnerabilities FROM "configuration_items" WHERE id = ${ciId}::uuid LIMIT 1
+    `;
 
-    const vulnerabilities = generateScanResults();
-    console.log(`[POST /api/cis/${id}/scan] Found ${vulnerabilities.length} vulnerabilities`);
+    if (rows.length === 0) {
+      res.status(404).json({ error: `CI with id ${ciId} not found` });
+      return;
+    }
+
+    const currentVulns = (rows[0].vulnerabilities ?? []) as Vulnerability[];
+    const vuln = currentVulns.find((v) => v.cve === cve);
+
+    if (!vuln) {
+      res.status(404).json({ error: `Vulnerability ${cve} not found in CI ${ciId}` });
+      return;
+    }
+
+    const updated = currentVulns.map((v) =>
+      v.cve === cve ? { ...v, status, updatedAt: new Date().toISOString() } : v
+    );
 
     await prisma.$executeRaw`
       UPDATE "configuration_items"
-      SET "vulnerabilities" = ${JSON.stringify(vulnerabilities)}::jsonb
-      WHERE "id" = ${id}::uuid
+      SET "vulnerabilities" = ${JSON.stringify(updated)}::jsonb
+      WHERE "id" = ${ciId}::uuid
     `;
 
-    const ci = await prisma.cI.findUnique({ where: { id }, include: CI_INCLUDE });
-    res.json({ ci, vulnerabilities, scannedAt: new Date().toISOString() });
+    res.json({ ciId, cve, status, message: `Status updated to ${status}` });
   } catch (error) {
-    console.error(`[POST /api/cis/${id}/scan] Error:`, error);
+    console.error('[PATCH /api/vulnerabilities] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -410,13 +428,16 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
 
       const ci = rows[0];
 
-      // Normalise vulnerabilities to our standard format
+      // Normalise vulnerabilities to our standard format (with lifecycle status)
+      const importedAt = new Date().toISOString();
       const vulns = (result.vulnerabilities ?? []).map((v) => ({
         cve:         v.cve,
-        severity:    v.severity?.toUpperCase() as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW',
+        severity:    v.severity?.toUpperCase() as VulnSeverity,
         description: v.description ?? v.name ?? '',
         source:      'greenbone',
         cvss_score:  v.cvss_score ?? null,
+        status:      'NUEVO' as VulnStatus,
+        importedAt,
       }));
 
       await prisma.$executeRaw`
@@ -531,7 +552,7 @@ app.listen(PORT, () => {
   console.log(`   → GET  /api/vendors                   (any role)`);
   console.log(`   → GET  /api/cis                       (any role)`);
   console.log(`   → POST /api/cis                       (ADMIN only)`);
-  console.log(`   → POST /api/cis/:id/scan              (ADMIN only)`);
+  console.log(`   → PATCH /api/vulnerabilities          (any role)`);
   console.log(`   → GET  /api/contracts                 (any role)`);
   console.log(`   → POST /api/contracts                 (ADMIN only)`);
   console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);

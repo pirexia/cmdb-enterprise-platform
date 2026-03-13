@@ -1,39 +1,89 @@
 version: "3.9"
 
+# ──────────────────────────────────────────────────────────────────────────────
+# CMDB Enterprise Platform — Full-stack Docker Compose
+#
+# Copy .env.example → .env, fill in values, then run:
+#   docker compose up -d --build
+# ──────────────────────────────────────────────────────────────────────────────
+
 services:
-  # ─── PostgreSQL 16 ────────────────────────────────────────────────────────────
+
+  # ── PostgreSQL 15 ────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
-    container_name: cmdb_postgres
+    image: postgres:15-alpine
+    container_name: cmdb-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: cmdb_pass123
-      POSTGRES_DB: cmdb_db
-    ports:
-      - "5432:5432"
+      POSTGRES_DB:       ${POSTGRES_DB:-cmdb_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cmdb_pass123}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d cmdb_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-cmdb_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
-  # ─── Adminer (lightweight DB GUI) ────────────────────────────────────────────
+  # ── Adminer — lightweight DB management UI ───────────────────────────────────
   adminer:
-    image: adminer:4
-    container_name: cmdb_adminer
+    image: adminer:latest
+    container_name: cmdb-adminer
     restart: unless-stopped
     ports:
-      - "8080:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-      ADMINER_DESIGN: pepa-linha-dark
+      - "${ADMINER_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
 
+  # ── Backend — Express + Prisma API ───────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cmdb-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV:     production
+      PORT:         3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-cmdb_pass123}@postgres:5432/${POSTGRES_DB:-cmdb_db}
+      JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required — set it in .env}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Frontend — Next.js standalone ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the client-side JS bundle at build time.
+        # Must point to the backend as reachable from the browser
+        # (e.g. http://<server-ip>:3000 or https://api.yourdomain.com)
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+    container_name: cmdb-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT:     3001
+    ports:
+      - "${FRONTEND_PORT:-3001}:3001"
+    depends_on:
+      - backend
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
-  postgres_data:
-    name: cmdb_postgres_data
+  postgres-data:
+    name: cmdb-postgres-data
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  default:
+    name: cmdb-network

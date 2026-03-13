@@ -526,14 +526,16 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
 
 app.listen(PORT, () => {
   console.log(`🚀 CMDB API running at http://localhost:${PORT}`);
-  console.log(`   → POST /api/auth/login       (public)`);
-  console.log(`   → GET  /api/users            (any role)`);
-  console.log(`   → GET  /api/vendors          (any role)`);
-  console.log(`   → GET  /api/cis              (any role)`);
-  console.log(`   → POST /api/cis              (ADMIN only)`);
-  console.log(`   → POST /api/cis/:id/scan     (ADMIN only)`);
-  console.log(`   → GET  /api/contracts        (any role)`);
-  console.log(`   → POST /api/contracts        (ADMIN only)`);
+  console.log(`   → POST /api/auth/login                (public)`);
+  console.log(`   → GET  /api/users                     (any role)`);
+  console.log(`   → GET  /api/vendors                   (any role)`);
+  console.log(`   → GET  /api/cis                       (any role)`);
+  console.log(`   → POST /api/cis                       (ADMIN only)`);
+  console.log(`   → POST /api/cis/:id/scan              (ADMIN only)`);
+  console.log(`   → GET  /api/contracts                 (any role)`);
+  console.log(`   → POST /api/contracts                 (ADMIN only)`);
+  console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
+  console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
 });
 
 process.on('SIGTERM', async () => {

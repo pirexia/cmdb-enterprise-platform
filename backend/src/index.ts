@@ -381,6 +381,29 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   }
 });
 
+// ─── Admin Utilities ──────────────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/reset-vulnerabilities
+ * Clears the vulnerabilities field on ALL CIs (sets to empty array []).
+ * Use this to wipe simulation/test data before a fresh connector import.
+ * ADMIN only.
+ */
+app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const result = await prisma.$executeRaw`
+      UPDATE "configuration_items"
+      SET "vulnerabilities" = '[]'::jsonb
+      WHERE "vulnerabilities" IS NOT NULL
+    `;
+    console.log(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
+    res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
+  } catch (error) {
+    console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Integration Connectors ───────────────────────────────────────────────────
 
 /**
@@ -553,6 +576,7 @@ app.listen(PORT, () => {
   console.log(`   → GET  /api/cis                       (any role)`);
   console.log(`   → POST /api/cis                       (ADMIN only)`);
   console.log(`   → PATCH /api/vulnerabilities          (any role)`);
+  console.log(`   → POST /api/admin/reset-vulnerabilities (ADMIN only)`);
   console.log(`   → GET  /api/contracts                 (any role)`);
   console.log(`   → POST /api/contracts                 (ADMIN only)`);
   console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);

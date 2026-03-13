@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Contract-expiring pulse: orange glow on node border */
+@keyframes contract-expiring-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.35), 0 2px 8px rgba(0,0,0,0.08); }
+  50%       { box-shadow: 0 0 0 7px rgba(251, 146, 60, 0.12), 0 2px 8px rgba(0,0,0,0.08); }
+}
+.contract-expiring {
+  animation: contract-expiring-pulse 2s ease-in-out infinite;
+}
+
+/* Contract-expired pulse: red glow */
+@keyframes contract-expired-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35), 0 2px 8px rgba(0,0,0,0.08); }
+  50%       { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0.12), 0 2px 8px rgba(0,0,0,0.08); }
+}
+.contract-expired {
+  animation: contract-expired-pulse 2s ease-in-out infinite;
+}
+
+/* Vulnerability alert blink (CRITICAL / HIGH) */
+@keyframes vuln-alert-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+.vuln-alert {
+  animation: vuln-alert-blink 0.9s ease-in-out infinite;
+}

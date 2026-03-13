@@ -33,6 +33,8 @@
 | 🕸️ **Mapa de Dependencias** | Canvas interactivo (React Flow) con layout jerárquico automático, alertas de contratos próximos a vencer y vulnerabilidades críticas parpadeantes |
 | 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas y semáforo de vencimiento |
 | 🛡️ **Gestión de Vulnerabilidades** | Escáner simulado por CI con CVEs reales (CVSS 2023-2024), clasificación por severidad y persistencia JSON en BD |
+| 🔌 **Conectores de Seguridad** | Ingesta de reportes Greenbone OpenVAS (CVEs) y estado de agentes CrowdStrike Falcon EDR |
+| 🗂️ **Gestión de Vulnerabilidades** | Vista centralizada de todos los hallazgos con ciclo de vida: NUEVO → ASIGNADO → EN_CURSO → PARADO → RESUELTO |
 | 🔐 **IAM / RBAC** | Autenticación JWT con roles **ADMIN** (escritura total) y **VIEWER** (solo lectura) |
 
 ---
@@ -427,6 +429,79 @@ Comunicación externa (desde el navegador del usuario):
 
 ---
 
+## 🔌 Conectores de Seguridad
+
+Los conectores permiten importar datos de herramientas de seguridad externas para enriquecer el inventario.
+
+### Flujo de trabajo
+
+```
+1. Exporta el reporte desde Greenbone / CrowdStrike
+2. Ve a Conectores en el sidebar
+3. Pega el JSON o carga el .json con el botón "Cargar archivo"
+4. Pulsa "Procesar Datos"
+5. El sistema hace matching de hosts → CIs por nombre (ILIKE)
+6. Las vulnerabilidades se almacenan en el CI con status = NUEVO
+7. Ve a Vulnerabilidades para gestionar el ciclo de vida
+```
+
+### Formato Greenbone
+
+```json
+{
+  "scanner": "Greenbone Security Manager",
+  "scan_date": "2026-03-13T18:00:00Z",
+  "results": [
+    {
+      "host": { "hostname": "PROD-SRV-01 Web Server", "ip": "10.0.1.10" },
+      "vulnerabilities": [
+        { "cve": "CVE-2024-21413", "severity": "CRITICAL", "name": "...", "cvss_score": 9.8, "description": "..." }
+      ]
+    }
+  ]
+}
+```
+
+### Formato CrowdStrike
+
+```json
+{
+  "platform": "CrowdStrike Falcon",
+  "export_date": "2026-03-13T19:00:00Z",
+  "devices": [
+    { "hostname": "PROD-SRV-01", "agent_id": "abc123", "agent_version": "7.14.17706.0",
+      "status": "normal", "prevention_policy": "active", "last_seen": "...", "detections": [] }
+  ]
+}
+```
+
+> 📁 Archivos de ejemplo disponibles en [`docs/mocks/`](docs/mocks/)
+
+---
+
+## 🗂️ Ciclo de Vida de Vulnerabilidades
+
+Cada vulnerabilidad importada vía Greenbone tiene un estado que puede gestionar el equipo de seguridad:
+
+```
+NUEVO ──▶ ASIGNADO ──▶ EN_CURSO ──▶ RESUELTO
+                          │
+                          ▼
+                        PARADO
+```
+
+| Estado | Color | Descripción |
+|--------|-------|-------------|
+| **NUEVO** | 🔵 Azul | Recién importado, pendiente de revisión |
+| **ASIGNADO** | 🟣 Morado | Asignado a un equipo para análisis |
+| **EN_CURSO** | 🟡 Amarillo | Mitigación en progreso |
+| **PARADO** | 🟠 Naranja | Bloqueado por dependencia externa |
+| **RESUELTO** | 🟢 Verde | Vulnerabilidad corregida y verificada |
+
+El estado se puede cambiar directamente desde la tabla en **Vulnerabilidades** usando el dropdown por fila.
+
+---
+
 ## 📡 API Reference
 
 Todos los endpoints excepto `/api/auth/login` y `/health` requieren:
@@ -438,13 +513,15 @@ Authorization: Bearer <token>
 |--------|----------|-----------|-------------|
 | `POST` | `/api/auth/login` | — público — | Obtener token JWT |
 | `GET` | `/health` | — público — | Health check |
-| `GET` | `/api/cis` | VIEWER | Listar todos los CIs con relaciones |
+| `GET` | `/api/cis` | VIEWER | Listar todos los CIs con relaciones y vulnerabilidades |
 | `POST` | `/api/cis` | **ADMIN** | Crear nuevo CI (hardware/software) |
-| `POST` | `/api/cis/:id/scan` | **ADMIN** | Lanzar escaneo de vulnerabilidades |
+| `PATCH` | `/api/vulnerabilities` | VIEWER | Actualizar estado de una vulnerabilidad (`{ ciId, cve, status }`) |
 | `GET` | `/api/contracts` | VIEWER | Listar contratos con CIs y proveedor |
 | `POST` | `/api/contracts` | **ADMIN** | Crear contrato o adenda |
 | `GET` | `/api/vendors` | VIEWER | Listar proveedores |
 | `GET` | `/api/users` | VIEWER | Listar usuarios (para selectors de formularios) |
+| `POST` | `/api/integrations/greenbone` | **ADMIN** | Importar reporte Greenbone OpenVAS |
+| `POST` | `/api/integrations/crowdstrike` | **ADMIN** | Importar estado de agentes CrowdStrike Falcon |
 
 **Ejemplo de login:**
 ```bash

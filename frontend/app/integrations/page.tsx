@@ -73,8 +73,19 @@ function IntegrationCard({
         body:   JSON.stringify(body),
       });
 
+      // Check ok BEFORE calling .json() — HTML error pages crash JSON.parse
+      if (!res.ok) {
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct.includes("application/json")) {
+          const err = await res.json();
+          throw new Error(err.error ?? `Error ${res.status}`);
+        } else {
+          const text = await res.text();
+          throw new Error(`Error ${res.status}: ${text.replace(/<[^>]+>/g, "").trim().slice(0, 120)}`);
+        }
+      }
+
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
       setResult(data as IntegrationResult);
       setState("success");
     } catch (err) {

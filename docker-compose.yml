@@ -3,8 +3,14 @@ version: "3.9"
 # ──────────────────────────────────────────────────────────────────────────────
 # CMDB Enterprise Platform — Full-stack Docker Compose
 #
-# Copy .env.example → .env, fill in values, then run:
+# Tested on: RHEL 8/9, CentOS Stream 9, Ubuntu 22.04, macOS (Docker Desktop)
+#
+# Quick start:
+#   cp .env.example .env        # configure variables
 #   docker compose up -d --build
+#
+# SELinux (RHEL/CentOS): The :Z suffix on volume mounts tells the container
+# engine to relabel the volume content so SELinux Enforcing mode allows access.
 # ──────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -13,13 +19,14 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: cmdb-postgres
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-cmdb_db}
       POSTGRES_USER:     ${POSTGRES_USER:-admin}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cmdb_pass123}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # :Z relabels the volume for SELinux Enforcing mode (RHEL/CentOS)
+      - postgres-data:/var/lib/postgresql/data:Z
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
@@ -33,7 +40,7 @@ services:
   adminer:
     image: adminer:latest
     container_name: cmdb-adminer
-    restart: unless-stopped
+    restart: always
     ports:
       - "${ADMINER_PORT:-8080}:8080"
     depends_on:
@@ -46,7 +53,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: cmdb-backend
-    restart: unless-stopped
+    restart: always
     environment:
       NODE_ENV:     production
       PORT:         3000
@@ -65,11 +72,11 @@ services:
       dockerfile: Dockerfile
       args:
         # Baked into the client-side JS bundle at build time.
-        # Must point to the backend as reachable from the browser
-        # (e.g. http://<server-ip>:3000 or https://api.yourdomain.com)
+        # Must point to the backend as reachable from the BROWSER
+        # (i.e. the server's public IP or domain name, not "backend")
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
     container_name: cmdb-frontend
-    restart: unless-stopped
+    restart: always
     environment:
       NODE_ENV: production
       PORT:     3001

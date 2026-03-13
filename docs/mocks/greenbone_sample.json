@@ -1,0 +1,95 @@
+{
+  "scanner": "Greenbone Security Manager 22.4",
+  "scan_date": "2026-03-13T18:00:00Z",
+  "scan_duration_minutes": 45,
+  "results": [
+    {
+      "host": {
+        "hostname": "PROD-SRV-01 Web Server",
+        "ip": "10.0.1.10"
+      },
+      "vulnerabilities": [
+        {
+          "cve": "CVE-2024-21413",
+          "severity": "CRITICAL",
+          "name": "Microsoft Outlook Remote Code Execution",
+          "cvss_score": 9.8,
+          "description": "Remote Code Execution vulnerability in Microsoft Outlook via malformed MIME link parsing."
+        },
+        {
+          "cve": "CVE-2024-0519",
+          "severity": "HIGH",
+          "name": "Out-of-bounds Memory Read in V8",
+          "cvss_score": 8.8,
+          "description": "Out-of-bounds memory access in Google Chrome V8 engine — actively exploited in the wild."
+        },
+        {
+          "cve": "CVE-2023-44487",
+          "severity": "HIGH",
+          "name": "HTTP/2 Rapid Reset DDoS",
+          "cvss_score": 7.5,
+          "description": "HTTP/2 Rapid Reset attack allows amplified DDoS via server-stream cancellation."
+        },
+        {
+          "cve": "CVE-2023-36661",
+          "severity": "MEDIUM",
+          "name": "OpenSSH Server Banner Exposure",
+          "cvss_score": 5.3,
+          "description": "OpenSSH server version banner is exposed, aiding targeted attacks."
+        }
+      ]
+    },
+    {
+      "host": {
+        "hostname": "PROD-DB-01 PostgreSQL",
+        "ip": "10.0.1.11"
+      },
+      "vulnerabilities": [
+        {
+          "cve": "CVE-2024-27198",
+          "severity": "CRITICAL",
+          "name": "JetBrains TeamCity Auth Bypass",
+          "cvss_score": 9.8,
+          "description": "Authentication bypass in JetBrains TeamCity allows admin account takeover."
+        },
+        {
+          "cve": "CVE-2023-48795",
+          "severity": "MEDIUM",
+          "name": "Terrapin SSH Prefix Truncation",
+          "cvss_score": 5.9,
+          "description": "Terrapin attack on SSH — prefix truncation in CBC/ChaCha20 modes."
+        }
+      ]
+    },
+    {
+      "host": {
+        "hostname": "STG-SRV-01 Staging Server",
+        "ip": "10.0.2.10"
+      },
+      "vulnerabilities": [
+        {
+          "cve": "CVE-2024-21338",
+          "severity": "HIGH",
+          "name": "Windows Kernel Null Pointer EoP",
+          "cvss_score": 7.8,
+          "description": "Windows kernel null pointer dereference — local privilege escalation."
+        }
+      ]
+    },
+    {
+      "host": {
+        "hostname": "UNKNOWN-HOST-99",
+        "ip": "192.168.99.1"
+      },
+      "vulnerabilities": [
+        {
+          "cve": "CVE-2023-20198",
+          "severity": "LOW",
+          "name": "Cisco IOS XE Default Credential",
+          "cvss_score": 3.1,
+          "description": "Cisco IOS XE Web UI exposes default credentials on HTTP interface."
+        }
+      ]
+    }
+  ]
+}

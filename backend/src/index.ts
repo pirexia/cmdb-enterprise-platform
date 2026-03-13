@@ -363,6 +363,165 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   }
 });
 
+// ─── Integration Connectors ───────────────────────────────────────────────────
+
+/**
+ * POST /api/integrations/greenbone
+ *
+ * Ingests a Greenbone OpenVAS JSON report.
+ * Matches each result to a CI by hostname/name and updates its vulnerabilities.
+ *
+ * Body structure (see docs/mocks/greenbone_sample.json):
+ * {
+ *   scanner: string,
+ *   scan_date: string,
+ *   results: Array<{
+ *     host: { hostname: string, ip?: string },
+ *     vulnerabilities: Array<{ cve: string, severity: string, name: string, cvss_score: number, description: string }>
+ *   }>
+ * }
+ */
+app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  console.log('[POST /api/integrations/greenbone] Processing report…');
+  try {
+    type GBVuln = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
+    type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
+    const { results = [] } = req.body as { results: GBResult[] };
+
+    const processed: { ci: string; matched: boolean; vulnCount: number }[] = [];
+
+    for (const result of results) {
+      const hostname = result.host?.hostname ?? '';
+      if (!hostname) continue;
+
+      // Find CI by case-insensitive name match
+      type CIRow = { id: string; name: string };
+      const rows = await prisma.$queryRaw<CIRow[]>`
+        SELECT id, name FROM "configuration_items"
+        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        ORDER BY LENGTH(name) ASC
+        LIMIT 1
+      `;
+
+      if (rows.length === 0) {
+        processed.push({ ci: hostname, matched: false, vulnCount: 0 });
+        continue;
+      }
+
+      const ci = rows[0];
+
+      // Normalise vulnerabilities to our standard format
+      const vulns = (result.vulnerabilities ?? []).map((v) => ({
+        cve:         v.cve,
+        severity:    v.severity?.toUpperCase() as 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW',
+        description: v.description ?? v.name ?? '',
+        source:      'greenbone',
+        cvss_score:  v.cvss_score ?? null,
+      }));
+
+      await prisma.$executeRaw`
+        UPDATE "configuration_items"
+        SET "vulnerabilities" = ${JSON.stringify(vulns)}::jsonb
+        WHERE "id" = ${ci.id}::uuid
+      `;
+
+      processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
+      console.log(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+    }
+
+    res.json({
+      message: 'Greenbone report processed',
+      processed,
+      totalMatched: processed.filter((p) => p.matched).length,
+      totalUnmatched: processed.filter((p) => !p.matched).length,
+    });
+  } catch (error) {
+    console.error('[POST /api/integrations/greenbone] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/integrations/crowdstrike
+ *
+ * Ingests a CrowdStrike Falcon agent status export.
+ * Matches each device to a CI by hostname and updates its agentStatus field.
+ *
+ * Body structure (see docs/mocks/crowdstrike_sample.json):
+ * {
+ *   platform: string,
+ *   export_date: string,
+ *   devices: Array<{
+ *     hostname: string, agent_id: string, agent_version: string,
+ *     status: string, prevention_policy: string, last_seen: string,
+ *     detections: Array<any>
+ *   }>
+ * }
+ */
+app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  console.log('[POST /api/integrations/crowdstrike] Processing report…');
+  try {
+    type CSDevice = {
+      hostname: string; agent_id: string; agent_version: string;
+      status: string; prevention_policy: string; last_seen: string;
+      detections: unknown[];
+    };
+    const { devices = [] } = req.body as { devices: CSDevice[] };
+
+    const processed: { ci: string; matched: boolean; status: string }[] = [];
+
+    for (const device of devices) {
+      const hostname = device.hostname ?? '';
+      if (!hostname) continue;
+
+      type CIRow = { id: string; name: string };
+      const rows = await prisma.$queryRaw<CIRow[]>`
+        SELECT id, name FROM "configuration_items"
+        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        ORDER BY LENGTH(name) ASC
+        LIMIT 1
+      `;
+
+      if (rows.length === 0) {
+        processed.push({ ci: hostname, matched: false, status: 'unmatched' });
+        continue;
+      }
+
+      const ci = rows[0];
+
+      const agentData = {
+        agentId:          device.agent_id,
+        agentVersion:     device.agent_version,
+        status:           device.status,
+        preventionPolicy: device.prevention_policy,
+        lastSeen:         device.last_seen,
+        detections:       device.detections ?? [],
+        source:           'crowdstrike',
+        updatedAt:        new Date().toISOString(),
+      };
+
+      await prisma.$executeRaw`
+        UPDATE "configuration_items"
+        SET "agent_status" = ${JSON.stringify(agentData)}::jsonb
+        WHERE "id" = ${ci.id}::uuid
+      `;
+
+      processed.push({ ci: ci.name, matched: true, status: device.status });
+      console.log(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
+    }
+
+    res.json({
+      message: 'CrowdStrike report processed',
+      processed,
+      totalMatched: processed.filter((p) => p.matched).length,
+      totalUnmatched: processed.filter((p) => !p.matched).length,
+    });
+  } catch (error) {
+    console.error('[POST /api/integrations/crowdstrike] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {

@@ -1,0 +1,56 @@
+{
+  "platform": "CrowdStrike Falcon",
+  "export_date": "2026-03-13T19:00:00Z",
+  "organization": "CMDB Corp",
+  "devices": [
+    {
+      "hostname": "PROD-SRV-01",
+      "agent_id": "a1b2c3d4e5f67890abcd1234ef567890",
+      "agent_version": "7.14.17706.0",
+      "status": "normal",
+      "prevention_policy": "active",
+      "last_seen": "2026-03-13T18:55:00Z",
+      "os": "Windows Server 2022",
+      "detections": []
+    },
+    {
+      "hostname": "PROD-DB-01",
+      "agent_id": "b2c3d4e5f6781234abcdef9012345678",
+      "agent_version": "7.14.17706.0",
+      "status": "normal",
+      "prevention_policy": "active",
+      "last_seen": "2026-03-13T18:58:00Z",
+      "os": "Red Hat Enterprise Linux 9",
+      "detections": [
+        {
+          "detection_id": "det-001",
+          "severity": "HIGH",
+          "tactic": "Lateral Movement",
+          "technique": "Pass the Hash",
+          "status": "contained",
+          "timestamp": "2026-03-12T14:30:00Z"
+        }
+      ]
+    },
+    {
+      "hostname": "STG-SRV-01",
+      "agent_id": "c3d4e5f67891234512abcdef01234567",
+      "agent_version": "7.12.16303.0",
+      "status": "reduced_functionality",
+      "prevention_policy": "disabled",
+      "last_seen": "2026-03-13T10:00:00Z",
+      "os": "CentOS 7",
+      "detections": []
+    },
+    {
+      "hostname": "NGINX-LB",
+      "agent_id": "d4e5f6789012345623abcdef12345678",
+      "agent_version": "7.14.17706.0",
+      "status": "normal",
+      "prevention_policy": "active",
+      "last_seen": "2026-03-13T18:59:00Z",
+      "os": "Ubuntu 22.04",
+      "detections": []
+    }
+  ]
+}

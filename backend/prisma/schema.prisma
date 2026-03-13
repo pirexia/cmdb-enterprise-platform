@@ -137,6 +137,7 @@ model CI {
   software        SoftwareCI?
 
   vulnerabilities Json?        @map("vulnerabilities")
+  agentStatus     Json?        @map("agent_status")
   
   contracts       Contract[]   @relation("ContractToCI")
 

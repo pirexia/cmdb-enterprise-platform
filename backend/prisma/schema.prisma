@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
+enum Criticality {
+  LOW
+  MEDIUM
+  HIGH
+  MISSION_CRITICAL
+}
+
+enum Environment {
+  DEVELOPMENT
+  TESTING
+  STAGING
+  PRODUCTION
+}
+
+enum LocationType {
+  SITE
+  DATACENTER
+  RACK
+}
+
+model User {
+  id              String   @id @default(uuid()) @db.Uuid
+  username        String   @unique
+  email           String   @unique
+  password        String?  @map("password")
+  role            UserRole @default(VIEWER)
+  ssoExternalId   String?  @unique @map("sso_external_id")
+  
+  ownedCIs        CI[]     @relation("BusinessOwner")
+  technicalLedCIs CI[]     @relation("TechnicalLead")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model CostCenter {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  
+  cis       CI[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("cost_centers")
+}
+
+model Location {
+  id                String    @id @default(uuid()) @db.Uuid
+  name              String
+  type              LocationType
+  parentLocationId  String?   @db.Uuid @map("parent_location_id")
+  
+  parentLocation    Location? @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
+  childLocations    Location[] @relation("LocationHierarchy")
+  
+  cis               CI[]
+
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("locations")
+}
+
+model Vendor {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String
+  
+  contracts Contract[]
+
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("vendors")
+}
+
+model Contract {
+  id                String     @id @default(uuid()) @db.Uuid
+  contractNumber    String     @unique @map("contract_number")
+  startDate         DateTime   @map("start_date")
+  endDate           DateTime?  @map("end_date")
+  vendorId          String     @db.Uuid @map("vendor_id")
+  parentContractId  String?    @db.Uuid @map("parent_contract_id")
+  
+  vendor            Vendor     @relation(fields: [vendorId], references: [id])
+  parentContract    Contract?  @relation("ContractAddendums", fields: [parentContractId], references: [id])
+  addendums         Contract[] @relation("ContractAddendums")
+  
+  cis               CI[]       @relation("ContractToCI")
+
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  @@map("contracts")
+}
+
+model CI {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String
+  apiSlug         String       @unique @map("api_slug")
+  criticality     Criticality
+  environment     Environment
+  eolDate         DateTime?    @map("eol_date")
+  eosDate         DateTime?    @map("eos_date")
+  
+  businessOwnerId String?      @db.Uuid @map("business_owner_id")
+  technicalLeadId String?      @db.Uuid @map("technical_lead_id")
+  locationId      String?      @db.Uuid @map("location_id")
+  costCenterId    String?      @db.Uuid @map("cost_center_id")
+  parentCIId      String?      @db.Uuid @map("parent_ci_id")
+  
+  businessOwner   User?        @relation("BusinessOwner", fields: [businessOwnerId], references: [id])
+  technicalLead   User?        @relation("TechnicalLead", fields: [technicalLeadId], references: [id])
+  location        Location?    @relation(fields: [locationId], references: [id])
+  costCenter      CostCenter?  @relation(fields: [costCenterId], references: [id])
+  parentCI        CI?          @relation("CIHierarchy", fields: [parentCIId], references: [id])
+  childCIs        CI[]         @relation("CIHierarchy")
+  
+  hardware        HardwareCI?
+  software        SoftwareCI?
+
+  vulnerabilities Json?        @map("vulnerabilities")
+  
+  contracts       Contract[]   @relation("ContractToCI")
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  @@map("configuration_items")
+}
+
+model HardwareCI {
+  ciId         String @id @db.Uuid @map("ci_id")
+  serialNumber String @unique @map("serial_number")
+  model        String
+  manufacturer String
+  
+  ci           CI     @relation(fields: [ciId], references: [id])
+
+  @@map("hardware_cis")
+}
+
+model SoftwareCI {
+  ciId        String @id @db.Uuid @map("ci_id")
+  version     String
+  licenseType String @map("license_type")
+  
+  ci          CI     @relation(fields: [ciId], references: [id])
+
+  @@map("software_cis")
+}

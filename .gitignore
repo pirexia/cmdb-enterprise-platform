@@ -1,3 +1,31 @@
+# ─── Secrets — NEVER commit these ───────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+.env.production.local
+
+# ─── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+
+# ─── Build artifacts ──────────────────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ─── SQLite (if ever used locally) ───────────────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+
+# ─── Prisma generated client ──────────────────────────────────────────────────
+# (regenerated with `prisma generate` — not needed in source control)
+backend/node_modules/.prisma/
+
+# ─── TypeScript cache ─────────────────────────────────────────────────────────
+*.tsbuildinfo
+
 # Logs
 logs
 *.log

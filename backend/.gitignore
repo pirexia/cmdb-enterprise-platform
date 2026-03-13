@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+build/
+
+# Prisma generated client (regenerated via `prisma generate`)
+node_modules/.prisma/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental compilation cache
+*.tsbuildinfo

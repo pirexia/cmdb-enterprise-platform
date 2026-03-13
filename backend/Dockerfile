@@ -3,6 +3,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# openssl is required by Prisma's query engine on Alpine Linux
+RUN apk add --no-cache openssl
+
+# Silence npm update advertisements in build logs
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
 WORKDIR /app
 
 # Install deps (including devDeps — needed for tsc + prisma generate)
@@ -21,6 +27,12 @@ RUN npm run build
 # Stage 2 — Runner: lean production image
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+
+# openssl is required by Prisma's query engine at runtime on Alpine Linux
+RUN apk add --no-cache openssl
+
+# Silence npm update advertisements
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 WORKDIR /app
 

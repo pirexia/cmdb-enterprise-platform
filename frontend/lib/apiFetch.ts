@@ -1,4 +1,6 @@
-const API_BASE = "http://localhost:3000";
+// Resolved at build time for Docker (NEXT_PUBLIC_* vars are baked in).
+// Falls back to localhost:3000 for local development.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 /**
  * Authenticated fetch wrapper.

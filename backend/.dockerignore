@@ -1,0 +1,18 @@
+# Build output — rebuilt inside Docker
+dist/
+
+# Local dependencies — reinstalled inside Docker
+node_modules/
+
+# Secrets — never bake into the image
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS artifacts
+.DS_Store
+Thumbs.db

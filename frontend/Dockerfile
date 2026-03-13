@@ -3,6 +3,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS deps
 
+# Silence npm update advertisements
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -12,6 +15,9 @@ RUN npm ci
 # Stage 2 — Builder: compile Next.js (standalone mode)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
+
+# Silence npm update advertisements
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
 WORKDIR /app
 

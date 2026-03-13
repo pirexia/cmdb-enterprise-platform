@@ -52,6 +52,25 @@
 
 ---
 
+## 🖥️ Requisitos del sistema
+
+| Recurso | Mínimo recomendado | Notas |
+|---------|-------------------|-------|
+| **CPU** | 2 vCPUs | 4+ vCPUs para entornos con carga |
+| **RAM** | 4 GB | 8 GB recomendados en producción |
+| **Espacio en disco** | **10 GB libres en `/var`** | Las capas de imágenes Docker/Podman se almacenan en `/var/lib/docker` o `/var/lib/containers`. Un build completo ocupa ~5-8 GB. Se recomienda al menos **10 GB libres** para evitar errores durante la construcción. |
+| **Sistema Operativo** | RHEL 8/9, CentOS Stream 9, Ubuntu 22.04+ | |
+| **Docker/Podman** | Docker CE 24+ ó Podman 4+ | |
+| **Git** | 2.x | |
+
+> ⚠️ **Antes de hacer el build**, verifica el espacio disponible en la partición de almacenamiento de contenedores:
+> ```bash
+> df -h /var          # Docker: /var/lib/docker
+> df -h /home         # Podman (rootless): ~/.local/share/containers
+> ```
+
+---
+
 ## 📁 Estructura del proyecto
 
 ```
@@ -223,9 +242,20 @@ NEXT_PUBLIC_API_URL=http://192.168.1.100:3000
 
 ### Paso 3 — Construir imágenes y levantar los contenedores
 
+**Docker (Ubuntu / macOS / Windows):**
 ```bash
 docker compose up -d --build
 ```
+
+**Podman (RHEL / CentOS — recomendado en entornos Red Hat):**
+```bash
+# Instala podman-compose si aún no está disponible:
+pip3 install podman-compose
+
+podman-compose up -d --build
+```
+
+> 💡 En RHEL/CentOS, Red Hat recomienda **Podman** sobre Docker CE. El archivo `docker-compose.yml` es 100% compatible con `podman-compose` sin ningún cambio.
 
 La primera vez tarda ~3-5 minutos mientras se compilan las imágenes.
 

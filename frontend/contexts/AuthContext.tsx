@@ -7,6 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,10 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await fetch("http://localhost:3000/api/auth/login", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ email, password }),
+    // apiFetch uses NEXT_PUBLIC_API_URL — no hardcoded hostname
+    const res = await apiFetch("/api/auth/login", {
+      method: "POST",
+      body:   JSON.stringify({ email, password }),
     });
 
     if (!res.ok) {

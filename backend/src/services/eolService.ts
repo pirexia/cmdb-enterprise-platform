@@ -111,6 +111,30 @@ export async function lookupEolDates(
 }
 
 /**
+ * Returns the full list of product slugs tracked by endoflife.date.
+ * Example: ["ubuntu", "debian", "windows", "rhel", ...]
+ */
+export async function fetchAllProducts(): Promise<string[]> {
+  try {
+    const raw  = await httpsGet(`${EOL_API_BASE}/all.json`);
+    const list = JSON.parse(raw) as unknown;
+    return Array.isArray(list) ? (list as string[]) : [];
+  } catch { return []; }
+}
+
+/**
+ * Returns all release cycles for a product slug.
+ * Returns null if the product does not exist on endoflife.date.
+ */
+export async function fetchProductCycles(slug: string): Promise<EolCycle[] | null> {
+  try {
+    const raw    = await httpsGet(`${EOL_API_BASE}/${slug}.json`);
+    const cycles = JSON.parse(raw) as unknown;
+    return Array.isArray(cycles) ? (cycles as EolCycle[]) : null;
+  } catch { return null; }
+}
+
+/**
  * Tries multiple slugs (product aliases) in sequence and returns the first hit.
  * Useful when the CI name might differ from the API slug.
  */

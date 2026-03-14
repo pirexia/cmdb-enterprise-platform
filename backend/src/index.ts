@@ -3,6 +3,7 @@ import cors from 'cors';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
+import { authenticateLDAP } from './services/ldap';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -135,37 +136,66 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 
   try {
-    // Use raw SQL — Prisma TS types don't yet expose password/role until DLL restarts
     type UserRow = { id: string; username: string; email: string; password: string | null; role: string };
-    const rows = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
-    `;
-    const user = rows[0];
 
-    if (!user || !user.password) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
+    if (process.env.USE_LDAP === 'true') {
+      // ── LDAP / Active Directory path ────────────────────────────────────────
+      try {
+        await authenticateLDAP(email, password);
+      } catch (ldapErr) {
+        console.error('[POST /api/auth/login] LDAP error:', ldapErr);
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
+      // LDAP bind succeeded — look up the user in local DB to get their role
+      let rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+
+      // Auto-provisioning: first LDAP login creates a local VIEWER account
+      if (rows.length === 0) {
+        const username   = email.split('@')[0];
+        const dummyHash  = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+        await prisma.$executeRaw`
+          INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
+          VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
+        `;
+        rows = await prisma.$queryRaw<UserRow[]>`
+          SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+        `;
+        console.log(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
+      }
+
+      const user    = rows[0];
+      const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
+      const token   = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+
+    } else {
+      // ── Local bcrypt path (original logic) ──────────────────────────────────
+      // Use raw SQL — Prisma TS types don't yet expose password/role until DLL restarts
+      const rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+      const user = rows[0];
+
+      if (!user || !user.password) {
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
+      const valid = await bcrypt.compare(password, user.password);
+      if (!valid) {
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
+      const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
+      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+      res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
     }
 
-    const valid = await bcrypt.compare(password, user.password);
-    if (!valid) {
-      res.status(401).json({ error: 'Invalid credentials' });
-      return;
-    }
-
-    const payload: JwtPayload = {
-      id:       user.id,
-      username: user.username,
-      email:    user.email,
-      role:     user.role as UserRole,
-    };
-
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-
-    res.json({
-      token,
-      user: { id: user.id, username: user.username, email: user.email, role: user.role },
-    });
   } catch (error) {
     console.error('[POST /api/auth/login] Error:', error);
     res.status(500).json({ error: 'Internal server error' });

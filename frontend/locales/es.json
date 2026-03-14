@@ -1,0 +1,32 @@
+{
+  "sidebar": {
+    "dashboard":      "Dashboard",
+    "inventory":      "Inventario de CIs",
+    "vulnerabilities":"Vulnerabilidades",
+    "map":            "Mapa de Dependencias",
+    "integrations":   "Conectores",
+    "reports":        "📊 Reportes",
+    "contracts":      "Contratos y Adendas",
+    "entities":       "Entidades",
+    "profile":        "Mi Perfil",
+    "audit":          "🕵️ Auditoría",
+    "settings":       "Configuración"
+  },
+  "actions": {
+    "logout":         "Cerrar sesión",
+    "refresh":        "Actualizar",
+    "add":            "Añadir",
+    "export_csv":     "Exportar CSV",
+    "generate_pdf":   "Generar PDF",
+    "cancel":         "Cancelar",
+    "save":           "Guardar",
+    "retry":          "Reintentar"
+  },
+  "brand": {
+    "name":    "CMDB",
+    "tagline": "Enterprise Platform"
+  },
+  "footer": {
+    "copyright": "© {year} CMDB Platform v1.0"
+  }
+}

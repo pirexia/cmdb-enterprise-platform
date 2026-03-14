@@ -49,6 +49,8 @@ interface FormState {
   version: string; licenseType: string; licenseModel: string; licenseMetric: string;
   // License
   licenseQty: string; licenseExpiry: string;
+  // EOL dates (editable override)
+  eolDate: string; eosDate: string;
   // Assignment (user devices)
   assignedUser: string; userDni: string;
   // Location + network (infra)
@@ -63,6 +65,7 @@ const INITIAL_FORM: FormState = {
   serialNumber: "", model: "", manufacturer: "",
   version: "", licenseType: "", licenseModel: "", licenseMetric: "",
   licenseQty: "", licenseExpiry: "",
+  eolDate: "", eosDate: "",
   assignedUser: "", userDni: "",
   floor: "", room: "", rack: "", rackUnit: "", vlan: "", consoleIp: "",
 };
@@ -131,6 +134,8 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       inventoryNumber: form.inventoryNumber || undefined,
       branchId:  form.branchId  || undefined,
       ciModelId: form.ciModelId || undefined,
+      eolDate:   form.eolDate   || undefined,
+      eosDate:   form.eosDate   || undefined,
       businessOwnerId: form.businessOwnerId || undefined,
       technicalLeadId: form.technicalLeadId || undefined,
     };
@@ -439,6 +444,18 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
               </div>
             </div>
           )}
+
+          {/* ── EOL / EoS dates (optional override — backend auto-fills from endoflife.date) ── */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
+              🕐 Fechas de Ciclo de Vida (EoL / EoS)
+              <span className="text-[10px] font-normal text-slate-400 lowercase">— se autocompletarán vía endoflife.date si se dejan vacías</span>
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
+              <div><Label>End of Support (EoS)</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
+            </div>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>

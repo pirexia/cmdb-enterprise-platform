@@ -7,6 +7,7 @@ import {
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
+  Key, Cloud, Terminal,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -81,6 +82,12 @@ const CI_TYPE_META: Record<string, { label: string; color: string; icon: React.R
   UPS:             { label: "SAI / UPS",         color: "bg-yellow-50 text-yellow-700",    icon: <BatteryCharging className="h-3 w-3" /> },
   // Conectividad
   WIFI_AP:         { label: "Punto de Acceso",   color: "bg-teal-50 text-teal-700",        icon: <Cast      className="h-3 w-3" /> },
+  // Cloud
+  CLOUD_INSTANCE:  { label: "Instancia Cloud",   color: "bg-sky-50 text-sky-700",          icon: <Cloud     className="h-3 w-3" /> },
+  CLOUD_STORAGE:   { label: "Storage Cloud",     color: "bg-blue-50 text-blue-700",        icon: <Database  className="h-3 w-3" /> },
+  // Software base y licencias
+  BASE_SOFTWARE:   { label: "Software Base",     color: "bg-slate-100 text-slate-700",     icon: <Terminal  className="h-3 w-3" /> },
+  LICENSE:         { label: "Licencia",          color: "bg-amber-50 text-amber-700",      icon: <Key       className="h-3 w-3" /> },
 };
 
 // ─── Badge helpers ─────────────────────────────────────────────────────────────

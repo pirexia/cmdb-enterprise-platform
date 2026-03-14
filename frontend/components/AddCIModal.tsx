@@ -18,7 +18,11 @@ type CIType =
   // Movilidad / Logística
   | "SMARTPHONE" | "TABLET" | "PDA" | "BARCODE_SCANNER"
   // IoT / Infra
-  | "IP_CAMERA" | "UPS" | "WIFI_AP";
+  | "IP_CAMERA" | "UPS" | "WIFI_AP"
+  // Cloud
+  | "CLOUD_INSTANCE" | "CLOUD_STORAGE"
+  // Software base y licencias
+  | "BASE_SOFTWARE" | "LICENSE";
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
@@ -77,8 +81,9 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
       "VIDEOCONFERENCE", "SMART_DISPLAY", "TIME_CLOCK", "IP_PHONE",
       "SMARTPHONE", "TABLET", "PDA", "BARCODE_SCANNER",
       "IP_CAMERA", "UPS", "WIFI_AP",
+      "CLOUD_INSTANCE", "CLOUD_STORAGE",
     ];
-    const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP"];
+    const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP", "BASE_SOFTWARE", "LICENSE"];
     const body: Record<string, unknown> = {
       name: form.name, apiSlug: form.apiSlug, environment: form.environment, criticality: form.criticality,
       ciType: form.type,
@@ -123,10 +128,16 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
                 <option value="UPS">SAI / UPS</option>
                 <option value="WIFI_AP">Punto de Acceso WiFi</option>
               </optgroup>
+              <optgroup label="☁️ Cloud">
+                <option value="CLOUD_INSTANCE">Instancia Cloud (VM/Container)</option>
+                <option value="CLOUD_STORAGE">Storage Cloud (S3/Blob)</option>
+              </optgroup>
               <optgroup label="📦 Software y Datos">
                 <option value="DATABASE">Base de Datos</option>
                 <option value="SOFTWARE">Software / Aplicación</option>
                 <option value="BACKUP">Backup / Recuperación</option>
+                <option value="BASE_SOFTWARE">Software Base / SO</option>
+                <option value="LICENSE">Licencia (standalone)</option>
               </optgroup>
               <optgroup label="💼 Puesto de Trabajo">
                 <option value="DESKTOP">PC Escritorio</option>

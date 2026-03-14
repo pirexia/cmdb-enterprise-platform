@@ -39,9 +39,13 @@ export async function authenticateLDAP(username: string, password: string): Prom
     ? username                                        // AD: user@domain.com
     : `uid=${username},${LDAP_BASE_DN()}`;            // OpenLDAP: uid=user,dc=...
 
+  // TLS options — relevant when using ldaps:// or StartTLS
+  const rejectUnauthorized = process.env.LDAP_TLS_REJECT_UNAUTHORIZED !== '0';
+  const tlsOptions = { rejectUnauthorized };
+
   try {
     await authenticate({
-      ldapOpts:     { url: LDAP_URL() },
+      ldapOpts:     { url: LDAP_URL(), tlsOptions },
       userDn,
       userPassword: password,
     });

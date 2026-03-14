@@ -25,7 +25,7 @@ interface AuthContextType {
   token:    string | null;
   loading:  boolean;
   isAdmin:  boolean;
-  login:    (email: string, password: string) => Promise<void>;
+  login:    (email: string, password: string, mfaCode?: string) => Promise<void>;
   logout:   () => void;
 }
 
@@ -55,11 +55,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, mfaCode?: string) => {
     // apiFetch uses NEXT_PUBLIC_API_URL — no hardcoded hostname
     const res = await apiFetch("/api/auth/login", {
       method: "POST",
-      body:   JSON.stringify({ email, password }),
+      body:   JSON.stringify({ email, password, ...(mfaCode ? { mfaCode } : {}) }),
     });
 
     if (!res.ok) {

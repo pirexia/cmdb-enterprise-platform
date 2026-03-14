@@ -4,6 +4,11 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
+// otplib v12+ uses ESM — require workaround for CommonJS backend
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { authenticator } = require('otplib') as { authenticator: { generateSecret: () => string; keyuri: (acc: string, service: string, secret: string) => string; check: (token: string, secret: string) => boolean } };
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import QRCode from 'qrcode';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -128,7 +133,7 @@ app.get('/health', (_req: Request, res: Response) => {
  * Returns a signed JWT on valid credentials.
  */
 app.post('/api/auth/login', async (req: Request, res: Response) => {
-  const { email, password } = req.body as { email?: string; password?: string };
+  const { email, password, mfaCode } = req.body as { email?: string; password?: string; mfaCode?: string };
 
   if (!email || !password) {
     res.status(400).json({ error: 'email and password are required' });
@@ -136,7 +141,10 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 
   try {
-    type UserRow = { id: string; username: string; email: string; password: string | null; role: string };
+    // Extended user row — includes MFA fields (added via add_mfa_fields migration)
+    type UserRow = { id: string; username: string; email: string; password: string | null; role: string; mfa_enabled: boolean; mfa_secret: string | null };
+
+    let user: UserRow;
 
     if (process.env.USE_LDAP === 'true') {
       // ── LDAP / Active Directory path ────────────────────────────────────────
@@ -148,53 +156,56 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         return;
       }
 
-      // LDAP bind succeeded — look up the user in local DB to get their role
       let rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+        SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
       `;
 
-      // Auto-provisioning: first LDAP login creates a local VIEWER account
       if (rows.length === 0) {
-        const username   = email.split('@')[0];
-        const dummyHash  = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+        const username  = email.split('@')[0];
+        const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
         await prisma.$executeRaw`
           INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
           VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
         `;
         rows = await prisma.$queryRaw<UserRow[]>`
-          SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+          SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
         `;
         console.log(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
       }
-
-      const user    = rows[0];
-      const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
-      const token   = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-      res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+      user = rows[0];
 
     } else {
-      // ── Local bcrypt path (original logic) ──────────────────────────────────
-      // Use raw SQL — Prisma TS types don't yet expose password/role until DLL restarts
+      // ── Local bcrypt path ────────────────────────────────────────────────────
       const rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role FROM "users" WHERE email = ${email} LIMIT 1
+        SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
       `;
-      const user = rows[0];
-
-      if (!user || !user.password) {
+      if (!rows[0] || !rows[0].password) {
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
-
-      const valid = await bcrypt.compare(password, user.password);
+      const valid = await bcrypt.compare(password, rows[0].password);
       if (!valid) {
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
-
-      const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
-      const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
-      res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+      user = rows[0];
     }
+
+    // ── MFA check (common to both paths) ──────────────────────────────────────
+    if (user.mfa_enabled && user.mfa_secret) {
+      if (!mfaCode) {
+        res.status(401).json({ error: 'MFA_REQUIRED' });
+        return;
+      }
+      if (!authenticator.check(mfaCode, user.mfa_secret)) {
+        res.status(401).json({ error: 'Invalid MFA code' });
+        return;
+      }
+    }
+
+    const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
 
   } catch (error) {
     console.error('[POST /api/auth/login] Error:', error);
@@ -448,6 +459,51 @@ app.get('/api/audit-logs', authenticateToken, requireAdmin, async (_req: Request
     res.json({ total: logs.length, data: logs });
   } catch (error) {
     console.error('[GET /api/audit-logs] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── MFA (TOTP) ────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/auth/mfa/setup
+ * Generates a TOTP secret + QR code Data URL for the authenticated user.
+ * The secret is NOT stored yet — client must verify with /mfa/enable first.
+ */
+app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const secret   = authenticator.generateSecret();
+    const otpauth  = authenticator.keyuri(req.user!.email, 'CMDB Platform', secret);
+    const qrDataUrl = await QRCode.toDataURL(otpauth);
+    res.json({ secret, qrDataUrl });
+  } catch (error) {
+    console.error('[POST /api/auth/mfa/setup] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/auth/mfa/enable
+ * Verifies the first TOTP code and persists the secret in the database.
+ * Body: { code: string, secret: string }
+ */
+app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Response) => {
+  const { code, secret } = req.body as { code?: string; secret?: string };
+  if (!code || !secret) {
+    res.status(400).json({ error: 'code and secret are required' });
+    return;
+  }
+  if (!authenticator.check(code, secret)) {
+    res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+    return;
+  }
+  try {
+    await prisma.$executeRaw`
+      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true WHERE id = ${req.user!.id}::uuid
+    `;
+    res.json({ message: 'MFA enabled successfully' });
+  } catch (error) {
+    console.error('[POST /api/auth/mfa/enable] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

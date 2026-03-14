@@ -632,6 +632,119 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
   }
 });
 
+// ─── Master Data CRUD ─────────────────────────────────────────────────────────
+// All endpoints use raw SQL (Prisma client regenerates inside Docker post-migration)
+
+type MasterRow = { id: string; name: string; [k: string]: unknown };
+
+// Support Areas
+app.get('/api/masters/support-areas', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "support_areas" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Branches
+app.get('/api/masters/branches', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<(MasterRow & { branch_code: string; physical_address: string | null; support_area_id: string; support_area_name: string })[]>`
+      SELECT b.id, b.name, b.branch_code, b.physical_address, b.support_area_id, sa.name AS support_area_name
+      FROM "branches" b LEFT JOIN "support_areas" sa ON b.support_area_id = sa.id ORDER BY b.name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
+  if (!name?.trim() || !branchCode?.trim() || !supportAreaId) { res.status(400).json({ error: 'name, branchCode, supportAreaId required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`
+      INSERT INTO "branches"(id,name,branch_code,physical_address,support_area_id,created_at,updated_at)
+      VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Manufacturers
+app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "manufacturers" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Device Models
+app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string })[]>`
+      SELECT dm.id, dm.name, dm.manufacturer_id, m.name AS manufacturer_name
+      FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`
+      INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
+      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Providers
+app.get('/api/masters/providers', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "providers" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // ─── Integration Connectors ───────────────────────────────────────────────────
 
 /**

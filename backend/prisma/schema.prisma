@@ -65,18 +65,18 @@ model CostCenter {
 }
 
 model Location {
-  id                String    @id @default(uuid()) @db.Uuid
+  id                String     @id @default(uuid()) @db.Uuid
   name              String
   type              LocationType
-  parentLocationId  String?   @db.Uuid @map("parent_location_id")
+  parentLocationId  String?    @db.Uuid @map("parent_location_id")
   
-  parentLocation    Location? @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
+  parentLocation    Location?  @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
   childLocations    Location[] @relation("LocationHierarchy")
   
   cis               CI[]
 
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
 
   @@map("locations")
 }
@@ -113,6 +113,72 @@ model Contract {
   @@map("contracts")
 }
 
+// ─── Master Data ──────────────────────────────────────────────────────────────
+
+model SupportArea {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  branches  Branch[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("support_areas")
+}
+
+model Branch {
+  id              String      @id @default(uuid()) @db.Uuid
+  name            String
+  branchCode      String      @unique @map("branch_code")
+  physicalAddress String?     @map("physical_address")
+  supportAreaId   String      @db.Uuid @map("support_area_id")
+
+  supportArea     SupportArea @relation(fields: [supportAreaId], references: [id])
+  cis             CI[]
+
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@map("branches")
+}
+
+model Manufacturer {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String        @unique
+  models    DeviceModel[]
+
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("manufacturers")
+}
+
+model DeviceModel {
+  id             String       @id @default(uuid()) @db.Uuid
+  name           String
+  manufacturerId String       @db.Uuid @map("manufacturer_id")
+
+  manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id])
+  cis            CI[]
+
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@map("device_models")
+}
+
+model Provider {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("providers")
+}
+
+// ─── Configuration Item ───────────────────────────────────────────────────────
+
 model CI {
   id              String       @id @default(uuid()) @db.Uuid
   name            String
@@ -121,28 +187,52 @@ model CI {
   environment     Environment
   eolDate         DateTime?    @map("eol_date")
   eosDate         DateTime?    @map("eos_date")
-  
+  ciType          String?      @default("OTHER") @map("ci_type")
+
+  // Governance
+  status          String?      @default("ACTIVO") @map("status")
+  inventoryNumber String?      @unique @map("inventory_number")
+
+  // Assignment (user devices)
+  assignedUser    String?      @map("assigned_user")
+  userDni         String?      @map("user_dni")
+
+  // Physical location (infra / datacenter)
+  floor           String?      @map("floor")
+  room            String?      @map("room")
+  rack            String?      @map("rack")
+  rackUnit        String?      @map("rack_unit")
+
+  // Network
+  vlan            String?      @map("vlan")
+  consoleIp       String?      @map("console_ip")
+
+  // Core FK relations
   businessOwnerId String?      @db.Uuid @map("business_owner_id")
   technicalLeadId String?      @db.Uuid @map("technical_lead_id")
   locationId      String?      @db.Uuid @map("location_id")
   costCenterId    String?      @db.Uuid @map("cost_center_id")
   parentCIId      String?      @db.Uuid @map("parent_ci_id")
-  
+
+  // Master data FK relations
+  branchId        String?      @db.Uuid @map("branch_id")
+  ciModelId       String?      @db.Uuid @map("ci_model_id")
+
   businessOwner   User?        @relation("BusinessOwner", fields: [businessOwnerId], references: [id])
   technicalLead   User?        @relation("TechnicalLead", fields: [technicalLeadId], references: [id])
   location        Location?    @relation(fields: [locationId], references: [id])
   costCenter      CostCenter?  @relation(fields: [costCenterId], references: [id])
   parentCI        CI?          @relation("CIHierarchy", fields: [parentCIId], references: [id])
   childCIs        CI[]         @relation("CIHierarchy")
-  
-  ciType          String?      @default("OTHER") @map("ci_type")
+  branch          Branch?      @relation(fields: [branchId], references: [id])
+  ciModel         DeviceModel? @relation(fields: [ciModelId], references: [id])
 
   hardware        HardwareCI?
   software        SoftwareCI?
 
   vulnerabilities Json?        @map("vulnerabilities")
   agentStatus     Json?        @map("agent_status")
-  
+
   contracts       Contract[]   @relation("ContractToCI")
 
   createdAt       DateTime     @default(now()) @map("created_at")
@@ -174,8 +264,8 @@ model SoftwareCI {
 
 model AuditLog {
   id        String   @id @default(uuid()) @db.Uuid
-  action    String                          // e.g. "CREATE_CI", "UPDATE_VULN_STATUS"
-  entity    String                          // e.g. "CI", "VULNERABILITY"
+  action    String
+  entity    String
   entityId  String   @map("entity_id")
   userEmail String   @map("user_email")
   createdAt DateTime @default(now()) @map("created_at")

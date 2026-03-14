@@ -23,6 +23,7 @@ type CIType =
   | "CLOUD_INSTANCE" | "CLOUD_STORAGE"
   // Software base y licencias
   | "BASE_SOFTWARE" | "LICENSE";
+
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
@@ -30,16 +31,22 @@ interface FormState {
   type: CIType; name: string; apiSlug: string;
   environment: Environment; criticality: Criticality;
   businessOwnerId: string; technicalLeadId: string;
+  // Hardware fields
   serialNumber: string; model: string; manufacturer: string;
+  // Software fields
   version: string; licenseType: string;
   licenseModel: string; licenseMetric: string;
+  // License-specific fields
+  licenseQty: string; licenseExpiry: string;
 }
 
 const INITIAL_FORM: FormState = {
   type: "PHYSICAL_SERVER", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
   businessOwnerId: "", technicalLeadId: "",
-  serialNumber: "", model: "", manufacturer: "", version: "", licenseType: "",
+  serialNumber: "", model: "", manufacturer: "",
+  version: "", licenseType: "",
   licenseModel: "", licenseMetric: "",
+  licenseQty: "", licenseExpiry: "",
 };
 
 function toSlug(name: string) {
@@ -56,11 +63,20 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:opacity-50 ${props.className ?? ""}`} />;
 }
 
+// Dynamic label for quantity field based on license metric
+function qtyLabel(metric: string): string {
+  if (metric === "core_vcpu")      return "Cantidad (Cores / vCPU)";
+  if (metric === "pay_per_use")    return "Capacidad / Volumen";
+  if (metric === "per_instance")   return "Número de Instancias";
+  if (metric === "concurrent")     return "Cantidad (Concurrentes)";
+  return "Cantidad (Usuarios)";
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 interface AddCIModalProps { onClose: () => void; onCreated: () => void }
 
-export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
+export default function AddCIModal({ onClose, onCreated }: AddCIModalProps): React.ReactElement {
   const [form, setForm]       = useState<FormState>(INITIAL_FORM);
   const [users, setUsers]     = useState<User[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -75,6 +91,7 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true); setError(null);
+
     const hwTypes: CIType[] = [
       "HARDWARE", "PHYSICAL_SERVER", "VIRTUAL_SERVER", "NETWORK", "STORAGE",
       "DESKTOP", "LAPTOP", "PRINTER", "SCANNER", "MONITOR",
@@ -83,16 +100,31 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
       "IP_CAMERA", "UPS", "WIFI_AP",
       "CLOUD_INSTANCE", "CLOUD_STORAGE",
     ];
-    const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP", "BASE_SOFTWARE", "LICENSE"];
+    const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP", "BASE_SOFTWARE"];
+
     const body: Record<string, unknown> = {
       name: form.name, apiSlug: form.apiSlug, environment: form.environment, criticality: form.criticality,
       ciType: form.type,
-      businessOwnerId: form.businessOwnerId || undefined, technicalLeadId: form.technicalLeadId || undefined,
+      businessOwnerId: form.businessOwnerId || undefined,
+      technicalLeadId: form.technicalLeadId || undefined,
     };
-    if (hwTypes.includes(form.type)) body.hardware = { serialNumber: form.serialNumber, model: form.model, manufacturer: form.manufacturer };
-    else if (swTypes.includes(form.type)) {
+
+    if (form.type === "LICENSE") {
+      // Pure license record — no hardware/software sub-model
+      body.details = {
+        licenseModel:   form.licenseModel  || undefined,
+        licenseMetric:  form.licenseMetric || undefined,
+        licenseQty:     form.licenseQty    || undefined,
+        licenseExpiry:  form.licenseExpiry || undefined,
+      };
+    } else if (hwTypes.includes(form.type)) {
+      body.hardware = { serialNumber: form.serialNumber, model: form.model, manufacturer: form.manufacturer };
+    } else if (swTypes.includes(form.type)) {
       body.software = { version: form.version, licenseType: form.licenseType };
-      body.details  = { licenseModel: form.licenseModel || undefined, licenseMetric: form.licenseMetric || undefined };
+      body.details  = {
+        licenseModel:  form.licenseModel  || undefined,
+        licenseMetric: form.licenseMetric || undefined,
+      };
     }
 
     try {
@@ -117,6 +149,8 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
         </div>
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6">
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"><AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}</div>}
+
+          {/* ── Type selector ── */}
           <div>
             <Label>Tipo *</Label>
             <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
@@ -137,6 +171,8 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
                 <option value="SOFTWARE">Software / Aplicación</option>
                 <option value="BACKUP">Backup / Recuperación</option>
                 <option value="BASE_SOFTWARE">Software Base / SO</option>
+              </optgroup>
+              <optgroup label="🔑 Licencias y Contratos">
                 <option value="LICENSE">Licencia (standalone)</option>
               </optgroup>
               <optgroup label="💼 Puesto de Trabajo">
@@ -167,6 +203,8 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </optgroup>
             </Select>
           </div>
+
+          {/* ── Name / Slug ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><Label>Nombre *</Label><Input required placeholder="ej. Web Server PRD-01" value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
             <div>
@@ -175,6 +213,8 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               <p className="mt-1 text-[11px] text-slate-400">Auto-generado. Debe ser único.</p>
             </div>
           </div>
+
+          {/* ── Env / Criticality ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><Label>Entorno *</Label>
               <Select required value={form.environment} onChange={(e) => set("environment", e.target.value as Environment)}>
@@ -189,6 +229,8 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </Select>
             </div>
           </div>
+
+          {/* ── Owners ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><Label>Propietario de Negocio</Label>
               <Select value={form.businessOwnerId} onChange={(e) => set("businessOwnerId", e.target.value)}>
@@ -203,17 +245,27 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </Select>
             </div>
           </div>
-          {(["HARDWARE","PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK","STORAGE"] as CIType[]).includes(form.type) && (
+
+          {/* ── Hardware section ── */}
+          {(["HARDWARE","PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK","STORAGE",
+             "DESKTOP","LAPTOP","PRINTER","SCANNER","MONITOR",
+             "VIDEOCONFERENCE","SMART_DISPLAY","TIME_CLOCK","IP_PHONE",
+             "SMARTPHONE","TABLET","PDA","BARCODE_SCANNER",
+             "IP_CAMERA","UPS","WIFI_AP","CLOUD_INSTANCE","CLOUD_STORAGE"] as CIType[]).includes(form.type) && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                {(["CLOUD_INSTANCE","CLOUD_STORAGE"] as CIType[]).includes(form.type) ? "Detalles Cloud (Proveedor / Región)" : "Detalles de Hardware"}
+              </p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div><Label>Nº Serie *</Label><Input required placeholder="SN-XXXXXXX" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
-                <div><Label>Modelo *</Label><Input required placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
-                <div><Label>Fabricante *</Label><Input required placeholder="Dell" value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></div>
+                <div><Label>Nº Serie / ID *</Label><Input required placeholder="SN-XXXXXXX" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
+                <div><Label>Modelo / SKU *</Label><Input required placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
+                <div><Label>Fabricante / Proveedor *</Label><Input required placeholder="Dell / AWS / Azure" value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></div>
               </div>
             </div>
           )}
-          {(["SOFTWARE","DATABASE","BACKUP"] as CIType[]).includes(form.type) && (
+
+          {/* ── Software section (non-license) ── */}
+          {(["SOFTWARE","DATABASE","BACKUP","BASE_SOFTWARE"] as CIType[]).includes(form.type) && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software y Licenciamiento</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -222,7 +274,7 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <Label>Modelo de Licencia</Label>
+                  <Label>Modelo de Adquisición</Label>
                   <Select value={form.licenseModel} onChange={(e) => set("licenseModel", e.target.value)}>
                     <option value="">— Sin especificar —</option>
                     <option value="subscription">Suscripción</option>
@@ -230,6 +282,7 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
                     <option value="oem">OEM</option>
                     <option value="open_source">Open Source</option>
                     <option value="enterprise_agreement">Enterprise Agreement</option>
+                    <option value="maintenance">Soporte / Mantenimiento</option>
                   </Select>
                 </div>
                 <div>
@@ -240,12 +293,64 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
                     <option value="concurrent">Concurrente</option>
                     <option value="core_vcpu">Core / vCPU</option>
                     <option value="per_instance">Por Instancia</option>
-                    <option value="pay_per_use">Pago por Uso</option>
+                    <option value="pay_per_use">Pago por Uso / Consumo</option>
                   </Select>
                 </div>
               </div>
             </div>
           )}
+
+          {/* ── LICENSE-specific section ── */}
+          {form.type === "LICENSE" && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">🔑 Detalles de Licenciamiento</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label>Modelo de Adquisición *</Label>
+                  <Select required value={form.licenseModel} onChange={(e) => set("licenseModel", e.target.value)}>
+                    <option value="">— Seleccionar —</option>
+                    <option value="subscription">Suscripción</option>
+                    <option value="perpetual">Perpetua</option>
+                    <option value="oem">OEM</option>
+                    <option value="open_source">Open Source</option>
+                    <option value="enterprise_agreement">Enterprise Agreement</option>
+                    <option value="maintenance">Soporte / Mantenimiento</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Métrica de Licenciamiento *</Label>
+                  <Select required value={form.licenseMetric} onChange={(e) => set("licenseMetric", e.target.value)}>
+                    <option value="">— Seleccionar —</option>
+                    <option value="nominal">Nominal (por usuario)</option>
+                    <option value="concurrent">Concurrente</option>
+                    <option value="core_vcpu">Core / vCPU</option>
+                    <option value="per_instance">Por Instancia</option>
+                    <option value="pay_per_use">Pago por Uso / Consumo</option>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  {/* Dynamic quantity label based on chosen metric */}
+                  <Label>{qtyLabel(form.licenseMetric)}</Label>
+                  <Input
+                    type="number" min="1" placeholder="ej. 50"
+                    value={form.licenseQty}
+                    onChange={(e) => set("licenseQty", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Fecha de Expiración</Label>
+                  <Input
+                    type="date"
+                    value={form.licenseExpiry}
+                    onChange={(e) => set("licenseExpiry", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>
             <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">

@@ -4,10 +4,12 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
-// otplib v12+ uses ESM — require workaround for CommonJS backend
+// otplib v12 ships dual CJS/ESM — guard for either export shape at runtime
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { authenticator } = require('otplib') as { authenticator: { generateSecret: () => string; keyuri: (acc: string, service: string, secret: string) => string; check: (token: string, secret: string) => boolean } };
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+const _otplib = require('otplib') as Record<string, unknown>;
+const authenticator = (
+  (_otplib['authenticator'] ?? (_otplib['default'] as Record<string, unknown>)?.['authenticator'])
+) as { generateSecret(): string; keyuri(account: string, service: string, secret: string): string; check(token: string, secret: string): boolean };
 import QRCode from 'qrcode';
 
 // ─── App setup ────────────────────────────────────────────────────────────────

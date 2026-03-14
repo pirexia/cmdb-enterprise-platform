@@ -82,11 +82,17 @@ export default function MastersPage() {
         apiFetch("/api/masters/providers"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
-      setSupportAreas( safe(await saRes.json()) as SupportArea[]);
-      setBranches(     safe(await brRes.json()) as Branch[]);
-      setManufacturers(safe(await mfRes.json()) as Manufacturer[]);
-      setModels(      safe(await dmRes.json()) as DeviceModel[]);
-      setProviders(   safe(await pvRes.json()) as Provider[]);
+      const saData  = await saRes.json();
+      const brData  = await brRes.json();
+      const mfData  = await mfRes.json();
+      const dmData  = await dmRes.json();
+      const pvData  = await pvRes.json();
+      console.log("[CMDB Masters] load() — fabricantes recibidos:", mfData, "| tipo:", typeof mfData, "| esArray:", Array.isArray(mfData));
+      setSupportAreas( safe(saData) as SupportArea[]);
+      setBranches(     safe(brData) as Branch[]);
+      setManufacturers(safe(mfData) as Manufacturer[]);
+      setModels(       safe(dmData) as DeviceModel[]);
+      setProviders(    safe(pvData) as Provider[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -213,9 +219,22 @@ export default function MastersPage() {
                     try {
                       const res = await apiFetch("/api/masters/sync-catalog", { method: "POST", body: JSON.stringify({ action: "sync-manufacturers" }) });
                       const d = await res.json();
+                      // Directly re-fetch manufacturers and update state (avoids race with load())
+                      const mfrRes  = await apiFetch("/api/masters/manufacturers");
+                      const mfrData: unknown = await mfrRes.json();
+                      console.log("[CMDB] sync-manufacturers response:", d);
+                      console.log("[CMDB] fabricantes recibidos de la API:", mfrData);
+                      if (Array.isArray(mfrData)) {
+                        setManufacturers(mfrData as Manufacturer[]);
+                      } else {
+                        console.warn("[CMDB] Respuesta inesperada, iniciando carga completa");
+                        await load();
+                      }
                       alert(d.message ?? "Sincronización completada");
-                      load();
-                    } catch { alert("Error al sincronizar fabricantes"); }
+                    } catch (e) {
+                      console.error("[CMDB] Error sync-manufacturers:", e);
+                      alert("Error al sincronizar fabricantes");
+                    }
                   }}
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
                   title="Inserta fabricantes populares de TI desde catálogo curado"

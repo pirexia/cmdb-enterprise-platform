@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
-import { lookupEolWithFallbacks } from './services/eolService';
+import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
 import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 
@@ -463,6 +463,50 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
     }
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ── EOL Catalog Proxy ─────────────────────────────────────────────────────────
+
+const POPULAR_MANUFACTURERS = [
+  'Dell','HP','HPE','Cisco','IBM','Lenovo','Apple','Microsoft','Intel','AMD',
+  'Nvidia','NetApp','EMC','Oracle','Sun Microsystems','Juniper Networks',
+  'Aruba Networks','Fortinet','Palo Alto Networks','VMware',
+  'Red Hat','Canonical','Google','Amazon Web Services','Huawei',
+  'Samsung','Sophos','Check Point','F5 Networks','Broadcom',
+];
+
+app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { action, query } = req.body as { action?: string; query?: string };
+
+  if (action === 'sync-manufacturers') {
+    let created = 0; let skipped = 0;
+    for (const name of POPULAR_MANUFACTURERS) {
+      try {
+        const r = await prisma.$executeRaw`
+          INSERT INTO "manufacturers"(id, name, created_at, updated_at)
+          VALUES(gen_random_uuid(), ${name}, now(), now())
+          ON CONFLICT (name) DO NOTHING
+        `;
+        if (Number(r) > 0) created++; else skipped++;
+      } catch { skipped++; }
+    }
+    res.json({ message: `${created} fabricantes insertados, ${skipped} ya existían`, created, skipped });
+    return;
+  }
+
+  if (action === 'search') {
+    if (!query?.trim()) { res.status(400).json({ error: 'query is required' }); return; }
+    const slug   = query.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 60);
+    const cycles = await fetchProductCycles(slug).catch(() => null);
+    if (!cycles) {
+      res.json({ product: slug, cycles: [], found: false, message: `"${query}" no encontrado en endoflife.date` });
+      return;
+    }
+    res.json({ product: slug, cycles, found: true });
+    return;
+  }
+
+  res.status(400).json({ error: 'action must be "sync-manufacturers" or "search"' });
 });
 
 // ── Bulk CI Import ────────────────────────────────────────────────────────────

@@ -64,6 +64,13 @@ export default function MastersPage() {
   const [newModel, setNewModel] = useState({ name: "", manufacturerId: "" });
   const [newProv, setNewProv] = useState("");
 
+  // EOL catalog search state (Models tab)
+  const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
+  const [eolQuery,         setEolQuery]         = useState("");
+  const [eolSearching,     setEolSearching]     = useState(false);
+  const [eolResults,       setEolResults]       = useState<{ product: string; found: boolean; cycles: { cycle: string; eol?: string | boolean | null; support?: string | boolean | null; latest?: string }[]; message?: string } | null>(null);
+  const [eolImportMfrId,   setEolImportMfrId]   = useState("");
+
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -200,6 +207,21 @@ export default function MastersPage() {
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
+                <button
+                  onClick={async () => {
+                    if (!confirm("¿Insertar 30 fabricantes populares de TI? Los duplicados se omitirán.")) return;
+                    try {
+                      const res = await apiFetch("/api/masters/sync-catalog", { method: "POST", body: JSON.stringify({ action: "sync-manufacturers" }) });
+                      const d = await res.json();
+                      alert(d.message ?? "Sincronización completada");
+                      load();
+                    } catch { alert("Error al sincronizar fabricantes"); }
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
+                  title="Inserta fabricantes populares de TI desde catálogo curado"
+                >
+                  ✨ Sugerir Populares
+                </button>
               </div>
             </div>
             <div className="divide-y divide-slate-50">
@@ -224,7 +246,85 @@ export default function MastersPage() {
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
+                <button onClick={() => setEolSearchOpen((v) => !v)}
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-teal-500 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
+                  title="Buscar producto en endoflife.date e importar versiones como modelos">
+                  🔍 Buscar en catálogo EOL
+                </button>
               </div>
+
+              {/* EOL Search Panel */}
+              {eolSearchOpen && (
+                <div className="rounded-xl border border-teal-200 bg-teal-50 p-4 space-y-3">
+                  <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Buscar en endoflife.date</p>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Ej: windows, ubuntu, mysql…"
+                      value={eolQuery}
+                      onChange={(e) => setEolQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && (async () => {
+                        if (!eolQuery.trim()) return;
+                        setEolSearching(true); setEolResults(null);
+                        try {
+                          const res = await apiFetch("/api/masters/sync-catalog", { method: "POST", body: JSON.stringify({ action: "search", query: eolQuery }) });
+                          setEolResults(await res.json());
+                        } finally { setEolSearching(false); }
+                      })()}
+                    />
+                    <button
+                      disabled={eolSearching || !eolQuery.trim()}
+                      onClick={async () => {
+                        setEolSearching(true); setEolResults(null);
+                        try {
+                          const res = await apiFetch("/api/masters/sync-catalog", { method: "POST", body: JSON.stringify({ action: "search", query: eolQuery }) });
+                          setEolResults(await res.json());
+                        } finally { setEolSearching(false); }
+                      }}
+                      className="flex-shrink-0 rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50 transition-colors">
+                      {eolSearching ? "…" : "Buscar"}
+                    </button>
+                  </div>
+
+                  {eolResults && !eolResults.found && (
+                    <p className="text-sm text-teal-700">{eolResults.message ?? "No encontrado en endoflife.date"}</p>
+                  )}
+
+                  {eolResults?.found && eolResults.cycles.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-teal-600 font-medium">
+                        Producto: <strong>{eolResults.product}</strong> — {eolResults.cycles.length} versiones. Selecciona fabricante e importa:
+                      </p>
+                      <Sel value={eolImportMfrId} onChange={(e) => setEolImportMfrId(e.target.value)} className="text-xs">
+                        <option value="">— Fabricante para importar —</option>
+                        {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                      </Sel>
+                      <div className="max-h-40 overflow-y-auto divide-y divide-teal-100 rounded-lg border border-teal-200 bg-white">
+                        {eolResults.cycles.map((c) => (
+                          <div key={c.cycle} className="flex items-center justify-between px-3 py-2">
+                            <div>
+                              <span className="text-sm font-medium text-slate-700">{eolResults.product} {c.cycle}</span>
+                              {c.eol && typeof c.eol === "string" && (
+                                <span className="ml-2 text-xs text-red-500">EoL: {c.eol}</span>
+                              )}
+                            </div>
+                            <button
+                              disabled={!eolImportMfrId}
+                              onClick={async () => {
+                                try {
+                                  await post("/api/masters/device-models", { name: `${eolResults.product} ${c.cycle}`, manufacturerId: eolImportMfrId });
+                                  load();
+                                } catch (e) { alert(e instanceof Error ? e.message : "Error al importar"); }
+                              }}
+                              className="rounded-lg bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-40 transition-colors">
+                              Importar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="divide-y divide-slate-50">
               {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin modelos registrados.</p> :

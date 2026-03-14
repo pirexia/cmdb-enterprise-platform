@@ -4,12 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
-// otplib v12 ships dual CJS/ESM — guard for either export shape at runtime
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const _otplib = require('otplib') as Record<string, unknown>;
-const authenticator = (
-  (_otplib['authenticator'] ?? (_otplib['default'] as Record<string, unknown>)?.['authenticator'])
-) as { generateSecret(): string; keyuri(account: string, service: string, secret: string): string; check(token: string, secret: string): boolean };
+import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
@@ -199,7 +194,8 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         res.status(401).json({ error: 'MFA_REQUIRED' });
         return;
       }
-      if (!authenticator.check(mfaCode, user.mfa_secret)) {
+      const mfaValid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 });
+      if (!mfaValid) {
         res.status(401).json({ error: 'Invalid MFA code' });
         return;
       }
@@ -474,8 +470,9 @@ app.get('/api/audit-logs', authenticateToken, requireAdmin, async (_req: Request
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const secret   = authenticator.generateSecret();
-    const otpauth  = authenticator.keyuri(req.user!.email, 'CMDB Platform', secret);
+    const secretObj = speakeasy.generateSecret({ name: `CMDB Enterprise (${req.user!.email})`, length: 20 });
+    const secret    = secretObj.base32;
+    const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
     const qrDataUrl = await QRCode.toDataURL(otpauth);
     res.json({ secret, qrDataUrl });
   } catch (error) {
@@ -495,7 +492,8 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
     res.status(400).json({ error: 'code and secret are required' });
     return;
   }
-  if (!authenticator.check(code, secret)) {
+  const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+  if (!valid) {
     res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
     return;
   }

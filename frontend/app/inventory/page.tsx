@@ -5,6 +5,8 @@ import {
   Search, RefreshCw, AlertTriangle, Plus, Download,
   Shield, ShieldAlert, ShieldCheck, ShieldOff,
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
+  Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
+  Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,6 +60,27 @@ const CI_TYPE_META: Record<string, { label: string; color: string; icon: React.R
   HARDWARE:        { label: "Hardware",          color: "bg-emerald-50 text-emerald-700",  icon: <Cpu       className="h-3 w-3" /> },
   SOFTWARE:        { label: "Software",          color: "bg-violet-50 text-violet-700",    icon: <Package   className="h-3 w-3" /> },
   OTHER:           { label: "Otro",              color: "bg-slate-100 text-slate-600",     icon: null },
+  // Puesto de usuario
+  DESKTOP:         { label: "Escritorio",        color: "bg-sky-50 text-sky-700",          icon: <Monitor   className="h-3 w-3" /> },
+  LAPTOP:          { label: "Portátil",          color: "bg-indigo-50 text-indigo-700",    icon: <Laptop    className="h-3 w-3" /> },
+  PRINTER:         { label: "Impresora",         color: "bg-slate-100 text-slate-600",     icon: <Printer   className="h-3 w-3" /> },
+  SCANNER:         { label: "Escáner",           color: "bg-gray-100 text-gray-600",       icon: <ScanLine  className="h-3 w-3" /> },
+  MONITOR:         { label: "Monitor",           color: "bg-slate-50 text-slate-600",      icon: <Monitor   className="h-3 w-3" /> },
+  // Oficina / Salas
+  VIDEOCONFERENCE: { label: "Videoconf.",        color: "bg-cyan-50 text-cyan-700",        icon: <Video     className="h-3 w-3" /> },
+  SMART_DISPLAY:   { label: "Pantalla Smart",    color: "bg-blue-50 text-blue-700",        icon: <Tv        className="h-3 w-3" /> },
+  TIME_CLOCK:      { label: "Reloj Fichaje",     color: "bg-orange-50 text-orange-700",    icon: <Clock     className="h-3 w-3" /> },
+  IP_PHONE:        { label: "Teléfono IP",       color: "bg-green-50 text-green-700",      icon: <Phone     className="h-3 w-3" /> },
+  // Movilidad / Logística
+  SMARTPHONE:      { label: "Smartphone",        color: "bg-violet-50 text-violet-700",    icon: <Smartphone className="h-3 w-3" /> },
+  TABLET:          { label: "Tablet",            color: "bg-purple-50 text-purple-700",    icon: <Tablet    className="h-3 w-3" /> },
+  PDA:             { label: "PDA",               color: "bg-fuchsia-50 text-fuchsia-700",  icon: <Smartphone className="h-3 w-3" /> },
+  BARCODE_SCANNER: { label: "Lector Código",     color: "bg-amber-50 text-amber-700",      icon: <QrCode    className="h-3 w-3" /> },
+  // IoT / Infra
+  IP_CAMERA:       { label: "Cámara IP",         color: "bg-red-50 text-red-700",          icon: <Camera    className="h-3 w-3" /> },
+  UPS:             { label: "SAI / UPS",         color: "bg-yellow-50 text-yellow-700",    icon: <BatteryCharging className="h-3 w-3" /> },
+  // Conectividad
+  WIFI_AP:         { label: "Punto de Acceso",   color: "bg-teal-50 text-teal-700",        icon: <Cast      className="h-3 w-3" /> },
 };
 
 // ─── Badge helpers ─────────────────────────────────────────────────────────────

@@ -74,11 +74,12 @@ export default function MastersPage() {
         apiFetch("/api/masters/device-models"),
         apiFetch("/api/masters/providers"),
       ]);
-      setSupportAreas(await saRes.json());
-      setBranches(    await brRes.json());
-      setManufacturers(await mfRes.json());
-      setModels(      await dmRes.json());
-      setProviders(   await pvRes.json());
+      const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+      setSupportAreas( safe(await saRes.json()) as SupportArea[]);
+      setBranches(     safe(await brRes.json()) as Branch[]);
+      setManufacturers(safe(await mfRes.json()) as Manufacturer[]);
+      setModels(      safe(await dmRes.json()) as DeviceModel[]);
+      setProviders(   safe(await pvRes.json()) as Provider[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);

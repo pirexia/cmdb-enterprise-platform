@@ -106,13 +106,17 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
     setForm((prev) => ({ ...prev, [key]: value, ...(key === "name" ? { apiSlug: toSlug(value as string) } : {}) }));
 
   useEffect(() => {
+    const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
     Promise.all([
       apiFetch("/api/users").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/branches").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/manufacturers").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/device-models").then((r) => r.json()).catch(() => []),
     ]).then(([u, b, m, dm]) => {
-      setUsers(u); setBranches(b); setManufacturers(m); setAllModels(dm);
+      setUsers(safe(u) as User[]);
+      setBranches(safe(b) as Branch[]);
+      setManufacturers(safe(m) as MasterItem[]);
+      setAllModels(safe(dm) as DeviceModel[]);
     });
   }, []);
 

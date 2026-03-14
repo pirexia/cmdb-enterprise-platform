@@ -43,11 +43,33 @@ interface CI {
   criticality:     Criticality;
   environment:     Environment;
   ciType:          string | null;
+  eolDate:         string | null;
+  eosDate:         string | null;
   technicalLead:   User | null;
   hardware:        { serialNumber: string; model: string; manufacturer: string } | null;
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
+}
+
+// ─── Support status badge ─────────────────────────────────────────────────────
+
+function SupportBadge({ eolDate, eosDate }: { eolDate: string | null; eosDate: string | null }) {
+  const now = Date.now();
+  const sixMonths = 180 * 86_400_000;
+  const dates = [eolDate, eosDate].filter(Boolean).map((d) => new Date(d!).getTime());
+  if (dates.length === 0) return null; // no data — don't show badge
+
+  const nearest = Math.min(...dates);
+  const daysLeft = Math.floor((nearest - now) / 86_400_000);
+
+  if (nearest < now) {
+    return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">🔴 Sin soporte</span>;
+  }
+  if (nearest - now < sixMonths) {
+    return <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">🟠 EoL en {daysLeft}d</span>;
+  }
+  return <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">🟢 Activo</span>;
 }
 
 // ─── CI type visual map ───────────────────────────────────────────────────────
@@ -376,6 +398,7 @@ export default function InventoryPage() {
                             <td className="px-6 py-4 font-medium text-slate-800">
                               <span className="group-hover:text-indigo-700 transition-colors">{ci.name}</span>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
+                              <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} />
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>

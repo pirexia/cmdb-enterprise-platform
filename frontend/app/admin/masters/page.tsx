@@ -227,7 +227,33 @@ export default function MastersPage() {
             </div>
             <div className="divide-y divide-slate-50">
               {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin modelos registrados.</p> :
-                models.map((m) => <ListRow key={m.id} label={m.name} sublabel={m.manufacturer_name} onDelete={() => del(`/api/masters/device-models/${m.id}`, load)} />)}
+                models.map((m) => (
+                  <div key={m.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">{m.name}</p>
+                      <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
+                            const d = await res.json();
+                            alert(d.message ?? "Sincronización completada");
+                          } catch { alert("Error al sincronizar EOL"); }
+                        }}
+                        className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+                        title="Consultar endoflife.date y actualizar CIs de este modelo"
+                      >
+                        🔄 Sincronizar EOL
+                      </button>
+                      <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
+                        className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
             </div>
           </div>
         )}

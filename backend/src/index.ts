@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
+import { lookupEolWithFallbacks } from './services/eolService';
 import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 
@@ -264,15 +265,19 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
   try {
     const {
       name, apiSlug, criticality, environment,
-      ciType,
+      ciType, status, inventoryNumber,
+      branchId, ciModelId,
       businessOwnerId, technicalLeadId, hardware, software,
+      eolDate: eolDateRaw, eosDate: eosDateRaw,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
-      ciType?: string;
+      ciType?: string; status?: string; inventoryNumber?: string;
+      branchId?: string; ciModelId?: string;
       businessOwnerId?: string; technicalLeadId?: string;
       hardware?: { serialNumber: string; model: string; manufacturer: string };
       software?: { version: string; licenseType: string };
+      eolDate?: string; eosDate?: string;
     };
 
     if (!name || !apiSlug || !criticality || !environment) {
@@ -286,11 +291,33 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     if (!validEnvironments.includes(environment))  { res.status(400).json({ error: `Invalid environment: ${environment}` });  return; }
     if (hardware && software)                      { res.status(400).json({ error: 'A CI cannot be both Hardware and Software' }); return; }
 
+    // ── EOL auto-populate from endoflife.date if dates not provided ───────────
+    let resolvedEolDate:     Date | null = eolDateRaw  ? new Date(eolDateRaw)  : null;
+    let resolvedSupportDate: Date | null = eosDateRaw  ? new Date(eosDateRaw)  : null;
+
+    if (!resolvedEolDate && !resolvedSupportDate) {
+      const swVersion = (software as { version?: string } | undefined)?.version;
+      const mfr       = (hardware as { manufacturer?: string } | undefined)?.manufacturer;
+      const mdl       = (hardware as { model?: string } | undefined)?.model;
+      const aliases   = [name, mfr && mdl ? `${mfr} ${mdl}` : '', mdl ?? '', name].filter(Boolean) as string[];
+      const eolInfo   = await lookupEolWithFallbacks(aliases, swVersion).catch(() => null);
+      if (eolInfo) {
+        if (eolInfo.eolDate     && !resolvedEolDate)     resolvedEolDate     = eolInfo.eolDate;
+        if (eolInfo.supportDate && !resolvedSupportDate) resolvedSupportDate = eolInfo.supportDate;
+      }
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ci = await prisma.cI.create({
       data: {
         name, apiSlug, criticality, environment,
-        ciType: ciType || "OTHER",   // ciType added via add_ci_type migration; cast needed until DLL unlock
+        ciType:          ciType          || "OTHER",
+        status:          status          || "ACTIVO",
+        inventoryNumber: inventoryNumber || null,
+        branchId:        branchId        || null,
+        ciModelId:       ciModelId       || null,
+        eolDate:         resolvedEolDate     || null,
+        eosDate:         resolvedSupportDate || null,
         businessOwnerId: businessOwnerId || null,
         technicalLeadId: technicalLeadId || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
@@ -743,6 +770,63 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
 app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+/**
+ * POST /api/masters/device-models/:id/sync-eol
+ * Looks up EOL dates for the device model on endoflife.date and updates
+ * all CIs linked to this model with the resolved dates.
+ * ADMIN only.
+ */
+app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    type ModelRow = { id: string; name: string; manufacturer_name: string };
+    const rows = await prisma.$queryRaw<ModelRow[]>`
+      SELECT dm.id, dm.name, m.name AS manufacturer_name
+      FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id
+      WHERE dm.id = ${id}::uuid LIMIT 1
+    `;
+    if (rows.length === 0) { res.status(404).json({ error: 'Model not found' }); return; }
+
+    const model  = rows[0];
+    const eolInfo = await lookupEolWithFallbacks(
+      [model.name, `${model.manufacturer_name} ${model.name}`, model.manufacturer_name].filter(Boolean)
+    ).catch(() => null);
+
+    if (!eolInfo?.eolDate && !eolInfo?.supportDate) {
+      res.json({ message: `No EOL data found for "${model.name}" on endoflife.date`, updated: 0 });
+      return;
+    }
+
+    // Update all CIs linked to this device model
+    let updated = 0;
+    if (eolInfo.eolDate) {
+      const r = await prisma.$executeRaw`
+        UPDATE "configuration_items"
+        SET eol_date = ${eolInfo.eolDate}, updated_at = now()
+        WHERE ci_model_id = ${id}::uuid AND eol_date IS NULL
+      `;
+      updated = Number(r);
+    }
+    if (eolInfo.supportDate) {
+      await prisma.$executeRaw`
+        UPDATE "configuration_items"
+        SET eos_date = ${eolInfo.supportDate}, updated_at = now()
+        WHERE ci_model_id = ${id}::uuid AND eos_date IS NULL
+      `;
+    }
+
+    res.json({
+      message:     `EOL sync complete for model "${model.name}"`,
+      eolDate:     eolInfo.eolDate,
+      supportDate: eolInfo.supportDate,
+      updated,
+    });
+  } catch (error) {
+    console.error('[POST /api/masters/device-models/:id/sync-eol] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // ─── Integration Connectors ───────────────────────────────────────────────────

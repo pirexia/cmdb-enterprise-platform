@@ -39,7 +39,9 @@ model User {
   password        String?  @map("password")
   role            UserRole @default(VIEWER)
   ssoExternalId   String?  @unique @map("sso_external_id")
-  
+  mfaSecret       String?  @map("mfa_secret")
+  mfaEnabled      Boolean  @default(false) @map("mfa_enabled")
+
   ownedCIs        CI[]     @relation("BusinessOwner")
   technicalLedCIs CI[]     @relation("TechnicalLead")
 

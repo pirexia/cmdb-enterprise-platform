@@ -16,6 +16,7 @@ import {
   Shield,
   BarChart,
   ClipboardList,
+  UserCircle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { label: "📊 Reportes",             href: "/reports",        icon: BarChart,        adminOnly: false },
   { label: "Contratos y Adendas",    href: "/contracts",      icon: FileText,        adminOnly: false },
   { label: "Entidades",              href: "/entities",       icon: Building2,       adminOnly: false },
+  { label: "Mi Perfil",               href: "/profile",        icon: UserCircle,      adminOnly: false },
   { label: "🕵️ Auditoría",            href: "/audit",          icon: ClipboardList,   adminOnly: true  },
   { label: "Configuración",          href: "/settings",       icon: Settings,        adminOnly: true  },
 ];

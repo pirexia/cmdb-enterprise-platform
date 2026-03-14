@@ -7,7 +7,10 @@ import { apiFetch } from "@/lib/apiFetch";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface User { id: string; username: string; email: string }
-type CIType      = "HARDWARE" | "SOFTWARE" | "OTHER";
+type CIType =
+  | "HARDWARE" | "SOFTWARE" | "OTHER"
+  | "PHYSICAL_SERVER" | "VIRTUAL_SERVER"
+  | "DATABASE" | "NETWORK" | "STORAGE" | "BACKUP";
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
@@ -58,12 +61,15 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true); setError(null);
+    const hwTypes: CIType[] = ["HARDWARE", "PHYSICAL_SERVER", "VIRTUAL_SERVER", "NETWORK", "STORAGE"];
+    const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP"];
     const body: Record<string, unknown> = {
       name: form.name, apiSlug: form.apiSlug, environment: form.environment, criticality: form.criticality,
+      ciType: form.type,
       businessOwnerId: form.businessOwnerId || undefined, technicalLeadId: form.technicalLeadId || undefined,
     };
-    if (form.type === "HARDWARE") body.hardware = { serialNumber: form.serialNumber, model: form.model, manufacturer: form.manufacturer };
-    else if (form.type === "SOFTWARE") body.software = { version: form.version, licenseType: form.licenseType };
+    if (hwTypes.includes(form.type)) body.hardware = { serialNumber: form.serialNumber, model: form.model, manufacturer: form.manufacturer };
+    else if (swTypes.includes(form.type)) body.software = { version: form.version, licenseType: form.licenseType };
 
     try {
       const res = await apiFetch("/api/cis", { method: "POST", body: JSON.stringify(body) });
@@ -89,14 +95,25 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"><AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}</div>}
           <div>
             <Label>Tipo *</Label>
-            <div className="flex gap-2">
-              {(["HARDWARE", "SOFTWARE", "OTHER"] as CIType[]).map((t) => (
-                <button key={t} type="button" onClick={() => set("type", t)}
-                  className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${form.type === t ? "border-indigo-400 bg-indigo-50 text-indigo-700" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}>
-                  {t === "HARDWARE" ? "🖥 Hardware" : t === "SOFTWARE" ? "📦 Software" : "⚙️ Otro"}
-                </button>
-              ))}
-            </div>
+            <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
+              <optgroup label="Servidores">
+                <option value="PHYSICAL_SERVER">🖥 Servidor Físico</option>
+                <option value="VIRTUAL_SERVER">☁️ Servidor Virtual / VM</option>
+              </optgroup>
+              <optgroup label="Infraestructura">
+                <option value="NETWORK">🔀 Red / Networking</option>
+                <option value="STORAGE">🗄 Almacenamiento / Storage</option>
+                <option value="BACKUP">💾 Backup</option>
+              </optgroup>
+              <optgroup label="Aplicaciones">
+                <option value="DATABASE">🗃 Base de Datos</option>
+                <option value="SOFTWARE">📦 Software / Aplicación</option>
+              </optgroup>
+              <optgroup label="Genérico">
+                <option value="HARDWARE">🔧 Hardware (genérico)</option>
+                <option value="OTHER">⚙️ Otro</option>
+              </optgroup>
+            </Select>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div><Label>Nombre *</Label><Input required placeholder="ej. Web Server PRD-01" value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
@@ -134,7 +151,7 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </Select>
             </div>
           </div>
-          {form.type === "HARDWARE" && (
+          {(["HARDWARE","PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK","STORAGE"] as CIType[]).includes(form.type) && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -144,7 +161,7 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
               </div>
             </div>
           )}
-          {form.type === "SOFTWARE" && (
+          {(["SOFTWARE","DATABASE","BACKUP"] as CIType[]).includes(form.type) && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

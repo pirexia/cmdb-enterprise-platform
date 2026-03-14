@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download,
   Shield, ShieldAlert, ShieldCheck, ShieldOff,
+  Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,12 +38,27 @@ interface CI {
   apiSlug:         string;
   criticality:     Criticality;
   environment:     Environment;
+  ciType:          string | null;
   technicalLead:   User | null;
   hardware:        { serialNumber: string; model: string; manufacturer: string } | null;
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
 }
+
+// ─── CI type visual map ───────────────────────────────────────────────────────
+
+const CI_TYPE_META: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  PHYSICAL_SERVER: { label: "Servidor Físico",   color: "bg-emerald-50 text-emerald-700", icon: <Server    className="h-3 w-3" /> },
+  VIRTUAL_SERVER:  { label: "Servidor Virtual",  color: "bg-teal-50 text-teal-700",       icon: <Box       className="h-3 w-3" /> },
+  DATABASE:        { label: "Base de Datos",     color: "bg-blue-50 text-blue-700",        icon: <Database  className="h-3 w-3" /> },
+  NETWORK:         { label: "Red",               color: "bg-cyan-50 text-cyan-700",        icon: <Network   className="h-3 w-3" /> },
+  STORAGE:         { label: "Almacenamiento",    color: "bg-amber-50 text-amber-700",      icon: <HardDrive className="h-3 w-3" /> },
+  BACKUP:          { label: "Backup",            color: "bg-purple-50 text-purple-700",    icon: <Archive   className="h-3 w-3" /> },
+  HARDWARE:        { label: "Hardware",          color: "bg-emerald-50 text-emerald-700",  icon: <Cpu       className="h-3 w-3" /> },
+  SOFTWARE:        { label: "Software",          color: "bg-violet-50 text-violet-700",    icon: <Package   className="h-3 w-3" /> },
+  OTHER:           { label: "Otro",              color: "bg-slate-100 text-slate-600",     icon: null },
+};
 
 // ─── Badge helpers ─────────────────────────────────────────────────────────────
 
@@ -246,8 +262,8 @@ export default function InventoryPage() {
                       <tr><td colSpan={7} className="py-12 text-center text-slate-400 text-sm">No se encontraron CIs.</td></tr>
                     ) : (
                       filtered.map((ci) => {
-                        const type = ci.hardware ? "Hardware" : ci.software ? "Software" : "Otro";
-                        const typeColor = ci.hardware ? "bg-emerald-50 text-emerald-700" : ci.software ? "bg-violet-50 text-violet-700" : "bg-slate-100 text-slate-600";
+                        const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
+                        const typeMeta = CI_TYPE_META[resolvedType] ?? CI_TYPE_META["OTHER"];
 
                         return (
                           <tr key={ci.id} className="group hover:bg-indigo-50/40 transition-colors">
@@ -255,7 +271,11 @@ export default function InventoryPage() {
                               <span className="group-hover:text-indigo-700 transition-colors">{ci.name}</span>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
                             </td>
-                            <td className="px-6 py-4"><span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ${typeColor}`}>{type}</span></td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>
+                                {typeMeta.icon}{typeMeta.label}
+                              </span>
+                            </td>
                             <td className="px-6 py-4"><EnvironmentBadge env={ci.environment} /></td>
                             <td className="px-6 py-4"><CriticalityBadge level={ci.criticality} /></td>
                             <td className="px-6 py-4"><VulnBadge vulns={ci.vulnerabilities} /></td>

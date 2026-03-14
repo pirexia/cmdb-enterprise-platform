@@ -225,10 +225,12 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
   try {
     const {
       name, apiSlug, criticality, environment,
+      ciType,
       businessOwnerId, technicalLeadId, hardware, software,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
+      ciType?: string;
       businessOwnerId?: string; technicalLeadId?: string;
       hardware?: { serialNumber: string; model: string; manufacturer: string };
       software?: { version: string; licenseType: string };
@@ -245,14 +247,16 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     if (!validEnvironments.includes(environment))  { res.status(400).json({ error: `Invalid environment: ${environment}` });  return; }
     if (hardware && software)                      { res.status(400).json({ error: 'A CI cannot be both Hardware and Software' }); return; }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ci = await prisma.cI.create({
       data: {
         name, apiSlug, criticality, environment,
+        ciType: ciType || "OTHER",   // ciType added via add_ci_type migration; cast needed until DLL unlock
         businessOwnerId: businessOwnerId || null,
         technicalLeadId: technicalLeadId || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
         ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
-      },
+      } as Parameters<typeof prisma.cI.create>[0]['data'],
       include: CI_INCLUDE,
     });
 

@@ -133,6 +133,8 @@ model CI {
   parentCI        CI?          @relation("CIHierarchy", fields: [parentCIId], references: [id])
   childCIs        CI[]         @relation("CIHierarchy")
   
+  ciType          String?      @default("OTHER") @map("ci_type")
+
   hardware        HardwareCI?
   software        SoftwareCI?
 

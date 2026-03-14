@@ -10,7 +10,15 @@ interface User { id: string; username: string; email: string }
 type CIType =
   | "HARDWARE" | "SOFTWARE" | "OTHER"
   | "PHYSICAL_SERVER" | "VIRTUAL_SERVER"
-  | "DATABASE" | "NETWORK" | "STORAGE" | "BACKUP";
+  | "DATABASE" | "NETWORK" | "STORAGE" | "BACKUP"
+  // Puesto de usuario
+  | "DESKTOP" | "LAPTOP" | "PRINTER" | "SCANNER" | "MONITOR"
+  // Oficina / Salas
+  | "VIDEOCONFERENCE" | "SMART_DISPLAY" | "TIME_CLOCK" | "IP_PHONE"
+  // Movilidad / Logística
+  | "SMARTPHONE" | "TABLET" | "PDA" | "BARCODE_SCANNER"
+  // IoT / Infra
+  | "IP_CAMERA" | "UPS" | "WIFI_AP";
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
@@ -20,12 +28,14 @@ interface FormState {
   businessOwnerId: string; technicalLeadId: string;
   serialNumber: string; model: string; manufacturer: string;
   version: string; licenseType: string;
+  licenseModel: string; licenseMetric: string;
 }
 
 const INITIAL_FORM: FormState = {
-  type: "HARDWARE", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
+  type: "PHYSICAL_SERVER", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
   businessOwnerId: "", technicalLeadId: "",
   serialNumber: "", model: "", manufacturer: "", version: "", licenseType: "",
+  licenseModel: "", licenseMetric: "",
 };
 
 function toSlug(name: string) {
@@ -61,7 +71,13 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setSubmitting(true); setError(null);
-    const hwTypes: CIType[] = ["HARDWARE", "PHYSICAL_SERVER", "VIRTUAL_SERVER", "NETWORK", "STORAGE"];
+    const hwTypes: CIType[] = [
+      "HARDWARE", "PHYSICAL_SERVER", "VIRTUAL_SERVER", "NETWORK", "STORAGE",
+      "DESKTOP", "LAPTOP", "PRINTER", "SCANNER", "MONITOR",
+      "VIDEOCONFERENCE", "SMART_DISPLAY", "TIME_CLOCK", "IP_PHONE",
+      "SMARTPHONE", "TABLET", "PDA", "BARCODE_SCANNER",
+      "IP_CAMERA", "UPS", "WIFI_AP",
+    ];
     const swTypes: CIType[] = ["SOFTWARE", "DATABASE", "BACKUP"];
     const body: Record<string, unknown> = {
       name: form.name, apiSlug: form.apiSlug, environment: form.environment, criticality: form.criticality,
@@ -69,7 +85,10 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
       businessOwnerId: form.businessOwnerId || undefined, technicalLeadId: form.technicalLeadId || undefined,
     };
     if (hwTypes.includes(form.type)) body.hardware = { serialNumber: form.serialNumber, model: form.model, manufacturer: form.manufacturer };
-    else if (swTypes.includes(form.type)) body.software = { version: form.version, licenseType: form.licenseType };
+    else if (swTypes.includes(form.type)) {
+      body.software = { version: form.version, licenseType: form.licenseType };
+      body.details  = { licenseModel: form.licenseModel || undefined, licenseMetric: form.licenseMetric || undefined };
+    }
 
     try {
       const res = await apiFetch("/api/cis", { method: "POST", body: JSON.stringify(body) });
@@ -96,22 +115,44 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
           <div>
             <Label>Tipo *</Label>
             <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
-              <optgroup label="Servidores">
-                <option value="PHYSICAL_SERVER">🖥 Servidor Físico</option>
-                <option value="VIRTUAL_SERVER">☁️ Servidor Virtual / VM</option>
+              <optgroup label="🖥 Infraestructura">
+                <option value="PHYSICAL_SERVER">Servidor Físico</option>
+                <option value="VIRTUAL_SERVER">Servidor Virtual / VM</option>
+                <option value="NETWORK">Red / Networking</option>
+                <option value="STORAGE">Almacenamiento / Storage</option>
+                <option value="UPS">SAI / UPS</option>
+                <option value="WIFI_AP">Punto de Acceso WiFi</option>
               </optgroup>
-              <optgroup label="Infraestructura">
-                <option value="NETWORK">🔀 Red / Networking</option>
-                <option value="STORAGE">🗄 Almacenamiento / Storage</option>
-                <option value="BACKUP">💾 Backup</option>
+              <optgroup label="📦 Software y Datos">
+                <option value="DATABASE">Base de Datos</option>
+                <option value="SOFTWARE">Software / Aplicación</option>
+                <option value="BACKUP">Backup / Recuperación</option>
               </optgroup>
-              <optgroup label="Aplicaciones">
-                <option value="DATABASE">🗃 Base de Datos</option>
-                <option value="SOFTWARE">📦 Software / Aplicación</option>
+              <optgroup label="💼 Puesto de Trabajo">
+                <option value="DESKTOP">PC Escritorio</option>
+                <option value="LAPTOP">Portátil / Laptop</option>
+                <option value="MONITOR">Monitor (Periférico)</option>
+                <option value="PRINTER">Impresora</option>
+                <option value="SCANNER">Escáner Documental</option>
               </optgroup>
-              <optgroup label="Genérico">
-                <option value="HARDWARE">🔧 Hardware (genérico)</option>
-                <option value="OTHER">⚙️ Otro</option>
+              <optgroup label="🏢 Oficina / Salas">
+                <option value="VIDEOCONFERENCE">Equipo Videoconferencia</option>
+                <option value="SMART_DISPLAY">Pantalla Smart / Pizarra</option>
+                <option value="TIME_CLOCK">Reloj de Fichaje</option>
+                <option value="IP_PHONE">Teléfono IP</option>
+              </optgroup>
+              <optgroup label="📱 Movilidad / Logística">
+                <option value="SMARTPHONE">Smartphone</option>
+                <option value="TABLET">Tablet</option>
+                <option value="PDA">PDA / Terminal RF</option>
+                <option value="BARCODE_SCANNER">Lector de Código de Barras</option>
+              </optgroup>
+              <optgroup label="🔌 IoT / Seguridad Física">
+                <option value="IP_CAMERA">Cámara IP</option>
+              </optgroup>
+              <optgroup label="⚙️ Genérico">
+                <option value="HARDWARE">Hardware (genérico)</option>
+                <option value="OTHER">Otro</option>
               </optgroup>
             </Select>
           </div>
@@ -163,10 +204,34 @@ export default function AddCIModal({ onClose, onCreated }: AddCIModalProps) {
           )}
           {(["SOFTWARE","DATABASE","BACKUP"] as CIType[]).includes(form.type) && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software y Licenciamiento</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div><Label>Versión *</Label><Input required placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
-                <div><Label>Tipo de Licencia *</Label><Input required placeholder="Enterprise" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
+                <div><Label>Tipo de Licencia</Label><Input placeholder="Enterprise / OEM…" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label>Modelo de Licencia</Label>
+                  <Select value={form.licenseModel} onChange={(e) => set("licenseModel", e.target.value)}>
+                    <option value="">— Sin especificar —</option>
+                    <option value="subscription">Suscripción</option>
+                    <option value="perpetual">Perpetua</option>
+                    <option value="oem">OEM</option>
+                    <option value="open_source">Open Source</option>
+                    <option value="enterprise_agreement">Enterprise Agreement</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Métrica de Licencia</Label>
+                  <Select value={form.licenseMetric} onChange={(e) => set("licenseMetric", e.target.value)}>
+                    <option value="">— Sin especificar —</option>
+                    <option value="nominal">Nominal (por usuario)</option>
+                    <option value="concurrent">Concurrente</option>
+                    <option value="core_vcpu">Core / vCPU</option>
+                    <option value="per_instance">Por Instancia</option>
+                    <option value="pay_per_use">Pago por Uso</option>
+                  </Select>
+                </div>
               </div>
             </div>
           )}

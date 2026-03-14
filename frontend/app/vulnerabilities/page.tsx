@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Shield, RefreshCw, AlertTriangle, Search, Filter } from "lucide-react";
+import { Shield, RefreshCw, AlertTriangle, Search, Filter, Download } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { exportToCSV } from "@/lib/csvExport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,21 @@ export default function VulnerabilitiesPage() {
     });
   }, [allRows, filterSev, filterStatus, search]);
 
+  const handleExportCSV = () => {
+    exportToCSV(
+      `vulnerabilidades-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["CI", "Slug", "CVE", "Severidad", "CVSS Score", "Descripción", "Fuente", "Estado", "Importado"],
+      filtered.map((row) => [
+        row.ciName, row.ciSlug, row.cve, row.severity,
+        row.cvss_score ?? "",
+        row.description,
+        row.source ?? "manual",
+        STATUS_STYLES[row.status]?.label ?? row.status,
+        row.importedAt ? new Date(row.importedAt).toLocaleDateString("es-ES") : "",
+      ])
+    );
+  };
+
   // ── Summary stats ──────────────────────────────────────────────────────────
   const counts = useMemo(() => ({
     critical: allRows.filter((r) => r.severity === "CRITICAL").length,
@@ -186,6 +202,14 @@ export default function VulnerabilitiesPage() {
         <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           {/* Filters toolbar */}
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-6 py-4">
+            {/* CSV Export */}
+            <button
+              onClick={handleExportCSV}
+              disabled={loading || filtered.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 ml-auto order-last sm:order-none sm:ml-0"
+            >
+              <Download className="h-3.5 w-3.5" />📥 Exportar CSV ({filtered.length})
+            </button>
             {/* Search */}
             <div className="relative flex-1 min-w-48">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server, ChevronRight, GitBranch } from "lucide-react";
+import { FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server, ChevronRight, GitBranch, Download } from "lucide-react";
 import AddContractModal from "@/components/AddContractModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { exportToCSV } from "@/lib/csvExport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -118,6 +119,25 @@ export default function ContractsPage() {
   const addendums = contracts.filter((c) => c.parentContract !== null).length;
   const expiredCount = contracts.filter((c) => c.endDate && new Date(c.endDate) < new Date()).length;
 
+  const handleExportCSV = () => {
+    exportToCSV(
+      `contratos-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Nº Contrato", "Proveedor", "Tipo", "Fecha Inicio", "Fecha Fin", "Estado", "CIs Cubiertos", "Adendas"],
+      contracts.map((c) => {
+        const status = getContractStatus(c.endDate);
+        const type   = c.parentContract ? "Adenda" : "Principal";
+        return [
+          c.contractNumber, c.vendor.name, type,
+          formatDate(c.startDate),
+          c.endDate ? formatDate(c.endDate) : "—",
+          status.label,
+          c.cis.length,
+          c.addendums.length,
+        ];
+      })
+    );
+  };
+
   return (
     <>
       {showModal && <AddContractModal onClose={() => setShowModal(false)} onCreated={fetchContracts} />}
@@ -156,7 +176,16 @@ export default function ContractsPage() {
           <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2"><FileText className="h-4 w-4 text-slate-400" />Listado de contratos</h2>
-              <button onClick={fetchContracts} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors"><RefreshCw className="h-4 w-4" /></button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExportCSV}
+                  disabled={loading || contracts.length === 0}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />📥 CSV
+                </button>
+                <button onClick={fetchContracts} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors"><RefreshCw className="h-4 w-4" /></button>
+              </div>
             </div>
 
             {loading && <div className="flex items-center justify-center py-20 text-slate-400"><RefreshCw className="mr-2 h-5 w-5 animate-spin" /><span className="text-sm">Cargando contratos…</span></div>}

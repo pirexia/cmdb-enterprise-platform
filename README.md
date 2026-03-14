@@ -28,13 +28,14 @@
 
 | Módulo | Descripción |
 |--------|-------------|
-| 📊 **Dashboard** | Resumen ejecutivo: totales por tipo, entorno, criticidad y estado de seguridad global |
+| 📊 **Dashboard** | Resumen ejecutivo interactivo: totales por tipo, entorno, criticidad, seguridad global y contratos — todos los widgets son clicables y redirigen a la vista filtrada |
 | 🖥️ **Inventario de CIs** | CRUD completo de Configuration Items (Hardware / Software / Otro) con jerarquía padre-hijo |
 | 🕸️ **Mapa de Dependencias** | Canvas interactivo (React Flow) con layout jerárquico automático, alertas de contratos próximos a vencer y vulnerabilidades críticas parpadeantes |
 | 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas y semáforo de vencimiento |
 | 🛡️ **Gestión de Vulnerabilidades** | Escáner simulado por CI con CVEs reales (CVSS 2023-2024), clasificación por severidad y persistencia JSON en BD |
 | 🔌 **Conectores de Seguridad** | Ingesta de reportes Greenbone OpenVAS (CVEs) y estado de agentes CrowdStrike Falcon EDR |
 | 🗂️ **Gestión de Vulnerabilidades** | Vista centralizada de todos los hallazgos con ciclo de vida: NUEVO → ASIGNADO → EN_CURSO → PARADO → RESUELTO |
+| 📋 **Centro de Reportes** | Generación de informes PDF/CSV: obsolescencia EoL/EoS, contratos y adendas, informe ejecutivo de seguridad |
 | 🔐 **IAM / RBAC** | Autenticación JWT con roles **ADMIN** (escritura total) y **VIEWER** (solo lectura) |
 
 ---
@@ -618,6 +619,133 @@ docker exec cmdb-backend npx prisma migrate deploy
 # Ver el estado de las migraciones
 docker exec cmdb-backend npx prisma migrate status
 ```
+
+---
+
+## 📊 Módulo de Reportes — Manual de Uso
+
+> **Misión 9.4** — Centro de Reportes Profesional (Obsolescencia, Contratos y Seguridad)
+
+### Acceso
+
+El Centro de Reportes se encuentra en la barra de navegación lateral bajo el enlace **📊 Reportes** (`/reports`).
+Está disponible para todos los roles (ADMIN y VIEWER). No requiere permisos especiales.
+
+---
+
+### Informes disponibles
+
+#### 1. 📂 Reporte de Obsolescencia EoL / EoS
+
+Genera un informe PDF con todos los Configuration Items (CIs) que tienen fechas de **End of Life** o **End of Support** registradas.
+
+**Semáforo visual:**
+
+| Color | Significado |
+|-------|-------------|
+| 🔴 Rojo | Fecha ya vencida O queda menos de 90 días |
+| 🟠 Naranja | Entre 90 y 180 días para el vencimiento |
+| 🟢 Verde | Más de 180 días restantes (situación OK) |
+
+**Contenido del informe:**
+- Resumen ejecutivo: total de CIs, con fechas registradas, vencidos y críticos
+- Tabla ordenada por urgencia (más próximo a vencer primero)
+- Columnas: CI, Slug, Tipo, Criticidad, Entorno, Fecha EoL, Fecha EoS, Estado
+- Formato A4, logo de la plataforma, fecha y hora de generación
+
+**Exportación CSV:** Botón `Exportar CSV` descarga los mismos datos en formato `.csv` compatible con Excel.
+
+```
+Cómo usar:
+1. Ve a /reports
+2. En la tarjeta "Obsolescencia EoL / EoS", haz clic en "Generar PDF"
+3. Se abrirá una ventana con el informe formateado
+4. Usa Ctrl+P (o Cmd+P) → "Guardar como PDF"
+```
+
+---
+
+#### 2. 📜 Reporte de Contratos y Adendas
+
+Consolida todos los contratos con sus adendas, fechas y estado de vencimiento.
+
+**Alertas de vencimiento:**
+- Los contratos que vencen en **menos de 60 días** se resaltan en naranja
+- Los contratos **ya vencidos** se resaltan en rojo
+- El informe incluye una alerta visual en el encabezado si hay contratos en riesgo
+
+**Contenido del informe:**
+- Resumen: total de contratos, adendas, vencidos y próximos a vencer en <60 días
+- Tabla ordenada por fecha de vencimiento (más urgente primero)
+- Columnas: Nº Contrato, Proveedor, Tipo (Principal/Adenda), Fecha Inicio, Fecha Fin, Días Restantes, Estado, CIs Cubiertos
+
+**Exportación CSV:** Disponible desde la página de [Contratos](/contracts) → botón `📥 CSV` en la barra de la tabla.
+
+---
+
+#### 3. 🛡️ Informe Ejecutivo de Seguridad
+
+Informe de Salud de Infraestructura que consolida datos de **Greenbone OpenVAS** y **CrowdStrike Falcon**.
+
+**Secciones del informe:**
+
+| Sección | Descripción |
+|---------|-------------|
+| Resumen Ejecutivo | CIs totales, limpios, con vulnerabilidades, agentes CrowdStrike activos |
+| Distribución por Criticidad | Gráfico de barras CSS: Mission Critical / High / Medium / Low |
+| Top 5 Servidores en Riesgo | Ranking por score ponderado: CRITICAL×10 + HIGH×5 + MEDIUM×2 + LOW×1 |
+| Cobertura CrowdStrike Falcon | % de cobertura de agentes + tabla de CIs desprotegidos |
+
+> **Nota:** Este informe no tiene opción de CSV ya que los datos son agregados/calculados.
+
+---
+
+### Exportación CSV desde tablas de inventario
+
+Además de los informes PDF, cada tabla principal incluye un botón de exportación CSV que **respeta los filtros activos**:
+
+| Vista | Ruta | Botón | Campos exportados |
+|-------|------|-------|-------------------|
+| Inventario de CIs | `/inventory` | `📥 CSV` en barra de búsqueda | Nombre, Slug, Tipo, Entorno, Criticidad, Responsable Técnico, Vulns por severidad, CrowdStrike |
+| Vulnerabilidades | `/vulnerabilities` | `📥 Exportar CSV (N)` en toolbar | CI, Slug, CVE, Severidad, CVSS Score, Descripción, Fuente, Estado, Importado |
+| Contratos | `/contracts` | `📥 CSV` en cabecera de tabla | Nº Contrato, Proveedor, Tipo, Fechas, Estado, CIs, Adendas |
+
+> Los filtros de búsqueda y severidad aplicados en pantalla se reflejan en el CSV exportado.
+
+---
+
+### Dashboard interactivo
+
+Todos los widgets del Dashboard son clicables y redirigen a la vista correspondiente:
+
+| Widget | Destino |
+|--------|---------|
+| Total CIs / Hardware / Software | `/inventory` |
+| Comprometidos / Limpios / Escaneados | `/vulnerabilities` |
+| Contratos por vencer | `/contracts` |
+| Alerta EoL/EoS (banner naranja) | `/reports` |
+| "Ver informe" en seguridad | `/reports` |
+
+---
+
+### Tecnología de generación de PDF
+
+Los PDFs se generan íntegramente en el navegador mediante una **vista de impresión CSS `@media print` altamente estilizada** sin dependencias externas:
+
+- `frontend/lib/printReport.ts` — Motor de plantillas HTML + CSS profesional
+- Estilos `@page { size: A4; }` para formato correcto en impresión
+- `-webkit-print-color-adjust: exact` para preservar colores de fondo y badges
+- Logo de la plataforma (SVG inline), fecha/hora de generación, pie de página
+- Filas codificadas por color (rojo/naranja/verde) preservadas en impresión
+
+**Para guardar como PDF:**
+1. Haz clic en "Generar PDF" en la tarjeta del informe
+2. Espera a que se abra la ventana del informe (puede tardar 1-2 segundos)
+3. El diálogo de impresión se abrirá automáticamente
+4. Selecciona **"Guardar como PDF"** como destino de impresión
+5. Configura: tamaño A4, márgenes predeterminados, **activar "Gráficos en segundo plano"**
+
+> ⚠️ **Importante:** Si el navegador bloquea la ventana emergente, permite las ventanas emergentes para este dominio y vuelve a hacer clic en "Generar PDF".
 
 ---
 

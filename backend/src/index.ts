@@ -256,6 +256,12 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       include: CI_INCLUDE,
     });
 
+    // Audit log (raw — Prisma client types regenerate after migrate)
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, now())
+    `;
+
     res.status(201).json(ci);
   } catch (error: unknown) {
     console.error('[POST /api/cis] Error:', error);
@@ -323,6 +329,14 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       WHERE "id" = ${ciId}::uuid
     `;
 
+    // Audit log (raw — Prisma client types regenerate after migrate)
+    const entityId = `${ciId}:${cve}`;
+    const action   = `UPDATE_VULN_STATUS:${status}`;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
+    `;
+
     res.json({ ciId, cve, status, message: `Status updated to ${status}` });
   } catch (error) {
     console.error('[PATCH /api/vulnerabilities] Error:', error);
@@ -377,6 +391,29 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
       res.status(409).json({ error: 'A contract with this number already exists' });
       return;
     }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/audit-logs
+ * Returns the last 50 audit log entries ordered by date descending.
+ * ADMIN only.
+ */
+app.get('/api/audit-logs', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date };
+    const logs = await prisma.$queryRaw<AuditRow[]>`
+      SELECT id, action, entity, entity_id, user_email, created_at
+      FROM "audit_logs"
+      ORDER BY created_at DESC
+      LIMIT 50
+    `;
+    res.json({ total: logs.length, data: logs });
+  } catch (error) {
+    console.error('[GET /api/audit-logs] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -581,6 +618,7 @@ app.listen(PORT, () => {
   console.log(`   → POST /api/contracts                 (ADMIN only)`);
   console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
   console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
+  console.log(`   → GET  /api/audit-logs               (ADMIN only)`);
 });
 
 process.on('SIGTERM', async () => {

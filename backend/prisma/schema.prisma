@@ -167,3 +167,14 @@ model SoftwareCI {
 
   @@map("software_cis")
 }
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  action    String                          // e.g. "CREATE_CI", "UPDATE_VULN_STATUS"
+  entity    String                          // e.g. "CI", "VULNERABILITY"
+  entityId  String   @map("entity_id")
+  userEmail String   @map("user_email")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}

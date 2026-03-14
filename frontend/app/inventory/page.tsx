@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import {
-  Search, RefreshCw, AlertTriangle, Plus, Download,
-  Shield, ShieldAlert, ShieldCheck, ShieldOff,
+  Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
+  Shield, ShieldAlert, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
   Key, Cloud, Terminal,
 } from "lucide-react";
+import Papa from "papaparse";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -185,6 +186,8 @@ export default function InventoryPage() {
   const [error, setError]         = useState<string | null>(null);
   const [search, setSearch]       = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -216,6 +219,53 @@ export default function InventoryPage() {
     );
   };
 
+  const CSV_TEMPLATE_HEADERS = [
+    "name","ciType","criticality","environment","manufacturer","serialNumber","model",
+    "version","licenseType","licenseModel","licenseMetric","licenseQty","licenseExpiry",
+    "ipAddress","description","status",
+  ];
+
+  const handleDownloadTemplate = () => {
+    exportToCSV("plantilla-cis.csv", CSV_TEMPLATE_HEADERS, [
+      // Hardware example
+      ["Server-PRD-01","PHYSICAL_SERVER","HIGH","PRODUCTION","Dell","SN-DL-00001","PowerEdge R740","","","","","","","192.168.1.10","Primary web server","active"],
+      // License example
+      ["Office 365 E3","LICENSE","MEDIUM","PRODUCTION","Microsoft","","","","","subscription","nominal","50","2026-12-31","","Microsoft Office suite","active"],
+    ]);
+  };
+
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (result) => {
+        try {
+          const res = await apiFetch("/api/cis/bulk", {
+            method: "POST",
+            body: JSON.stringify(result.data),
+          });
+          const json: { successCount: number; errorCount: number; message: string } = await res.json();
+          setImportResult({ success: json.successCount, errors: json.errorCount, message: json.message });
+          if (json.successCount > 0) fetchCIs();
+        } catch (err) {
+          setImportResult({ success: 0, errors: 1, message: err instanceof Error ? err.message : "Error de red al importar" });
+        } finally {
+          setImporting(false);
+          e.target.value = "";
+        }
+      },
+      error: (err) => {
+        setImportResult({ success: 0, errors: 1, message: `Error al parsear CSV: ${err.message}` });
+        setImporting(false);
+      },
+    });
+  };
+
   return (
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
@@ -228,9 +278,24 @@ export default function InventoryPage() {
               <p className="text-sm text-slate-500 mt-0.5">{loading ? "Cargando…" : `${cis.length} configuration items`}</p>
             </div>
             {isAdmin && (
-              <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                <Plus className="h-4 w-4" />Añadir CI
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDownloadTemplate}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                  title="Descargar plantilla CSV para importación masiva"
+                >
+                  <FileDown className="h-3.5 w-3.5" />Plantilla CSV
+                </button>
+                <label className={`flex items-center gap-1.5 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${importing ? "opacity-50 pointer-events-none" : ""}`}
+                  title="Importar CIs desde CSV">
+                  {importing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                  {importing ? "Importando…" : "Importar CSV"}
+                  <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
+                </label>
+                <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
+                  <Plus className="h-4 w-4" />Añadir CI
+                </button>
+              </div>
             )}
           </div>
         </header>
@@ -257,6 +322,17 @@ export default function InventoryPage() {
                 </button>
               </div>
             </div>
+
+            {/* Import result banner */}
+            {importResult && (
+              <div className={`flex items-center justify-between gap-3 px-6 py-3 text-sm border-b ${importResult.errors === 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : importResult.success === 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
+                <div className="flex items-center gap-2">
+                  {importResult.errors === 0 ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
+                  <span>{importResult.message}</span>
+                </div>
+                <button onClick={() => setImportResult(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕ Cerrar</button>
+              </div>
+            )}
 
             {loading && <div className="flex items-center justify-center py-20 text-slate-400"><RefreshCw className="mr-2 h-5 w-5 animate-spin" /><span className="text-sm">Cargando…</span></div>}
 

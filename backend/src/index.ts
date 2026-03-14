@@ -438,6 +438,107 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   }
 });
 
+// ── Bulk CI Import ────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/cis/bulk
+ * Accepts an array of up to 500 CI objects and creates them.
+ * Returns a 207 Multi-Status with per-row results.
+ * ADMIN only.
+ */
+app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  type BulkRow = {
+    name?: string; ciType?: string; criticality?: string; environment?: string;
+    manufacturer?: string; serialNumber?: string; model?: string;
+    version?: string; licenseType?: string;
+    licenseModel?: string; licenseMetric?: string; licenseQty?: string; licenseExpiry?: string;
+    // ignored extra columns (ipAddress, description, status)
+    [key: string]: unknown;
+  };
+
+  const rows = req.body as BulkRow[];
+  if (!Array.isArray(rows) || rows.length === 0) {
+    res.status(400).json({ error: 'Body must be a non-empty array of CI objects' });
+    return;
+  }
+  if (rows.length > 500) {
+    res.status(400).json({ error: 'Max 500 rows per import' });
+    return;
+  }
+
+  const validCriticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
+  const validEnvironments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
+  const hwTypes = [
+    'HARDWARE','PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','STORAGE',
+    'DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
+    'VIDEOCONFERENCE','SMART_DISPLAY','TIME_CLOCK','IP_PHONE',
+    'SMARTPHONE','TABLET','PDA','BARCODE_SCANNER',
+    'IP_CAMERA','UPS','WIFI_AP','CLOUD_INSTANCE','CLOUD_STORAGE',
+  ];
+  const swTypes = ['SOFTWARE','DATABASE','BACKUP','BASE_SOFTWARE'];
+
+  const results: { name: string; status: 'created' | 'error'; id?: string; error?: string }[] = [];
+  let successCount = 0;
+  let errorCount   = 0;
+
+  for (const row of rows) {
+    const name = (row.name ?? '').trim();
+    if (!name) {
+      results.push({ name: '(vacío)', status: 'error', error: 'Missing required field: name' });
+      errorCount++; continue;
+    }
+
+    const ciType  = (row.ciType ?? 'OTHER').trim().toUpperCase();
+    const crit    = (row.criticality ?? '').trim().toUpperCase();
+    const env     = (row.environment  ?? '').trim().toUpperCase();
+    const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
+    const environment = (validEnvironments.includes(env)   ? env  : 'PRODUCTION') as Environment;
+
+    // Unique slug: name-slug + random suffix
+    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+    const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+
+    const needsHw = hwTypes.includes(ciType);
+    const needsSw = swTypes.includes(ciType);
+
+    try {
+      const ci = await prisma.cI.create({
+        data: {
+          name, apiSlug, criticality, environment, ciType,
+          ...(needsHw && {
+            hardware: {
+              create: {
+                serialNumber: (row.serialNumber ?? `AUTO-${Date.now()}`).trim() || `AUTO-${Date.now()}`,
+                model:        (row.model        ?? 'Unknown').trim() || 'Unknown',
+                manufacturer: (row.manufacturer ?? 'Unknown').trim() || 'Unknown',
+              },
+            },
+          }),
+          ...(needsSw && {
+            software: {
+              create: {
+                version:     (row.version     ?? '1.0').trim() || '1.0',
+                licenseType: (row.licenseType ?? '').trim(),
+              },
+            },
+          }),
+        } as Parameters<typeof prisma.cI.create>[0]['data'],
+      });
+      results.push({ name, status: 'created', id: ci.id });
+      successCount++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      results.push({ name, status: 'error', error: msg });
+      errorCount++;
+    }
+  }
+
+  res.status(207).json({
+    message: `Importación completa: ${successCount} creados, ${errorCount} errores`,
+    successCount, errorCount, results,
+  });
+});
+
 // ── Audit Logs ────────────────────────────────────────────────────────────────
 
 /**
@@ -709,6 +810,7 @@ app.listen(PORT, () => {
   console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
   console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
   console.log(`   → GET  /api/audit-logs               (ADMIN only)`);
+  console.log(`   → POST /api/cis/bulk                 (ADMIN only)`);
 });
 
 process.on('SIGTERM', async () => {

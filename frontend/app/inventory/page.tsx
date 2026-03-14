@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import {
-  Search, RefreshCw, AlertTriangle, Plus,
+  Search, RefreshCw, AlertTriangle, Plus, Download,
   Shield, ShieldAlert, ShieldCheck, ShieldOff,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { exportToCSV } from "@/lib/csvExport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -154,6 +155,21 @@ export default function InventoryPage() {
 
   const filtered = cis.filter((ci) => ci.name.toLowerCase().includes(search.toLowerCase()));
 
+  const handleExportCSV = () => {
+    exportToCSV(
+      `inventario-cis-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Nombre", "Slug", "Tipo", "Entorno", "Criticidad", "Responsable Técnico", "Vulns CRITICAL", "Vulns HIGH", "Vulns MEDIUM", "CrowdStrike"],
+      filtered.map((ci) => {
+        const type = ci.hardware ? "Hardware" : ci.software ? "Software" : "Otro";
+        const critVulns   = ci.vulnerabilities?.filter((v) => v.severity === "CRITICAL" && v.status !== "RESUELTO").length ?? 0;
+        const highVulns   = ci.vulnerabilities?.filter((v) => v.severity === "HIGH"     && v.status !== "RESUELTO").length ?? 0;
+        const medVulns    = ci.vulnerabilities?.filter((v) => v.severity === "MEDIUM"   && v.status !== "RESUELTO").length ?? 0;
+        const agentState  = ci.agentStatus ? ci.agentStatus.status : "Sin agente";
+        return [ci.name, ci.apiSlug, type, ci.environment, ci.criticality, ci.technicalLead?.username ?? "", critVulns, highVulns, medVulns, agentState];
+      })
+    );
+  };
+
   return (
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
@@ -185,6 +201,13 @@ export default function InventoryPage() {
                 </div>
                 <button onClick={fetchCIs} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  disabled={loading || filtered.length === 0}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                >
+                  <Download className="h-3.5 w-3.5" />📥 CSV
                 </button>
               </div>
             </div>

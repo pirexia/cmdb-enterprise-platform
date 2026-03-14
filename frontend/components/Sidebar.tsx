@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { labelKey: "sidebar.contracts",      href: "/contracts",      icon: FileText,        adminOnly: false },
   { labelKey: "sidebar.entities",       href: "/entities",       icon: Building2,       adminOnly: false },
   { labelKey: "sidebar.profile",        href: "/profile",        icon: UserCircle,      adminOnly: false },
+  { labelKey: "sidebar.masters",         href: "/admin/masters",  icon: Building2,       adminOnly: true  },
   { labelKey: "sidebar.audit",          href: "/audit",          icon: ClipboardList,   adminOnly: true  },
   { labelKey: "sidebar.settings",       href: "/settings",       icon: Settings,        adminOnly: true  },
 ];

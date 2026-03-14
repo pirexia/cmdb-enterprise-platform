@@ -19,15 +19,15 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 
 const NAV_ITEMS = [
-  { label: "Dashboard",              href: "/",               icon: LayoutDashboard },
-  { label: "Inventario de CIs",      href: "/inventory",      icon: Monitor },
-  { label: "Vulnerabilidades",       href: "/vulnerabilities", icon: Shield },
-  { label: "Mapa de Dependencias",   href: "/map",            icon: Network },
-  { label: "Conectores",             href: "/integrations",   icon: Plug },
-  { label: "📊 Reportes",             href: "/reports",        icon: BarChart },
-  { label: "Contratos y Adendas",    href: "/contracts",      icon: FileText },
-  { label: "Entidades",              href: "/entities",       icon: Building2 },
-  { label: "Configuración",          href: "/settings",       icon: Settings },
+  { label: "Dashboard",              href: "/",               icon: LayoutDashboard, adminOnly: false },
+  { label: "Inventario de CIs",      href: "/inventory",      icon: Monitor,         adminOnly: false },
+  { label: "Vulnerabilidades",       href: "/vulnerabilities", icon: Shield,          adminOnly: false },
+  { label: "Mapa de Dependencias",   href: "/map",            icon: Network,         adminOnly: false },
+  { label: "Conectores",             href: "/integrations",   icon: Plug,            adminOnly: true  },
+  { label: "📊 Reportes",             href: "/reports",        icon: BarChart,        adminOnly: false },
+  { label: "Contratos y Adendas",    href: "/contracts",      icon: FileText,        adminOnly: false },
+  { label: "Entidades",              href: "/entities",       icon: Building2,       adminOnly: false },
+  { label: "Configuración",          href: "/settings",       icon: Settings,        adminOnly: true  },
 ];
 
 export default function Sidebar() {
@@ -51,7 +51,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.map(({ label, href, icon: Icon }) => {
+        {NAV_ITEMS.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ label, href, icon: Icon }) => {
           const isActive =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
 

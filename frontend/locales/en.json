@@ -1,33 +1,363 @@
 {
-  "sidebar": {
-    "dashboard":      "Dashboard",
-    "inventory":      "CI Inventory",
-    "vulnerabilities":"Vulnerabilities",
-    "map":            "Dependency Map",
-    "integrations":   "Connectors",
-    "reports":        "📊 Reports",
-    "contracts":      "Contracts & Addendums",
-    "entities":       "Entities",
-    "profile":        "My Profile",
-    "masters":        "🗂️ Master Data",
-    "audit":          "🕵️ Audit Log",
-    "settings":       "Settings"
-  },
-  "actions": {
-    "logout":         "Sign out",
-    "refresh":        "Refresh",
-    "add":            "Add",
-    "export_csv":     "Export CSV",
-    "generate_pdf":   "Generate PDF",
-    "cancel":         "Cancel",
-    "save":           "Save",
-    "retry":          "Retry"
-  },
   "brand": {
     "name":    "CMDB",
     "tagline": "Enterprise Platform"
   },
   "footer": {
     "copyright": "© {year} CMDB Platform v1.0"
+  },
+  "sidebar": {
+    "dashboard":       "Dashboard",
+    "inventory":       "CI Inventory",
+    "vulnerabilities": "Vulnerabilities",
+    "map":             "Dependency Map",
+    "integrations":    "Connectors",
+    "reports":         "📊 Reports",
+    "contracts":       "Contracts & Addendums",
+    "entities":        "Entities",
+    "profile":         "My Profile",
+    "masters":         "🗂️ Master Data",
+    "audit":           "🕵️ Audit Log",
+    "settings":        "Settings"
+  },
+  "actions": {
+    "logout":           "Sign out",
+    "refresh":          "Refresh",
+    "add":              "Add",
+    "save":             "Save",
+    "cancel":           "Cancel",
+    "delete":           "Delete",
+    "edit":             "Edit",
+    "export_csv":       "📥 Export CSV",
+    "generate_pdf":     "Generate PDF",
+    "retry":            "Retry",
+    "search":           "Search",
+    "import":           "Import",
+    "download_template":"CSV Template",
+    "sync":             "Sync",
+    "send_test_email":  "📧 Send Test Email",
+    "test":             "Test"
+  },
+  "common": {
+    "loading":          "Loading…",
+    "loading_data":     "Loading data…",
+    "no_data":          "No data",
+    "no_results":       "No results",
+    "error":            "Error",
+    "unknown_error":    "Unknown error",
+    "confirm_delete":   "Delete this record?",
+    "admin_only":       "ADMIN only",
+    "required":         "Required",
+    "optional":         "Optional",
+    "yes":              "Yes",
+    "no":               "No",
+    "ok":               "OK",
+    "close":            "Close",
+    "name":             "Name",
+    "email":            "Email",
+    "status":           "Status",
+    "date":             "Date",
+    "created_at":       "Created",
+    "updated_at":       "Updated",
+    "actions":          "Actions"
+  },
+  "inventory": {
+    "title":            "CI Inventory",
+    "subtitle":         "Technology asset management",
+    "search_placeholder":"Search by name…",
+    "total":            "{count} managed assets",
+    "add_ci":           "New CI",
+    "import_csv":       "Import CSV",
+    "download_template":"CSV Template",
+    "export_csv":       "Export CSV",
+    "no_cis":           "No CIs in inventory.",
+    "loading":          "Loading inventory…",
+    "import_success":   "✅ {success} CIs imported successfully, {errors} errors",
+    "columns": {
+      "ci":             "CI / Asset",
+      "type":           "Type",
+      "environment":    "Environment",
+      "criticality":    "Criticality",
+      "hardware":       "Hardware",
+      "software":       "Software",
+      "eol":            "EoL / EoS",
+      "vulnerabilities":"Vulnerabilities",
+      "agent":          "CS Agent",
+      "support":        "Support"
+    },
+    "support_badge": {
+      "expired":        "🔴 End of support",
+      "warning":        "🟠 EoL in {days}d",
+      "ok":             "🟢 Active"
+    },
+    "vuln_badge": {
+      "no_data":        "No data",
+      "clean":          "Clean",
+      "all_resolved":   "All resolved",
+      "open_one":       "{count} open",
+      "open_many":      "{count} open"
+    },
+    "agent_badge": {
+      "no_agent":       "No agent",
+      "protected":      "Protected",
+      "reduced":        "Reduced",
+      "detection_one":  "{count} detection",
+      "detection_many": "{count} detections"
+    },
+    "ci_types": {
+      "PHYSICAL_SERVER": "Physical Server",
+      "VIRTUAL_SERVER":  "Virtual Server",
+      "DATABASE":        "Database",
+      "NETWORK":         "Network",
+      "STORAGE":         "Storage",
+      "BACKUP":          "Backup",
+      "HARDWARE":        "Hardware",
+      "SOFTWARE":        "Software",
+      "OTHER":           "Other",
+      "DESKTOP":         "Desktop",
+      "LAPTOP":          "Laptop",
+      "PRINTER":         "Printer",
+      "SCANNER":         "Scanner",
+      "MONITOR":         "Monitor",
+      "VIDEOCONFERENCE": "Videoconference",
+      "SMART_DISPLAY":   "Smart Display",
+      "TIME_CLOCK":      "Time Clock",
+      "IP_PHONE":        "IP Phone",
+      "SMARTPHONE":      "Smartphone",
+      "TABLET":          "Tablet",
+      "PDA":             "PDA",
+      "BARCODE_SCANNER": "Barcode Scanner",
+      "IP_CAMERA":       "IP Camera",
+      "UPS":             "UPS",
+      "WIFI_AP":         "Wi-Fi Access Point",
+      "CLOUD_INSTANCE":  "Cloud Instance",
+      "CLOUD_STORAGE":   "Cloud Storage",
+      "BASE_SOFTWARE":   "Base Software",
+      "LICENSE":         "License"
+    }
+  },
+  "vulnerabilities": {
+    "title":            "Vulnerabilities",
+    "subtitle":         "CVE and security risk management",
+    "no_vulns":         "No vulnerabilities found.",
+    "columns": {
+      "ci":             "CI / Server",
+      "cve":            "CVE",
+      "severity":       "Severity",
+      "status":         "Status",
+      "description":    "Description",
+      "source":         "Source",
+      "score":          "CVSS Score"
+    },
+    "status": {
+      "NUEVO":          "New",
+      "ASIGNADO":       "Assigned",
+      "EN_CURSO":       "In progress",
+      "PARADO":         "On hold",
+      "RESUELTO":       "Resolved"
+    }
+  },
+  "contracts": {
+    "title":            "Contracts & Addendums",
+    "subtitle":         "Vendor contract management",
+    "no_contracts":     "No contracts found.",
+    "add_contract":     "New Contract",
+    "export_csv":       "Export CSV",
+    "columns": {
+      "number":         "Contract No.",
+      "vendor":         "Vendor",
+      "start_date":     "Start",
+      "end_date":       "End",
+      "status":         "Status",
+      "cis":            "CIs"
+    },
+    "status": {
+      "active":         "Active",
+      "expiring_soon":  "Expiring soon",
+      "expired":        "Expired"
+    }
+  },
+  "masters": {
+    "title":            "Master Data Administration",
+    "subtitle":         "Manage master tables: Areas, Branches, Manufacturers, Models, Providers",
+    "tabs": {
+      "support_areas":  "Support Areas",
+      "branches":       "Branches",
+      "manufacturers":  "Manufacturers",
+      "models":         "Models",
+      "providers":      "Providers"
+    },
+    "support_areas": {
+      "new":            "New Support Area",
+      "placeholder":    "E.g.: Central Zone",
+      "empty":          "No support areas registered."
+    },
+    "branches": {
+      "new":            "New Branch",
+      "name_placeholder":    "Branch name",
+      "code_placeholder":    "Code (3 digits, e.g. MAD)",
+      "address_placeholder": "Physical address (optional)",
+      "support_area_label":  "— Support area —",
+      "empty":          "No branches registered.",
+      "add":            "Add Branch"
+    },
+    "manufacturers": {
+      "new":            "New Manufacturer",
+      "placeholder":    "E.g.: Dell, HP, Cisco",
+      "suggest_popular":"✨ Suggest Popular",
+      "delete_all":     "🗑️ Delete all",
+      "empty":          "No manufacturers registered.",
+      "confirm_delete_all": "Insert 30 popular IT manufacturers? Duplicates will be skipped."
+    },
+    "models": {
+      "new":            "New Model",
+      "placeholder":    "E.g.: PowerEdge R740",
+      "manufacturer_label": "— Manufacturer —",
+      "type_label":     "— Type —",
+      "type_software":  "💿 Software",
+      "type_hardware":  "🖥️ Hardware",
+      "suggest_dates":  "✨ Suggest Standard Dates",
+      "eol_search":     "🔍 EOL Catalog",
+      "empty":          "No models registered.",
+      "consult_btn":    "🌐 Consult",
+      "sync_eol":       "🔄 EOL",
+      "consultation_center": "Lifecycle Consultation Center",
+      "suggested_dates": "✨ Suggested Dates"
+    },
+    "providers": {
+      "new":            "New Provider",
+      "placeholder":    "E.g.: AWS, Microsoft, Telefónica",
+      "empty":          "No providers registered."
+    }
+  },
+  "settings": {
+    "title":            "Settings",
+    "subtitle":         "Users, roles and system integrations",
+    "tabs": {
+      "users":          "👥 User Management",
+      "integrations":   "🔌 Integrations & System"
+    },
+    "users": {
+      "header":         "System users",
+      "count":          "{count} registered user(s)",
+      "columns": {
+        "user":         "User",
+        "email":        "Email",
+        "origin":       "Origin",
+        "mfa":          "MFA",
+        "role":         "Role",
+        "active":       "Active"
+      },
+      "origin_ldap":    "🏢 LDAP",
+      "origin_local":   "🔑 Local",
+      "mfa_active":     "Active",
+      "mfa_inactive":   "Inactive",
+      "role_admin":     "👑 ADMIN",
+      "role_viewer":    "👁️ VIEWER",
+      "me_label":       "(me)",
+      "viewer_notice":  "You need the {role} role to change settings. Read-only mode.",
+      "confirm_activate":   "Activate user \"{name}\"?",
+      "confirm_deactivate": "Deactivate user \"{name}\"?"
+    },
+    "integrations": {
+      "system_status":  "System Status",
+      "system_info":    "System Information",
+      "api_status":     "Backend API",
+      "api_ok":         "Operational",
+      "api_fail":       "Unreachable",
+      "ldap_title":     "LDAP / Active Directory",
+      "ldap_enabled":   "Enabled",
+      "ldap_disabled":  "Disabled",
+      "ldap_help":      "To enable: set USE_LDAP=true in the backend.",
+      "smtp_title":     "SMTP / Alerts",
+      "smtp_configured":"Configured",
+      "smtp_schedule":  "Daily alert engine active. Schedule: 08:30 AM (Europe/Madrid).",
+      "test_email":     "Sending…",
+      "sending":        "Sending…"
+    }
+  },
+  "dashboard": {
+    "title":            "Dashboard",
+    "subtitle":         "Infrastructure health overview",
+    "total_cis":        "Total CIs",
+    "critical_vulns":   "Critical Vulnerabilities",
+    "expiring_contracts":"Expiring Contracts",
+    "eol_cis":          "CIs without support",
+    "cs_coverage":      "CrowdStrike Coverage",
+    "agent_ok":         "Active agents"
+  },
+  "login": {
+    "title":            "Sign in",
+    "subtitle":         "Access your CMDB platform",
+    "email_label":      "Email address",
+    "password_label":   "Password",
+    "mfa_label":        "MFA code (6 digits)",
+    "submit":           "Sign in",
+    "logging_in":       "Signing in…",
+    "error_invalid":    "Invalid credentials",
+    "error_mfa":        "Invalid MFA code"
+  },
+  "add_ci_modal": {
+    "title":            "New CI",
+    "name_label":       "Name",
+    "name_placeholder": "E.g.: srv-prd-web-01",
+    "slug_label":       "Slug",
+    "slug_placeholder": "E.g.: srv-prd-web-01",
+    "type_label":       "CI Type",
+    "env_label":        "Environment",
+    "crit_label":       "Criticality",
+    "hardware_section": "Hardware (optional)",
+    "software_section": "Software (optional)",
+    "manufacturer_label":"Manufacturer",
+    "model_label":       "Model",
+    "serial_label":      "Serial No.",
+    "version_label":     "Version",
+    "license_label":     "License Type",
+    "eol_label":         "EoL Date",
+    "eos_label":         "EoS Date",
+    "submit":            "Create CI",
+    "cancel":            "Cancel"
+  },
+  "reports": {
+    "title":             "Reports Center",
+    "subtitle":          "Generate and download platform reports",
+    "eol_report":        "EoL/EoS Report",
+    "contract_report":   "Contracts Report",
+    "security_report":   "Executive Security Report",
+    "generate":          "Generate",
+    "download_pdf":      "Download PDF",
+    "download_excel":    "Download Excel"
+  },
+  "audit": {
+    "title":             "Audit Logs",
+    "subtitle":          "User action history",
+    "columns": {
+      "action":          "Action",
+      "entity":          "Entity",
+      "user":            "User",
+      "date":            "Date"
+    },
+    "no_logs":           "No audit records found."
+  },
+  "integrations": {
+    "title":             "Integration Connectors",
+    "subtitle":          "Greenbone OpenVAS and CrowdStrike Falcon",
+    "greenbone":         "Greenbone OpenVAS",
+    "crowdstrike":       "CrowdStrike Falcon",
+    "upload":            "Upload JSON report",
+    "processing":        "Processing…",
+    "success":           "Import completed"
+  },
+  "profile": {
+    "title":             "My Profile",
+    "subtitle":          "Account settings",
+    "mfa_section":       "Two-Factor Authentication (MFA)",
+    "mfa_enable":        "Enable MFA",
+    "mfa_disable":       "Disable MFA",
+    "mfa_setup":         "Scan the QR code with your authenticator app",
+    "change_password":   "Change password",
+    "current_password":  "Current password",
+    "new_password":      "New password",
+    "save":              "Save changes"
   }
 }

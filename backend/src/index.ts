@@ -267,14 +267,70 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
 app.get('/api/users', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    // Raw SQL — role field not yet in Prisma TS types (DLL lock on Windows)
-    type UserRow = { id: string; username: string; email: string; role: string };
+    type UserRow = { id: string; username: string; email: string; role: string; active: boolean; sso_external_id: string | null; mfa_enabled: boolean; created_at: Date };
     const users = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, username, email, role FROM "users" ORDER BY username ASC
+      SELECT id, username, email, role,
+             COALESCE(active, true) AS active,
+             sso_external_id, mfa_enabled, created_at
+      FROM "users" ORDER BY username ASC
     `;
     res.json(users);
   } catch (error) {
     console.error('[GET /api/users] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/users/:id/role
+ * Changes a user's role (ADMIN | VIEWER). ADMIN only.
+ */
+app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { role } = req.body as { role?: string };
+  if (!role || !['ADMIN', 'VIEWER'].includes(role)) {
+    res.status(400).json({ error: 'role must be "ADMIN" or "VIEWER"' });
+    return;
+  }
+  try {
+    await prisma.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())
+    `;
+    res.json({ id, role, message: `Role updated to ${role}` });
+  } catch (e) {
+    console.error('[PATCH /api/users/:id/role]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/users/:id/status
+ * Activates or deactivates a user account. ADMIN only.
+ * Body: { active: boolean }
+ */
+app.patch('/api/users/:id/status', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { active } = req.body as { active?: boolean };
+  if (typeof active !== 'boolean') {
+    res.status(400).json({ error: 'active must be a boolean' });
+    return;
+  }
+  // Prevent self-deactivation
+  if (id === req.user!.id && !active) {
+    res.status(400).json({ error: 'You cannot deactivate your own account' });
+    return;
+  }
+  try {
+    await prisma.$executeRaw`UPDATE "users" SET active = ${active}, updated_at = now() WHERE id = ${id}::uuid`;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), ${active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER'}, 'USER', ${id}, ${req.user!.email}, now())
+    `;
+    res.json({ id, active, message: active ? 'User activated' : 'User deactivated' });
+  } catch (e) {
+    console.error('[PATCH /api/users/:id/status]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

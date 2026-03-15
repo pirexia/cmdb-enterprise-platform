@@ -39,6 +39,7 @@ model User {
   password        String?  @map("password")
   role            UserRole @default(VIEWER)
   ssoExternalId   String?  @unique @map("sso_external_id")
+  active          Boolean  @default(true) @map("active")
   mfaSecret       String?  @map("mfa_secret")
   mfaEnabled      Boolean  @default(false) @map("mfa_enabled")
 

@@ -1,0 +1,135 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# docker-compose.prod.yml — CMDB Enterprise Platform (Production)
+#
+# Differences from docker-compose.yml (development):
+#   • PostgreSQL port NOT exposed to host — DB only reachable internally
+#   • Separate internal network (cmdb-internal) for DB isolation
+#   • Named volumes for data persistence and TLS certificate storage
+#   • Non-root node user in all application containers (via Dockerfiles)
+#   • restart: unless-stopped on all services
+#   • No Adminer (removed from production)
+#   • All secrets via environment variables from .env (never hardcoded)
+#
+# Usage:
+#   cp .env.example .env        # configure production values
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# SELinux (RHEL/CentOS): :Z suffix relabels volumes for Enforcing mode.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL 16 ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cmdb-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER:     ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      # Named volume — persists across container rebuilds
+      - postgres-data:/var/lib/postgresql/data:Z
+    # !! PostgreSQL port NOT exposed to host in production !!
+    # Only reachable from services on the cmdb-internal network.
+    networks:
+      - cmdb-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Backend — Express + Prisma ────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: cmdb-backend:latest
+    container_name: cmdb-backend-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV:             production
+      PORT:                 3000
+      DATABASE_URL:         postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_SECRET:           ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGINS:         ${CORS_ORIGINS:?CORS_ORIGINS is required}
+      HTTPS_ENABLED:        ${HTTPS_ENABLED:-false}
+      # SMTP alert engine
+      SMTP_HOST:            ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT:            ${SMTP_PORT:-587}
+      SMTP_SECURE:          ${SMTP_SECURE:-false}
+      SMTP_USER:            ${SMTP_USER:-}
+      SMTP_PASS:            ${SMTP_PASS:-}
+      ALERT_RECIPIENT:      ${ALERT_RECIPIENT:-}
+      ALERT_WARN_DAYS:      ${ALERT_WARN_DAYS:-30}
+      ALERT_CRON_SCHEDULE:  ${ALERT_CRON_SCHEDULE:-30 8 * * *}
+      # LDAP (optional)
+      USE_LDAP:             ${USE_LDAP:-false}
+      LDAP_URL:             ${LDAP_URL:-}
+      LDAP_BASE_DN:         ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN:         ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD:   ${LDAP_BIND_PASSWORD:-}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      # Mount TLS certs volume (generate via scripts/generate-certs.sh)
+      - tls-certs:/app/certs:ro,Z
+    networks:
+      - cmdb-internal
+      - cmdb-public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp
+
+  # ── Frontend — Next.js standalone ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # IMPORTANT: must be the public URL of the backend (as seen from the browser)
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+    image: cmdb-frontend:latest
+    container_name: cmdb-frontend-prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT:     3001
+    ports:
+      - "${FRONTEND_PORT:-3001}:3001"
+    networks:
+      - cmdb-public
+    depends_on:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+    name: cmdb-postgres-data-prod
+  tls-certs:
+    name: cmdb-tls-certs
+    # To pre-populate: docker volume create cmdb-tls-certs
+    # Then copy certs: docker run --rm -v cmdb-tls-certs:/certs -v $(pwd)/backend/certs:/src alpine cp /src/server.key /src/server.crt /certs/
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  # Internal network: postgres ↔ backend only (DB not reachable from frontend)
+  cmdb-internal:
+    name: cmdb-internal
+    internal: true     # No external routing — purely container-to-container
+
+  # Public-facing network: backend ↔ frontend ↔ host
+  cmdb-public:
+    name: cmdb-public

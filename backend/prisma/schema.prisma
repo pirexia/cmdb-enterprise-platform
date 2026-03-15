@@ -185,9 +185,11 @@ model CI {
   apiSlug         String       @unique @map("api_slug")
   criticality     Criticality
   environment     Environment
-  eolDate         DateTime?    @map("eol_date")
-  eosDate         DateTime?    @map("eos_date")
-  ciType          String?      @default("OTHER") @map("ci_type")
+  eolDate            DateTime? @map("eol_date")
+  eosDate            DateTime? @map("eos_date")
+  ciType             String?   @default("OTHER") @map("ci_type")
+  lastCheckDate      DateTime? @map("last_check_date")
+  verificationSource String?   @map("verification_source")
 
   // Governance
   status          String?      @default("ACTIVO") @map("status")

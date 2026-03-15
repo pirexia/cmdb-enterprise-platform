@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Settings, Users, Plug, RefreshCw, AlertTriangle,
   ShieldCheck, Mail, Server, CheckCircle, XCircle,
@@ -63,6 +64,7 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 
 export default function SettingsPage() {
   const { user: me } = useAuth();
+  const { t } = useLanguage();
   const isAdmin = me?.role === "ADMIN";
 
   const [tab,     setTab]     = useState<TabId>("users");
@@ -146,8 +148,8 @@ export default function SettingsPage() {
   }, []);
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "users",        label: "👥 Gestión de Usuarios",    icon: <Users   className="h-4 w-4" /> },
-    { id: "integrations", label: "🔌 Integraciones y Sistema", icon: <Plug    className="h-4 w-4" /> },
+    { id: "users",        label: t('settings.tabs.users'),        icon: <Users className="h-4 w-4" /> },
+    { id: "integrations", label: t('settings.tabs.integrations'), icon: <Plug  className="h-4 w-4" /> },
   ];
 
   return (
@@ -158,8 +160,8 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <Settings className="h-5 w-5 text-slate-400" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Configuración</h1>
-              <p className="text-sm text-slate-500 mt-0.5">Usuarios, roles e integraciones del sistema</p>
+              <h1 className="text-xl font-bold text-slate-900">{t('settings.title')}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{t('settings.subtitle')}</p>
             </div>
           </div>
           <button onClick={loadUsers} disabled={loading} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
@@ -214,12 +216,12 @@ export default function SettingsPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50">
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Usuario</th>
-                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Email</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Origen</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">MFA</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Rol</th>
-                      <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Activo</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.user')}</th>
+                      <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.email')}</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.origin')}</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.mfa')}</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.role')}</th>
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{t('settings.users.columns.active')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
@@ -239,7 +241,7 @@ export default function SettingsPage() {
                               </div>
                               <div>
                                 <p className="font-medium text-slate-800 text-sm">{u.username}</p>
-                                {isSelf && <span className="text-[10px] text-indigo-500 font-medium">(yo)</span>}
+                                {isSelf && <span className="text-[10px] text-indigo-500 font-medium">{t('settings.users.me_label')}</span>}
                               </div>
                             </div>
                           </td>
@@ -250,13 +252,13 @@ export default function SettingsPage() {
                           {/* Origen */}
                           <td className="px-4 py-3">
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${isLDAP ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"}`}>
-                              {isLDAP ? "🏢 LDAP" : "🔑 Local"}
+                              {isLDAP ? t('settings.users.origin_ldap') : t('settings.users.origin_local')}
                             </span>
                           </td>
 
                           {/* MFA */}
                           <td className="px-4 py-3">
-                            <StatusPill ok={u.mfa_enabled} label={u.mfa_enabled ? "Activo" : "Inactivo"} />
+                            <StatusPill ok={u.mfa_enabled} label={u.mfa_enabled ? t('settings.users.mfa_active') : t('settings.users.mfa_inactive')} />
                           </td>
 
                           {/* Role selector */}
@@ -267,8 +269,8 @@ export default function SettingsPage() {
                                 disabled={!isAdmin || isSelf || roleSaving}
                                 onChange={(e) => handleRoleChange(u.id, e.target.value as "ADMIN" | "VIEWER")}
                               >
-                                <option value="ADMIN">👑 ADMIN</option>
-                                <option value="VIEWER">👁️ VIEWER</option>
+                                <option value="ADMIN">{t('settings.users.role_admin')}</option>
+                                <option value="VIEWER">{t('settings.users.role_viewer')}</option>
                               </Sel>
                               {roleSaving && <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />}
                             </div>
@@ -315,7 +317,7 @@ export default function SettingsPage() {
                     <Server className="h-5 w-5 text-indigo-500" />
                     <p className="text-sm font-semibold text-slate-700">Backend API</p>
                   </div>
-                  <StatusPill ok={!!healthData} label={healthData ? "Operativo" : "No responde"} />
+                  <StatusPill ok={!!healthData} label={healthData ? t('settings.integrations.api_ok') : t('settings.integrations.api_fail')} />
                   {healthData && (
                     <p className="text-xs text-slate-500">Estado: <strong>{healthData.status}</strong></p>
                   )}

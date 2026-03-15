@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
   Shield, ShieldAlert, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
@@ -55,21 +56,22 @@ interface CI {
 // ─── Support status badge ─────────────────────────────────────────────────────
 
 function SupportBadge({ eolDate, eosDate }: { eolDate: string | null; eosDate: string | null }) {
+  const { t } = useLanguage();
   const now = Date.now();
   const sixMonths = 180 * 86_400_000;
   const dates = [eolDate, eosDate].filter(Boolean).map((d) => new Date(d!).getTime());
-  if (dates.length === 0) return null; // no data — don't show badge
+  if (dates.length === 0) return null;
 
   const nearest = Math.min(...dates);
   const daysLeft = Math.floor((nearest - now) / 86_400_000);
 
   if (nearest < now) {
-    return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">🔴 Sin soporte</span>;
+    return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{t('inventory.support_badge.expired')}</span>;
   }
   if (nearest - now < sixMonths) {
-    return <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">🟠 EoL en {daysLeft}d</span>;
+    return <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{t('inventory.support_badge.warning', { days: String(daysLeft) })}</span>;
   }
-  return <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">🟢 Activo</span>;
+  return <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{t('inventory.support_badge.ok')}</span>;
 }
 
 // ─── CI type visual map ───────────────────────────────────────────────────────
@@ -141,10 +143,11 @@ function CriticalityBadge({ level }: { level: Criticality }) {
 // ─── Greenbone vuln badge ──────────────────────────────────────────────────────
 
 function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
-  if (vulns === null) return <div className="flex items-center gap-1.5 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-xs">Sin datos</span></div>;
+  const { t } = useLanguage();
+  if (vulns === null) return <div className="flex items-center gap-1.5 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-xs">{t('inventory.vuln_badge.no_data')}</span></div>;
   const open = vulns.filter((v) => v.status !== "RESUELTO");
-  if (open.length === 0 && vulns.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">Limpio</span></div>;
-  if (open.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">Todo resuelto</span></div>;
+  if (open.length === 0 && vulns.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">{t('inventory.vuln_badge.clean')}</span></div>;
+  if (open.length === 0) return <div className="flex items-center gap-1.5 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-xs font-medium">{t('inventory.vuln_badge.all_resolved')}</span></div>;
 
   const critical = open.filter((v) => v.severity === "CRITICAL").length;
   const high     = open.filter((v) => v.severity === "HIGH").length;
@@ -161,7 +164,7 @@ function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
         {high     > 0 && <p className="text-orange-500">HIGH ×{high}</p>}
         {medium   > 0 && <p className="text-yellow-600">MEDIUM ×{medium}</p>}
         {low      > 0 && <p className="text-slate-500">LOW ×{low}</p>}
-        <p className="text-slate-400 text-[10px]">{open.length} abierto{open.length !== 1 ? "s" : ""}</p>
+        <p className="text-slate-400 text-[10px]">{open.length !== 1 ? t('inventory.vuln_badge.open_many', { count: String(open.length) }) : t('inventory.vuln_badge.open_one', { count: String(open.length) })}</p>
       </div>
     </div>
   );
@@ -170,11 +173,12 @@ function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
 // ─── CrowdStrike agent badge ──────────────────────────────────────────────────
 
 function AgentBadge({ agent }: { agent: AgentStatus | null }) {
+  const { t } = useLanguage();
   if (!agent) {
     return (
       <div className="flex items-center gap-1.5 text-slate-400">
         <Shield className="h-3.5 w-3.5" />
-        <span className="text-xs">Sin agente</span>
+        <span className="text-xs">{t('inventory.agent_badge.no_agent')}</span>
       </div>
     );
   }
@@ -184,9 +188,10 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
   const isReduced     = agent.status === "reduced_functionality" || agent.preventionPolicy === "disabled";
   const color = hasDetections ? "text-red-600" : isActive ? "text-emerald-600" : isReduced ? "text-orange-500" : "text-slate-500";
   const bg    = hasDetections ? "bg-red-50" : isActive ? "bg-emerald-50" : isReduced ? "bg-orange-50" : "bg-slate-50";
+  const n = agent.detections?.length ?? 0;
   const label = hasDetections
-    ? `${agent.detections.length} detección${agent.detections.length > 1 ? "es" : ""}`
-    : isActive ? "Protegido" : isReduced ? "Reducido" : agent.status;
+    ? (n === 1 ? t('inventory.agent_badge.detection_one', { count: String(n) }) : t('inventory.agent_badge.detection_many', { count: String(n) }))
+    : isActive ? t('inventory.agent_badge.protected') : isReduced ? t('inventory.agent_badge.reduced') : agent.status;
 
   return (
     <div className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 ${bg} ${color}`}>
@@ -203,6 +208,7 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
 
 export default function InventoryPage() {
   const { isAdmin }               = useAuth();
+  const { t }                     = useLanguage();
   const [cis, setCis]             = useState<CI[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
@@ -296,8 +302,8 @@ export default function InventoryPage() {
         <header className="border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Inventario de CIs</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{loading ? "Cargando…" : `${cis.length} configuration items`}</p>
+              <h1 className="text-xl font-bold text-slate-900">{t('inventory.title')}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{loading ? t('common.loading') : t('inventory.total', { count: String(cis.length) })}</p>
             </div>
             {isAdmin && (
               <div className="flex items-center gap-2">
@@ -306,16 +312,16 @@ export default function InventoryPage() {
                   className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                   title="Descargar plantilla CSV para importación masiva"
                 >
-                  <FileDown className="h-3.5 w-3.5" />Plantilla CSV
+                  <FileDown className="h-3.5 w-3.5" />{t('inventory.download_template')}
                 </button>
                 <label className={`flex items-center gap-1.5 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${importing ? "opacity-50 pointer-events-none" : ""}`}
-                  title="Importar CIs desde CSV">
+                  title={t('inventory.import_csv')}>
                   {importing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  {importing ? "Importando…" : "Importar CSV"}
+                  {importing ? t('common.loading') : t('inventory.import_csv')}
                   <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
                 </label>
                 <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                  <Plus className="h-4 w-4" />Añadir CI
+                  <Plus className="h-4 w-4" />{t('inventory.add_ci')}
                 </button>
               </div>
             )}
@@ -329,7 +335,7 @@ export default function InventoryPage() {
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder="Buscar por nombre…" value={search} onChange={(e) => setSearch(e.target.value)}
+                  <input type="text" placeholder={t('inventory.search_placeholder')} value={search} onChange={(e) => setSearch(e.target.value)}
                     className="w-64 rounded-lg border border-slate-300 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
                 </div>
                 <button onClick={fetchCIs} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
@@ -356,14 +362,14 @@ export default function InventoryPage() {
               </div>
             )}
 
-            {loading && <div className="flex items-center justify-center py-20 text-slate-400"><RefreshCw className="mr-2 h-5 w-5 animate-spin" /><span className="text-sm">Cargando…</span></div>}
+            {loading && <div className="flex items-center justify-center py-20 text-slate-400"><RefreshCw className="mr-2 h-5 w-5 animate-spin" /><span className="text-sm">{t('common.loading')}</span></div>}
 
             {error && !loading && (
               <div className="flex flex-col items-center justify-center gap-2 py-16 text-red-500">
                 <AlertTriangle className="h-8 w-8" />
-                <p className="text-sm font-medium">Error al cargar los CIs</p>
+                <p className="text-sm font-medium">{t('common.error')}</p>
                 <p className="text-xs text-slate-400">{error}</p>
-                <button onClick={fetchCIs} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">Reintentar</button>
+                <button onClick={fetchCIs} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t('actions.retry')}</button>
               </div>
             )}
 
@@ -372,22 +378,22 @@ export default function InventoryPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Nombre</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Tipo</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Entorno</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Criticidad</th>
+                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('common.name')}</th>
+                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.type')}</th>
+                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.environment')}</th>
+                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.criticality')}</th>
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         <div className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div>
                       </th>
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" />CrowdStrike</div>
                       </th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Responsable Técnico</th>
+                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={7} className="py-12 text-center text-slate-400 text-sm">No se encontraron CIs.</td></tr>
+                      <tr><td colSpan={7} className="py-12 text-center text-slate-400 text-sm">{t('inventory.no_cis')}</td></tr>
                     ) : (
                       filtered.map((ci) => {
                         const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
@@ -402,7 +408,7 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>
-                                {typeMeta.icon}{typeMeta.label}
+                                {typeMeta.icon}{t(`inventory.ci_types.${resolvedType}`, {}) || typeMeta.label}
                               </span>
                             </td>
                             <td className="px-6 py-4"><EnvironmentBadge env={ci.environment} /></td>

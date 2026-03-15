@@ -6,6 +6,7 @@ import {
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ function ListRow({ label, sublabel, onDelete }: { label: string; sublabel?: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MastersPage() {
+  const { t } = useLanguage();
   const [tab, setTab] = useState<TabId>("support-areas");
 
   const [supportAreas,  setSupportAreas]  = useState<SupportArea[]>([]);
@@ -118,10 +120,10 @@ export default function MastersPage() {
 
   // ── Tab config ──────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count: number }[] = [
-    { id: "support-areas",  label: "Áreas de Soporte", icon: <MapPin    className="h-4 w-4" />, count: supportAreas.length },
-    { id: "branches",       label: "Sedes",            icon: <Building2 className="h-4 w-4" />, count: branches.length },
-    { id: "manufacturers",  label: "Fabricantes",      icon: <Cpu       className="h-4 w-4" />, count: manufacturers.length },
-    { id: "models",         label: "Modelos",          icon: <Layers    className="h-4 w-4" />, count: models.length },
+    { id: "support-areas",  label: t('masters.tabs.support_areas'), icon: <MapPin    className="h-4 w-4" />, count: supportAreas.length },
+    { id: "branches",       label: t('masters.tabs.branches'),      icon: <Building2 className="h-4 w-4" />, count: branches.length },
+    { id: "manufacturers",  label: t('masters.tabs.manufacturers'), icon: <Cpu       className="h-4 w-4" />, count: manufacturers.length },
+    { id: "models",         label: t('masters.tabs.models'),        icon: <Layers    className="h-4 w-4" />, count: models.length },
     { id: "providers",      label: "Proveedores",      icon: <Package   className="h-4 w-4" />, count: providers.length },
   ];
 
@@ -130,8 +132,8 @@ export default function MastersPage() {
       <header className="border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Administración de Datos Maestros</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Gestión de tablas maestras: Áreas, Sedes, Fabricantes, Modelos, Proveedores</p>
+            <h1 className="text-xl font-bold text-slate-900">{t('masters.title')}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{t('masters.subtitle')}</p>
           </div>
           <button onClick={load} disabled={loading} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />Actualizar

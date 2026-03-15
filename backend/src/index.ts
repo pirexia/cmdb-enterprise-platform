@@ -1,7 +1,14 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+// @ts-ignore — helmet is added to package.json; install via npm install inside the container
+const helmet = require('helmet') as { default: (...args: unknown[]) => unknown } | ((...args: unknown[]) => unknown);
+const helmetFn = typeof helmet === 'function' ? helmet : (helmet as { default: (...args: unknown[]) => unknown }).default;
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
@@ -13,7 +20,18 @@ import QRCode from 'qrcode';
 const app    = express();
 const prisma = new PrismaClient();
 const PORT   = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET ?? 'cmdb-dev-secret-change-in-production';
+
+// ── JWT Secret — must be set via environment variable in production ────────────
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('[FATAL] JWT_SECRET environment variable is not set. Refusing to start in production.');
+    process.exit(1);
+  } else {
+    console.warn('[SECURITY WARNING] JWT_SECRET is not set. Using insecure development default. NEVER use this in production!');
+  }
+}
+const JWT_SECRET_VALUE = JWT_SECRET ?? 'cmdb-dev-secret-change-in-production';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,12 +55,41 @@ declare global {
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
+// ── Helmet — security headers (ISO 27001 A.8.24, A.10.1) ─────────────────────
+// Sets: X-Content-Type-Options, X-Frame-Options (clickjacking), HSTS,
+//       X-XSS-Protection, Content-Security-Policy, Referrer-Policy, etc.
+const isHttps = process.env.HTTPS_ENABLED === 'true';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+app.use((helmetFn as any)({
+  // HSTS only meaningful over HTTPS
+  hsts: isHttps
+    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+    : false,
+  // Relax CSP for API-only server (no HTML served)
+  contentSecurityPolicy: false,
+}));
+
+// ── CORS — strict allow-list from environment ─────────────────────────────────
+const ALLOWED_ORIGINS = (
+  process.env.CORS_ORIGINS ?? 'http://localhost:3001,http://localhost:3000'
+).split(',').map((o) => o.trim()).filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:3001', 'http://localhost:3000'],
+  origin: (origin, callback) => {
+    // Allow server-to-server calls (no Origin header) and listed origins
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      callback(new Error(`CORS policy: origin ${origin} not allowed`));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 }));
-app.use(express.json());
+
+app.use(express.json({ limit: '2mb' }));
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
@@ -56,7 +103,7 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
   }
 
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
     req.user = payload;
     next();
   } catch {
@@ -203,7 +250,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     }
 
     const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '8h' });
+    const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h' });
     res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
 
   } catch (error) {
@@ -1098,22 +1145,46 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
-  console.log(`🚀 CMDB API running at http://localhost:${PORT}`);
-  console.log(`   → POST /api/auth/login                (public)`);
-  console.log(`   → GET  /api/users                     (any role)`);
-  console.log(`   → GET  /api/vendors                   (any role)`);
-  console.log(`   → GET  /api/cis                       (any role)`);
-  console.log(`   → POST /api/cis                       (ADMIN only)`);
-  console.log(`   → PATCH /api/vulnerabilities          (any role)`);
-  console.log(`   → POST /api/admin/reset-vulnerabilities (ADMIN only)`);
-  console.log(`   → GET  /api/contracts                 (any role)`);
-  console.log(`   → POST /api/contracts                 (ADMIN only)`);
-  console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
-  console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
-  console.log(`   → GET  /api/audit-logs               (ADMIN only)`);
-  console.log(`   → POST /api/cis/bulk                 (ADMIN only)`);
-});
+// ─── Server startup — HTTP or HTTPS ──────────────────────────────────────────
+
+const CERT_DIR  = path.join(__dirname, '../../certs');
+const CERT_KEY  = path.join(CERT_DIR, 'server.key');
+const CERT_FILE = path.join(CERT_DIR, 'server.crt');
+
+if (isHttps && fs.existsSync(CERT_KEY) && fs.existsSync(CERT_FILE)) {
+  // ── HTTPS mode ────────────────────────────────────────────────────────────
+  const httpsOptions = {
+    key:  fs.readFileSync(CERT_KEY),
+    cert: fs.readFileSync(CERT_FILE),
+  };
+  https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.log(`🔐 CMDB API running at https://localhost:${PORT} (TLS enabled)`);
+    console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  });
+} else {
+  if (isHttps) {
+    console.warn('[TLS] HTTPS_ENABLED=true but certs not found in backend/certs/. Falling back to HTTP.');
+    console.warn('[TLS] Run: bash backend/scripts/generate-certs.sh  (or the .ps1 variant on Windows)');
+  }
+  // ── HTTP fallback (development) ───────────────────────────────────────────
+  app.listen(PORT, () => {
+    console.log(`🚀 CMDB API running at http://localhost:${PORT}`);
+    console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+    console.log(`   → POST /api/auth/login                (public)`);
+    console.log(`   → GET  /api/users                     (any role)`);
+    console.log(`   → GET  /api/vendors                   (any role)`);
+    console.log(`   → GET  /api/cis                       (any role)`);
+    console.log(`   → POST /api/cis                       (ADMIN only)`);
+    console.log(`   → PATCH /api/vulnerabilities          (any role)`);
+    console.log(`   → POST /api/admin/reset-vulnerabilities (ADMIN only)`);
+    console.log(`   → GET  /api/contracts                 (any role)`);
+    console.log(`   → POST /api/contracts                 (ADMIN only)`);
+    console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
+    console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
+    console.log(`   → GET  /api/audit-logs               (ADMIN only)`);
+    console.log(`   → POST /api/cis/bulk                 (ADMIN only)`);
+  });
+}
 
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Closing Prisma connection...');

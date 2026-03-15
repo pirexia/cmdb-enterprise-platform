@@ -23,3 +23,10 @@ Thumbs.db
 
 # TypeScript incremental compilation cache
 *.tsbuildinfo
+
+# SSL certificates — generated locally, never commit private keys
+certs/*.key
+certs/*.crt
+certs/*.pem
+certs/*.pfx
+# (the .gitkeep inside certs/ is still tracked)

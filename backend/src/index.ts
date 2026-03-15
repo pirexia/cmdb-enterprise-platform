@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-// @ts-ignore — helmet is added to package.json; install via npm install inside the container
+// @ts-ignore — helmet is installed in the Docker container via npm install
 const helmet = require('helmet') as { default: (...args: unknown[]) => unknown } | ((...args: unknown[]) => unknown);
 const helmetFn = typeof helmet === 'function' ? helmet : (helmet as { default: (...args: unknown[]) => unknown }).default;
 import bcrypt from 'bcrypt';
@@ -9,7 +9,9 @@ import jwt from 'jsonwebtoken';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import cron from 'node-cron';
 import { PrismaClient, Criticality, Environment } from '@prisma/client';
+import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
 import * as speakeasy from 'speakeasy';
@@ -1142,6 +1144,52 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────
+
+/**
+ * POST /api/admin/test-email
+ * Manually triggers the full alert scan + email send pipeline.
+ * ADMIN only. Use this to verify SMTP config without waiting for the daily cron.
+ */
+app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  console.log(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
+  try {
+    const result = await runAndSendAlerts();
+    res.json({
+      message: result.sent
+        ? `✅ Alert report sent to ${process.env.ALERT_RECIPIENT}`
+        : '⚠️ Alert scan completed but email was NOT sent (check SMTP config or ALERT_RECIPIENT)',
+      eolAlerts:       result.eolAlerts.length,
+      contractAlerts:  result.contractAlerts.length,
+      vulnAlerts:      result.vulnAlerts.length,
+      sent:            result.sent,
+      messageId:       result.messageId,
+      scannedAt:       result.scannedAt,
+    });
+  } catch (error) {
+    console.error('[POST /api/admin/test-email] Error:', error);
+    res.status(500).json({ error: String(error) });
+  }
+});
+
+// ─── Daily Alert Cron (08:30 AM every day) ───────────────────────────────────
+// To test immediately without waiting, temporarily change the schedule to:
+//   '* * * * *'   (every minute)
+// The current schedule: '30 8 * * *' = daily at 08:30
+
+const CRON_SCHEDULE = process.env.ALERT_CRON_SCHEDULE ?? '30 8 * * *';
+
+cron.schedule(CRON_SCHEDULE, () => {
+  console.log(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
+  runAndSendAlerts()
+    .then((r) => console.log(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
+    .catch((e) => console.error('[AlertCron] Error:', e));
+}, {
+  timezone: 'Europe/Madrid',
+});
+
+console.log(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 

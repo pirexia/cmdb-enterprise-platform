@@ -479,7 +479,8 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
   const { action, query } = req.body as { action?: string; query?: string };
 
   if (action === 'sync-manufacturers') {
-    let created = 0; let skipped = 0;
+    let created = 0; let skipped = 0; let errors = 0;
+    const errorLog: string[] = [];
     for (const name of POPULAR_MANUFACTURERS) {
       try {
         const r = await prisma.$executeRaw`
@@ -487,10 +488,15 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
           VALUES(gen_random_uuid(), ${name}, now(), now())
           ON CONFLICT (name) DO NOTHING
         `;
-        if (Number(r) > 0) created++; else skipped++;
-      } catch { skipped++; }
+        if (Number(r) > 0) { created++; } else { skipped++; }
+      } catch (e) {
+        errors++;
+        errorLog.push(`${name}: ${String(e).slice(0, 80)}`);
+        console.error(`[sync-manufacturers] Error inserting "${name}":`, e);
+      }
     }
-    res.json({ message: `${created} fabricantes insertados, ${skipped} ya existían`, created, skipped });
+    console.log(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
+    res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors, errorLog });
     return;
   }
 
@@ -708,10 +714,27 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
 
 type MasterRow = { id: string; name: string; [k: string]: unknown };
 
+// ── Debug: verify manufacturers table ──────────────────────────────────────────
+app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    const rows  = await prisma.$queryRaw<{ id: string; name: string }[]>`SELECT id::text, name FROM "manufacturers" ORDER BY name ASC`;
+    const count = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "manufacturers"`;
+    res.json({ count: Number(count[0]?.c ?? 0), rows });
+  } catch (e) { res.status(500).json({ error: String(e), stack: e instanceof Error ? e.stack : undefined }); }
+});
+
+// ── Clear all manufacturers (test helper) ──────────────────────────────────────
+app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (_req, res) => {
+  try {
+    const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
+    res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // Support Areas
 app.get('/api/masters/support-areas', authenticateToken, async (_req, res) => {
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "support_areas" ORDER BY name ASC`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "support_areas" ORDER BY name ASC`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -719,7 +742,7 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -732,7 +755,7 @@ app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, as
 app.get('/api/masters/branches', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<(MasterRow & { branch_code: string; physical_address: string | null; support_area_id: string; support_area_name: string })[]>`
-      SELECT b.id, b.name, b.branch_code, b.physical_address, b.support_area_id, sa.name AS support_area_name
+      SELECT b.id::text AS id, b.name, b.branch_code, b.physical_address, b.support_area_id::text AS support_area_id, sa.name AS support_area_name
       FROM "branches" b LEFT JOIN "support_areas" sa ON b.support_area_id = sa.id ORDER BY b.name ASC`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -743,7 +766,7 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
       INSERT INTO "branches"(id,name,branch_code,physical_address,support_area_id,created_at,updated_at)
-      VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id, name`;
+      VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -755,15 +778,16 @@ app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (
 // Manufacturers
 app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "manufacturers" ORDER BY name ASC`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "manufacturers" ORDER BY name ASC`;
+    console.log(`[GET /api/masters/manufacturers] rows=${rows.length}`);
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: String(e) }); }
 });
 app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -776,7 +800,7 @@ app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, as
 app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string })[]>`
-      SELECT dm.id, dm.name, dm.manufacturer_id, m.name AS manufacturer_name
+      SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name
       FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: String(e) }); }
@@ -787,7 +811,7 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
       INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
-      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id, name`;
+      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -799,7 +823,7 @@ app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, as
 // Providers
 app.get('/api/masters/providers', authenticateToken, async (_req, res) => {
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id, name FROM "providers" ORDER BY name ASC`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "providers" ORDER BY name ASC`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -807,7 +831,7 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
-    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id, name`;
+    const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -869,6 +893,43 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
     });
   } catch (error) {
     console.error('[POST /api/masters/device-models/:id/sync-eol] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/cis/:id/verification
+ * Updates the lastCheckDate and verificationSource fields for a CI.
+ * Used by the frontend when an admin manually verifies EOL/EOS status from external sources.
+ * Body: { lastCheckDate?: string (ISO), verificationSource?: string }
+ */
+app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { lastCheckDate, verificationSource } = req.body as {
+    lastCheckDate?: string;
+    verificationSource?: string;
+  };
+  try {
+    const checkDate = lastCheckDate ? new Date(lastCheckDate) : new Date();
+    const source    = verificationSource ?? 'MANUAL';
+
+    await prisma.$executeRaw`
+      UPDATE "configuration_items"
+      SET    last_check_date      = ${checkDate},
+             verification_source  = ${source},
+             updated_at           = now()
+      WHERE  id = ${id}::uuid
+    `;
+
+    // Audit log
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, lastCheckDate: checkDate, verificationSource: source, message: 'Verification updated' });
+  } catch (error) {
+    console.error('[PATCH /api/cis/:id/verification] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

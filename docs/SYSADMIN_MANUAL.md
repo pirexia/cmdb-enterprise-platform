@@ -17,8 +17,9 @@
 7. [Gestión de Logs y Monitorización](#7-gestión-de-logs-y-monitorización)
 8. [Actualización de la Aplicación](#8-actualización-de-la-aplicación)
 9. [Troubleshooting](#9-troubleshooting)
-10. [Seguridad y Hardening](#10-seguridad-y-hardening)
-11. [Tareas de Mantenimiento Periódico](#11-tareas-de-mantenimiento-periódico)
+10. [Configuración Avanzada de Podman (RHEL)](#10-configuración-avanzada-de-podman-rhel)
+11. [Seguridad y Hardening](#11-seguridad-y-hardening)
+12. [Tareas de Mantenimiento Periódico](#12-tareas-de-mantenimiento-periódico)
 
 ---
 
@@ -519,7 +520,142 @@ lsof -i :3000
 
 ---
 
-## 10. Seguridad y Hardening
+## 10. Configuración Avanzada de Podman (RHEL)
+
+Esta sección documenta configuraciones específicas de Podman Rootless en entornos RHEL que pueden ser necesarias para resolver problemas de estabilidad.
+
+### 10.1 Gestor de cgroups: cgroupfs vs systemd
+
+Por defecto, Podman en RHEL utiliza `systemd` como gestor de cgroups. Sin embargo, en versiones específicas de RHEL/Podman (especialmente RHEL 8.x con Podman 3.x-4.x), se pueden presentar problemas de bloqueo al intentar eliminar o reiniciar contenedores cuando hay dependencias de red activas.
+
+**Síntomas comunes:**
+- Comandos `podman rm` o `podman-compose down` se quedan colgados indefinidamente
+- Contenedores en estado "stopping" que nunca terminan
+- Errores relacionados con `cni` o `netavark` al gestionar redes
+- Timeouts al intentar eliminar contenedores con `podman-compose`
+
+**Solución:** Forzar el uso de `cgroupfs` como gestor de cgroups.
+
+### 10.2 Configurar cgroupfs en Podman Rootless
+
+```bash
+# Crear el directorio de configuración de Podman si no existe
+mkdir -p ~/.config/containers
+
+# Crear o editar el archivo de configuración
+nano ~/.config/containers/containers.conf
+```
+
+Añade o modifica las siguientes líneas en el archivo:
+
+```ini
+[engine]
+# Forzar el uso de cgroupfs en lugar de systemd
+cgroup_manager = "cgroupfs"
+
+# Opcional: Ajustar el número de eventos que Podman puede procesar
+# Útil si tienes muchos contenedores
+events_logger = "file"
+
+# Opcional: Tiempo de espera para detener contenedores (segundos)
+stop_timeout = 30
+```
+
+Guarda el archivo y verifica la configuración:
+
+```bash
+# Verificar configuración actual
+podman info | grep -i cgroup
+# Debe mostrar: cgroupManager: cgroupfs
+
+# Si los cambios no se aplican, reinicia el servicio de Podman
+podman system reset --force  # ⚠️ ADVERTENCIA: Esto elimina todos los contenedores e imágenes
+# Alternativa: cerrar sesión y volver a iniciar
+```
+
+### 10.3 Configuración recomendada completa
+
+Archivo `~/.config/containers/containers.conf` completo para entornos de producción:
+
+```ini
+[containers]
+# Logs por defecto (json-file, journald, k8s-file)
+log_driver = "journald"
+
+# Tamaño máximo de logs por contenedor (ej: 10mb, 100mb)
+log_size_max = "50mb"
+
+[engine]
+# Gestor de cgroups (cgroupfs recomendado para RHEL 8.x con Podman < 4.5)
+cgroup_manager = "cgroupfs"
+
+# Backend de red (cni o netavark)
+# netavark es más moderno pero puede tener issues en RHEL 8.x
+network_backend = "cni"
+
+# Logger de eventos
+events_logger = "file"
+
+# Tiempo de espera para detener contenedores (segundos)
+stop_timeout = 30
+
+# Runtime por defecto (crun es más rápido que runc)
+runtime = "crun"
+
+[network]
+# Rango de subnet por defecto para redes de Podman
+default_subnet = "10.89.0.0/16"
+```
+
+### 10.4 Verificar y aplicar cambios
+
+```bash
+# Ver configuración activa de Podman
+podman info --format json | jq '.host.cgroupManager, .host.networkBackend'
+
+# Reiniciar servicios de Podman sin eliminar datos (Podman 4.3+)
+systemctl --user restart podman.socket
+
+# Si los cambios no se aplican, reset completo (elimina contenedores)
+podman system reset --force
+# Luego volver a desplegar desde docker-compose.prod.yml
+```
+
+### 10.5 Troubleshooting: Contenedores bloqueados
+
+Si después de cambiar a `cgroupfs` sigues teniendo contenedores que no se eliminan:
+
+```bash
+# Listar contenedores en todos los estados
+podman ps -a
+
+# Forzar eliminación de un contenedor específico
+podman rm -f <container-id>
+
+# Si persiste el bloqueo, matar el proceso del contenedor
+podman inspect <container-id> | grep Pid
+kill -9 <pid>
+
+# Última opción: limpiar todo el sistema de Podman
+podman system prune -a --volumes --force
+podman system reset --force
+```
+
+### 10.6 Cuándo usar cgroupfs vs systemd
+
+| Gestor | Ventajas | Desventajas | Cuándo usar |
+|--------|----------|-------------|-------------|
+| **systemd** | Integración con systemd, mejor para servicios del sistema | Puede causar bloqueos en RHEL 8.x, requiere cgroups v2 | RHEL 9+ con Podman 4.5+ |
+| **cgroupfs** | Mayor compatibilidad, menos bloqueos en redes | No integra con systemd, menos "limpio" | RHEL 8.x, Podman < 4.5, problemas de estabilidad |
+
+**Recomendación para producción ISO 27001:**
+- **RHEL 8.x con Podman 3.x-4.4:** Usar `cgroupfs`
+- **RHEL 9.x con Podman 4.5+:** Usar `systemd` (default)
+- **Si tienes bloqueos frecuentes:** Cambiar a `cgroupfs` independientemente de la versión
+
+---
+
+## 11. Seguridad y Hardening
 
 ### Firewall (firewalld en RHEL)
 ```bash
@@ -566,9 +702,49 @@ docker compose -f docker-compose.prod.yml down
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+### Usuario de servicio dedicado (ISO 27001)
+
+**Principio de mínimo privilegio:** Nunca ejecutar servicios de producción como root o con usuarios personales.
+
+```bash
+# Verificar que los contenedores se ejecutan como usuario no privilegiado
+podman ps --format "{{.ID}} {{.Names}}" | while read id name; do
+  echo "Container: $name"
+  podman inspect $id | jq -r '.HostConfig.UsernsMode'
+done
+
+# Verificar que el usuario tiene linger habilitado (persistencia)
+loginctl show-user cmdb-admin | grep Linger
+# Debe mostrar: Linger=yes
+
+# Si no está habilitado, activarlo
+sudo loginctl enable-linger cmdb-admin
+```
+
+### Permisos de archivos y directorios
+
+```bash
+# Verificar permisos del directorio de instalación
+ls -ld /opt/cmdb-enterprise-platform
+# Correcto: drwxr-x--- ... cmdb-admin cmdb-admin
+
+# Verificar permisos del archivo .env (debe ser 600)
+ls -l /opt/cmdb-enterprise-platform/.env
+# Correcto: -rw------- ... cmdb-admin cmdb-admin
+
+# Verificar permisos del directorio de backups
+ls -ld /opt/cmdb-enterprise-platform/backups
+# Correcto: drwxr-x--- ... cmdb-admin cmdb-admin
+
+# Corregir permisos si es necesario
+sudo chown -R cmdb-admin:cmdb-admin /opt/cmdb-enterprise-platform
+sudo chmod 750 /opt/cmdb-enterprise-platform
+chmod 600 /opt/cmdb-enterprise-platform/.env
+```
+
 ---
 
-## 11. Tareas de Mantenimiento Periódico
+## 12. Tareas de Mantenimiento Periódico
 
 | Frecuencia | Tarea | Comando / Acción |
 |------------|-------|-----------------|

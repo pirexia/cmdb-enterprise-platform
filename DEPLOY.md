@@ -9,22 +9,128 @@
 
 ## Índice
 
-1. [Prerequisitos en el servidor RHEL](#1-prerrequisitos-en-el-servidor-rhel)
-2. [Clonar el repositorio](#2-clonar-el-repositorio)
-3. [Configurar el entorno (.env)](#3-configurar-el-entorno-env)
-4. [Generar los certificados SSL](#4-generar-los-certificados-ssl)
-5. [Preparar los volúmenes TLS](#5-preparar-los-volúmenes-tls)
-6. [Construir y levantar los servicios](#6-construir-y-levantar-los-servicios)
-7. [Verificar el despliegue](#7-verificar-el-despliegue)
-8. [Configurar el backup automático (cron)](#8-configurar-el-backup-automático-cron)
-9. [Configurar firewall (firewalld)](#9-configurar-firewall-firewalld)
-10. [Actualización de la aplicación](#10-actualización-de-la-aplicación)
-11. [Rollback rápido](#11-rollback-rápido)
-12. [Diagnóstico y resolución de problemas](#12-diagnóstico-y-resolución-de-problemas)
+1. [Preparación del Sistema (ISO 27001 Compliance)](#1-preparación-del-sistema-iso-27001-compliance)
+2. [Prerequisitos en el servidor RHEL](#2-prerrequisitos-en-el-servidor-rhel)
+3. [Clonar el repositorio](#3-clonar-el-repositorio)
+4. [Configurar el entorno (.env)](#4-configurar-el-entorno-env)
+5. [Generar los certificados SSL](#5-generar-los-certificados-ssl)
+6. [Preparar los volúmenes TLS](#6-preparar-los-volúmenes-tls)
+7. [Construir y levantar los servicios](#7-construir-y-levantar-los-servicios)
+8. [Verificar el despliegue](#8-verificar-el-despliegue)
+9. [Configurar el backup automático (cron)](#9-configurar-el-backup-automático-cron)
+10. [Configurar firewall (firewalld)](#10-configurar-firewall-firewalld)
+11. [Actualización de la aplicación](#11-actualización-de-la-aplicación)
+12. [Rollback rápido](#12-rollback-rápido)
+13. [Diagnóstico y resolución de problemas](#13-diagnóstico-y-resolución-de-problemas)
 
 ---
 
-## 1. Prerrequisitos en el servidor RHEL
+## 1. Preparación del Sistema (ISO 27001 Compliance)
+
+> **⚠️ OBLIGATORIO:** Esta sección implementa los requisitos de seguridad ISO 27001 para entornos de producción.  
+> **Principios aplicados:** Zero Trust, Mínimo Privilegio, Aislamiento de Servicios, Persistencia de Procesos.
+
+### 1.1 Crear usuario de servicio dedicado
+
+**Nunca ejecutar contenedores en producción como root o con usuarios personales.** Crea un usuario dedicado para aislar la aplicación:
+
+```bash
+# Crear usuario de servicio sin acceso interactivo por shell
+sudo useradd -m -s /bin/bash cmdb-admin
+sudo passwd cmdb-admin
+# Introduce una contraseña segura (mínimo 16 caracteres)
+
+# Verificar creación
+id cmdb-admin
+# uid=1001(cmdb-admin) gid=1001(cmdb-admin) groups=1001(cmdb-admin)
+```
+
+### 1.2 Habilitar persistencia de contenedores (Linger)
+
+**CRÍTICO:** Sin esta configuración, los contenedores Podman Rootless se detienen cuando el usuario cierra sesión o el servidor se reinicia.
+
+```bash
+# Habilitar persistencia para el usuario de servicio
+sudo loginctl enable-linger cmdb-admin
+
+# Verificar que el linger está activo
+loginctl show-user cmdb-admin | grep Linger
+# Linger=yes
+```
+
+> **¿Qué hace `enable-linger`?**  
+> Permite que los servicios del usuario `cmdb-admin` permanezcan ejecutándose incluso cuando no hay sesión activa. Esto asegura que los contenedores Podman sobreviven a reinicios del sistema y cierres de sesión SSH.
+
+### 1.3 Preparar directorio de instalación con permisos restrictivos
+
+```bash
+# Crear directorio de instalación
+sudo mkdir -p /opt/cmdb-enterprise-platform
+
+# Asignar propiedad al usuario de servicio
+sudo chown -R cmdb-admin:cmdb-admin /opt/cmdb-enterprise-platform
+
+# Establecer permisos restrictivos (lectura/escritura/ejecución solo para el propietario)
+sudo chmod -R 750 /opt/cmdb-enterprise-platform
+
+# Verificar permisos
+ls -ld /opt/cmdb-enterprise-platform
+# drwxr-x--- 2 cmdb-admin cmdb-admin 4096 ... /opt/cmdb-enterprise-platform
+```
+
+### 1.4 Cambiar al usuario de servicio
+
+**Todas las operaciones posteriores deben ejecutarse como `cmdb-admin`:**
+
+```bash
+# Cambiar al usuario de servicio
+sudo su - cmdb-admin
+
+# Verificar que estás en el usuario correcto
+whoami
+# cmdb-admin
+
+# Navegar al directorio de instalación
+cd /opt/cmdb-enterprise-platform
+```
+
+> **Nota de seguridad:** A partir de este punto, NUNCA ejecutes comandos de Podman/Docker como root. Todo debe ejecutarse como `cmdb-admin`.
+
+---
+
+## 2. Prerrequisitos en el servidor RHEL
+
+### Opción A: Podman Rootless (RECOMENDADO - ISO 27001)
+
+**Podman Rootless** permite ejecutar contenedores sin privilegios de root, cumpliendo con los principios de mínimo privilegio.
+
+```bash
+# Verificar versión del SO
+cat /etc/redhat-release
+
+# Instalar Podman y podman-compose (RHEL 8/9 - ya viene preinstalado en RHEL 9)
+sudo dnf install -y podman podman-compose
+
+# Verificar instalación
+podman --version
+# Podman version 4.x.x o superior
+
+# Crear alias para compatibilidad con docker-compose (OPCIONAL)
+echo 'alias docker-compose="podman-compose"' >> ~/.bashrc
+echo 'alias docker="podman"' >> ~/.bashrc
+source ~/.bashrc
+
+# Instalar git si no está disponible
+sudo dnf install -y git
+
+# Instalar openssl (para generar certificados y JWT secret)
+sudo dnf install -y openssl
+```
+
+> **Nota importante:** En Podman Rootless, NO se requiere añadir el usuario a ningún grupo privilegiado.  
+> Los contenedores se ejecutan en el espacio de usuario sin necesidad de `sudo`.
+
+### Opción B: Docker Engine (Alternativa)
 
 ```bash
 # Verificar versión del SO
@@ -38,44 +144,59 @@ sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 # Iniciar y habilitar Docker
 sudo systemctl enable --now docker
 
-# Añadir el usuario de despliegue al grupo docker (evita sudo en cada comando)
-sudo usermod -aG docker $USER
+# Añadir el usuario de servicio al grupo docker
+sudo usermod -aG docker cmdb-admin
 newgrp docker
 
 # Verificar instalación
 docker --version
 docker compose version
 
-# Instalar git si no está disponible
-sudo dnf install -y git
-
-# Instalar openssl (para generar certificados y JWT secret)
-sudo dnf install -y openssl
+# Instalar git y openssl
+sudo dnf install -y git openssl
 ```
 
-> **SELinux (RHEL):** Los volumenes en `docker-compose.prod.yml` ya incluyen el sufijo `:Z`
-> que relabela los archivos para SELinux en modo Enforcing. No es necesario desactivarlo.
+### Configuración de SELinux (RHEL)
+
+```bash
+# Verificar estado de SELinux
+getenforce
+# Enforcing (correcto)
+
+# Los volúmenes en docker-compose.prod.yml ya incluyen el sufijo :Z
+# que relabela los archivos para SELinux en modo Enforcing.
+# NO es necesario desactivar SELinux.
+```
 
 ---
 
-## 2. Clonar el repositorio
+## 3. Clonar el repositorio
+
+> **Importante:** Ejecuta estos comandos como el usuario `cmdb-admin` (ver sección 1.4).
 
 ```bash
-# Elegir directorio de despliegue
-sudo mkdir -p /opt/cmdb
-sudo chown $USER:$USER /opt/cmdb
-cd /opt/cmdb
+# Verificar que estás como cmdb-admin
+whoami
+# cmdb-admin
+
+# Navegar al directorio de instalación (ya creado en sección 1.3)
+cd /opt/cmdb-enterprise-platform
 
 # Clonar el repositorio
 git clone https://github.com/pirexia/cmdb-enterprise-platform.git .
 
-# Verificar contenido
+# Verificar contenido y permisos
 ls -la
+# Los archivos deben pertenecer a cmdb-admin:cmdb-admin
+
+# Verificar permisos del directorio padre
+ls -ld /opt/cmdb-enterprise-platform
+# drwxr-x--- ... cmdb-admin cmdb-admin
 ```
 
 ---
 
-## 3. Configurar el entorno (.env)
+## 4. Configurar el entorno (.env)
 
 ```bash
 # Copiar el template
@@ -83,6 +204,13 @@ cp .env.example .env
 
 # Editar con valores de producción
 nano .env
+
+# Restringir permisos del archivo .env (solo lectura/escritura para el propietario)
+chmod 600 .env
+
+# Verificar permisos
+ls -l .env
+# -rw------- 1 cmdb-admin cmdb-admin ... .env
 ```
 
 ### Variables obligatorias en producción
@@ -134,7 +262,7 @@ openssl rand -base64 48
 
 ---
 
-## 4. Generar los certificados SSL
+## 5. Generar los certificados SSL
 
 ### Opción A — Certificado autofirmado (desarrollo/intranet)
 
@@ -169,7 +297,7 @@ openssl rsa  -noout -modulus -in backend/certs/server.key | md5sum
 
 ---
 
-## 5. Preparar los volúmenes TLS
+## 6. Preparar los volúmenes TLS
 
 Los certificados deben copiarse al volumen Docker nombrado `cmdb-tls-certs`:
 
@@ -189,10 +317,12 @@ docker run --rm -v cmdb-tls-certs:/certs alpine ls -la /certs
 
 ---
 
-## 6. Construir y levantar los servicios
+## 7. Construir y levantar los servicios
 
 ```bash
-cd /opt/cmdb
+# Asegúrate de estar en el directorio correcto y como cmdb-admin
+cd /opt/cmdb-enterprise-platform
+whoami  # Debe mostrar: cmdb-admin
 
 # Construir las imágenes (multi-stage, tarda ~3 minutos la primera vez)
 docker compose -f docker-compose.prod.yml build --no-cache
@@ -203,6 +333,8 @@ docker compose -f docker-compose.prod.yml up -d
 # Ver logs en tiempo real (ctrl+C para salir)
 docker compose -f docker-compose.prod.yml logs -f
 ```
+
+> **Nota para Podman Rootless:** Si usas Podman, reemplaza `docker compose` por `podman-compose` o usa el alias configurado en la sección 2.
 
 ### Verificar que todos los contenedores están healthy
 
@@ -221,7 +353,7 @@ cmdb-frontend-prod    running           0.0.0.0:3001->3001/tcp
 
 ---
 
-## 7. Verificar el despliegue
+## 8. Verificar el despliegue
 
 ```bash
 # 1. Salud del backend API
@@ -247,59 +379,60 @@ curl -sI http://localhost:3000/health | grep -i "x-frame\|x-content\|x-xss"
 
 ---
 
-## 8. Configurar el backup automático (cron)
+## 9. Configurar el backup automático (cron)
 
 ```bash
 # Hacer el script ejecutable
-chmod +x /opt/cmdb/scripts/db-backup.sh
+chmod +x /opt/cmdb-enterprise-platform/scripts/db-backup.sh
 
-# Crear directorio de backups
-sudo mkdir -p /opt/cmdb/backups
-sudo chown $USER:$USER /opt/cmdb/backups
+# Crear directorio de backups (como cmdb-admin)
+mkdir -p /opt/cmdb-enterprise-platform/backups
+chmod 750 /opt/cmdb-enterprise-platform/backups
 
 # Probar el backup manualmente (debe crear un archivo .sql.gz)
-BACKUP_DIR=/opt/cmdb/backups \
+BACKUP_DIR=/opt/cmdb-enterprise-platform/backups \
 PG_CONTAINER=cmdb-postgres-prod \
 POSTGRES_DB=cmdb_db \
 POSTGRES_USER=cmdb_admin \
-  bash /opt/cmdb/scripts/db-backup.sh
+  bash /opt/cmdb-enterprise-platform/scripts/db-backup.sh
 
-ls -lh /opt/cmdb/backups/
+ls -lh /opt/cmdb-enterprise-platform/backups/
 
-# Añadir al crontab del sistema (ejecuta a las 02:00 AM todos los días)
-sudo crontab -e
+# Añadir al crontab del usuario cmdb-admin (NO usar sudo crontab)
+crontab -e
 ```
 
 Añade esta línea al crontab:
 
 ```cron
 # CMDB Enterprise Platform — Database backup diario a las 02:00 AM
-0 2 * * * BACKUP_DIR=/opt/cmdb/backups PG_CONTAINER=cmdb-postgres-prod POSTGRES_DB=cmdb_db POSTGRES_USER=cmdb_admin /opt/cmdb/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1
+0 2 * * * BACKUP_DIR=/opt/cmdb-enterprise-platform/backups PG_CONTAINER=cmdb-postgres-prod POSTGRES_DB=cmdb_db POSTGRES_USER=cmdb_admin /opt/cmdb-enterprise-platform/scripts/db-backup.sh >> /home/cmdb-admin/cmdb-backup.log 2>&1
 ```
 
 ```bash
-# Verificar que el cron quedó registrado
-sudo crontab -l | grep cmdb
+# Verificar que el cron quedó registrado (como cmdb-admin)
+crontab -l | grep cmdb
 
-# Crear el archivo de log con permisos correctos
-sudo touch /var/log/cmdb-backup.log
-sudo chown $USER:$USER /var/log/cmdb-backup.log
+# Crear el archivo de log
+touch /home/cmdb-admin/cmdb-backup.log
+chmod 640 /home/cmdb-admin/cmdb-backup.log
 
-# Rotar los logs de backup (logrotate)
+# Rotar los logs de backup (logrotate) - requiere permisos de root
 sudo tee /etc/logrotate.d/cmdb-backup << 'EOF'
-/var/log/cmdb-backup.log {
+/home/cmdb-admin/cmdb-backup.log {
     weekly
     rotate 12
     compress
     missingok
     notifempty
+    su cmdb-admin cmdb-admin
 }
 EOF
 ```
 
 ---
 
-## 9. Configurar firewall (firewalld)
+## 10. Configurar firewall (firewalld)
 
 ```bash
 # Abrir puertos necesarios
@@ -317,10 +450,12 @@ sudo firewall-cmd --list-ports
 
 ---
 
-## 10. Actualización de la aplicación
+## 11. Actualización de la aplicación
 
 ```bash
-cd /opt/cmdb
+# Ejecutar como cmdb-admin
+whoami  # cmdb-admin
+cd /opt/cmdb-enterprise-platform
 
 # 1. Obtener cambios del repositorio
 git pull origin main
@@ -338,12 +473,13 @@ curl -k https://localhost:3000/health
 
 ---
 
-## 11. Rollback rápido
+## 12. Rollback rápido
 
 Si el despliegue falla, vuelve al commit anterior:
 
 ```bash
-cd /opt/cmdb
+# Ejecutar como cmdb-admin
+cd /opt/cmdb-enterprise-platform
 
 # Ver el historial de commits
 git log --oneline -10
@@ -358,7 +494,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ---
 
-## 12. Diagnóstico y resolución de problemas
+## 13. Diagnóstico y resolución de problemas
 
 ### Ver logs de un servicio específico
 

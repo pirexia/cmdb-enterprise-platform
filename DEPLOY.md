@@ -311,6 +311,11 @@ FRONTEND_PORT=3001
 # URL del backend tal como la ve el NAVEGADOR del usuario (IP/dominio real)
 NEXT_PUBLIC_API_URL=https://cmdb.tudominio.com:3000
 
+# ⚠️ IMPORTANTE: NEXT_PUBLIC_* variables are baked into the frontend image at BUILD time.
+# If you change NEXT_PUBLIC_API_URL, you MUST rebuild the frontend:
+#   docker compose -f docker-compose.prod.yml build frontend --no-cache
+#   docker compose -f docker-compose.prod.yml up -d
+
 # ── Entorno de Aplicación ──────────────────────────────────────────────────
 # CRÍTICO: Establecer APP_ENV=prod en producción para:
 #   - Reducir verbosidad de logs (solo warn/error)

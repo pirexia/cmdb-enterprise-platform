@@ -811,6 +811,109 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
   }
 });
 
+// ─── SSL/TLS Certificate Management ──────────────────────────────────────────
+
+/**
+ * POST /api/admin/certificates/csr
+ * Generates a private key and CSR for SSL/TLS certificates.
+ * Body: { cn: string, o?: string, ou?: string, c?: string, st?: string }
+ * Returns: { csr: string, message: string }
+ * ADMIN only.
+ */
+app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { cn, o, ou, c, st } = req.body as { cn?: string; o?: string; ou?: string; c?: string; st?: string };
+
+  if (!cn?.trim()) {
+    res.status(400).json({ error: 'cn (Common Name) is required' });
+    return;
+  }
+
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const certDir = path.join(__dirname, '../../certs');
+    const keyPath = path.join(certDir, 'server.key');
+    const csrPath = path.join(certDir, 'server.csr');
+
+    // Build OpenSSL subject string
+    const subject = `/CN=${cn}${c ? `/C=${c}` : ''}${st ? `/ST=${st}` : ''}${o ? `/O=${o}` : ''}${ou ? `/OU=${ou}` : ''}`;
+
+    // Generate new private key and CSR
+    const cmd = `openssl req -new -newkey rsa:2048 -nodes -keyout "${keyPath}" -out "${csrPath}" -subj "${subject}"`;
+    
+    log.info(`[POST /api/admin/certificates/csr] Generating CSR with subject: ${subject}`);
+    const { stderr } = await execAsync(cmd);
+    
+    if (stderr && !stderr.includes('writing')) {
+      log.warn(`[POST /api/admin/certificates/csr] OpenSSL stderr: ${stderr}`);
+    }
+
+    // Read generated CSR
+    const csrContent = fs.readFileSync(csrPath, 'utf8');
+
+    res.json({
+      csr: csrContent,
+      message: 'CSR generated successfully. Send this to your CA for signing. The private key has been saved securely.',
+      keyPath: '/certs/server.key (inside container)',
+      csrPath: '/certs/server.csr (inside container)',
+    });
+
+  } catch (error) {
+    log.error('[POST /api/admin/certificates/csr] Error:', error);
+    res.status(500).json({ error: 'Failed to generate CSR. Ensure OpenSSL is available.' });
+  }
+});
+
+/**
+ * POST /api/admin/certificates/upload
+ * Uploads a signed certificate file (.crt/.pem) from the CA.
+ * Body: { certificate: string } (PEM-encoded certificate content)
+ * Returns: { message: string }
+ * ADMIN only.
+ */
+app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { certificate } = req.body as { certificate?: string };
+
+  if (!certificate?.trim()) {
+    res.status(400).json({ error: 'certificate content is required (PEM format)' });
+    return;
+  }
+
+  // Validate PEM format
+  if (!certificate.includes('-----BEGIN CERTIFICATE-----') || !certificate.includes('-----END CERTIFICATE-----')) {
+    res.status(400).json({ error: 'Invalid certificate format. Must be PEM-encoded.' });
+    return;
+  }
+
+  try {
+    const certDir = path.join(__dirname, '../../certs');
+    const certPath = path.join(certDir, 'server.crt');
+
+    // Write certificate to file
+    fs.writeFileSync(certPath, certificate.trim() + '\n', { mode: 0o600 });
+
+    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
+
+    // Audit log
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
+    `;
+
+    res.json({
+      message: 'Certificate uploaded successfully. Restart the backend container to apply changes.',
+      restartCommand: 'docker compose -f docker-compose.prod.yml restart backend',
+      certPath: '/certs/server.crt (inside container)',
+    });
+
+  } catch (error) {
+    log.error('[POST /api/admin/certificates/upload] Error:', error);
+    res.status(500).json({ error: 'Failed to save certificate' });
+  }
+});
+
 // ─── Admin Utilities ──────────────────────────────────────────────────────────
 
 /**

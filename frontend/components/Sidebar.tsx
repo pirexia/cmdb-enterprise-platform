@@ -14,18 +14,19 @@ import type { Locale } from "@/contexts/LanguageContext";
 // ─── Nav item definitions (keys reference locales/[lang].json) ────────────────
 
 const NAV_ITEMS = [
-  { labelKey: "sidebar.dashboard",       href: "/",               icon: LayoutDashboard, adminOnly: false },
-  { labelKey: "sidebar.inventory",       href: "/inventory",      icon: Monitor,         adminOnly: false },
-  { labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities", icon: Shield,          adminOnly: false },
-  { labelKey: "sidebar.map",             href: "/map",            icon: Network,         adminOnly: false },
-  { labelKey: "sidebar.integrations",   href: "/integrations",   icon: Plug,            adminOnly: true  },
-  { labelKey: "sidebar.reports",        href: "/reports",        icon: BarChart,        adminOnly: false },
-  { labelKey: "sidebar.contracts",      href: "/contracts",      icon: FileText,        adminOnly: false },
-  { labelKey: "sidebar.entities",       href: "/entities",       icon: Building2,       adminOnly: false },
-  { labelKey: "sidebar.profile",        href: "/profile",        icon: UserCircle,      adminOnly: false },
-  { labelKey: "sidebar.masters",         href: "/admin/masters",  icon: Building2,       adminOnly: true  },
-  { labelKey: "sidebar.audit",          href: "/audit",          icon: ClipboardList,   adminOnly: true  },
-  { labelKey: "sidebar.settings",       href: "/settings",       icon: Settings,        adminOnly: true  },
+  { labelKey: "sidebar.dashboard",       href: "/",                      icon: LayoutDashboard, adminOnly: false },
+  { labelKey: "sidebar.inventory",       href: "/inventory",             icon: Monitor,         adminOnly: false },
+  { labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities",        icon: Shield,          adminOnly: false },
+  { labelKey: "sidebar.map",             href: "/map",                   icon: Network,         adminOnly: false },
+  { labelKey: "sidebar.integrations",   href: "/integrations",          icon: Plug,            adminOnly: true  },
+  { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart,        adminOnly: false },
+  { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText,        adminOnly: false },
+  { labelKey: "sidebar.entities",       href: "/entities",              icon: Building2,       adminOnly: false },
+  { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle,      adminOnly: false },
+  { labelKey: "sidebar.masters",         href: "/admin/masters",         icon: Building2,       adminOnly: true  },
+  { labelKey: "sidebar.certificates",    href: "/admin/certificates",    icon: Shield,          adminOnly: true  },
+  { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   adminOnly: true  },
+  { labelKey: "sidebar.settings",       href: "/settings",              icon: Settings,        adminOnly: true  },
 ];
 
 // ─── Language selector ────────────────────────────────────────────────────────

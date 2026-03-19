@@ -15,14 +15,16 @@
 5. [Flujo de Gobernanza: Orden de Registro](#5-flujo-de-gobernanza-orden-de-registro)
 6. [Gestión del Inventario de CIs](#6-gestión-del-inventario-de-cis)
 7. [Importación Masiva por CSV](#7-importación-masiva-por-csv)
-8. [Gestión de Vulnerabilidades](#8-gestión-de-vulnerabilidades)
-9. [Contratos y Adendas](#9-contratos-y-adendas)
-10. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#10-centro-de-consulta-de-ciclo-de-vida-eoless)
-11. [Alertas Diarias Automáticas](#11-alertas-diarias-automáticas)
-12. [Centro de Reportes](#12-centro-de-reportes)
-13. [Configuración y Gestión de Usuarios](#13-configuración-y-gestión-de-usuarios)
-14. [Mapa de Dependencias](#14-mapa-de-dependencias)
-15. [Registro de Auditoría](#15-registro-de-auditoría)
+8. [Gestión de Relaciones y Topología](#8-gestión-de-relaciones-y-topología)
+9. [Gestión de Vulnerabilidades](#9-gestión-de-vulnerabilidades)
+10. [Contratos y Adendas](#10-contratos-y-adendas)
+11. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#11-centro-de-consulta-de-ciclo-de-vida-eoless)
+12. [Alertas Diarias Automáticas](#12-alertas-diarias-automáticas)
+13. [Centro de Reportes](#13-centro-de-reportes)
+14. [Configuración y Gestión de Usuarios](#14-configuración-y-gestión-de-usuarios)
+15. [Mapa de Dependencias](#15-mapa-de-dependencias)
+16. [Registro de Auditoría](#16-registro-de-auditoría)
+17. [Gestión de Certificados SSL/TLS](#17-gestión-de-certificados-ssltls)
 
 ---
 
@@ -261,7 +263,70 @@ La importación masiva permite cargar cientos de CIs desde un archivo Excel/CSV.
 
 ---
 
-## 8. Gestión de Vulnerabilidades
+## 8. Gestión de Relaciones y Topología
+
+La plataforma soporta relaciones N:M entre CIs para modelar la topología de infraestructura y analizar el impacto de cambios.
+
+### Tipos de relación soportados
+
+| Tipo | Descripción | Ejemplo |
+|------|-------------|---------|
+| **HOSTS** | El CI origen aloja/contiene al CI destino | Servidor físico → Máquina virtual |
+| **DEPENDS_ON** | El CI origen depende del CI destino | Aplicación web → Base de datos |
+| **CONNECTED_TO** | El CI origen está conectado al CI destino | Servidor → Switch de red |
+| **PROVIDES_SERVICE** | El CI origen provee un servicio al CI destino | Servidor DNS → Clientes |
+| **BACKED_UP_BY** | El CI origen está respaldado por el CI destino | Servidor producción → Sistema de backup |
+
+### Ver relaciones de un CI
+
+1. Ve al **Inventario de CIs**
+2. Haz clic en el CI que quieres consultar
+3. En el detalle, busca la pestaña **"Relaciones"** o **"Topología"**
+4. Verás dos listas:
+   - **Relaciones salientes** (este CI → otros CIs)
+   - **Relaciones entrantes** (otros CIs → este CI)
+
+### Crear una nueva relación (solo ADMIN)
+
+1. En la vista de detalle del CI, sección **"Relaciones"**
+2. Haz clic en **"Añadir Relación"**
+3. Busca el CI destino usando el buscador (autocomplete por nombre)
+4. Selecciona el **tipo de relación** (HOSTS, DEPENDS_ON, etc.)
+5. Haz clic en **"Crear Relación"**
+
+### Eliminar una relación (solo ADMIN)
+
+1. En la lista de relaciones del CI
+2. Haz clic en el icono 🗑️ junto a la relación que quieres eliminar
+3. Confirma la eliminación
+
+### Casos de uso prácticos
+
+**Ejemplo 1: Mapear virtualización**
+```
+[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-WEB-01]
+[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-APP-01]
+[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-DB-01]
+```
+
+**Ejemplo 2: Dependencias de aplicación**
+```
+[APP-WEB-FRONTEND] --DEPENDS_ON--> [APP-API-BACKEND]
+[APP-API-BACKEND]  --DEPENDS_ON--> [POSTGRESQL-CLUSTER]
+```
+
+**Ejemplo 3: Topología de red**
+```
+[SERVIDOR-01] --CONNECTED_TO--> [SWITCH-CORE-01]
+[SERVIDOR-02] --CONNECTED_TO--> [SWITCH-CORE-01]
+[SWITCH-CORE-01] --CONNECTED_TO--> [ROUTER-PRINCIPAL]
+```
+
+> **Análisis de impacto:** Si el `POSTGRESQL-CLUSTER` tiene una ventana de mantenimiento, puedes ver qué aplicaciones dependen de él y notificar a los propietarios.
+
+---
+
+## 9. Gestión de Vulnerabilidades
 
 ### Ver el panel de vulnerabilidades
 1. Haz clic en **"Vulnerabilidades"** en el menú lateral
@@ -297,7 +362,7 @@ La importación masiva permite cargar cientos de CIs desde un archivo Excel/CSV.
 
 ---
 
-## 9. Contratos y Adendas
+## 10. Contratos y Adendas
 
 ### Ver contratos
 1. Haz clic en **"Contratos y Adendas"** en el menú lateral
@@ -362,7 +427,7 @@ Tras confirmar las fechas con las fuentes externas:
 
 ---
 
-## 11. Alertas Diarias Automáticas
+## 12. Alertas Diarias Automáticas
 
 El motor de alertas envía automáticamente un informe diario por email con los activos que requieren atención.
 
@@ -391,7 +456,7 @@ El email contiene tres secciones (si hay elementos que reportar):
 
 ---
 
-## 12. Centro de Reportes
+## 13. Centro de Reportes
 
 El Centro de Reportes permite generar y descargar informes en PDF y Excel.
 
@@ -423,7 +488,7 @@ En las páginas de Inventario, Vulnerabilidades y Contratos:
 
 ---
 
-## 13. Configuración y Gestión de Usuarios
+## 14. Configuración y Gestión de Usuarios
 
 > Solo disponible para usuarios con rol **ADMIN**
 
@@ -458,7 +523,7 @@ Muestra todos los usuarios del sistema con:
 
 ---
 
-## 14. Mapa de Dependencias
+## 15. Mapa de Dependencias
 
 El Mapa de Dependencias visualiza las relaciones entre CIs (ej: una aplicación que depende de un servidor, que depende de un switch).
 
@@ -476,7 +541,7 @@ Al crear o editar un CI, se puede configurar el campo **"CI Padre"** para establ
 
 ---
 
-## 15. Registro de Auditoría
+## 16. Registro de Auditoría
 
 > Solo disponible para usuarios con rol **ADMIN**
 

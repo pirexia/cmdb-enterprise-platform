@@ -468,6 +468,95 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
   }
 });
 
+/**
+ * PATCH /api/cis/:id
+ * Updates a Configuration Item.
+ * ADMIN only.
+ */
+app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  log.info(`[PATCH /api/cis/${id}] Body received:`, JSON.stringify(req.body, null, 2));
+
+  try {
+    const {
+      name, criticality, environment, ciType, status, inventoryNumber,
+      branchId, ciModelId, businessOwnerId, technicalLeadId,
+      eolDate: eolDateRaw, eosDate: eosDateRaw,
+    } = req.body as {
+      name?: string; criticality?: Criticality; environment?: Environment;
+      ciType?: string; status?: string; inventoryNumber?: string;
+      branchId?: string | null; ciModelId?: string | null;
+      businessOwnerId?: string | null; technicalLeadId?: string | null;
+      eolDate?: string | null; eosDate?: string | null;
+    };
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (criticality) updateData.criticality = criticality;
+    if (environment) updateData.environment = environment;
+    if (ciType) updateData.ciType = ciType;
+    if (status) updateData.status = status;
+    if (inventoryNumber !== undefined) updateData.inventoryNumber = inventoryNumber || null;
+    if (branchId !== undefined) updateData.branchId = branchId || null;
+    if (ciModelId !== undefined) updateData.ciModelId = ciModelId || null;
+    if (businessOwnerId !== undefined) updateData.businessOwnerId = businessOwnerId || null;
+    if (technicalLeadId !== undefined) updateData.technicalLeadId = technicalLeadId || null;
+    if (eolDateRaw !== undefined) updateData.eolDate = eolDateRaw ? new Date(eolDateRaw) : null;
+    if (eosDateRaw !== undefined) updateData.eosDate = eosDateRaw ? new Date(eosDateRaw) : null;
+
+    const ci = await prisma.cI.update({
+      where: { id },
+      data: updateData,
+      include: CI_INCLUDE,
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json(ci);
+  } catch (error: unknown) {
+    console.error('[PATCH /api/cis/:id] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2025') {
+      res.status(404).json({ error: 'CI not found' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/cis/:id
+ * Deletes a Configuration Item (cascade deletes hardware/software).
+ * ADMIN only.
+ */
+app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    // Check if CI exists
+    const ci = await prisma.cI.findUnique({ where: { id }, select: { name: true } });
+    if (!ci) {
+      res.status(404).json({ error: 'CI not found' });
+      return;
+    }
+
+    // Delete CI (cascade handles hardware/software via Prisma schema)
+    await prisma.cI.delete({ where: { id } });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, message: `CI "${ci.name}" deleted successfully` });
+  } catch (error) {
+    console.error('[DELETE /api/cis/:id] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Vulnerability Lifecycle ───────────────────────────────────────────────────
 
 /**
@@ -668,11 +757,23 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
     return;
   }
 
+  // Official CI type categories (Enterprise standard)
+  const OFFICIAL_CI_TYPES = [
+    'PHYSICAL_SERVER',
+    'VIRTUAL_SERVER',
+    'DATABASE',
+    'NETWORK_EQUIPMENT',
+    'STORAGE',
+    'BACKUP',
+  ];
+
   const validCriticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
   const validEnvironments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
+  
+  // Extended types for backward compatibility (imports)
   const hwTypes = [
-    'HARDWARE','PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','STORAGE',
-    'DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
+    ...OFFICIAL_CI_TYPES,
+    'HARDWARE','NETWORK','DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
     'VIDEOCONFERENCE','SMART_DISPLAY','TIME_CLOCK','IP_PHONE',
     'SMARTPHONE','TABLET','PDA','BARCODE_SCANNER',
     'IP_CAMERA','UPS','WIFI_AP','CLOUD_INSTANCE','CLOUD_STORAGE',

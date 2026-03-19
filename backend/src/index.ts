@@ -201,7 +201,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     // Extended user row — includes MFA fields (added via add_mfa_fields migration)
     type UserRow = { id: string; username: string; email: string; password: string | null; role: string; mfa_enabled: boolean; mfa_secret: string | null };
 
-    let user: UserRow;
+    let user: UserRow | null = null;
     let ldapSuccess = false;
 
     // ── Domain Pre-Check: Skip LDAP for local accounts (@cmdb.local) ─────────
@@ -256,6 +256,12 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       }
       user = rows[0];
       log.info(`[POST /api/auth/login] Local authentication successful for ${email}`);
+    }
+
+    // ── Null check for user variable ─────────────────────────────────────────
+    if (!user) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
 
     // ── MFA check (common to both paths) ──────────────────────────────────────

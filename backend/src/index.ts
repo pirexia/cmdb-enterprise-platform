@@ -19,6 +19,16 @@ import QRCode from 'qrcode';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
+const APP_ENV = process.env.APP_ENV ?? 'prod';
+const IS_DEV = APP_ENV === 'dev';
+
+// ── Conditional logging helper ────────────────────────────────────────────────
+const log = {
+  info: (...args: unknown[]) => { if (IS_DEV) console.log(...args); },
+  warn: (...args: unknown[]) => console.warn(...args),
+  error: (...args: unknown[]) => console.error(...args),
+};
+
 const app    = express();
 const prisma = new PrismaClient();
 const PORT   = process.env.PORT || 3000;
@@ -217,7 +227,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         rows = await prisma.$queryRaw<UserRow[]>`
           SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
         `;
-        console.log(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
+        log.info(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
       }
       user = rows[0];
 
@@ -366,7 +376,7 @@ app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
 });
 
 app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
+  log.info('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
   try {
     const {
       name, apiSlug, criticality, environment,
@@ -535,7 +545,7 @@ app.get('/api/contracts', authenticateToken, async (_req: Request, res: Response
 });
 
 app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/contracts] Body received:', JSON.stringify(req.body, null, 2));
+  log.info('[POST /api/contracts] Body received:', JSON.stringify(req.body, null, 2));
   try {
     const { contractNumber, startDate, endDate, vendorId, parentContractId, ciIds } = req.body as {
       contractNumber: string; startDate: string; endDate?: string;
@@ -600,7 +610,7 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
         console.error(`[sync-manufacturers] Error inserting "${name}":`, e);
       }
     }
-    console.log(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
+    log.info(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
     res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors, errorLog });
     return;
   }
@@ -806,7 +816,7 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       SET "vulnerabilities" = '[]'::jsonb
       WHERE "vulnerabilities" IS NOT NULL
     `;
-    console.log(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
+    log.info(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
     res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
@@ -884,7 +894,7 @@ app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (
 app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "manufacturers" ORDER BY name ASC`;
-    console.log(`[GET /api/masters/manufacturers] rows=${rows.length}`);
+    log.info(`[GET /api/masters/manufacturers] rows=${rows.length}`);
     res.json(rows);
   } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: String(e) }); }
 });
@@ -1058,7 +1068,7 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
  * }
  */
 app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/integrations/greenbone] Processing report…');
+  log.info('[POST /api/integrations/greenbone] Processing report…');
   try {
     type GBVuln = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
     type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
@@ -1105,7 +1115,7 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       `;
 
       processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
-      console.log(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+      log.info(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
     }
 
     res.json({
@@ -1138,7 +1148,7 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
  * }
  */
 app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/integrations/crowdstrike] Processing report…');
+  log.info('[POST /api/integrations/crowdstrike] Processing report…');
   try {
     type CSDevice = {
       hostname: string; agent_id: string; agent_version: string;
@@ -1186,7 +1196,7 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       `;
 
       processed.push({ ci: ci.name, matched: true, status: device.status });
-      console.log(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
+      log.info(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
     }
 
     res.json({
@@ -1209,7 +1219,7 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
  * ADMIN only. Use this to verify SMTP config without waiting for the daily cron.
  */
 app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
+  log.info(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
   try {
     const result = await runAndSendAlerts();
     res.json({
@@ -1237,15 +1247,15 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
 const CRON_SCHEDULE = process.env.ALERT_CRON_SCHEDULE ?? '30 8 * * *';
 
 cron.schedule(CRON_SCHEDULE, () => {
-  console.log(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
+  log.info(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
   runAndSendAlerts()
-    .then((r) => console.log(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
-    .catch((e) => console.error('[AlertCron] Error:', e));
+    .then((r) => log.info(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
+    .catch((e) => log.error('[AlertCron] Error:', e));
 }, {
   timezone: 'Europe/Madrid',
 });
 
-console.log(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
+log.info(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
 
 // ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
 // Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.
@@ -1256,7 +1266,7 @@ const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS ?? '365',
 if (AUDIT_RETENTION_DAYS > 0) {
   cron.schedule('0 3 * * *', async () => {
     try {
-      console.log(`[AuditPurgeCron] Triggered at ${new Date().toISOString()}`);
+      log.info(`[AuditPurgeCron] Triggered at ${new Date().toISOString()}`);
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - AUDIT_RETENTION_DAYS);
 
@@ -1266,17 +1276,17 @@ if (AUDIT_RETENTION_DAYS > 0) {
       `;
 
       const deleted = Number(result);
-      console.log(`[AuditPurgeCron] [INFO] Deleted ${deleted} audit log record(s) older than ${AUDIT_RETENTION_DAYS} days (cutoff: ${cutoffDate.toISOString()})`);
+      log.info(`[AuditPurgeCron] [INFO] Deleted ${deleted} audit log record(s) older than ${AUDIT_RETENTION_DAYS} days (cutoff: ${cutoffDate.toISOString()})`);
     } catch (error) {
-      console.error('[AuditPurgeCron] Error during purge:', error);
+      log.error('[AuditPurgeCron] Error during purge:', error);
     }
   }, {
     timezone: 'Europe/Madrid',
   });
 
-  console.log(`[AuditPurgeCron] Scheduled daily at 03:00 AM (TZ: Europe/Madrid) — Retention: ${AUDIT_RETENTION_DAYS} days`);
+  log.info(`[AuditPurgeCron] Scheduled daily at 03:00 AM (TZ: Europe/Madrid) — Retention: ${AUDIT_RETENTION_DAYS} days`);
 } else {
-  console.log('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
+  log.info('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
 }
 
 // ─── Server ───────────────────────────────────────────────────────────────────

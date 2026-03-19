@@ -9,6 +9,9 @@ export default function LoginPage() {
   const { login } = useAuth();
   const router    = useRouter();
 
+  const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
+  const themeColor = process.env.NEXT_PUBLIC_THEME_COLOR || "#4f46e5";
+
   const [email,       setEmail]       = useState("");
   const [password,    setPassword]    = useState("");
   const [showPwd,     setShowPwd]     = useState(false);
@@ -44,14 +47,14 @@ export default function LoginPage() {
         {/* Card */}
         <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
           {/* Header band */}
-          <div className="bg-indigo-600 px-8 py-7 text-center">
+          <div className="px-8 py-7 text-center" style={{ backgroundColor: themeColor }}>
             <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mb-3">
               {mfaRequired
                 ? <ShieldCheck className="h-7 w-7 text-white" />
                 : <Server className="h-7 w-7 text-white" />}
             </div>
-            <h1 className="text-xl font-bold text-white">CMDB Platform</h1>
-            <p className="text-xs text-indigo-200 mt-1">
+            <h1 className="text-xl font-bold text-white">{companyName}</h1>
+            <p className="text-xs text-white/70 mt-1">
               {mfaRequired ? "Verificación en dos pasos (MFA)" : "Configuration Management Database"}
             </p>
           </div>

@@ -19,22 +19,41 @@
 
 ---
 
-## ✨ Características
+## ✨ Características Enterprise
+
+### Core Features
 
 | Módulo | Descripción |
 |--------|-------------|
-| 🌍 **Soporte Multilingüe (i18n)** | Interfaz completa en Español e Inglés, con selector de idioma persistente. |
-| 🔐 **Seguridad Enterprise** | Integración LDAP/Active Directory, Multi-Factor Authentication (MFA) basado en TOTP, Roles (Admin/Viewer) y cumplimiento con ISO 27001 (control de acceso, criptografía y auditoría). |
-| 📡 **Inteligencia de Hardware/Software** | Centro de Consulta de Ciclo de Vida con búsqueda EOL/EOSL asistida por fuentes externas (endoflife.date, Park Place, Cloud-Shelf) y sugerencia de fechas estándar. |
-| 📧 **Proactividad (Alertas)** | Motor de alertas diarias por correo electrónico con informes personalizados sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas pendientes. |
-| 🐳 **Despliegue Optimizado** | Imágenes Docker Multi-stage y configuración segura para entornos de producción en RHEL/Podman, con reinicio automático y volúmenes persistentes. |
-| 📊 **Dashboard** | Resumen ejecutivo interactivo de CIs, vulnerabilidades, contratos y estado de seguridad. |
-| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía, criticidad, entorno y metadatos de hardware/software. |
-| 🕸️ **Mapa de Dependencias** | Visualización interactiva de relaciones entre CIs con React Flow. |
-| 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas y monitoreo de vencimientos. |
-| 🛡️ **Gestión de Vulnerabilidades** | Vista centralizada de hallazgos de seguridad, ciclo de vida (Nuevo → Resuelto) e integración con Greenbone OpenVAS y CrowdStrike Falcon. |
-| 📋 **Centro de Reportes** | Generación de informes en PDF/CSV de obsolescencia, contratos y un informe ejecutivo de seguridad. |
-| 🕵️ **Registro de Auditoría** | Trazabilidad completa de todas las acciones administrativas con detalles de usuario y fecha. |
+| 🌍 **Soporte Multilingüe (i18n)** | Interfaz completa en Español e Inglés con selector de idioma persistente y contextos compartidos. |
+| 🔐 **Seguridad Enterprise** | Autenticación Híbrida LDAP/AD + Local con fail-soft fallback, MFA (TOTP RFC 6238), RBAC (Admin/Viewer), JWT HS256, bcrypt cost-10, conformidad ISO 27001. |
+| 📡 **Inteligencia de Ciclo de Vida** | Integración con endoflife.date API para automatización de EOL/EOSL, centro de consulta de hardware/software, verificación manual con fuentes externas. |
+| 📧 **Proactividad (Alertas)** | Motor de alertas diarias (cron) con informes personalizados por email sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas. |
+| 🕸️ **Topología y Dependencias** | Relaciones N:M entre CIs con tipos (HOSTS, DEPENDS_ON, CONNECTED_TO), análisis de impacto, mapeo visual con React Flow. |
+| 🐳 **Infraestructura Production-Ready** | Despliegue Podman Rootless en RHEL con persistencia (loginctl enable-linger), imágenes multi-stage, usuario de servicio dedicado, conformidad Zero Trust. |
+
+### CMDB Core
+
+| Módulo | Descripción |
+|--------|-------------|
+| 📊 **Dashboard** | Resumen ejecutivo interactivo de CIs, vulnerabilidades, contratos y estado de seguridad en tiempo real. |
+| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía oficial (Physical Server, Virtual Server, Database, Network Equipment, Storage, Backup), criticidad, entorno y metadatos hardware/software. |
+| 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas jerárquicas y monitoreo automático de vencimientos. |
+| 🛡️ **Gestión de Vulnerabilidades** | Vista centralizada de CVEs, ciclo de vida (Nuevo → Asignado → En Curso → Resuelto), integración con Greenbone OpenVAS y CrowdStrike Falcon. |
+| 📋 **Centro de Reportes** | Generación de informes en PDF/CSV: obsolescencia, contratos próximos a vencer, informe ejecutivo de seguridad. |
+| 🗂️ **Datos Maestros** | CRUD completo de tablas auxiliares: Áreas de Soporte, Sedes, Fabricantes, Modelos de Dispositivos, Proveedores. |
+| 🕵️ **Registro de Auditoría** | Trazabilidad completa de todas las acciones administrativas con purga automático de registros antiguos (retención configurable). |
+
+### Security & Operations
+
+| Feature | Descripción |
+|---------|-------------|
+| 🔒 **SSL/TLS Management** | Generación de CSR via UI, upload de certificados firmados, TLS fallback automático a HTTP si faltan certificados. |
+| 🔑 **LDAP/AD Hybrid Auth** | Pre-check de dominio (@cmdb.local bypasses LDAP), fail-soft fallback a base de datos local ante caídas del AD. |
+| 📦 **Database Maintenance** | Purga automática de audit logs (AUDIT_RETENTION_DAYS), script de VACUUM ANALYZE + REINDEX semanal, monitorización de bloat PostgreSQL. |
+| 💾 **Capacity Planning** | Documentación LVM dedicado para /home (Podman rootless), tablas de dimensionamiento por volumen de CIs (1K, 5K, 20K+). |
+| 🏗️ **ISO 27001 Ready** | Usuario de servicio dedicado, permisos restrictivos (750/600), cgroupfs configuration para estabilidad RHEL/Podman. |
+| 🌐 **Dynamic Branding** | White-label: nombre de empresa, logo y colores corporativos configurables vía variables de entorno. |
 
 ---
 
@@ -144,7 +163,9 @@ Para poner el proyecto en marcha rápidamente en un entorno de desarrollo local 
 
    **Credenciales por defecto (desarrollo):**
    - Admin: `admin@cmdb.local` / `Admin1234!`
-   - Auditor: `auditor@cmdb.local` / `audit123`
+   - Auditor: `auditor@cmdb.local` / `Audit1234!`
+   
+   ⚠️ **Cambiar contraseñas inmediatamente tras el primer login en producción.**
 
 ---
 

@@ -59,15 +59,23 @@ export default function Sidebar() {
   const { user, logout, isAdmin } = useAuth();
   const { t }                  = useLanguage();
 
+  const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || t("brand.name");
+  const logoUrl = process.env.NEXT_PUBLIC_LOGO_URL;
+  const themeColor = process.env.NEXT_PUBLIC_THEME_COLOR || '#4f46e5';
+
   return (
     <aside className="flex h-screen w-64 flex-shrink-0 flex-col border-r border-slate-200 bg-white">
       {/* Brand */}
       <div className="flex items-center gap-2.5 border-b border-slate-200 px-5 py-4">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-          <Server className="h-4 w-4 text-white" />
-        </div>
+        {logoUrl ? (
+          <img src={logoUrl} alt={companyName} className="h-8 w-8 object-contain" />
+        ) : (
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg" style={{ backgroundColor: themeColor }}>
+            <Server className="h-4 w-4 text-white" />
+          </div>
+        )}
         <div className="leading-tight">
-          <p className="text-sm font-bold text-slate-900">{t("brand.name")}</p>
+          <p className="text-sm font-bold text-slate-900">{companyName}</p>
           <p className="text-[10px] text-slate-400 uppercase tracking-wider">
             {t("brand.tagline")}
           </p>

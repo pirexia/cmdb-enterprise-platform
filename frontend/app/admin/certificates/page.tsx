@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/components/AppShell";
+import AppShell from "@/components/AppShell";
 import { Shield, Download, Upload, Loader2, CheckCircle, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 

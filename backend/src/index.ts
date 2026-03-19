@@ -1226,6 +1226,139 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
   }
 });
 
+// ── CI Relationships (Topology) ──────────────────────────────────────────────
+
+/**
+ * GET /api/cis/:id/relations
+ * Returns all relationships for a specific CI (both outgoing and incoming).
+ */
+app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    type RelationRow = {
+      id: string;
+      source_ci_id: string;
+      target_ci_id: string;
+      relation_type: string;
+      created_at: Date;
+      source_name: string;
+      source_slug: string;
+      target_name: string;
+      target_slug: string;
+    };
+
+    const relations = await prisma.$queryRaw<RelationRow[]>`
+      SELECT
+        r.id::text,
+        r.source_ci_id::text,
+        r.target_ci_id::text,
+        r.relation_type,
+        r.created_at,
+        s.name AS source_name,
+        s.api_slug AS source_slug,
+        t.name AS target_name,
+        t.api_slug AS target_slug
+      FROM ci_relations r
+      JOIN configuration_items s ON r.source_ci_id = s.id
+      JOIN configuration_items t ON r.target_ci_id = t.id
+      WHERE r.source_ci_id = ${id}::uuid OR r.target_ci_id = ${id}::uuid
+      ORDER BY r.created_at DESC
+    `;
+
+    const outgoing = relations.filter((r) => r.source_ci_id === id);
+    const incoming = relations.filter((r) => r.target_ci_id === id);
+
+    res.json({ outgoing, incoming, total: relations.length });
+  } catch (error) {
+    console.error('[GET /api/cis/:id/relations] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/cis/:id/relations
+ * Creates a new relationship between two CIs.
+ * Body: { targetCiId: string, relationType: string }
+ * ADMIN only.
+ */
+app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const sourceCiId = req.params.id;
+  const { targetCiId, relationType } = req.body as { targetCiId?: string; relationType?: string };
+
+  if (!targetCiId || !relationType) {
+    res.status(400).json({ error: 'targetCiId and relationType are required' });
+    return;
+  }
+
+  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
+  if (!validTypes.includes(relationType)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+    return;
+  }
+
+  if (sourceCiId === targetCiId) {
+    res.status(400).json({ error: 'A CI cannot have a relationship with itself' });
+    return;
+  }
+
+  try {
+    // Check if both CIs exist
+    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
+    `;
+    
+    if (Number(ciCheck[0]?.count) !== 2) {
+      res.status(404).json({ error: 'One or both CIs not found' });
+      return;
+    }
+
+    // Create relation
+    const relation = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      RETURNING id::text
+    `;
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
+    `;
+
+    res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
+  } catch (error: unknown) {
+    console.error('[POST /api/cis/:id/relations] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'This relationship already exists' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/relations/:id
+ * Deletes a CI relationship.
+ * ADMIN only.
+ */
+app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, message: 'Relationship deleted successfully' });
+  } catch (error) {
+    console.error('[DELETE /api/relations/:id] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * PATCH /api/cis/:id/verification
  * Updates the lastCheckDate and verificationSource fields for a CI.

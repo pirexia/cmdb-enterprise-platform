@@ -202,37 +202,46 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     type UserRow = { id: string; username: string; email: string; password: string | null; role: string; mfa_enabled: boolean; mfa_secret: string | null };
 
     let user: UserRow;
+    let ldapSuccess = false;
 
-    if (process.env.USE_LDAP === 'true') {
-      // ── LDAP / Active Directory path ────────────────────────────────────────
+    // ── Domain Pre-Check: Skip LDAP for local accounts (@cmdb.local) ─────────
+    const isLocalAccount = email.endsWith('@cmdb.local') || email.endsWith('@cmdb.internal');
+
+    if (process.env.USE_LDAP === 'true' && !isLocalAccount) {
+      // ── LDAP / Active Directory path with fail-soft fallback ────────────────
       try {
         await authenticateLDAP(email, password);
+        ldapSuccess = true;
+        log.info(`[POST /api/auth/login] LDAP authentication successful for ${email}`);
       } catch (ldapErr) {
-        console.error('[POST /api/auth/login] LDAP error:', ldapErr);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
+        log.warn('[POST /api/auth/login] LDAP authentication failed, attempting local fallback:', ldapErr);
+        // Do NOT return — fall through to local bcrypt validation
       }
 
-      let rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
-      `;
-
-      if (rows.length === 0) {
-        const username  = email.split('@')[0];
-        const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
-        await prisma.$executeRaw`
-          INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
-          VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
-        `;
-        rows = await prisma.$queryRaw<UserRow[]>`
+      if (ldapSuccess) {
+        // User authenticated via LDAP — check if exists in DB or auto-provision
+        let rows = await prisma.$queryRaw<UserRow[]>`
           SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
         `;
-        log.info(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
-      }
-      user = rows[0];
 
-    } else {
-      // ── Local bcrypt path ────────────────────────────────────────────────────
+        if (rows.length === 0) {
+          const username  = email.split('@')[0];
+          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          await prisma.$executeRaw`
+            INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
+            VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
+          `;
+          rows = await prisma.$queryRaw<UserRow[]>`
+            SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
+          `;
+          log.info(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
+        }
+        user = rows[0];
+      }
+    }
+
+    // ── Local bcrypt path (if LDAP disabled, local account, or LDAP failed) ──
+    if (!ldapSuccess) {
       const rows = await prisma.$queryRaw<UserRow[]>`
         SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
       `;
@@ -246,6 +255,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         return;
       }
       user = rows[0];
+      log.info(`[POST /api/auth/login] Local authentication successful for ${email}`);
     }
 
     // ── MFA check (common to both paths) ──────────────────────────────────────

@@ -128,8 +128,8 @@ export default function LoginPage() {
           </form>
         </div>
 
-        {/* Hint */}
-        {!mfaRequired && (
+        {/* Hint - Only visible in development */}
+        {!mfaRequired && process.env.NEXT_PUBLIC_APP_ENV === 'dev' && (
           <div className="mt-4 rounded-xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500">
             <p className="font-semibold text-slate-600 mb-2">Cuentas de prueba</p>
             <div className="space-y-1 font-mono">

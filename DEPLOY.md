@@ -311,6 +311,13 @@ FRONTEND_PORT=3001
 # URL del backend tal como la ve el NAVEGADOR del usuario (IP/dominio real)
 NEXT_PUBLIC_API_URL=https://lx-gest01p.tudominio.com:3000
 
+# ── Entorno de Aplicación ──────────────────────────────────────────────────
+# CRÍTICO: Establecer APP_ENV=prod en producción para:
+#   - Reducir verbosidad de logs (solo warn/error)
+#   - Ocultar helpers de UI (cuentas de prueba en login)
+APP_ENV=prod
+NEXT_PUBLIC_APP_ENV=prod
+
 # ── Seguridad ──────────────────────────────────────────────────────────────
 HTTPS_ENABLED=true
 CORS_ORIGINS=https://lx-gest01p.tudominio.com:3001

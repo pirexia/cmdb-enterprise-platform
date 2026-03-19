@@ -435,6 +435,141 @@ gunzip -c /opt/cmdb/backups/backup_<fecha-anterior>.sql.gz \
   | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
 ```
 
+### Cambio de Dominio Público y URL
+
+Este procedimiento es necesario cuando la organización decide migrar la CMDB a un nuevo dominio (ej: `cmdb.empresa.com` → `assets.empresa.com`) o cambiar de HTTP a HTTPS.
+
+> **⚠️ CRÍTICO:** Las variables `NEXT_PUBLIC_*` en Next.js se **bake** (inyectan) en el código del frontend durante la compilación. Cambiar estos valores en el `.env` sin recompilar el frontend **no tiene efecto**.
+
+#### Paso 1: Generar certificado para el nuevo dominio (vía UI)
+
+Si el cambio involucra un nuevo dominio con certificado SSL:
+
+```bash
+# 1. Acceder a la plataforma con la URL antigua
+https://old-domain.com:3001
+
+# 2. Ir al panel de Administración → Certificados SSL/TLS
+
+# 3. Generar nuevo CSR:
+#    - Common Name (CN): nuevo-dominio.empresa.com
+#    - Organization, Country, etc.
+
+# 4. Descargar el CSR generado
+
+# 5. Enviar el CSR a tu CA corporativa para firma
+
+# 6. Cuando recibas el certificado firmado (.crt/.pem), volver al panel
+
+# 7. Subir el certificado firmado usando el formulario de upload
+
+# 8. Anotar el comando de reinicio (lo ejecutarás en el Paso 4)
+```
+
+#### Paso 2: Actualizar registros DNS
+
+Modificar los registros DNS de tu organización para que el nuevo dominio apunte a la IP del servidor RHEL:
+
+```bash
+# Ejemplo (depende de tu proveedor DNS):
+# Tipo: A
+# Nombre: nuevo-dominio.empresa.com
+# Valor: 192.168.1.100 (IP del servidor cmdb-server)
+
+# Verificar propagación DNS
+dig nuevo-dominio.empresa.com +short
+# Debe mostrar: 192.168.1.100
+
+nslookup nuevo-dominio.empresa.com
+```
+
+#### Paso 3: Modificar variables de entorno
+
+Acceder al servidor vía SSH como `cmdb-admin`:
+
+```bash
+# Conectar al servidor
+ssh cmdb-admin@cmdb-server
+
+# Navegar al directorio de instalación
+cd /opt/cmdb-enterprise-platform
+
+# Editar el archivo .env
+nano .env
+```
+
+Actualizar **obligatoriamente** las siguientes variables:
+
+```bash
+# ── Frontend ──────────────────────────────────────────────────────────
+# URL del backend tal como la ve el NAVEGADOR del usuario
+NEXT_PUBLIC_API_URL=https://nuevo-dominio.empresa.com:3000
+
+# ── Seguridad ─────────────────────────────────────────────────────────
+# Lista de orígenes permitidos (CORS) — separados por coma
+CORS_ORIGINS=https://nuevo-dominio.empresa.com:3001,https://nuevo-dominio.empresa.com:3000
+```
+
+Guardar y salir (Ctrl+O, Enter, Ctrl+X).
+
+#### Paso 4: Reconstruir el contenedor del frontend
+
+> **OBLIGATORIO:** Next.js inyecta las variables `NEXT_PUBLIC_*` en **build time**, no en runtime. Sin rebuild, el frontend seguirá usando la URL antigua.
+
+```bash
+# Como cmdb-admin, desde /opt/cmdb-enterprise-platform
+
+# 1. Reconstruir solo el frontend (incluye las nuevas variables del .env)
+docker compose -f docker-compose.prod.yml build frontend --no-cache
+
+# 2. Reiniciar el backend para cargar el nuevo CORS_ORIGINS
+docker compose -f docker-compose.prod.yml restart backend
+
+# 3. Reiniciar el frontend con la imagen reconstruida
+docker compose -f docker-compose.prod.yml up -d frontend
+
+# 4. Verificar que los contenedores están corriendo
+docker compose -f docker-compose.prod.yml ps
+```
+
+#### Paso 5: Verificación post-migración
+
+```bash
+# 1. Verificar que el backend responde desde la nueva URL
+curl -k https://nuevo-dominio.empresa.com:3000/health
+# Respuesta esperada: {"status":"ok","timestamp":"..."}
+
+# 2. Verificar headers de seguridad
+curl -sI https://nuevo-dominio.empresa.com:3000/health | grep -i "x-frame\|cors"
+
+# 3. Verificar el certificado SSL
+openssl s_client -connect nuevo-dominio.empresa.com:3000 -showcerts 2>/dev/null | openssl x509 -noout -subject -dates
+# Verificar que el CN coincide con el nuevo dominio
+```
+
+#### Paso 6: Acceso desde el navegador
+
+1. **Limpiar la caché del navegador** (Ctrl+Shift+Delete o Cmd+Shift+Delete)
+2. Acceder a la nueva URL: `https://nuevo-dominio.empresa.com:3001`
+3. Iniciar sesión normalmente
+4. Verificar que todas las funciones operan correctamente (inventario, integraciones, etc.)
+
+#### Checklist de migración de dominio
+
+- [ ] Certificado SSL generado para el nuevo dominio y subido
+- [ ] Registros DNS actualizados y propagados (verificar con `dig`)
+- [ ] Variables `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS` actualizadas en `.env`
+- [ ] Frontend reconstruido con `--no-cache`
+- [ ] Backend reiniciado para cargar nuevo CORS
+- [ ] Contenedores verificados (`docker compose ps`)
+- [ ] Health check exitoso desde la nueva URL
+- [ ] Certificado SSL verificado (CN correcto)
+- [ ] Caché del navegador limpiada
+- [ ] Login y funciones críticas testeadas
+- [ ] Usuarios finales notificados del cambio de URL
+
+> **Downtime estimado:** 2-5 minutos (tiempo de rebuild del frontend). Planificar en ventana de mantenimiento o fuera de horario laboral.
+
 ---
 
 ## 9. Troubleshooting

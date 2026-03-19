@@ -17,6 +17,7 @@
     "entities":        "Entities",
     "profile":         "My Profile",
     "masters":         "🗂️ Master Data",
+    "certificates":    "🔐 SSL Certificates",
     "audit":           "🕵️ Audit Log",
     "settings":        "Settings"
   },

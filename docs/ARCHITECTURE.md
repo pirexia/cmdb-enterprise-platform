@@ -18,6 +18,7 @@
 8. [Módulos Funcionales](#8-módulos-funcionales)
 9. [Seguridad](#9-seguridad)
 10. [Decisiones de Diseño](#10-decisiones-de-diseño)
+11. [Capacity Planning y Dimensionamiento de Hardware](#11-capacity-planning-y-dimensionamiento-de-hardware)
 
 ---
 
@@ -339,3 +340,158 @@ audit_logs
 | i18n custom context | next-intl, react-i18next | Sin App Router complication, bundle mínimo, control total |
 | Alpine base images | Ubuntu, Debian | Imagen mínima (~50MB), menor superficie de ataque |
 | non-root USER node | root (default) | Requisito de hardening: principio de mínimo privilegio |
+
+---
+
+## 11. Capacity Planning y Dimensionamiento de Hardware
+
+Esta sección documenta los requisitos de hardware para el despliegue en producción de CMDB Enterprise Platform en entornos Red Hat Enterprise Linux (RHEL) con Podman Rootless.
+
+### 11.1 Particularidades de Podman Rootless
+
+> **⚠️ CRÍTICO: Almacenamiento en /home con Podman Rootless**
+>
+> A diferencia de Docker tradicional, **Podman Rootless almacena todas las imágenes, contenedores y volúmenes persistentes en el directorio home del usuario de servicio**:
+>
+> ```
+> /home/cmdb-admin/.local/share/containers/
+>   ├── storage/           → Imágenes y capas de contenedores (overlayfs)
+>   │   ├── overlay/       → Capas de imagen (Node.js, PostgreSQL, etc.)
+>   │   └── overlay-images/
+>   └── volumes/           → Datos persistentes de PostgreSQL
+>       ├── cmdb-postgres-data-prod/
+>       └── cmdb-tls-certs/
+> ```
+>
+> **Impacto:** Si `/home` no está en un volumen LVM dedicado con suficiente espacio, la base de datos PostgreSQL puede llenar la partición raíz (`/`) y provocar:
+> - Caída del sistema operativo
+> - Corrupción de datos de PostgreSQL
+> - Imposibilidad de arrancar nuevos contenedores
+> - Pérdida de logs y backups
+>
+> **Solución obligatoria en producción:**
+> - Crear un volumen LVM independiente para `/home` (o específicamente `/home/cmdb-admin`)
+> - Dimensionar según la tabla de escalado (sección 11.2)
+> - Monitorizar el uso de disco de forma proactiva
+
+### 11.2 Tabla de Dimensionamiento de Hardware
+
+La siguiente tabla proporciona guías de dimensionamiento basadas en el volumen proyectado de Configuration Items (CIs) en el inventario:
+
+| Volumen de CIs | vCPU | RAM | Espacio LVM en /home | Crecimiento BD (Postgres) | Casos de Uso |
+|----------------|------|-----|----------------------|---------------------------|--------------|
+| **Hasta 1.000** | 2 | 4 GB | 15 GB | ~500 MB | Pymes, entorno de pruebas, despliegues piloto |
+| **1.000 a 5.000** | 4 | 8 GB | 30 GB | ~2 GB | Empresas medianas, integraciones básicas (Greenbone, CrowdStrike) |
+| **5.000 a 20.000+** | 8+ | 16 GB+ | 60 GB+ | ~10 GB+ | Enterprise, escaneos masivos de vulnerabilidades, alto volumen de auditoría |
+
+#### Notas sobre el dimensionamiento:
+
+**vCPU:**
+- El backend Node.js es mono-hilo por request (Event Loop)
+- Podman ejecuta múltiples contenedores: PostgreSQL (intensivo en CPU durante queries complejos), backend, frontend
+- Se recomienda al menos 1 vCPU dedicado por servicio (3 mínimo)
+
+**RAM:**
+- PostgreSQL requiere buffer pool (~25% de la RAM total recomendada)
+- Node.js backend: ~512 MB en idle, hasta 1.5 GB bajo carga con 1000 CIs activos
+- Frontend Next.js standalone: ~300 MB
+- Se debe reservar RAM para el sistema operativo RHEL (~1 GB)
+
+**Espacio LVM en /home:**
+- **Imágenes de contenedores:** ~3-4 GB (Node.js 20 Alpine + PostgreSQL 16 Alpine + frontend)
+- **Base de datos PostgreSQL:** Depende del volumen de CIs (ver "Crecimiento BD")
+- **Logs de contenedores:** ~500 MB - 1 GB por mes (con logrotate configurado)
+- **Backups locales:** Si se almacenan en `/home/cmdb-admin/backups`, calcular ~1 GB por backup diario × retención (default 30 días)
+- **Margen de seguridad:** Siempre provisionar 30-50% más del cálculo base
+
+**Crecimiento de la base de datos:**
+- **Sin vulnerabilidades:** ~500 KB por CI (metadata + relaciones)
+- **Con vulnerabilidades JSONB (Greenbone):** ~2-5 MB por CI (depende del número de CVEs)
+- **Con auditoría completa:** +20% adicional por año (tabla `audit_logs`)
+
+### 11.3 Ejemplo de cálculo para 3.000 CIs
+
+**Escenario:** Empresa mediana con 3.000 CIs, integración con Greenbone, backups diarios con retención de 30 días.
+
+```
+Cálculo de espacio en /home:
+─────────────────────────────────────────────────
+Imágenes de contenedores:          4 GB
+Base de datos PostgreSQL:          1.5 GB  (3000 CIs × 500 KB)
+Vulnerabilidades JSONB:            4.5 GB  (3000 CIs × 1.5 MB avg)
+Logs de contenedores:              1 GB    (3 meses con logrotate)
+Backups diarios (30 días):         18 GB   (600 MB × 30 días)
+─────────────────────────────────────────────────
+Total:                             29 GB
+Margen de seguridad (40%):         +11.6 GB
+─────────────────────────────────────────────────
+Espacio LVM recomendado:           40-50 GB
+```
+
+**Hardware recomendado:**
+- vCPU: 4
+- RAM: 8 GB
+- LVM en /home: 50 GB
+- Filesystem: XFS (mejor rendimiento para bases de datos que ext4)
+
+### 11.4 Monitorización de espacio en disco (Obligatorio)
+
+```bash
+# Verificar uso de /home
+df -h /home
+
+# Verificar uso específico de Podman Rootless
+du -sh /home/cmdb-admin/.local/share/containers/
+
+# Verificar tamaño de la base de datos PostgreSQL
+podman exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "\l+"
+
+# Verificar uso de volúmenes Podman
+podman volume ls
+podman volume inspect cmdb-postgres-data-prod | grep Mountpoint
+du -sh $(podman volume inspect cmdb-postgres-data-prod --format '{{.Mountpoint}}')
+```
+
+### 11.5 Ampliación de LVM en caliente (si se queda sin espacio)
+
+Si el volumen `/home` se llena en producción, puedes ampliarlo sin detener los servicios:
+
+```bash
+# 1. Verificar espacio disponible en el Volume Group
+sudo vgs
+# VG   #PV #LV #SN Attr   VSize   VFree
+# vg0    1   3   0 wz--n- 100.00g 20.00g
+
+# 2. Extender el volumen lógico (+20 GB)
+sudo lvextend -L +20G /dev/vg0/lv_home
+
+# 3. Extender el filesystem (XFS se puede hacer en caliente)
+sudo xfs_growfs /home
+
+# 4. Verificar
+df -h /home
+```
+
+### 11.6 Recomendaciones de filesystem
+
+| Filesystem | Ventajas | Desventajas | Recomendación |
+|------------|----------|-------------|--------------|
+| **XFS** | Excelente rendimiento con archivos grandes (bases de datos), crecimiento en caliente | No se puede reducir el tamaño | ✅ **Recomendado para producción** |
+| **ext4** | Más maduro, soporta reducción de tamaño | Menor rendimiento en I/O intensivo | ⚠️ Aceptable pero no óptimo |
+| **btrfs** | Snapshots, compresión, CoW | Mayor complejidad, soporte limitado en RHEL 8 | ❌ No recomendado para producción RHEL |
+
+**Recomendación oficial:** Usar **XFS** para el volumen `/home` en producción con Podman Rootless.
+
+### 11.7 Checklist de capacidad antes del despliegue
+
+- [ ] `/home` está en un volumen LVM independiente (no en `/` raíz)
+- [ ] El volumen tiene al menos el tamaño calculado según la tabla (sección 11.2)
+- [ ] El filesystem es XFS
+- [ ] El Volume Group tiene espacio libre para ampliaciones futuras (mínimo 20% free)
+- [ ] Se ha configurado monitorización de uso de disco (alertas al 80%)
+- [ ] El plan de backups considera el crecimiento proyectado
+- [ ] Se ha documentado el procedimiento de ampliación de LVM
+
+---
+
+*Para consultar la documentación de despliegue completa, revisa [`DEPLOY.md - Sección 1.3`](../DEPLOY.md#13-verificar-dimensionamiento-de-almacenamiento-lvm).*

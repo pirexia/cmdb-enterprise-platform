@@ -32,6 +32,14 @@ enum LocationType {
   RACK
 }
 
+enum RelationType {
+  HOSTS              // Source hosts/contains target (e.g., Physical Server hosts VM)
+  DEPENDS_ON         // Source depends on target (e.g., App depends on Database)
+  CONNECTED_TO       // Source is connected to target (e.g., Server connected to Switch)
+  PROVIDES_SERVICE   // Source provides service to target
+  BACKED_UP_BY       // Source is backed up by target
+}
+
 model User {
   id              String   @id @default(uuid()) @db.Uuid
   username        String   @unique
@@ -238,10 +246,32 @@ model CI {
 
   contracts       Contract[]   @relation("ContractToCI")
 
+  // CI Relationships (N:M with attributes)
+  relationsFrom   CIRelation[] @relation("SourceCI")
+  relationsTo     CIRelation[] @relation("TargetCI")
+
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
   @@map("configuration_items")
+}
+
+// ─── CI Relationships (N:M with type attribute) ──────────────────────────────
+
+model CIRelation {
+  id           String       @id @default(uuid()) @db.Uuid
+  sourceCiId   String       @db.Uuid @map("source_ci_id")
+  targetCiId   String       @db.Uuid @map("target_ci_id")
+  relationType RelationType @map("relation_type")
+
+  sourceCI     CI           @relation("SourceCI", fields: [sourceCiId], references: [id], onDelete: Cascade)
+  targetCI     CI           @relation("TargetCI", fields: [targetCiId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime     @default(now()) @map("created_at")
+  createdBy    String?      @map("created_by")
+
+  @@unique([sourceCiId, targetCiId, relationType])
+  @@map("ci_relations")
 }
 
 model HardwareCI {

@@ -2,7 +2,7 @@ import { PrismaClient, Criticality, Environment, LocationType } from '@prisma/cl
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
-const BCRYPT_ROUNDS = 12;
+const BCRYPT_ROUNDS = 10;
 
 async function main() {
   console.log('🌱 Starting database seed...');
@@ -19,9 +19,10 @@ async function main() {
 
   // ─── Auth Users (raw SQL — new password/role cols not in TS types until DLL restart) ──
 
-  const adminHash  = await bcrypt.hash('admin123', BCRYPT_ROUNDS);
-  const auditHash  = await bcrypt.hash('audit123', BCRYPT_ROUNDS);
-  const genericHash = await bcrypt.hash('cmdb1234', BCRYPT_ROUNDS);
+  // Use Admin1234! as default password (meets complexity requirements)
+  const adminHash  = await bcrypt.hash('Admin1234!', BCRYPT_ROUNDS);
+  const auditHash  = await bcrypt.hash('Audit1234!', BCRYPT_ROUNDS);
+  const genericHash = await bcrypt.hash('Cmdb1234!', BCRYPT_ROUNDS);
 
   // admin@cmdb.local — ADMIN
   const adminUser = await prisma.user.create({
@@ -145,9 +146,10 @@ async function main() {
   console.log('\n🎉 Seed complete!');
   console.log('─'.repeat(50));
   console.log('  🔑 Login credentials:');
-  console.log('     admin@cmdb.local   / admin123  [ADMIN]');
-  console.log('     auditor@cmdb.local / audit123  [VIEWER]');
+  console.log('     admin@cmdb.local   / Admin1234!  [ADMIN]');
+  console.log('     auditor@cmdb.local / Audit1234!  [VIEWER]');
   console.log('─'.repeat(50));
+  console.log('  ⚠️  Change passwords immediately after first login in production!');
 }
 
 main()

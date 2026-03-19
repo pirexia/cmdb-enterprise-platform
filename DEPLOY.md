@@ -61,7 +61,83 @@ loginctl show-user cmdb-admin | grep Linger
 > **¿Qué hace `enable-linger`?**  
 > Permite que los servicios del usuario `cmdb-admin` permanezcan ejecutándose incluso cuando no hay sesión activa. Esto asegura que los contenedores Podman sobreviven a reinicios del sistema y cierres de sesión SSH.
 
-### 1.3 Preparar directorio de instalación con permisos restrictivos
+### 1.3 Verificar dimensionamiento de almacenamiento (LVM)
+
+> **⚠️ CRÍTICO - Podman Rootless y uso de /home**
+> 
+> A diferencia de Docker tradicional, **Podman Rootless almacena TODAS las imágenes, contenedores y volúmenes persistentes en el directorio home del usuario de servicio**, específicamente en:
+> 
+> ```
+> /home/cmdb-admin/.local/share/containers/
+>   ├── storage/           (imágenes y capas de contenedores)
+>   └── volumes/           (datos persistentes de PostgreSQL)
+> ```
+> 
+> **Riesgo:** Si `/home` no tiene suficiente espacio o está en la misma partición que `/` (raíz), la plataforma puede llenar el disco y provocar:
+> - Caída del sistema operativo
+> - Corrupción de base de datos PostgreSQL
+> - Imposibilidad de crear nuevos contenedores
+> 
+> **Solución obligatoria:** Crear un volumen LVM dedicado para `/home` (o específicamente para `/home/cmdb-admin`) con dimensionamiento adecuado.
+
+#### Dimensionamiento recomendado
+
+Consulta la tabla completa de capacity planning en [`docs/ARCHITECTURE.md - Sección 11`](docs/ARCHITECTURE.md#11-capacity-planning-y-dimensionamiento-de-hardware).
+
+**Resumen rápido:**
+
+| Volumen de CIs | Espacio mínimo en /home |
+|----------------|------------------------|
+| Hasta 1.000 | 15 GB |
+| 1.000 a 5.000 | 30 GB |
+| 5.000 a 20.000+ | 60 GB+ |
+
+#### Verificar espacio disponible en /home
+
+```bash
+# Verificar espacio disponible en /home
+df -h /home
+# Filesystem      Size  Used Avail Use% Mounted on
+# /dev/mapper/vg0-home   50G  2.0G   48G   4% /home
+
+# Si /home no es un volumen dedicado o tiene menos de 30 GB, es CRÍTICO crear uno
+
+# Verificar si /home está en un volumen LVM independiente
+lsblk
+lvs
+```
+
+#### Crear volumen LVM para /home (si no existe)
+
+Si `/home` no está en un volumen LVM separado o no tiene suficiente espacio, ejecuta:
+
+```bash
+# PRECAUCIÓN: Estos comandos requieren conocimientos de LVM y pueden causar pérdida de datos
+# Realiza un backup completo antes de proceder
+
+# 1. Crear el volumen lógico (ajusta el tamaño según tu tabla de capacity planning)
+sudo lvcreate -L 50G -n lv_home vg0
+
+# 2. Formatear con XFS (recomendado para bases de datos)
+sudo mkfs.xfs /dev/vg0/lv_home
+
+# 3. Montar temporalmente y copiar datos existentes
+sudo mkdir /mnt/new_home
+sudo mount /dev/vg0/lv_home /mnt/new_home
+sudo rsync -avxHAX /home/ /mnt/new_home/
+
+# 4. Actualizar /etc/fstab
+sudo nano /etc/fstab
+# Añadir: /dev/mapper/vg0-lv_home  /home  xfs  defaults  0 0
+
+# 5. Reiniciar o remontar
+sudo umount /mnt/new_home
+sudo mount -a
+```
+
+> **Recomendación de producción:** Planifica el dimensionamiento de `/home` durante la instalación inicial del servidor RHEL, no después del despliegue.
+
+### 1.4 Preparar directorio de instalación con permisos restrictivos
 
 ```bash
 # Crear directorio de instalación
@@ -78,7 +154,7 @@ ls -ld /opt/cmdb-enterprise-platform
 # drwxr-x--- 2 cmdb-admin cmdb-admin 4096 ... /opt/cmdb-enterprise-platform
 ```
 
-### 1.4 Cambiar al usuario de servicio
+### 1.5 Cambiar al usuario de servicio
 
 **Todas las operaciones posteriores deben ejecutarse como `cmdb-admin`:**
 
@@ -89,6 +165,11 @@ sudo su - cmdb-admin
 # Verificar que estás en el usuario correcto
 whoami
 # cmdb-admin
+
+# Verificar espacio disponible en tu directorio home
+df -h ~
+# Filesystem      Size  Used Avail Use% Mounted on
+# /dev/mapper/vg0-lv_home   50G  2.0G   48G   4% /home
 
 # Navegar al directorio de instalación
 cd /opt/cmdb-enterprise-platform

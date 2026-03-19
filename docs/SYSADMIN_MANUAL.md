@@ -17,8 +17,10 @@
 7. [Gestión de Logs y Monitorización](#7-gestión-de-logs-y-monitorización)
 8. [Actualización de la Aplicación](#8-actualización-de-la-aplicación)
 9. [Troubleshooting](#9-troubleshooting)
-10. [Seguridad y Hardening](#10-seguridad-y-hardening)
-11. [Tareas de Mantenimiento Periódico](#11-tareas-de-mantenimiento-periódico)
+10. [Configuración Avanzada de Podman (RHEL)](#10-configuración-avanzada-de-podman-rhel)
+11. [Mantenimiento de Base de Datos](#11-mantenimiento-de-base-de-datos)
+12. [Seguridad y Hardening](#12-seguridad-y-hardening)
+13. [Tareas de Mantenimiento Periódico](#13-tareas-de-mantenimiento-periódico)
 
 ---
 
@@ -433,6 +435,141 @@ gunzip -c /opt/cmdb/backups/backup_<fecha-anterior>.sql.gz \
   | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
 ```
 
+### Cambio de Dominio Público y URL
+
+Este procedimiento es necesario cuando la organización decide migrar la CMDB a un nuevo dominio (ej: `cmdb.empresa.com` → `assets.empresa.com`) o cambiar de HTTP a HTTPS.
+
+> **⚠️ CRÍTICO:** Las variables `NEXT_PUBLIC_*` en Next.js se **bake** (inyectan) en el código del frontend durante la compilación. Cambiar estos valores en el `.env` sin recompilar el frontend **no tiene efecto**.
+
+#### Paso 1: Generar certificado para el nuevo dominio (vía UI)
+
+Si el cambio involucra un nuevo dominio con certificado SSL:
+
+```bash
+# 1. Acceder a la plataforma con la URL antigua
+https://old-domain.com:3001
+
+# 2. Ir al panel de Administración → Certificados SSL/TLS
+
+# 3. Generar nuevo CSR:
+#    - Common Name (CN): nuevo-dominio.empresa.com
+#    - Organization, Country, etc.
+
+# 4. Descargar el CSR generado
+
+# 5. Enviar el CSR a tu CA corporativa para firma
+
+# 6. Cuando recibas el certificado firmado (.crt/.pem), volver al panel
+
+# 7. Subir el certificado firmado usando el formulario de upload
+
+# 8. Anotar el comando de reinicio (lo ejecutarás en el Paso 4)
+```
+
+#### Paso 2: Actualizar registros DNS
+
+Modificar los registros DNS de tu organización para que el nuevo dominio apunte a la IP del servidor RHEL:
+
+```bash
+# Ejemplo (depende de tu proveedor DNS):
+# Tipo: A
+# Nombre: nuevo-dominio.empresa.com
+# Valor: 192.168.1.100 (IP del servidor lx-gest01p)
+
+# Verificar propagación DNS
+dig nuevo-dominio.empresa.com +short
+# Debe mostrar: 192.168.1.100
+
+nslookup nuevo-dominio.empresa.com
+```
+
+#### Paso 3: Modificar variables de entorno
+
+Acceder al servidor vía SSH como `cmdb-admin`:
+
+```bash
+# Conectar al servidor
+ssh cmdb-admin@lx-gest01p
+
+# Navegar al directorio de instalación
+cd /opt/cmdb-enterprise-platform
+
+# Editar el archivo .env
+nano .env
+```
+
+Actualizar **obligatoriamente** las siguientes variables:
+
+```bash
+# ── Frontend ──────────────────────────────────────────────────────────
+# URL del backend tal como la ve el NAVEGADOR del usuario
+NEXT_PUBLIC_API_URL=https://nuevo-dominio.empresa.com:3000
+
+# ── Seguridad ─────────────────────────────────────────────────────────
+# Lista de orígenes permitidos (CORS) — separados por coma
+CORS_ORIGINS=https://nuevo-dominio.empresa.com:3001,https://nuevo-dominio.empresa.com:3000
+```
+
+Guardar y salir (Ctrl+O, Enter, Ctrl+X).
+
+#### Paso 4: Reconstruir el contenedor del frontend
+
+> **OBLIGATORIO:** Next.js inyecta las variables `NEXT_PUBLIC_*` en **build time**, no en runtime. Sin rebuild, el frontend seguirá usando la URL antigua.
+
+```bash
+# Como cmdb-admin, desde /opt/cmdb-enterprise-platform
+
+# 1. Reconstruir solo el frontend (incluye las nuevas variables del .env)
+docker compose -f docker-compose.prod.yml build frontend --no-cache
+
+# 2. Reiniciar el backend para cargar el nuevo CORS_ORIGINS
+docker compose -f docker-compose.prod.yml restart backend
+
+# 3. Reiniciar el frontend con la imagen reconstruida
+docker compose -f docker-compose.prod.yml up -d frontend
+
+# 4. Verificar que los contenedores están corriendo
+docker compose -f docker-compose.prod.yml ps
+```
+
+#### Paso 5: Verificación post-migración
+
+```bash
+# 1. Verificar que el backend responde desde la nueva URL
+curl -k https://nuevo-dominio.empresa.com:3000/health
+# Respuesta esperada: {"status":"ok","timestamp":"..."}
+
+# 2. Verificar headers de seguridad
+curl -sI https://nuevo-dominio.empresa.com:3000/health | grep -i "x-frame\|cors"
+
+# 3. Verificar el certificado SSL
+openssl s_client -connect nuevo-dominio.empresa.com:3000 -showcerts 2>/dev/null | openssl x509 -noout -subject -dates
+# Verificar que el CN coincide con el nuevo dominio
+```
+
+#### Paso 6: Acceso desde el navegador
+
+1. **Limpiar la caché del navegador** (Ctrl+Shift+Delete o Cmd+Shift+Delete)
+2. Acceder a la nueva URL: `https://nuevo-dominio.empresa.com:3001`
+3. Iniciar sesión normalmente
+4. Verificar que todas las funciones operan correctamente (inventario, integraciones, etc.)
+
+#### Checklist de migración de dominio
+
+- [ ] Certificado SSL generado para el nuevo dominio y subido
+- [ ] Registros DNS actualizados y propagados (verificar con `dig`)
+- [ ] Variables `NEXT_PUBLIC_API_URL` y `CORS_ORIGINS` actualizadas en `.env`
+- [ ] Frontend reconstruido con `--no-cache`
+- [ ] Backend reiniciado para cargar nuevo CORS
+- [ ] Contenedores verificados (`docker compose ps`)
+- [ ] Health check exitoso desde la nueva URL
+- [ ] Certificado SSL verificado (CN correcto)
+- [ ] Caché del navegador limpiada
+- [ ] Login y funciones críticas testeadas
+- [ ] Usuarios finales notificados del cambio de URL
+
+> **Downtime estimado:** 2-5 minutos (tiempo de rebuild del frontend). Planificar en ventana de mantenimiento o fuera de horario laboral.
+
 ---
 
 ## 9. Troubleshooting
@@ -519,7 +656,323 @@ lsof -i :3000
 
 ---
 
-## 10. Seguridad y Hardening
+## 10. Configuración Avanzada de Podman (RHEL)
+
+Esta sección documenta configuraciones específicas de Podman Rootless en entornos RHEL que pueden ser necesarias para resolver problemas de estabilidad.
+
+### 10.1 Gestor de cgroups: cgroupfs vs systemd
+
+Por defecto, Podman en RHEL utiliza `systemd` como gestor de cgroups. Sin embargo, en versiones específicas de RHEL/Podman (especialmente RHEL 8.x con Podman 3.x-4.x), se pueden presentar problemas de bloqueo al intentar eliminar o reiniciar contenedores cuando hay dependencias de red activas.
+
+**Síntomas comunes:**
+- Comandos `podman rm` o `podman-compose down` se quedan colgados indefinidamente
+- Contenedores en estado "stopping" que nunca terminan
+- Errores relacionados con `cni` o `netavark` al gestionar redes
+- Timeouts al intentar eliminar contenedores con `podman-compose`
+
+**Solución:** Forzar el uso de `cgroupfs` como gestor de cgroups.
+
+### 10.2 Configurar cgroupfs en Podman Rootless
+
+```bash
+# Crear el directorio de configuración de Podman si no existe
+mkdir -p ~/.config/containers
+
+# Crear o editar el archivo de configuración
+nano ~/.config/containers/containers.conf
+```
+
+Añade o modifica las siguientes líneas en el archivo:
+
+```ini
+[engine]
+# Forzar el uso de cgroupfs en lugar de systemd
+cgroup_manager = "cgroupfs"
+
+# Opcional: Ajustar el número de eventos que Podman puede procesar
+# Útil si tienes muchos contenedores
+events_logger = "file"
+
+# Opcional: Tiempo de espera para detener contenedores (segundos)
+stop_timeout = 30
+```
+
+Guarda el archivo y verifica la configuración:
+
+```bash
+# Verificar configuración actual
+podman info | grep -i cgroup
+# Debe mostrar: cgroupManager: cgroupfs
+
+# Si los cambios no se aplican, reinicia el servicio de Podman
+podman system reset --force  # ⚠️ ADVERTENCIA: Esto elimina todos los contenedores e imágenes
+# Alternativa: cerrar sesión y volver a iniciar
+```
+
+### 10.3 Configuración recomendada completa
+
+Archivo `~/.config/containers/containers.conf` completo para entornos de producción:
+
+```ini
+[containers]
+# Logs por defecto (json-file, journald, k8s-file)
+log_driver = "journald"
+
+# Tamaño máximo de logs por contenedor (ej: 10mb, 100mb)
+log_size_max = "50mb"
+
+[engine]
+# Gestor de cgroups (cgroupfs recomendado para RHEL 8.x con Podman < 4.5)
+cgroup_manager = "cgroupfs"
+
+# Backend de red (cni o netavark)
+# netavark es más moderno pero puede tener issues en RHEL 8.x
+network_backend = "cni"
+
+# Logger de eventos
+events_logger = "file"
+
+# Tiempo de espera para detener contenedores (segundos)
+stop_timeout = 30
+
+# Runtime por defecto (crun es más rápido que runc)
+runtime = "crun"
+
+[network]
+# Rango de subnet por defecto para redes de Podman
+default_subnet = "10.89.0.0/16"
+```
+
+### 10.4 Verificar y aplicar cambios
+
+```bash
+# Ver configuración activa de Podman
+podman info --format json | jq '.host.cgroupManager, .host.networkBackend'
+
+# Reiniciar servicios de Podman sin eliminar datos (Podman 4.3+)
+systemctl --user restart podman.socket
+
+# Si los cambios no se aplican, reset completo (elimina contenedores)
+podman system reset --force
+# Luego volver a desplegar desde docker-compose.prod.yml
+```
+
+### 10.5 Troubleshooting: Contenedores bloqueados
+
+Si después de cambiar a `cgroupfs` sigues teniendo contenedores que no se eliminan:
+
+```bash
+# Listar contenedores en todos los estados
+podman ps -a
+
+# Forzar eliminación de un contenedor específico
+podman rm -f <container-id>
+
+# Si persiste el bloqueo, matar el proceso del contenedor
+podman inspect <container-id> | grep Pid
+kill -9 <pid>
+
+# Última opción: limpiar todo el sistema de Podman
+podman system prune -a --volumes --force
+podman system reset --force
+```
+
+### 10.6 Cuándo usar cgroupfs vs systemd
+
+| Gestor | Ventajas | Desventajas | Cuándo usar |
+|--------|----------|-------------|-------------|
+| **systemd** | Integración con systemd, mejor para servicios del sistema | Puede causar bloqueos en RHEL 8.x, requiere cgroups v2 | RHEL 9+ con Podman 4.5+ |
+| **cgroupfs** | Mayor compatibilidad, menos bloqueos en redes | No integra con systemd, menos "limpio" | RHEL 8.x, Podman < 4.5, problemas de estabilidad |
+
+**Recomendación para producción ISO 27001:**
+- **RHEL 8.x con Podman 3.x-4.4:** Usar `cgroupfs`
+- **RHEL 9.x con Podman 4.5+:** Usar `systemd` (default)
+- **Si tienes bloqueos frecuentes:** Cambiar a `cgroupfs` independientemente de la versión
+
+---
+
+## 11. Mantenimiento de Base de Datos
+
+PostgreSQL utiliza MVCC (Multi-Version Concurrency Control) que genera "tuplas muertas" con cada UPDATE/DELETE. Sin mantenimiento regular, la base de datos puede sufrir degradación de rendimiento y consumo excesivo de disco.
+
+### 11.1 Purgado automático de audit logs (Backend)
+
+El backend ejecuta automáticamente un purge diario de registros de auditoría antiguos para evitar crecimiento infinito de la tabla `audit_logs`.
+
+**Configuración:**
+
+```bash
+# En .env o como variable de entorno
+AUDIT_RETENTION_DAYS=365    # Default: 365 días (1 año)
+                            # Set a 0 para deshabilitar el purge automático
+```
+
+**Cron interno del backend:**
+- **Horario:** 03:00 AM diario (timezone: Europe/Madrid)
+- **Acción:** Elimina registros con `created_at` anterior a `AUDIT_RETENTION_DAYS`
+- **Log de ejemplo:**
+  ```
+  [AuditPurgeCron] [INFO] Deleted 1523 audit log record(s) older than 365 days
+  ```
+
+**Verificar estado del purge:**
+
+```bash
+# Ver logs del backend
+docker logs cmdb-backend-prod --tail 100 | grep AuditPurgeCron
+
+# Verificar registros en la tabla audit_logs
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT COUNT(*) AS total,
+         MIN(created_at) AS oldest,
+         MAX(created_at) AS newest
+  FROM audit_logs;
+"
+```
+
+### 11.2 Optimización de base de datos (Script de mantenimiento)
+
+El script `scripts/db-maintenance.sh` ejecuta rutinas de optimización PostgreSQL:
+
+- **VACUUM ANALYZE** (no bloqueante): Recupera espacio de tuplas muertas y actualiza estadísticas del planificador
+- **REINDEX DATABASE** (bloqueante): Reconstruye índices para eliminar bloat
+
+**Ejecución manual:**
+
+```bash
+# Como usuario cmdb-admin
+POSTGRES_DB=cmdb_db \
+POSTGRES_USER=cmdb_admin \
+PG_CONTAINER=cmdb-postgres-prod \
+  bash /opt/cmdb-enterprise-platform/scripts/db-maintenance.sh
+```
+
+**Salida esperada:**
+
+```
+[2026-03-19 03:00:15] Starting PostgreSQL maintenance for database: cmdb_db
+[2026-03-19 03:00:15] Running VACUUM ANALYZE (non-blocking)...
+[2026-03-19 03:00:18] ✓ VACUUM ANALYZE completed successfully
+[2026-03-19 03:00:18] Running REINDEX DATABASE (blocking — avoid during business hours)...
+[2026-03-19 03:00:22] ✓ REINDEX DATABASE completed successfully
+[2026-03-19 03:00:22] Maintenance completed successfully
+```
+
+### 11.3 Programar mantenimiento automático (Crontab)
+
+**Recomendación:** Ejecutar el script semanalmente (domingos a las 03:00 AM) cuando no hay actividad de usuarios.
+
+```bash
+# Editar crontab del usuario cmdb-admin
+crontab -e
+```
+
+Añadir la siguiente entrada:
+
+```cron
+# CMDB Database Maintenance — Domingos a las 03:00 AM
+0 3 * * 0 POSTGRES_DB=cmdb_db POSTGRES_USER=cmdb_admin PG_CONTAINER=cmdb-postgres-prod /opt/cmdb-enterprise-platform/scripts/db-maintenance.sh >> /home/cmdb-admin/db-maintenance.log 2>&1
+```
+
+**Verificar que el cron se registró correctamente:**
+
+```bash
+crontab -l | grep db-maintenance
+
+# Ver logs de ejecución
+tail -f /home/cmdb-admin/db-maintenance.log
+```
+
+### 11.4 VACUUM FULL (Solo en ventanas de mantenimiento)
+
+> **⚠️ ADVERTENCIA: VACUUM FULL bloquea completamente las tablas durante su ejecución.**
+
+El script `db-maintenance.sh` NO incluye `VACUUM FULL` automáticamente porque:
+- Requiere locks exclusivos (READ y WRITE bloqueados)
+- Puede tardar horas en bases de datos grandes (> 20,000 CIs)
+- Solo es necesario si el bloat es > 50% del tamaño de la tabla
+
+**Cuándo ejecutar VACUUM FULL:**
+
+```bash
+# Verificar bloat de tablas (% de espacio desperdiciado)
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename) - pg_relation_size(schemaname||'.'||tablename)) AS bloat
+  FROM pg_tables
+  WHERE schemaname = 'public'
+  ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+  LIMIT 10;
+"
+```
+
+**Ejecutar VACUUM FULL manualmente (durante ventana de mantenimiento programada):**
+
+```bash
+# 1. Anunciar downtime a usuarios
+# 2. Detener el frontend (evita nuevas conexiones)
+docker compose -f docker-compose.prod.yml stop frontend
+
+# 3. Ejecutar VACUUM FULL
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "VACUUM FULL VERBOSE;"
+
+# 4. Reiniciar servicios
+docker compose -f docker-compose.prod.yml start frontend
+```
+
+### 11.5 Monitorización de rendimiento
+
+```bash
+# Tamaño de la base de datos
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT pg_size_pretty(pg_database_size('cmdb_db')) AS db_size;
+"
+
+# Tablas más grandes
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    tablename,
+    pg_size_pretty(pg_total_relation_size('public.'||tablename)) AS total_size,
+    pg_size_pretty(pg_relation_size('public.'||tablename)) AS table_size,
+    pg_size_pretty(pg_indexes_size('public.'||tablename)) AS indexes_size
+  FROM pg_tables
+  WHERE schemaname = 'public'
+  ORDER BY pg_total_relation_size('public.'||tablename) DESC
+  LIMIT 10;
+"
+
+# Actividad de VACUUM y ANALYZE
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    relname,
+    last_vacuum,
+    last_autovacuum,
+    last_analyze,
+    last_autoanalyze
+  FROM pg_stat_user_tables
+  ORDER BY last_vacuum DESC NULLS LAST
+  LIMIT 10;
+"
+```
+
+### 11.6 Checklist de mantenimiento
+
+| Tarea | Frecuencia | Automatizado | Comando |
+|-------|-----------|--------------|---------|
+| Audit log purge | Diario (03:00 AM) | ✅ Sí (backend cron) | Automático via `AUDIT_RETENTION_DAYS` |
+| VACUUM ANALYZE | Semanal (domingos 03:00 AM) | ⚠️ Configurar crontab | `bash scripts/db-maintenance.sh` |
+| REINDEX DATABASE | Semanal (domingos 03:00 AM) | ⚠️ Configurar crontab | Incluido en `db-maintenance.sh` |
+| VACUUM FULL | Anual (ventana mantenimiento) | ❌ Manual | `VACUUM FULL;` |
+| Verificar bloat | Mensual | ❌ Manual | Query en sección 11.4 |
+| Backup BD | Diario (02:00 AM) | ✅ Sí (si configurado) | Ver sección 6 |
+
+---
+
+## 12. Seguridad y Hardening
 
 ### Firewall (firewalld en RHEL)
 ```bash
@@ -566,9 +1019,49 @@ docker compose -f docker-compose.prod.yml down
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+### Usuario de servicio dedicado (ISO 27001)
+
+**Principio de mínimo privilegio:** Nunca ejecutar servicios de producción como root o con usuarios personales.
+
+```bash
+# Verificar que los contenedores se ejecutan como usuario no privilegiado
+podman ps --format "{{.ID}} {{.Names}}" | while read id name; do
+  echo "Container: $name"
+  podman inspect $id | jq -r '.HostConfig.UsernsMode'
+done
+
+# Verificar que el usuario tiene linger habilitado (persistencia)
+loginctl show-user cmdb-admin | grep Linger
+# Debe mostrar: Linger=yes
+
+# Si no está habilitado, activarlo
+sudo loginctl enable-linger cmdb-admin
+```
+
+### Permisos de archivos y directorios
+
+```bash
+# Verificar permisos del directorio de instalación
+ls -ld /opt/cmdb-enterprise-platform
+# Correcto: drwxr-x--- ... cmdb-admin cmdb-admin
+
+# Verificar permisos del archivo .env (debe ser 600)
+ls -l /opt/cmdb-enterprise-platform/.env
+# Correcto: -rw------- ... cmdb-admin cmdb-admin
+
+# Verificar permisos del directorio de backups
+ls -ld /opt/cmdb-enterprise-platform/backups
+# Correcto: drwxr-x--- ... cmdb-admin cmdb-admin
+
+# Corregir permisos si es necesario
+sudo chown -R cmdb-admin:cmdb-admin /opt/cmdb-enterprise-platform
+sudo chmod 750 /opt/cmdb-enterprise-platform
+chmod 600 /opt/cmdb-enterprise-platform/.env
+```
+
 ---
 
-## 11. Tareas de Mantenimiento Periódico
+## 13. Tareas de Mantenimiento Periódico
 
 | Frecuencia | Tarea | Comando / Acción |
 |------------|-------|-----------------|

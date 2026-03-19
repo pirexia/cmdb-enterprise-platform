@@ -19,6 +19,16 @@ import QRCode from 'qrcode';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
+const APP_ENV = process.env.APP_ENV ?? 'prod';
+const IS_DEV = APP_ENV === 'dev';
+
+// ── Conditional logging helper ────────────────────────────────────────────────
+const log = {
+  info: (...args: unknown[]) => { if (IS_DEV) console.log(...args); },
+  warn: (...args: unknown[]) => console.warn(...args),
+  error: (...args: unknown[]) => console.error(...args),
+};
+
 const app    = express();
 const prisma = new PrismaClient();
 const PORT   = process.env.PORT || 3000;
@@ -192,37 +202,46 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     type UserRow = { id: string; username: string; email: string; password: string | null; role: string; mfa_enabled: boolean; mfa_secret: string | null };
 
     let user: UserRow;
+    let ldapSuccess = false;
 
-    if (process.env.USE_LDAP === 'true') {
-      // ── LDAP / Active Directory path ────────────────────────────────────────
+    // ── Domain Pre-Check: Skip LDAP for local accounts (@cmdb.local) ─────────
+    const isLocalAccount = email.endsWith('@cmdb.local') || email.endsWith('@cmdb.internal');
+
+    if (process.env.USE_LDAP === 'true' && !isLocalAccount) {
+      // ── LDAP / Active Directory path with fail-soft fallback ────────────────
       try {
         await authenticateLDAP(email, password);
+        ldapSuccess = true;
+        log.info(`[POST /api/auth/login] LDAP authentication successful for ${email}`);
       } catch (ldapErr) {
-        console.error('[POST /api/auth/login] LDAP error:', ldapErr);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
+        log.warn('[POST /api/auth/login] LDAP authentication failed, attempting local fallback:', ldapErr);
+        // Do NOT return — fall through to local bcrypt validation
       }
 
-      let rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
-      `;
-
-      if (rows.length === 0) {
-        const username  = email.split('@')[0];
-        const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
-        await prisma.$executeRaw`
-          INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
-          VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
-        `;
-        rows = await prisma.$queryRaw<UserRow[]>`
+      if (ldapSuccess) {
+        // User authenticated via LDAP — check if exists in DB or auto-provision
+        let rows = await prisma.$queryRaw<UserRow[]>`
           SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
         `;
-        console.log(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
-      }
-      user = rows[0];
 
-    } else {
-      // ── Local bcrypt path ────────────────────────────────────────────────────
+        if (rows.length === 0) {
+          const username  = email.split('@')[0];
+          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          await prisma.$executeRaw`
+            INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
+            VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
+          `;
+          rows = await prisma.$queryRaw<UserRow[]>`
+            SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
+          `;
+          log.info(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
+        }
+        user = rows[0];
+      }
+    }
+
+    // ── Local bcrypt path (if LDAP disabled, local account, or LDAP failed) ──
+    if (!ldapSuccess) {
       const rows = await prisma.$queryRaw<UserRow[]>`
         SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
       `;
@@ -236,6 +255,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         return;
       }
       user = rows[0];
+      log.info(`[POST /api/auth/login] Local authentication successful for ${email}`);
     }
 
     // ── MFA check (common to both paths) ──────────────────────────────────────
@@ -366,7 +386,7 @@ app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
 });
 
 app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
+  log.info('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
   try {
     const {
       name, apiSlug, criticality, environment,
@@ -444,6 +464,95 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       res.status(409).json({ error: 'A CI with this slug or serial number already exists' });
       return;
     }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/cis/:id
+ * Updates a Configuration Item.
+ * ADMIN only.
+ */
+app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  log.info(`[PATCH /api/cis/${id}] Body received:`, JSON.stringify(req.body, null, 2));
+
+  try {
+    const {
+      name, criticality, environment, ciType, status, inventoryNumber,
+      branchId, ciModelId, businessOwnerId, technicalLeadId,
+      eolDate: eolDateRaw, eosDate: eosDateRaw,
+    } = req.body as {
+      name?: string; criticality?: Criticality; environment?: Environment;
+      ciType?: string; status?: string; inventoryNumber?: string;
+      branchId?: string | null; ciModelId?: string | null;
+      businessOwnerId?: string | null; technicalLeadId?: string | null;
+      eolDate?: string | null; eosDate?: string | null;
+    };
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (criticality) updateData.criticality = criticality;
+    if (environment) updateData.environment = environment;
+    if (ciType) updateData.ciType = ciType;
+    if (status) updateData.status = status;
+    if (inventoryNumber !== undefined) updateData.inventoryNumber = inventoryNumber || null;
+    if (branchId !== undefined) updateData.branchId = branchId || null;
+    if (ciModelId !== undefined) updateData.ciModelId = ciModelId || null;
+    if (businessOwnerId !== undefined) updateData.businessOwnerId = businessOwnerId || null;
+    if (technicalLeadId !== undefined) updateData.technicalLeadId = technicalLeadId || null;
+    if (eolDateRaw !== undefined) updateData.eolDate = eolDateRaw ? new Date(eolDateRaw) : null;
+    if (eosDateRaw !== undefined) updateData.eosDate = eosDateRaw ? new Date(eosDateRaw) : null;
+
+    const ci = await prisma.cI.update({
+      where: { id },
+      data: updateData,
+      include: CI_INCLUDE,
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json(ci);
+  } catch (error: unknown) {
+    console.error('[PATCH /api/cis/:id] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2025') {
+      res.status(404).json({ error: 'CI not found' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/cis/:id
+ * Deletes a Configuration Item (cascade deletes hardware/software).
+ * ADMIN only.
+ */
+app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    // Check if CI exists
+    const ci = await prisma.cI.findUnique({ where: { id }, select: { name: true } });
+    if (!ci) {
+      res.status(404).json({ error: 'CI not found' });
+      return;
+    }
+
+    // Delete CI (cascade handles hardware/software via Prisma schema)
+    await prisma.cI.delete({ where: { id } });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, message: `CI "${ci.name}" deleted successfully` });
+  } catch (error) {
+    console.error('[DELETE /api/cis/:id] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -535,7 +644,7 @@ app.get('/api/contracts', authenticateToken, async (_req: Request, res: Response
 });
 
 app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/contracts] Body received:', JSON.stringify(req.body, null, 2));
+  log.info('[POST /api/contracts] Body received:', JSON.stringify(req.body, null, 2));
   try {
     const { contractNumber, startDate, endDate, vendorId, parentContractId, ciIds } = req.body as {
       contractNumber: string; startDate: string; endDate?: string;
@@ -600,7 +709,7 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
         console.error(`[sync-manufacturers] Error inserting "${name}":`, e);
       }
     }
-    console.log(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
+    log.info(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
     res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors, errorLog });
     return;
   }
@@ -648,11 +757,23 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
     return;
   }
 
+  // Official CI type categories (Enterprise standard)
+  const OFFICIAL_CI_TYPES = [
+    'PHYSICAL_SERVER',
+    'VIRTUAL_SERVER',
+    'DATABASE',
+    'NETWORK_EQUIPMENT',
+    'STORAGE',
+    'BACKUP',
+  ];
+
   const validCriticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
   const validEnvironments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
+  
+  // Extended types for backward compatibility (imports)
   const hwTypes = [
-    'HARDWARE','PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','STORAGE',
-    'DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
+    ...OFFICIAL_CI_TYPES,
+    'HARDWARE','NETWORK','DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
     'VIDEOCONFERENCE','SMART_DISPLAY','TIME_CLOCK','IP_PHONE',
     'SMARTPHONE','TABLET','PDA','BARCODE_SCANNER',
     'IP_CAMERA','UPS','WIFI_AP','CLOUD_INSTANCE','CLOUD_STORAGE',
@@ -791,6 +912,109 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
   }
 });
 
+// ─── SSL/TLS Certificate Management ──────────────────────────────────────────
+
+/**
+ * POST /api/admin/certificates/csr
+ * Generates a private key and CSR for SSL/TLS certificates.
+ * Body: { cn: string, o?: string, ou?: string, c?: string, st?: string }
+ * Returns: { csr: string, message: string }
+ * ADMIN only.
+ */
+app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { cn, o, ou, c, st } = req.body as { cn?: string; o?: string; ou?: string; c?: string; st?: string };
+
+  if (!cn?.trim()) {
+    res.status(400).json({ error: 'cn (Common Name) is required' });
+    return;
+  }
+
+  try {
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+
+    const certDir = path.join(__dirname, '../../certs');
+    const keyPath = path.join(certDir, 'server.key');
+    const csrPath = path.join(certDir, 'server.csr');
+
+    // Build OpenSSL subject string
+    const subject = `/CN=${cn}${c ? `/C=${c}` : ''}${st ? `/ST=${st}` : ''}${o ? `/O=${o}` : ''}${ou ? `/OU=${ou}` : ''}`;
+
+    // Generate new private key and CSR
+    const cmd = `openssl req -new -newkey rsa:2048 -nodes -keyout "${keyPath}" -out "${csrPath}" -subj "${subject}"`;
+    
+    log.info(`[POST /api/admin/certificates/csr] Generating CSR with subject: ${subject}`);
+    const { stderr } = await execAsync(cmd);
+    
+    if (stderr && !stderr.includes('writing')) {
+      log.warn(`[POST /api/admin/certificates/csr] OpenSSL stderr: ${stderr}`);
+    }
+
+    // Read generated CSR
+    const csrContent = fs.readFileSync(csrPath, 'utf8');
+
+    res.json({
+      csr: csrContent,
+      message: 'CSR generated successfully. Send this to your CA for signing. The private key has been saved securely.',
+      keyPath: '/certs/server.key (inside container)',
+      csrPath: '/certs/server.csr (inside container)',
+    });
+
+  } catch (error) {
+    log.error('[POST /api/admin/certificates/csr] Error:', error);
+    res.status(500).json({ error: 'Failed to generate CSR. Ensure OpenSSL is available.' });
+  }
+});
+
+/**
+ * POST /api/admin/certificates/upload
+ * Uploads a signed certificate file (.crt/.pem) from the CA.
+ * Body: { certificate: string } (PEM-encoded certificate content)
+ * Returns: { message: string }
+ * ADMIN only.
+ */
+app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { certificate } = req.body as { certificate?: string };
+
+  if (!certificate?.trim()) {
+    res.status(400).json({ error: 'certificate content is required (PEM format)' });
+    return;
+  }
+
+  // Validate PEM format
+  if (!certificate.includes('-----BEGIN CERTIFICATE-----') || !certificate.includes('-----END CERTIFICATE-----')) {
+    res.status(400).json({ error: 'Invalid certificate format. Must be PEM-encoded.' });
+    return;
+  }
+
+  try {
+    const certDir = path.join(__dirname, '../../certs');
+    const certPath = path.join(certDir, 'server.crt');
+
+    // Write certificate to file
+    fs.writeFileSync(certPath, certificate.trim() + '\n', { mode: 0o600 });
+
+    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
+
+    // Audit log
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
+    `;
+
+    res.json({
+      message: 'Certificate uploaded successfully. Restart the backend container to apply changes.',
+      restartCommand: 'docker compose -f docker-compose.prod.yml restart backend',
+      certPath: '/certs/server.crt (inside container)',
+    });
+
+  } catch (error) {
+    log.error('[POST /api/admin/certificates/upload] Error:', error);
+    res.status(500).json({ error: 'Failed to save certificate' });
+  }
+});
+
 // ─── Admin Utilities ──────────────────────────────────────────────────────────
 
 /**
@@ -806,7 +1030,7 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       SET "vulnerabilities" = '[]'::jsonb
       WHERE "vulnerabilities" IS NOT NULL
     `;
-    console.log(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
+    log.info(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
     res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
@@ -884,7 +1108,7 @@ app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (
 app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "manufacturers" ORDER BY name ASC`;
-    console.log(`[GET /api/masters/manufacturers] rows=${rows.length}`);
+    log.info(`[GET /api/masters/manufacturers] rows=${rows.length}`);
     res.json(rows);
   } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: String(e) }); }
 });
@@ -1002,6 +1226,139 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
   }
 });
 
+// ── CI Relationships (Topology) ──────────────────────────────────────────────
+
+/**
+ * GET /api/cis/:id/relations
+ * Returns all relationships for a specific CI (both outgoing and incoming).
+ */
+app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    type RelationRow = {
+      id: string;
+      source_ci_id: string;
+      target_ci_id: string;
+      relation_type: string;
+      created_at: Date;
+      source_name: string;
+      source_slug: string;
+      target_name: string;
+      target_slug: string;
+    };
+
+    const relations = await prisma.$queryRaw<RelationRow[]>`
+      SELECT
+        r.id::text,
+        r.source_ci_id::text,
+        r.target_ci_id::text,
+        r.relation_type,
+        r.created_at,
+        s.name AS source_name,
+        s.api_slug AS source_slug,
+        t.name AS target_name,
+        t.api_slug AS target_slug
+      FROM ci_relations r
+      JOIN configuration_items s ON r.source_ci_id = s.id
+      JOIN configuration_items t ON r.target_ci_id = t.id
+      WHERE r.source_ci_id = ${id}::uuid OR r.target_ci_id = ${id}::uuid
+      ORDER BY r.created_at DESC
+    `;
+
+    const outgoing = relations.filter((r) => r.source_ci_id === id);
+    const incoming = relations.filter((r) => r.target_ci_id === id);
+
+    res.json({ outgoing, incoming, total: relations.length });
+  } catch (error) {
+    console.error('[GET /api/cis/:id/relations] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/cis/:id/relations
+ * Creates a new relationship between two CIs.
+ * Body: { targetCiId: string, relationType: string }
+ * ADMIN only.
+ */
+app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const sourceCiId = req.params.id;
+  const { targetCiId, relationType } = req.body as { targetCiId?: string; relationType?: string };
+
+  if (!targetCiId || !relationType) {
+    res.status(400).json({ error: 'targetCiId and relationType are required' });
+    return;
+  }
+
+  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
+  if (!validTypes.includes(relationType)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+    return;
+  }
+
+  if (sourceCiId === targetCiId) {
+    res.status(400).json({ error: 'A CI cannot have a relationship with itself' });
+    return;
+  }
+
+  try {
+    // Check if both CIs exist
+    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
+    `;
+    
+    if (Number(ciCheck[0]?.count) !== 2) {
+      res.status(404).json({ error: 'One or both CIs not found' });
+      return;
+    }
+
+    // Create relation
+    const relation = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      RETURNING id::text
+    `;
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
+    `;
+
+    res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
+  } catch (error: unknown) {
+    console.error('[POST /api/cis/:id/relations] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'This relationship already exists' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/relations/:id
+ * Deletes a CI relationship.
+ * ADMIN only.
+ */
+app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, message: 'Relationship deleted successfully' });
+  } catch (error) {
+    console.error('[DELETE /api/relations/:id] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * PATCH /api/cis/:id/verification
  * Updates the lastCheckDate and verificationSource fields for a CI.
@@ -1058,7 +1415,7 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
  * }
  */
 app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/integrations/greenbone] Processing report…');
+  log.info('[POST /api/integrations/greenbone] Processing report…');
   try {
     type GBVuln = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
     type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
@@ -1105,7 +1462,7 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       `;
 
       processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
-      console.log(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+      log.info(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
     }
 
     res.json({
@@ -1138,7 +1495,7 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
  * }
  */
 app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log('[POST /api/integrations/crowdstrike] Processing report…');
+  log.info('[POST /api/integrations/crowdstrike] Processing report…');
   try {
     type CSDevice = {
       hostname: string; agent_id: string; agent_version: string;
@@ -1186,7 +1543,7 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       `;
 
       processed.push({ ci: ci.name, matched: true, status: device.status });
-      console.log(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
+      log.info(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
     }
 
     res.json({
@@ -1209,7 +1566,7 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
  * ADMIN only. Use this to verify SMTP config without waiting for the daily cron.
  */
 app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  console.log(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
+  log.info(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
   try {
     const result = await runAndSendAlerts();
     res.json({
@@ -1237,15 +1594,47 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
 const CRON_SCHEDULE = process.env.ALERT_CRON_SCHEDULE ?? '30 8 * * *';
 
 cron.schedule(CRON_SCHEDULE, () => {
-  console.log(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
+  log.info(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
   runAndSendAlerts()
-    .then((r) => console.log(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
-    .catch((e) => console.error('[AlertCron] Error:', e));
+    .then((r) => log.info(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
+    .catch((e) => log.error('[AlertCron] Error:', e));
 }, {
   timezone: 'Europe/Madrid',
 });
 
-console.log(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
+log.info(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
+
+// ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
+// Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.
+// Default retention: 365 days (1 year). Set AUDIT_RETENTION_DAYS=0 to disable.
+
+const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS ?? '365', 10);
+
+if (AUDIT_RETENTION_DAYS > 0) {
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      log.info(`[AuditPurgeCron] Triggered at ${new Date().toISOString()}`);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - AUDIT_RETENTION_DAYS);
+
+      const result = await prisma.$executeRaw`
+        DELETE FROM "audit_logs"
+        WHERE created_at < ${cutoffDate}
+      `;
+
+      const deleted = Number(result);
+      log.info(`[AuditPurgeCron] [INFO] Deleted ${deleted} audit log record(s) older than ${AUDIT_RETENTION_DAYS} days (cutoff: ${cutoffDate.toISOString()})`);
+    } catch (error) {
+      log.error('[AuditPurgeCron] Error during purge:', error);
+    }
+  }, {
+    timezone: 'Europe/Madrid',
+  });
+
+  log.info(`[AuditPurgeCron] Scheduled daily at 03:00 AM (TZ: Europe/Madrid) — Retention: ${AUDIT_RETENTION_DAYS} days`);
+} else {
+  log.info('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
+}
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 

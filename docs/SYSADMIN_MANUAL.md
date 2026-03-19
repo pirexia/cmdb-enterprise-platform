@@ -18,8 +18,9 @@
 8. [Actualización de la Aplicación](#8-actualización-de-la-aplicación)
 9. [Troubleshooting](#9-troubleshooting)
 10. [Configuración Avanzada de Podman (RHEL)](#10-configuración-avanzada-de-podman-rhel)
-11. [Seguridad y Hardening](#11-seguridad-y-hardening)
-12. [Tareas de Mantenimiento Periódico](#12-tareas-de-mantenimiento-periódico)
+11. [Mantenimiento de Base de Datos](#11-mantenimiento-de-base-de-datos)
+12. [Seguridad y Hardening](#12-seguridad-y-hardening)
+13. [Tareas de Mantenimiento Periódico](#13-tareas-de-mantenimiento-periódico)
 
 ---
 
@@ -655,7 +656,188 @@ podman system reset --force
 
 ---
 
-## 11. Seguridad y Hardening
+## 11. Mantenimiento de Base de Datos
+
+PostgreSQL utiliza MVCC (Multi-Version Concurrency Control) que genera "tuplas muertas" con cada UPDATE/DELETE. Sin mantenimiento regular, la base de datos puede sufrir degradación de rendimiento y consumo excesivo de disco.
+
+### 11.1 Purgado automático de audit logs (Backend)
+
+El backend ejecuta automáticamente un purge diario de registros de auditoría antiguos para evitar crecimiento infinito de la tabla `audit_logs`.
+
+**Configuración:**
+
+```bash
+# En .env o como variable de entorno
+AUDIT_RETENTION_DAYS=365    # Default: 365 días (1 año)
+                            # Set a 0 para deshabilitar el purge automático
+```
+
+**Cron interno del backend:**
+- **Horario:** 03:00 AM diario (timezone: Europe/Madrid)
+- **Acción:** Elimina registros con `created_at` anterior a `AUDIT_RETENTION_DAYS`
+- **Log de ejemplo:**
+  ```
+  [AuditPurgeCron] [INFO] Deleted 1523 audit log record(s) older than 365 days
+  ```
+
+**Verificar estado del purge:**
+
+```bash
+# Ver logs del backend
+docker logs cmdb-backend-prod --tail 100 | grep AuditPurgeCron
+
+# Verificar registros en la tabla audit_logs
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT COUNT(*) AS total,
+         MIN(created_at) AS oldest,
+         MAX(created_at) AS newest
+  FROM audit_logs;
+"
+```
+
+### 11.2 Optimización de base de datos (Script de mantenimiento)
+
+El script `scripts/db-maintenance.sh` ejecuta rutinas de optimización PostgreSQL:
+
+- **VACUUM ANALYZE** (no bloqueante): Recupera espacio de tuplas muertas y actualiza estadísticas del planificador
+- **REINDEX DATABASE** (bloqueante): Reconstruye índices para eliminar bloat
+
+**Ejecución manual:**
+
+```bash
+# Como usuario cmdb-admin
+POSTGRES_DB=cmdb_db \
+POSTGRES_USER=cmdb_admin \
+PG_CONTAINER=cmdb-postgres-prod \
+  bash /opt/cmdb-enterprise-platform/scripts/db-maintenance.sh
+```
+
+**Salida esperada:**
+
+```
+[2026-03-19 03:00:15] Starting PostgreSQL maintenance for database: cmdb_db
+[2026-03-19 03:00:15] Running VACUUM ANALYZE (non-blocking)...
+[2026-03-19 03:00:18] ✓ VACUUM ANALYZE completed successfully
+[2026-03-19 03:00:18] Running REINDEX DATABASE (blocking — avoid during business hours)...
+[2026-03-19 03:00:22] ✓ REINDEX DATABASE completed successfully
+[2026-03-19 03:00:22] Maintenance completed successfully
+```
+
+### 11.3 Programar mantenimiento automático (Crontab)
+
+**Recomendación:** Ejecutar el script semanalmente (domingos a las 03:00 AM) cuando no hay actividad de usuarios.
+
+```bash
+# Editar crontab del usuario cmdb-admin
+crontab -e
+```
+
+Añadir la siguiente entrada:
+
+```cron
+# CMDB Database Maintenance — Domingos a las 03:00 AM
+0 3 * * 0 POSTGRES_DB=cmdb_db POSTGRES_USER=cmdb_admin PG_CONTAINER=cmdb-postgres-prod /opt/cmdb-enterprise-platform/scripts/db-maintenance.sh >> /home/cmdb-admin/db-maintenance.log 2>&1
+```
+
+**Verificar que el cron se registró correctamente:**
+
+```bash
+crontab -l | grep db-maintenance
+
+# Ver logs de ejecución
+tail -f /home/cmdb-admin/db-maintenance.log
+```
+
+### 11.4 VACUUM FULL (Solo en ventanas de mantenimiento)
+
+> **⚠️ ADVERTENCIA: VACUUM FULL bloquea completamente las tablas durante su ejecución.**
+
+El script `db-maintenance.sh` NO incluye `VACUUM FULL` automáticamente porque:
+- Requiere locks exclusivos (READ y WRITE bloqueados)
+- Puede tardar horas en bases de datos grandes (> 20,000 CIs)
+- Solo es necesario si el bloat es > 50% del tamaño de la tabla
+
+**Cuándo ejecutar VACUUM FULL:**
+
+```bash
+# Verificar bloat de tablas (% de espacio desperdiciado)
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename) - pg_relation_size(schemaname||'.'||tablename)) AS bloat
+  FROM pg_tables
+  WHERE schemaname = 'public'
+  ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+  LIMIT 10;
+"
+```
+
+**Ejecutar VACUUM FULL manualmente (durante ventana de mantenimiento programada):**
+
+```bash
+# 1. Anunciar downtime a usuarios
+# 2. Detener el frontend (evita nuevas conexiones)
+docker compose -f docker-compose.prod.yml stop frontend
+
+# 3. Ejecutar VACUUM FULL
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "VACUUM FULL VERBOSE;"
+
+# 4. Reiniciar servicios
+docker compose -f docker-compose.prod.yml start frontend
+```
+
+### 11.5 Monitorización de rendimiento
+
+```bash
+# Tamaño de la base de datos
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT pg_size_pretty(pg_database_size('cmdb_db')) AS db_size;
+"
+
+# Tablas más grandes
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    tablename,
+    pg_size_pretty(pg_total_relation_size('public.'||tablename)) AS total_size,
+    pg_size_pretty(pg_relation_size('public.'||tablename)) AS table_size,
+    pg_size_pretty(pg_indexes_size('public.'||tablename)) AS indexes_size
+  FROM pg_tables
+  WHERE schemaname = 'public'
+  ORDER BY pg_total_relation_size('public.'||tablename) DESC
+  LIMIT 10;
+"
+
+# Actividad de VACUUM y ANALYZE
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    relname,
+    last_vacuum,
+    last_autovacuum,
+    last_analyze,
+    last_autoanalyze
+  FROM pg_stat_user_tables
+  ORDER BY last_vacuum DESC NULLS LAST
+  LIMIT 10;
+"
+```
+
+### 11.6 Checklist de mantenimiento
+
+| Tarea | Frecuencia | Automatizado | Comando |
+|-------|-----------|--------------|---------|
+| Audit log purge | Diario (03:00 AM) | ✅ Sí (backend cron) | Automático via `AUDIT_RETENTION_DAYS` |
+| VACUUM ANALYZE | Semanal (domingos 03:00 AM) | ⚠️ Configurar crontab | `bash scripts/db-maintenance.sh` |
+| REINDEX DATABASE | Semanal (domingos 03:00 AM) | ⚠️ Configurar crontab | Incluido en `db-maintenance.sh` |
+| VACUUM FULL | Anual (ventana mantenimiento) | ❌ Manual | `VACUUM FULL;` |
+| Verificar bloat | Mensual | ❌ Manual | Query en sección 11.4 |
+| Backup BD | Diario (02:00 AM) | ✅ Sí (si configurado) | Ver sección 6 |
+
+---
+
+## 12. Seguridad y Hardening
 
 ### Firewall (firewalld en RHEL)
 ```bash
@@ -744,7 +926,7 @@ chmod 600 /opt/cmdb-enterprise-platform/.env
 
 ---
 
-## 12. Tareas de Mantenimiento Periódico
+## 13. Tareas de Mantenimiento Periódico
 
 | Frecuencia | Tarea | Comando / Acción |
 |------------|-------|-----------------|

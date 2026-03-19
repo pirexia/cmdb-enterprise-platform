@@ -1247,6 +1247,38 @@ cron.schedule(CRON_SCHEDULE, () => {
 
 console.log(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
 
+// ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
+// Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.
+// Default retention: 365 days (1 year). Set AUDIT_RETENTION_DAYS=0 to disable.
+
+const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS ?? '365', 10);
+
+if (AUDIT_RETENTION_DAYS > 0) {
+  cron.schedule('0 3 * * *', async () => {
+    try {
+      console.log(`[AuditPurgeCron] Triggered at ${new Date().toISOString()}`);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - AUDIT_RETENTION_DAYS);
+
+      const result = await prisma.$executeRaw`
+        DELETE FROM "audit_logs"
+        WHERE created_at < ${cutoffDate}
+      `;
+
+      const deleted = Number(result);
+      console.log(`[AuditPurgeCron] [INFO] Deleted ${deleted} audit log record(s) older than ${AUDIT_RETENTION_DAYS} days (cutoff: ${cutoffDate.toISOString()})`);
+    } catch (error) {
+      console.error('[AuditPurgeCron] Error during purge:', error);
+    }
+  }, {
+    timezone: 'Europe/Madrid',
+  });
+
+  console.log(`[AuditPurgeCron] Scheduled daily at 03:00 AM (TZ: Europe/Madrid) — Retention: ${AUDIT_RETENTION_DAYS} days`);
+} else {
+  console.log('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
+}
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 // ─── Server startup — HTTP or HTTPS ──────────────────────────────────────────

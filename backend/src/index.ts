@@ -940,9 +940,12 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     const { promisify } = await import('util');
     const execAsync = promisify(exec);
 
-    const certDir = path.join(__dirname, '../../certs');
+    const certDir = '/app/certs';
     const keyPath = path.join(certDir, 'server.key');
     const csrPath = path.join(certDir, 'server.csr');
+
+    // Ensure directory exists (mapped from host via volume)
+    fs.mkdirSync(certDir, { recursive: true });
 
     // Build OpenSSL subject string
     const subject = `/CN=${cn}${c ? `/C=${c}` : ''}${st ? `/ST=${st}` : ''}${o ? `/O=${o}` : ''}${ou ? `/OU=${ou}` : ''}`;
@@ -995,8 +998,11 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
   }
 
   try {
-    const certDir = path.join(__dirname, '../../certs');
+    const certDir = '/app/certs';
     const certPath = path.join(certDir, 'server.crt');
+
+    // Ensure directory exists (mapped from host via volume)
+    fs.mkdirSync(certDir, { recursive: true });
 
     // Write certificate to file
     fs.writeFileSync(certPath, certificate.trim() + '\n', { mode: 0o600 });
@@ -1646,7 +1652,7 @@ if (AUDIT_RETENTION_DAYS > 0) {
 
 // ─── Server startup — HTTP or HTTPS ──────────────────────────────────────────
 
-const CERT_DIR  = path.join(__dirname, '../../certs');
+const CERT_DIR  = '/app/certs';
 const CERT_KEY  = path.join(CERT_DIR, 'server.key');
 const CERT_FILE = path.join(CERT_DIR, 'server.crt');
 

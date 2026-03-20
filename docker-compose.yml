@@ -60,6 +60,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-cmdb_pass123}@postgres:5432/${POSTGRES_DB:-cmdb_db}
       JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required — set it in .env}
       CORS_ORIGINS: ${CORS_ORIGINS}
+    volumes:
+      - ./certs:/app/certs:Z      
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:
@@ -81,6 +83,8 @@ services:
     environment:
       NODE_ENV: production
       PORT:     3001
+    volumes:
+      - ./certs:/app/certs:Z
     ports:
       - "${FRONTEND_PORT:-3001}:3001"
     depends_on:

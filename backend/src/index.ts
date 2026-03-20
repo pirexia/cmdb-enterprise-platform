@@ -312,7 +312,7 @@ app.get('/api/users', authenticateToken, async (_req: Request, res: Response) =>
  * Changes a user's role (ADMIN | VIEWER). ADMIN only.
  */
 app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { role } = req.body as { role?: string };
   if (!role || !['ADMIN', 'VIEWER'].includes(role)) {
     res.status(400).json({ error: 'role must be "ADMIN" or "VIEWER"' });
@@ -337,7 +337,7 @@ app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Re
  * Body: { active: boolean }
  */
 app.patch('/api/users/:id/status', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { active } = req.body as { active?: boolean };
   if (typeof active !== 'boolean') {
     res.status(400).json({ error: 'active must be a boolean' });
@@ -480,7 +480,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
  * ADMIN only.
  */
 app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   log.info(`[PATCH /api/cis/${id}] Body received:`, JSON.stringify(req.body, null, 2));
 
   try {
@@ -538,7 +538,7 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
  * ADMIN only.
  */
 app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   try {
     // Check if CI exists
@@ -1188,7 +1188,7 @@ app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async 
  * ADMIN only.
  */
 app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   try {
     type ModelRow = { id: string; name: string; manufacturer_name: string };
     const rows = await prisma.$queryRaw<ModelRow[]>`
@@ -1245,7 +1245,7 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
  * Returns all relationships for a specific CI (both outgoing and incoming).
  */
 app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   try {
     type RelationRow = {
@@ -1295,7 +1295,7 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
  * ADMIN only.
  */
 app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const sourceCiId = req.params.id;
+  const sourceCiId = req.params.id as string;
   const { targetCiId, relationType } = req.body as { targetCiId?: string; relationType?: string };
 
   if (!targetCiId || !relationType) {
@@ -1354,7 +1354,7 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
  * ADMIN only.
  */
 app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   try {
     await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
@@ -1378,7 +1378,7 @@ app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Re
  * Body: { lastCheckDate?: string (ISO), verificationSource?: string }
  */
 app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const { lastCheckDate, verificationSource } = req.body as {
     lastCheckDate?: string;
     verificationSource?: string;

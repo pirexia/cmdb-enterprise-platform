@@ -24,7 +24,6 @@ const NAV_ITEMS = [
   { labelKey: "sidebar.entities",       href: "/entities",              icon: Building2,       adminOnly: false },
   { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle,      adminOnly: false },
   { labelKey: "sidebar.masters",         href: "/admin/masters",         icon: Building2,       adminOnly: true  },
-  { labelKey: "sidebar.certificates",    href: "/admin/certificates",    icon: Shield,          adminOnly: true  },
   { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   adminOnly: true  },
   { labelKey: "sidebar.settings",       href: "/settings",              icon: Settings,        adminOnly: true  },
 ];
@@ -96,7 +95,7 @@ export default function Sidebar() {
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
               }`}
             >
-              <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-indigo-600" : "text-slate-400"}`} />
+              <Icon className="h-5 w-5 flex-shrink-0 text-slate-400" strokeWidth={1.5} />
               {t(labelKey)}
             </Link>
           );

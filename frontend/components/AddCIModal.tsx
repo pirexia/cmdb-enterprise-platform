@@ -11,31 +11,15 @@ interface MasterItem   { id: string; name: string }
 interface Branch       { id: string; name: string; branch_code: string; support_area_id: string; support_area_name: string }
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
 
-type CIType =
-  | "HARDWARE" | "SOFTWARE" | "OTHER"
-  | "PHYSICAL_SERVER" | "VIRTUAL_SERVER"
-  | "DATABASE" | "NETWORK" | "STORAGE" | "BACKUP"
-  | "DESKTOP" | "LAPTOP" | "PRINTER" | "SCANNER" | "MONITOR"
-  | "VIDEOCONFERENCE" | "SMART_DISPLAY" | "TIME_CLOCK" | "IP_PHONE"
-  | "SMARTPHONE" | "TABLET" | "PDA" | "BARCODE_SCANNER"
-  | "IP_CAMERA" | "UPS" | "WIFI_AP"
-  | "CLOUD_INSTANCE" | "CLOUD_STORAGE"
-  | "BASE_SOFTWARE" | "LICENSE";
+type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIPMENT" | "STORAGE" | "BACKUP";
 
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
 // CI type category helpers
-const HW_TYPES: CIType[] = [
-  "HARDWARE","PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK","STORAGE",
-  "DESKTOP","LAPTOP","PRINTER","SCANNER","MONITOR",
-  "VIDEOCONFERENCE","SMART_DISPLAY","TIME_CLOCK","IP_PHONE",
-  "SMARTPHONE","TABLET","PDA","BARCODE_SCANNER",
-  "IP_CAMERA","UPS","WIFI_AP","CLOUD_INSTANCE","CLOUD_STORAGE",
-];
-const SW_TYPES:   CIType[] = ["SOFTWARE","DATABASE","BACKUP","BASE_SOFTWARE"];
-const USER_TYPES: CIType[] = ["DESKTOP","LAPTOP","MONITOR","PRINTER","SCANNER","SMARTPHONE","TABLET","PDA","BARCODE_SCANNER","IP_PHONE","TIME_CLOCK"];
-const INFRA_TYPES:CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK","STORAGE","UPS","WIFI_AP","CLOUD_INSTANCE","CLOUD_STORAGE","VIDEOCONFERENCE","SMART_DISPLAY","IP_CAMERA"];
+const HW_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE"];
+const SW_TYPES: CIType[] = ["DATABASE","BACKUP"];
+const INFRA_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE","BACKUP"];
 
 interface FormState {
   type: CIType; name: string; apiSlug: string;
@@ -164,11 +148,9 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       details.licenseMetric = form.licenseMetric || undefined;
     }
 
-    if (USER_TYPES.includes(form.type)) {
+    if (INFRA_TYPES.includes(form.type)) {
       if (form.assignedUser) details.assignedUser = form.assignedUser;
       if (form.userDni)      details.userDni      = form.userDni;
-    }
-    if (INFRA_TYPES.includes(form.type)) {
       if (form.floor)     details.floor     = form.floor;
       if (form.room)      details.room      = form.room;
       if (form.rack)      details.rack      = form.rack;
@@ -223,53 +205,12 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           <div>
             <Label>Tipo *</Label>
             <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
-              <optgroup label="🖥 Infraestructura">
-                <option value="PHYSICAL_SERVER">Servidor Físico</option>
-                <option value="VIRTUAL_SERVER">Servidor Virtual / VM</option>
-                <option value="NETWORK">Red / Networking</option>
-                <option value="STORAGE">Almacenamiento / Storage</option>
-                <option value="UPS">SAI / UPS</option>
-                <option value="WIFI_AP">Punto de Acceso WiFi</option>
-              </optgroup>
-              <optgroup label="☁️ Cloud">
-                <option value="CLOUD_INSTANCE">Instancia Cloud (VM/Container)</option>
-                <option value="CLOUD_STORAGE">Storage Cloud (S3/Blob)</option>
-              </optgroup>
-              <optgroup label="📦 Software y Datos">
-                <option value="DATABASE">Base de Datos</option>
-                <option value="SOFTWARE">Software / Aplicación</option>
-                <option value="BACKUP">Backup / Recuperación</option>
-                <option value="BASE_SOFTWARE">Software Base / SO</option>
-              </optgroup>
-              <optgroup label="🔑 Licencias y Contratos">
-                <option value="LICENSE">Licencia (standalone)</option>
-              </optgroup>
-              <optgroup label="💼 Puesto de Trabajo">
-                <option value="DESKTOP">PC Escritorio</option>
-                <option value="LAPTOP">Portátil / Laptop</option>
-                <option value="MONITOR">Monitor (Periférico)</option>
-                <option value="PRINTER">Impresora</option>
-                <option value="SCANNER">Escáner Documental</option>
-              </optgroup>
-              <optgroup label="🏢 Oficina / Salas">
-                <option value="VIDEOCONFERENCE">Equipo Videoconferencia</option>
-                <option value="SMART_DISPLAY">Pantalla Smart / Pizarra</option>
-                <option value="TIME_CLOCK">Reloj de Fichaje</option>
-                <option value="IP_PHONE">Teléfono IP</option>
-              </optgroup>
-              <optgroup label="📱 Movilidad / Logística">
-                <option value="SMARTPHONE">Smartphone</option>
-                <option value="TABLET">Tablet</option>
-                <option value="PDA">PDA / Terminal RF</option>
-                <option value="BARCODE_SCANNER">Lector de Código de Barras</option>
-              </optgroup>
-              <optgroup label="🔌 IoT / Seguridad Física">
-                <option value="IP_CAMERA">Cámara IP</option>
-              </optgroup>
-              <optgroup label="⚙️ Genérico">
-                <option value="HARDWARE">Hardware (genérico)</option>
-                <option value="OTHER">Otro</option>
-              </optgroup>
+              <option value="PHYSICAL_SERVER">Servidor Físico</option>
+              <option value="VIRTUAL_SERVER">Servidor Virtual</option>
+              <option value="DATABASE">Base de Datos</option>
+              <option value="NETWORK_EQUIPMENT">Equipo de Red</option>
+              <option value="STORAGE">Almacenamiento</option>
+              <option value="BACKUP">Backup</option>
             </Select>
           </div>
 

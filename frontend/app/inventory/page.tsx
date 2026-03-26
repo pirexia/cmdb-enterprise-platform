@@ -47,6 +47,12 @@ interface CI {
   ciType:          string | null;
   eolDate:         string | null;
   eosDate:         string | null;
+  status:          string | null;
+  inventoryNumber: string | null;
+  businessOwnerId: string | null;
+  technicalLeadId: string | null;
+  branchId:        string | null;
+  ciModelId:       string | null;
   technicalLead:   User | null;
   hardware:        { serialNumber: string; model: string; manufacturer: string } | null;
   software:        { version: string; licenseType: string } | null;

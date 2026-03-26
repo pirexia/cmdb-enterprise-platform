@@ -21,7 +21,7 @@ interface CI {
   apiSlug: string;
   criticality: Criticality;
   environment: Environment;
-  ciType: CIType | null;
+  ciType: string | null;  // API returns string, not enum
   status: string | null;
   inventoryNumber: string | null;
   businessOwnerId: string | null;
@@ -36,7 +36,7 @@ interface FormState {
   name: string;
   criticality: Criticality;
   environment: Environment;
-  ciType: CIType | null;
+  ciType: string;  // Internal form state uses string
   status: string;
   inventoryNumber: string;
   businessOwnerId: string;
@@ -64,7 +64,7 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
     name: ci.name,
     criticality: ci.criticality,
     environment: ci.environment,
-    ciType: ci.ciType,
+    ciType: ci.ciType || "",
     status: ci.status || "ACTIVO",
     inventoryNumber: ci.inventoryNumber || "",
     businessOwnerId: ci.businessOwnerId || "",
@@ -176,7 +176,7 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
           {/* ── Type ── */}
           <div>
             <Label>Tipo</Label>
-            <Select value={form.ciType || ""} onChange={(e) => set("ciType", e.target.value as CIType || null)}>
+            <Select value={form.ciType} onChange={(e) => set("ciType", e.target.value)}>
               <option value="">— Sin especificar —</option>
               <option value="PHYSICAL_SERVER">Servidor Físico</option>
               <option value="VIRTUAL_SERVER">Servidor Virtual</option>

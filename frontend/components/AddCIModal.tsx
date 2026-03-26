@@ -57,13 +57,6 @@ const INITIAL_FORM: FormState = {
 function toSlug(name: string) {
   return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 }
-function qtyLabel(metric: string): string {
-  if (metric === "core_vcpu")    return "Cantidad (Cores / vCPU)";
-  if (metric === "pay_per_use")  return "Capacidad / Volumen";
-  if (metric === "per_instance") return "Número de Instancias";
-  if (metric === "concurrent")   return "Cantidad (Concurrentes)";
-  return "Cantidad (Usuarios)";
-}
 
 function Label({ children }: { children: React.ReactNode }) {
   return <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{children}</label>;
@@ -128,29 +121,26 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       technicalLeadId: form.technicalLeadId || undefined,
     };
 
-    // Governance fields sent via details
-    const details: Record<string, unknown> = {};
-
-    if (form.type === "LICENSE") {
-      details.licenseModel  = form.licenseModel  || undefined;
-      details.licenseMetric = form.licenseMetric || undefined;
-      details.licenseQty    = form.licenseQty    || undefined;
-      details.licenseExpiry = form.licenseExpiry || undefined;
-    } else if (HW_TYPES.includes(form.type)) {
+    // All hardware types get hardware details
+    if (HW_TYPES.includes(form.type)) {
       body.hardware = {
         serialNumber: form.serialNumber || `AUTO-${Date.now()}`,
         model:        form.model        || "Unknown",
         manufacturer: form.manufacturer || "Unknown",
       };
-    } else if (SW_TYPES.includes(form.type)) {
-      body.software = { version: form.version, licenseType: form.licenseType };
-      details.licenseModel  = form.licenseModel  || undefined;
-      details.licenseMetric = form.licenseMetric || undefined;
     }
 
+    // Database and Backup types get software details
+    if (SW_TYPES.includes(form.type)) {
+      body.software = { 
+        version: form.version || "1.0", 
+        licenseType: form.licenseType || "Unknown" 
+      };
+    }
+
+    // Infrastructure types get location and network details
+    const details: Record<string, unknown> = {};
     if (INFRA_TYPES.includes(form.type)) {
-      if (form.assignedUser) details.assignedUser = form.assignedUser;
-      if (form.userDni)      details.userDni      = form.userDni;
       if (form.floor)     details.floor     = form.floor;
       if (form.room)      details.room      = form.room;
       if (form.rack)      details.rack      = form.rack;
@@ -293,9 +283,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Hardware section ── */}
           {HW_TYPES.includes(form.type) && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                {(["CLOUD_INSTANCE","CLOUD_STORAGE"] as CIType[]).includes(form.type) ? "Detalles Cloud (Proveedor / Región)" : "Detalles de Hardware"}
-              </p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div><Label>Nº Serie / ID *</Label><Input required placeholder="SN-XXXXXXX" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
                 <div><Label>Modelo / SKU</Label><Input placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
@@ -304,71 +292,13 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             </div>
           )}
 
-          {/* ── Software section ── */}
+          {/* ── Software section (DATABASE and BACKUP) ── */}
           {SW_TYPES.includes(form.type) && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software y Licenciamiento</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Versión *</Label><Input required placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
+                <div><Label>Versión</Label><Input placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
                 <div><Label>Tipo de Licencia</Label><Input placeholder="Enterprise / OEM…" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Modelo de Adquisición</Label>
-                  <Select value={form.licenseModel} onChange={(e) => set("licenseModel", e.target.value)}>
-                    <option value="">— Sin especificar —</option>
-                    <option value="subscription">Suscripción</option><option value="perpetual">Perpetua</option>
-                    <option value="oem">OEM</option><option value="open_source">Open Source</option>
-                    <option value="enterprise_agreement">Enterprise Agreement</option><option value="maintenance">Soporte / Mantenimiento</option>
-                  </Select>
-                </div>
-                <div><Label>Métrica de Licencia</Label>
-                  <Select value={form.licenseMetric} onChange={(e) => set("licenseMetric", e.target.value)}>
-                    <option value="">— Sin especificar —</option>
-                    <option value="nominal">Nominal (por usuario)</option><option value="concurrent">Concurrente</option>
-                    <option value="core_vcpu">Core / vCPU</option><option value="per_instance">Por Instancia</option>
-                    <option value="pay_per_use">Pago por Uso / Consumo</option>
-                  </Select>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── LICENSE section ── */}
-          {form.type === "LICENSE" && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">🔑 Detalles de Licenciamiento</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Modelo de Adquisición *</Label>
-                  <Select required value={form.licenseModel} onChange={(e) => set("licenseModel", e.target.value)}>
-                    <option value="">— Seleccionar —</option>
-                    <option value="subscription">Suscripción</option><option value="perpetual">Perpetua</option>
-                    <option value="oem">OEM</option><option value="open_source">Open Source</option>
-                    <option value="enterprise_agreement">Enterprise Agreement</option><option value="maintenance">Soporte / Mantenimiento</option>
-                  </Select>
-                </div>
-                <div><Label>Métrica de Licenciamiento *</Label>
-                  <Select required value={form.licenseMetric} onChange={(e) => set("licenseMetric", e.target.value)}>
-                    <option value="">— Seleccionar —</option>
-                    <option value="nominal">Nominal (por usuario)</option><option value="concurrent">Concurrente</option>
-                    <option value="core_vcpu">Core / vCPU</option><option value="per_instance">Por Instancia</option>
-                    <option value="pay_per_use">Pago por Uso / Consumo</option>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>{qtyLabel(form.licenseMetric)}</Label><Input type="number" min="1" placeholder="ej. 50" value={form.licenseQty} onChange={(e) => set("licenseQty", e.target.value)} /></div>
-                <div><Label>Fecha de Expiración</Label><Input type="date" value={form.licenseExpiry} onChange={(e) => set("licenseExpiry", e.target.value)} /></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── User Assignment (microinformática) ── */}
-          {USER_TYPES.includes(form.type) && (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">👤 Asignación de Usuario</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Nombre del Usuario</Label><Input placeholder="Nombre completo" value={form.assignedUser} onChange={(e) => set("assignedUser", e.target.value)} /></div>
-                <div><Label>DNI / Documento</Label><Input placeholder="12345678A" value={form.userDni} onChange={(e) => set("userDni", e.target.value)} /></div>
               </div>
             </div>
           )}

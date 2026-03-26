@@ -8,10 +8,11 @@ import {
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
-  Key, Cloud, Terminal,
+  Key, Cloud, Terminal, Pencil, Trash2,
 } from "lucide-react";
 import Papa from "papaparse";
 import AddCIModal from "@/components/AddCIModal";
+import EditCIModal from "@/components/EditCIModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -214,6 +215,8 @@ export default function InventoryPage() {
   const [error, setError]         = useState<string | null>(null);
   const [search, setSearch]       = useState("");
   const [showModal, setShowModal] = useState(false);
+  const [editingCI, setEditingCI] = useState<CI | null>(null);
+  const [deletingCI, setDeletingCI] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
 
@@ -231,6 +234,20 @@ export default function InventoryPage() {
   useEffect(() => { fetchCIs(); }, []);
 
   const filtered = cis.filter((ci) => ci.name.toLowerCase().includes(search.toLowerCase()));
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`¿Está seguro de eliminar el CI "${name}"? Esta acción no se puede deshacer.`)) return;
+    setDeletingCI(id);
+    try {
+      const res = await apiFetch(`/api/cis/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      fetchCIs();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error al eliminar CI");
+    } finally {
+      setDeletingCI(null);
+    }
+  };
 
   const handleExportCSV = () => {
     exportToCSV(
@@ -297,6 +314,7 @@ export default function InventoryPage() {
   return (
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
+      {editingCI && <EditCIModal ci={editingCI} onClose={() => setEditingCI(null)} onUpdated={fetchCIs} />}
 
       <div className="min-h-screen bg-slate-50">
         <header className="border-b border-slate-200 bg-white px-8 py-5">
@@ -389,11 +407,12 @@ export default function InventoryPage() {
                         <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" />CrowdStrike</div>
                       </th>
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
+                      {isAdmin && <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={7} className="py-12 text-center text-slate-400 text-sm">{t('inventory.no_cis')}</td></tr>
+                      <tr><td colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-slate-400 text-sm">{t('inventory.no_cis')}</td></tr>
                     ) : (
                       filtered.map((ci) => {
                         const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
@@ -423,6 +442,27 @@ export default function InventoryPage() {
                                 </div>
                               ) : <span className="text-xs italic text-slate-400">Sin asignar</span>}
                             </td>
+                            {isAdmin && (
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setEditingCI(ci)}
+                                    className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    title="Editar CI"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDelete(ci.id, ci.name)}
+                                    disabled={deletingCI === ci.id}
+                                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                    title="Eliminar CI"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            )}
                           </tr>
                         );
                       })

@@ -12,50 +12,39 @@ interface Branch       { id: string; name: string; branch_code: string; support_
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
 
 type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIPMENT" | "STORAGE" | "BACKUP";
-
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 
-// CI type category helpers
-const HW_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE"];
-const SW_TYPES: CIType[] = ["DATABASE","BACKUP"];
-const INFRA_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE","BACKUP"];
-
-interface FormState {
-  type: CIType; name: string; apiSlug: string;
-  environment: Environment; criticality: Criticality;
-  status: string; inventoryNumber: string;
-  businessOwnerId: string; technicalLeadId: string;
-  branchId: string; manufacturerId: string; ciModelId: string;
-  // Hardware
-  serialNumber: string; model: string; manufacturer: string;
-  // Software
-  version: string; licenseType: string; licenseModel: string; licenseMetric: string;
-  // License
-  licenseQty: string; licenseExpiry: string;
-  // EOL dates (editable override)
-  eolDate: string; eosDate: string;
-  // Assignment (user devices)
-  assignedUser: string; userDni: string;
-  // Location + network (infra)
-  floor: string; room: string; rack: string; rackUnit: string; vlan: string; consoleIp: string;
+interface CI {
+  id: string;
+  name: string;
+  apiSlug: string;
+  criticality: Criticality;
+  environment: Environment;
+  ciType: string | null;  // API returns string, not enum
+  status: string | null;
+  inventoryNumber: string | null;
+  businessOwnerId: string | null;
+  technicalLeadId: string | null;
+  branchId: string | null;
+  ciModelId: string | null;
+  eolDate: string | null;
+  eosDate: string | null;
 }
 
-const INITIAL_FORM: FormState = {
-  type: "PHYSICAL_SERVER", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
-  status: "ACTIVO", inventoryNumber: "",
-  businessOwnerId: "", technicalLeadId: "",
-  branchId: "", manufacturerId: "", ciModelId: "",
-  serialNumber: "", model: "", manufacturer: "",
-  version: "", licenseType: "", licenseModel: "", licenseMetric: "",
-  licenseQty: "", licenseExpiry: "",
-  eolDate: "", eosDate: "",
-  assignedUser: "", userDni: "",
-  floor: "", room: "", rack: "", rackUnit: "", vlan: "", consoleIp: "",
-};
-
-function toSlug(name: string) {
-  return name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+interface FormState {
+  name: string;
+  criticality: Criticality;
+  environment: Environment;
+  ciType: string;  // Internal form state uses string
+  status: string;
+  inventoryNumber: string;
+  businessOwnerId: string;
+  technicalLeadId: string;
+  branchId: string;
+  ciModelId: string;
+  eolDate: string;
+  eosDate: string;
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -70,8 +59,21 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-export default function AddCIModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }): React.ReactElement {
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClose: () => void; onUpdated: () => void }): React.ReactElement {
+  const [form, setForm] = useState<FormState>({
+    name: ci.name,
+    criticality: ci.criticality,
+    environment: ci.environment,
+    ciType: ci.ciType || "",
+    status: ci.status || "ACTIVO",
+    inventoryNumber: ci.inventoryNumber || "",
+    businessOwnerId: ci.businessOwnerId || "",
+    technicalLeadId: ci.technicalLeadId || "",
+    branchId: ci.branchId || "",
+    ciModelId: ci.ciModelId || "",
+    eolDate: ci.eolDate ? ci.eolDate.slice(0, 10) : "",
+    eosDate: ci.eosDate ? ci.eosDate.slice(0, 10) : "",
+  });
   const [users,         setUsers]         = useState<User[]>([]);
   const [branches,      setBranches]      = useState<Branch[]>([]);
   const [manufacturers, setManufacturers] = useState<MasterItem[]>([]);
@@ -80,7 +82,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
   const [error,         setError]         = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value, ...(key === "name" ? { apiSlug: toSlug(value as string) } : {}) }));
+    setForm((prev) => ({ ...prev, [key]: value }));
 
   useEffect(() => {
     const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
@@ -98,8 +100,10 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
   }, []);
 
   // Filter models by selected manufacturer
-  const filteredModels = form.manufacturerId
-    ? allModels.filter((m) => m.manufacturer_id === form.manufacturerId)
+  const selectedModel = allModels.find((m) => m.id === form.ciModelId);
+  const manufacturerId = selectedModel?.manufacturer_id || "";
+  const filteredModels = manufacturerId
+    ? allModels.filter((m) => m.manufacturer_id === manufacturerId)
     : allModels;
 
   // Selected branch's support area
@@ -109,56 +113,28 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
     e.preventDefault(); setSubmitting(true); setError(null);
 
     const body: Record<string, unknown> = {
-      name: form.name, apiSlug: form.apiSlug, environment: form.environment,
-      criticality: form.criticality, ciType: form.type,
-      status: form.status || undefined,
-      inventoryNumber: form.inventoryNumber || undefined,
-      branchId:  form.branchId  || undefined,
-      ciModelId: form.ciModelId || undefined,
-      eolDate:   form.eolDate   || undefined,
-      eosDate:   form.eosDate   || undefined,
-      businessOwnerId: form.businessOwnerId || undefined,
-      technicalLeadId: form.technicalLeadId || undefined,
+      name: form.name,
+      environment: form.environment,
+      criticality: form.criticality,
+      ciType: form.ciType || null,
+      status: form.status || null,
+      inventoryNumber: form.inventoryNumber || null,
+      branchId:  form.branchId  || null,
+      ciModelId: form.ciModelId || null,
+      eolDate:   form.eolDate   || null,
+      eosDate:   form.eosDate   || null,
+      businessOwnerId: form.businessOwnerId || null,
+      technicalLeadId: form.technicalLeadId || null,
     };
 
-    // All hardware types get hardware details
-    if (HW_TYPES.includes(form.type)) {
-      body.hardware = {
-        serialNumber: form.serialNumber || `AUTO-${Date.now()}`,
-        model:        form.model        || "Unknown",
-        manufacturer: form.manufacturer || "Unknown",
-      };
-    }
-
-    // Database and Backup types get software details
-    if (SW_TYPES.includes(form.type)) {
-      body.software = { 
-        version: form.version || "1.0", 
-        licenseType: form.licenseType || "Unknown" 
-      };
-    }
-
-    // Infrastructure types get location and network details
-    const details: Record<string, unknown> = {};
-    if (INFRA_TYPES.includes(form.type)) {
-      if (form.floor)     details.floor     = form.floor;
-      if (form.room)      details.room      = form.room;
-      if (form.rack)      details.rack      = form.rack;
-      if (form.rackUnit)  details.rackUnit  = form.rackUnit;
-      if (form.vlan)      details.vlan      = form.vlan;
-      if (form.consoleIp) details.consoleIp = form.consoleIp;
-    }
-
-    if (Object.keys(details).length > 0) body.details = details;
-
     try {
-      const res = await apiFetch("/api/cis", { method: "POST", body: JSON.stringify(body) });
+      const res = await apiFetch(`/api/cis/${ci.id}`, { method: "PATCH", body: JSON.stringify(body) });
       if (!res.ok) {
         const ct = res.headers.get("content-type") ?? "";
         if (ct.includes("application/json")) { const err = await res.json(); throw new Error(err.error ?? `Error ${res.status}`); }
         else { const t = await res.text(); throw new Error(`Error ${res.status}: ${t.replace(/<[^>]+>/g, "").trim().slice(0, 120)}`); }
       }
-      onCreated(); onClose();
+      onUpdated(); onClose();
     } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
     finally { setSubmitting(false); }
   };
@@ -168,12 +144,18 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-800">Añadir Configuration Item</h2>
+          <h2 className="text-base font-semibold text-slate-800">Editar Configuration Item</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5">
           {error && <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"><AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}</div>}
+
+          {/* API Slug (read-only) */}
+          <div>
+            <Label>API Slug (solo lectura)</Label>
+            <Input value={ci.apiSlug} disabled className="bg-slate-100 text-slate-500" />
+          </div>
 
           {/* ── Governance (top) ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -193,8 +175,9 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
 
           {/* ── Type ── */}
           <div>
-            <Label>Tipo *</Label>
-            <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
+            <Label>Tipo</Label>
+            <Select value={form.ciType} onChange={(e) => set("ciType", e.target.value)}>
+              <option value="">— Sin especificar —</option>
               <option value="PHYSICAL_SERVER">Servidor Físico</option>
               <option value="VIRTUAL_SERVER">Servidor Virtual</option>
               <option value="DATABASE">Base de Datos</option>
@@ -204,14 +187,10 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             </Select>
           </div>
 
-          {/* ── Name / Slug ── */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><Label>Nombre *</Label><Input required placeholder="ej. Web Server PRD-01" value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
-            <div>
-              <Label>API Slug *</Label>
-              <Input required placeholder="ej. web-server-prd-01" value={form.apiSlug} onChange={(e) => set("apiSlug", e.target.value)} />
-              <p className="mt-1 text-[11px] text-slate-400">Auto-generado. Debe ser único.</p>
-            </div>
+          {/* ── Name ── */}
+          <div>
+            <Label>Nombre *</Label>
+            <Input required placeholder="ej. Web Server PRD-01" value={form.name} onChange={(e) => set("name", e.target.value)} />
           </div>
 
           {/* ── Env / Criticality ── */}
@@ -245,24 +224,23 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           </div>
 
           {/* ── Manufacturer + Model (master selects) ── */}
-          {(HW_TYPES.includes(form.type)) && (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <Label>Fabricante (catálogo)</Label>
-                <Select value={form.manufacturerId} onChange={(e) => { set("manufacturerId", e.target.value); set("ciModelId", ""); }}>
-                  <option value="">— Sin especificar —</option>
-                  {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </Select>
-              </div>
-              <div>
-                <Label>Modelo (catálogo)</Label>
-                <Select value={form.ciModelId} onChange={(e) => set("ciModelId", e.target.value)} disabled={filteredModels.length === 0}>
-                  <option value="">— Sin especificar —</option>
-                  {filteredModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                </Select>
-              </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label>Fabricante (catálogo)</Label>
+              <Select value={manufacturerId} onChange={(e) => { set("ciModelId", ""); }} disabled>
+                <option value="">— Sin especificar —</option>
+                {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </Select>
+              <p className="mt-1 text-[10px] text-slate-400">Vinculado al modelo seleccionado</p>
             </div>
-          )}
+            <div>
+              <Label>Modelo (catálogo)</Label>
+              <Select value={form.ciModelId} onChange={(e) => set("ciModelId", e.target.value)}>
+                <option value="">— Sin especificar —</option>
+                {allModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </Select>
+            </div>
+          </div>
 
           {/* ── Owners ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -280,51 +258,10 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             </div>
           </div>
 
-          {/* ── Hardware section ── */}
-          {HW_TYPES.includes(form.type) && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div><Label>Nº Serie / ID *</Label><Input required placeholder="SN-XXXXXXX" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
-                <div><Label>Modelo / SKU</Label><Input placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
-                <div><Label>Fabricante / Proveedor</Label><Input placeholder="Dell / AWS" value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Software section (DATABASE and BACKUP) ── */}
-          {SW_TYPES.includes(form.type) && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Versión</Label><Input placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
-                <div><Label>Tipo de Licencia</Label><Input placeholder="Enterprise / OEM…" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Technical Location + Network (infra) ── */}
-          {INFRA_TYPES.includes(form.type) && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">📍 Ubicación Técnica y Red</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div><Label>Planta / Piso</Label><Input placeholder="PB" value={form.floor} onChange={(e) => set("floor", e.target.value)} /></div>
-                <div><Label>Sala / CPD</Label><Input placeholder="CPD-01" value={form.room} onChange={(e) => set("room", e.target.value)} /></div>
-                <div><Label>Rack</Label><Input placeholder="R01" value={form.rack} onChange={(e) => set("rack", e.target.value)} /></div>
-                <div><Label>Unidad (U)</Label><Input placeholder="12" value={form.rackUnit} onChange={(e) => set("rackUnit", e.target.value)} /></div>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div><Label>VLAN</Label><Input placeholder="100" value={form.vlan} onChange={(e) => set("vlan", e.target.value)} /></div>
-                <div><Label>IP de Consola (OOB)</Label><Input placeholder="10.0.0.1" value={form.consoleIp} onChange={(e) => set("consoleIp", e.target.value)} /></div>
-              </div>
-            </div>
-          )}
-
-          {/* ── EOL / EoS dates (optional override — backend auto-fills from endoflife.date) ── */}
+          {/* ── EOL / EoS dates ── */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
               🕐 Fechas de Ciclo de Vida (EoL / EoS)
-              <span className="text-[10px] font-normal text-slate-400 lowercase">— se autocompletarán vía endoflife.date si se dejan vacías</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
@@ -336,7 +273,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>
             <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Guardando…" : "Crear CI"}
+              {submitting ? "Guardando…" : "Guardar Cambios"}
             </button>
           </div>
         </form>

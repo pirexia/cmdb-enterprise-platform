@@ -32,6 +32,15 @@ enum LocationType {
   RACK
 }
 
+enum CIType {
+  PHYSICAL_SERVER
+  VIRTUAL_SERVER
+  DATABASE
+  NETWORK_EQUIPMENT
+  STORAGE
+  BACKUP
+}
+
 enum RelationType {
   HOSTS              // Source hosts/contains target (e.g., Physical Server hosts VM)
   DEPENDS_ON         // Source depends on target (e.g., App depends on Database)
@@ -196,7 +205,7 @@ model CI {
   environment     Environment
   eolDate            DateTime? @map("eol_date")
   eosDate            DateTime? @map("eos_date")
-  ciType             String?   @default("OTHER") @map("ci_type")
+  ciType             CIType?   @map("ci_type")
   lastCheckDate      DateTime? @map("last_check_date")
   verificationSource String?   @map("verification_source")
 

@@ -1349,6 +1349,63 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
 });
 
 /**
+ * POST /api/relations
+ * Creates a new relationship between two CIs.
+ * Body: { sourceCiId: string, targetCiId: string, relationType: string }
+ * ADMIN only.
+ */
+app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { sourceCiId, targetCiId, relationType } = req.body as { sourceCiId?: string; targetCiId?: string; relationType?: string };
+
+  if (!sourceCiId || !targetCiId || !relationType) {
+    res.status(400).json({ error: 'sourceCiId, targetCiId and relationType are required' });
+    return;
+  }
+
+  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
+  if (!validTypes.includes(relationType)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+    return;
+  }
+
+  if (sourceCiId === targetCiId) {
+    res.status(400).json({ error: 'A CI cannot have a relationship with itself' });
+    return;
+  }
+
+  try {
+    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
+    `;
+
+    if (Number(ciCheck[0]?.count) !== 2) {
+      res.status(404).json({ error: 'One or both CIs not found' });
+      return;
+    }
+
+    const relation = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      RETURNING id::text
+    `;
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
+    `;
+
+    res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
+  } catch (error: unknown) {
+    console.error('[POST /api/relations] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === '23505') {
+      res.status(409).json({ error: 'This relationship already exists' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * DELETE /api/relations/:id
  * Deletes a CI relationship.
  * ADMIN only.

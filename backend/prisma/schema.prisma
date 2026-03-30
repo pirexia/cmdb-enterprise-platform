@@ -39,6 +39,7 @@ enum CIType {
   NETWORK_EQUIPMENT
   STORAGE
   BACKUP
+  BASE_SOFTWARE
 }
 
 enum RelationType {

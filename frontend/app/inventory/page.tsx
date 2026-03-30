@@ -8,11 +8,12 @@ import {
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
-  Key, Cloud, Terminal, Pencil, Trash2,
+  Key, Cloud, Terminal, Pencil, Trash2, Link2,
 } from "lucide-react";
 import Papa from "papaparse";
 import AddCIModal from "@/components/AddCIModal";
 import EditCIModal from "@/components/EditCIModal";
+import AddRelationModal from "@/components/AddRelationModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -223,6 +224,7 @@ export default function InventoryPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingCI, setEditingCI] = useState<CI | null>(null);
   const [deletingCI, setDeletingCI] = useState<string | null>(null);
+  const [relatingCI, setRelatingCI] = useState<CI | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
 
@@ -321,6 +323,13 @@ export default function InventoryPage() {
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
       {editingCI && <EditCIModal ci={editingCI} onClose={() => setEditingCI(null)} onUpdated={fetchCIs} />}
+      {relatingCI && (
+        <AddRelationModal
+          preselectedSourceId={relatingCI.id}
+          onClose={() => setRelatingCI(null)}
+          onCreated={() => setRelatingCI(null)}
+        />
+      )}
 
       <div className="min-h-screen bg-slate-50">
         <header className="border-b border-slate-200 bg-white px-8 py-5">
@@ -451,6 +460,13 @@ export default function InventoryPage() {
                             {isAdmin && (
                               <td className="px-6 py-4">
                                 <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setRelatingCI(ci)}
+                                    className="rounded-lg p-2 text-violet-600 hover:bg-violet-50 transition-colors"
+                                    title="Crear relación"
+                                  >
+                                    <Link2 className="h-4 w-4" />
+                                  </button>
                                   <button
                                     onClick={() => setEditingCI(ci)}
                                     className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 transition-colors"

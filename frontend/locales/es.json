@@ -12,13 +12,13 @@
     "vulnerabilities": "Vulnerabilidades",
     "map":             "Mapa de Dependencias",
     "integrations":    "Conectores",
-    "reports":         "📊 Reportes",
+    "reports":         "Reportes",
     "contracts":       "Contratos y Adendas",
     "entities":        "Entidades",
     "profile":         "Mi Perfil",
-    "masters":         "🗂️ Datos Maestros",
-    "certificates":    "🔐 Certificados SSL",
-    "audit":           "🕵️ Auditoría",
+    "masters":         "Datos Maestros",
+    "certificates":    "Certificados SSL",
+    "audit":           "Auditoría",
     "settings":        "Configuración"
   },
   "actions": {

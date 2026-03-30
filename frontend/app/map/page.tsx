@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
-  MiniMap,
   MarkerType,
   useNodesState,
   useEdgesState,
@@ -16,414 +15,510 @@ import ReactFlow, {
   BackgroundVariant,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, RefreshCw, Network, Clock, Shield } from "lucide-react";
+import {
+  Network, Search, Link2, RefreshCw, AlertTriangle, ArrowLeft, ChevronDown,
+} from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import AddRelationModal from "@/components/AddRelationModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type CIType         = "HARDWARE" | "SOFTWARE" | "OTHER";
-type ContractStatus = "EXPIRED" | "EXPIRING_SOON" | "ACTIVE" | "NONE";
-type VulnSeverity   = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-type CSStatus       = "protected" | "detections" | "reduced" | "none";
-
-interface CIRef { id: string; name: string; apiSlug: string }
-
-interface ContractInfo {
-  id:             string;
-  contractNumber: string;
-  endDate:        string | null;
-  vendor:         { id: string; name: string };
+interface CIOption {
+  id: string;
+  name: string;
+  apiSlug: string;
+  ciType: string | null;
+  criticality: string;
+  environment: string;
 }
 
-interface Vulnerability { cve: string; severity: VulnSeverity; description: string }
-
-interface AgentStatus {
-  agentId:          string;
-  agentVersion:     string;
-  status:           string;
-  preventionPolicy: string;
-  lastSeen:         string;
-  detections:       unknown[];
-  source:           string;
-  updatedAt:        string;
+interface RelationRow {
+  id: string;
+  source_ci_id: string;
+  target_ci_id: string;
+  relation_type: string;
+  source_ci_name: string;
+  source_ci_slug: string;
+  target_ci_name: string;
+  target_ci_slug: string;
 }
 
-interface CI {
-  id:              string;
-  name:            string;
-  apiSlug:         string;
-  criticality:     string;
-  environment:     string;
-  hardware:        unknown | null;
-  software:        unknown | null;
-  parentCI:        CIRef | null;
-  childCIs:        CIRef[];
-  contracts:       ContractInfo[];
-  vulnerabilities: Vulnerability[] | null;
-  agentStatus:     AgentStatus | null;
+interface Relations {
+  outgoing: RelationRow[];
+  incoming: RelationRow[];
+  total: number;
 }
 
 interface CINodeData {
-  label:           string;
-  apiSlug:         string;
-  ciType:          CIType;
-  environment:     string;
-  criticality:     string;
-  contractStatus:  ContractStatus;
-  daysRemaining:   number | null;
-  nearestContract: ContractInfo | null;
-  hasHighVuln:     boolean;
-  vulnCount:       number;
-  topSeverity:     VulnSeverity | null;
-  csStatus:        CSStatus;
-  csDetections:    number;
-  csVersion:       string;
+  label: string;
+  apiSlug: string;
+  ciType: string;
+  environment: string;
+  criticality: string;
+  isCenter: boolean;
 }
 
-// ─── Contract Status ──────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const EXPIRING_THRESHOLD = 60;
-
-function calcContractStatus(contracts: ContractInfo[]): {
-  status: ContractStatus; daysRemaining: number | null; nearestContract: ContractInfo | null;
-} {
-  if (contracts.length === 0) return { status: "NONE", daysRemaining: null, nearestContract: null };
-  const withDates = contracts.filter((c) => c.endDate !== null);
-  if (withDates.length === 0) return { status: "ACTIVE", daysRemaining: null, nearestContract: null };
-
-  let minDays = Infinity, nearest: ContractInfo | null = null;
-  for (const c of withDates) {
-    const days = Math.ceil((new Date(c.endDate!).getTime() - Date.now()) / 86_400_000);
-    if (days < minDays) { minDays = days; nearest = c; }
-  }
-  const status: ContractStatus =
-    minDays < 0 ? "EXPIRED" : minDays <= EXPIRING_THRESHOLD ? "EXPIRING_SOON" : "ACTIVE";
-  return { status, daysRemaining: minDays, nearestContract: nearest };
-}
-
-function formatDays(days: number) {
-  if (days < 0) return `Vencido hace ${Math.abs(days)}d`;
-  if (days === 0) return "Vence hoy";
-  return `Vence en ${days}d`;
-}
-
-// ─── Vuln helpers ─────────────────────────────────────────────────────────────
-
-const SEVERITY_ORDER: VulnSeverity[] = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
-
-function topSeverity(vulns: Vulnerability[]): VulnSeverity | null {
-  for (const s of SEVERITY_ORDER) if (vulns.some((v) => v.severity === s)) return s;
-  return null;
-}
-
-function calcCSStatus(agent: AgentStatus | null): { csStatus: CSStatus; csDetections: number; csVersion: string } {
-  if (!agent) return { csStatus: "none", csDetections: 0, csVersion: "" };
-  const detections = agent.detections?.length ?? 0;
-  const isReduced = agent.status === "reduced_functionality" || agent.preventionPolicy === "disabled";
-  const csStatus: CSStatus = detections > 0 ? "detections" : isReduced ? "reduced" : "protected";
-  return {
-    csStatus,
-    csDetections: detections,
-    csVersion: agent.agentVersion?.split(".").slice(0, 2).join(".") ?? "",
-  };
-}
-
-// ─── Node Styles ──────────────────────────────────────────────────────────────
-
-const TYPE_STYLES: Record<CIType, { bg: string; border: string; badge: string; badgeText: string }> = {
-  HARDWARE: { bg: "bg-blue-50",    border: "border-blue-300",    badge: "bg-blue-100 text-blue-700",    badgeText: "Hardware" },
-  SOFTWARE: { bg: "bg-emerald-50", border: "border-emerald-300", badge: "bg-emerald-100 text-emerald-700", badgeText: "Software" },
-  OTHER:    { bg: "bg-slate-50",   border: "border-slate-300",   badge: "bg-slate-100 text-slate-600",  badgeText: "Otro" },
-};
-
-const CONTRACT_OVERLAY: Record<ContractStatus, { border?: string; bg?: string; animClass?: string; textColor?: string }> = {
-  EXPIRED:       { border: "border-red-500",    bg: "bg-red-50",    animClass: "contract-expired",  textColor: "text-red-600" },
-  EXPIRING_SOON: { border: "border-orange-400", bg: "bg-orange-50", animClass: "contract-expiring", textColor: "text-orange-600" },
-  ACTIVE: {}, NONE: {},
+const RELATION_COLORS: Record<string, { stroke: string; label: string; bg: string }> = {
+  HOSTS:            { stroke: "#6366f1", label: "HOSTS",            bg: "#eef2ff" },
+  DEPENDS_ON:       { stroke: "#f97316", label: "DEPENDS_ON",       bg: "#fff7ed" },
+  CONNECTED_TO:     { stroke: "#0d9488", label: "CONNECTED_TO",     bg: "#f0fdfa" },
+  PROVIDES_SERVICE: { stroke: "#10b981", label: "PROVIDES_SERVICE", bg: "#f0fdf4" },
+  BACKED_UP_BY:     { stroke: "#8b5cf6", label: "BACKED_UP_BY",     bg: "#faf5ff" },
 };
 
 const CRIT_DOT: Record<string, string> = {
-  MISSION_CRITICAL: "bg-red-500", HIGH: "bg-orange-400", MEDIUM: "bg-yellow-400", LOW: "bg-slate-300",
+  MISSION_CRITICAL: "bg-red-500",
+  HIGH:             "bg-orange-400",
+  MEDIUM:           "bg-yellow-400",
+  LOW:              "bg-slate-300",
 };
 
-const VULN_COLOR: Record<VulnSeverity, string> = {
-  CRITICAL: "text-red-600", HIGH: "text-orange-500", MEDIUM: "text-yellow-600", LOW: "text-slate-500",
+const TYPE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+  PHYSICAL_SERVER:  { bg: "bg-emerald-100", text: "text-emerald-700", label: "Servidor Físico" },
+  VIRTUAL_SERVER:   { bg: "bg-teal-100",    text: "text-teal-700",    label: "Servidor Virtual" },
+  DATABASE:         { bg: "bg-blue-100",    text: "text-blue-700",    label: "Base de Datos" },
+  NETWORK_EQUIPMENT:{ bg: "bg-cyan-100",    text: "text-cyan-700",    label: "Red" },
+  STORAGE:          { bg: "bg-amber-100",   text: "text-amber-700",   label: "Almacenamiento" },
+  BACKUP:           { bg: "bg-purple-100",  text: "text-purple-700",  label: "Backup" },
+  BASE_SOFTWARE:    { bg: "bg-indigo-100",  text: "text-indigo-700",  label: "Software Base" },
+  SOFTWARE:         { bg: "bg-violet-100",  text: "text-violet-700",  label: "Software" },
+  OTHER:            { bg: "bg-slate-100",   text: "text-slate-600",   label: "Otro" },
 };
 
-const CS_SHIELD: Record<CSStatus, { color: string; bg: string; label: string }> = {
-  protected:  { color: "text-emerald-600", bg: "bg-emerald-100", label: "Falcon activo" },
-  detections: { color: "text-red-600",     bg: "bg-red-100",     label: "Detecciones" },
-  reduced:    { color: "text-orange-500",  bg: "bg-orange-100",  label: "Reducido" },
-  none:       { color: "text-slate-400",   bg: "bg-slate-100",   label: "Sin agente" },
-};
-
-// ─── Custom CI Node ───────────────────────────────────────────────────────────
+// ─── CI Node ──────────────────────────────────────────────────────────────────
 
 function CINode({ data }: NodeProps<CINodeData>) {
-  const [hovered, setHovered] = useState(false);
-
-  const typeStyle     = TYPE_STYLES[data.ciType];
-  const contractStyle = CONTRACT_OVERLAY[data.contractStatus];
-  const border = contractStyle.border ?? typeStyle.border;
-  const bg     = contractStyle.bg     ?? typeStyle.bg;
-  const anim   = contractStyle.animClass ?? "";
-
-  const showContractLine = data.contractStatus === "EXPIRED" || data.contractStatus === "EXPIRING_SOON";
-  const cs = CS_SHIELD[data.csStatus];
+  const badge = TYPE_BADGE[data.ciType] ?? TYPE_BADGE["OTHER"];
+  const dot   = CRIT_DOT[data.criticality] ?? "bg-slate-300";
 
   return (
-    <div
-      className={`relative w-52 rounded-xl border-2 shadow-md ${bg} ${border} ${anim}`}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* Criticality dot */}
-      <span className={`absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full border-2 border-white ${CRIT_DOT[data.criticality] ?? "bg-slate-300"}`} />
-
-      {/* Vulnerability alert badge */}
-      {data.hasHighVuln && (
-        <span className="vuln-alert absolute -top-3 -left-3 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold shadow-lg border-2 border-white">⚠</span>
-      )}
-
-      {/* Contract hover tooltip */}
-      {hovered && data.daysRemaining !== null && data.nearestContract && (
-        <div className="absolute -top-12 left-1/2 z-50 -translate-x-1/2 pointer-events-none">
-          <div className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium text-white shadow-lg ${data.contractStatus === "EXPIRED" ? "bg-red-600" : "bg-orange-500"}`}>
-            {data.nearestContract.contractNumber} — {formatDays(data.daysRemaining)}
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent"
-              style={{ borderTopColor: data.contractStatus === "EXPIRED" ? "#dc2626" : "#f97316" }} />
-          </div>
-        </div>
-      )}
-
-      {/* Vulnerability hover tooltip */}
-      {hovered && data.hasHighVuln && (
-        <div className="absolute -bottom-10 left-1/2 z-50 -translate-x-1/2 pointer-events-none">
-          <div className="whitespace-nowrap rounded-lg bg-red-700 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
-            {data.vulnCount} vuln. · top: {data.topSeverity}
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-red-700" />
-          </div>
-        </div>
-      )}
-
-      {/* CrowdStrike hover tooltip */}
-      {hovered && data.csStatus !== "none" && (
-        <div className="absolute -bottom-10 right-0 z-50 pointer-events-none">
-          <div className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-xs font-medium text-white shadow-lg ${data.csStatus === "detections" ? "bg-red-700" : data.csStatus === "reduced" ? "bg-orange-600" : "bg-emerald-700"}`}>
-            Falcon {cs.label}{data.csDetections > 0 ? ` (${data.csDetections})` : ""}{data.csVersion ? ` · v${data.csVersion}` : ""}
-            <div className="absolute bottom-full right-3 border-4 border-transparent"
-              style={{ borderBottomColor: data.csStatus === "detections" ? "#b91c1c" : data.csStatus === "reduced" ? "#ea580c" : "#047857" }} />
-          </div>
-        </div>
-      )}
+    <div className={`relative w-52 rounded-xl border-2 shadow-md bg-white transition-all ${
+      data.isCenter
+        ? "border-indigo-500 ring-4 ring-indigo-100 shadow-indigo-100"
+        : "border-slate-200 hover:border-slate-300"
+    }`}>
+      <span className={`absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full border-2 border-white ${dot}`} />
 
       <div className="px-3 py-2.5">
-        {/* Badge row */}
         <div className="flex items-center justify-between mb-1.5">
-          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${typeStyle.badge}`}>{typeStyle.badgeText}</span>
-          <div className="flex items-center gap-1.5">
-            {/* CrowdStrike shield */}
-            {data.csStatus !== "none" && (
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full ${cs.bg} ${cs.color}`}>
-                <Shield className="h-3 w-3" />
-              </span>
-            )}
-            {data.hasHighVuln && (
-              <span className={`text-[10px] font-semibold ${data.topSeverity ? VULN_COLOR[data.topSeverity] : ""}`}>{data.topSeverity}</span>
-            )}
-            {showContractLine && <Clock className={`h-3.5 w-3.5 flex-shrink-0 ${contractStyle.textColor}`} />}
-          </div>
+          <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
+            {badge.label}
+          </span>
+          {data.isCenter && (
+            <span className="inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+              origen
+            </span>
+          )}
         </div>
-
-        <p className="text-sm font-bold text-slate-800 leading-tight truncate" title={data.label}>{data.label}</p>
+        <p className="text-sm font-bold text-slate-800 leading-tight truncate" title={data.label}>
+          {data.label}
+        </p>
         <p className="text-[11px] text-slate-400 font-mono mt-0.5 truncate">{data.apiSlug}</p>
-        <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">{data.environment.toLowerCase()}</p>
-
-        {showContractLine && data.daysRemaining !== null && (
-          <p className={`mt-1 text-[10px] font-semibold truncate ${contractStyle.textColor}`}>{formatDays(data.daysRemaining)}</p>
-        )}
+        <p className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
+          {data.environment.toLowerCase()}
+        </p>
       </div>
 
-      <Handle type="target" position={Position.Top}    style={{ opacity: 0, pointerEvents: "none" }} />
-      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, pointerEvents: "none" }} />
+      <Handle type="target" position={Position.Left}   style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Right}  style={{ opacity: 0 }} />
+      <Handle type="target" position={Position.Top}    style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0 }} />
     </div>
   );
 }
 
 const NODE_TYPES = { ciNode: CINode };
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
+// ─── Graph builder ────────────────────────────────────────────────────────────
 
-const NODE_W = 208, NODE_H = 145, H_GAP = 80, V_GAP = 120;
+const NODE_W = 208, NODE_H = 100, V_GAP = 40, H_GAP = 320;
 
-function buildGraphElements(cis: CI[]): { nodes: Node<CINodeData>[]; edges: Edge[] } {
-  if (cis.length === 0) return { nodes: [], edges: [] };
-  const ciById = new Map(cis.map((ci) => [ci.id, ci]));
+function buildFocusedGraph(
+  center: CIOption,
+  relations: Relations,
+  allCIs: Map<string, CIOption>
+): { nodes: Node<CINodeData>[]; edges: Edge[] } {
+  const nodes: Node<CINodeData>[] = [];
+  const edges: Edge[]             = [];
 
-  const childrenOf: Record<string, string[]> = {};
-  for (const ci of cis) {
-    if (ci.parentCI && ciById.has(ci.parentCI.id)) {
-      const pid = ci.parentCI.id;
-      childrenOf[pid] = childrenOf[pid] ?? [];
-      childrenOf[pid].push(ci.id);
-    }
-  }
+  // Deduplicate: a CI might appear in both incoming and outgoing
+  const seen = new Set<string>();
 
-  const depth: Record<string, number> = {};
-  const roots = cis.filter((ci) => !ci.parentCI || !ciById.has(ci.parentCI.id));
-  const queue: [string, number][] = roots.map((ci) => [ci.id, 0]);
-  const visited = new Set<string>();
-  while (queue.length > 0) {
-    const [id, d] = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id); depth[id] = d;
-    (childrenOf[id] ?? []).forEach((cid) => queue.push([cid, d + 1]));
-  }
-  for (const ci of cis) if (depth[ci.id] === undefined) depth[ci.id] = 0;
-
-  const byDepth: Record<number, string[]> = {};
-  for (const [id, d] of Object.entries(depth)) { byDepth[d] = byDepth[d] ?? []; byDepth[d].push(id); }
-  const maxDepth = Math.max(...Object.keys(byDepth).map(Number));
-  const positions: Record<string, { x: number; y: number }> = {};
-  for (let d = 0; d <= maxDepth; d++) {
-    const ids = byDepth[d] ?? [];
-    const span = ids.length * (NODE_W + H_GAP) - H_GAP;
-    ids.forEach((id, i) => { positions[id] = { x: -span / 2 + i * (NODE_W + H_GAP), y: d * (NODE_H + V_GAP) }; });
-  }
-
-  const nodes: Node<CINodeData>[] = cis.map((ci) => {
-    const { status, daysRemaining, nearestContract } = calcContractStatus(ci.contracts);
-    const vulns    = ci.vulnerabilities ?? [];
-    const highVuln = vulns.some((v) => v.severity === "CRITICAL" || v.severity === "HIGH");
-    const { csStatus, csDetections, csVersion } = calcCSStatus(ci.agentStatus);
-    return {
-      id: ci.id, type: "ciNode",
-      position: positions[ci.id] ?? { x: 0, y: (NODE_H + V_GAP) * (maxDepth + 1) },
-      data: {
-        label: ci.name, apiSlug: ci.apiSlug,
-        ciType: ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER",
-        environment: ci.environment, criticality: ci.criticality,
-        contractStatus: status, daysRemaining, nearestContract,
-        hasHighVuln: highVuln, vulnCount: vulns.length,
-        topSeverity: vulns.length > 0 ? topSeverity(vulns) : null,
-        csStatus, csDetections, csVersion,
-      },
-    };
+  const makeNodeData = (ci: CIOption, isCenter: boolean): CINodeData => ({
+    label:       ci.name,
+    apiSlug:     ci.apiSlug,
+    ciType:      ci.ciType ?? "OTHER",
+    environment: ci.environment,
+    criticality: ci.criticality,
+    isCenter,
   });
 
-  const edges: Edge[] = cis
-    .filter((ci) => ci.parentCI && ciById.has(ci.parentCI.id))
-    .map((ci) => ({
-      id: `${ci.id}__${ci.parentCI!.id}`, source: ci.id, target: ci.parentCI!.id,
-      style: { stroke: "#6366f1", strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: "#6366f1" },
-    }));
+  // Center node
+  const totalLeft  = relations.incoming.length;
+  const totalRight = relations.outgoing.length;
+  const maxSide    = Math.max(totalLeft, totalRight, 1);
+  const centerY    = ((maxSide - 1) * (NODE_H + V_GAP)) / 2;
+
+  nodes.push({
+    id: center.id, type: "ciNode",
+    position: { x: H_GAP, y: centerY },
+    data: makeNodeData(center, true),
+  });
+  seen.add(center.id);
+
+  // Incoming: source → center
+  relations.incoming.forEach((rel, i) => {
+    const sourceId = rel.source_ci_id;
+    const y = i * (NODE_H + V_GAP);
+    const ci = allCIs.get(sourceId) ?? {
+      id: sourceId, name: rel.source_ci_name, apiSlug: rel.source_ci_slug,
+      ciType: null, criticality: "MEDIUM", environment: "PRODUCTION",
+    };
+
+    if (!seen.has(sourceId)) {
+      nodes.push({
+        id: sourceId, type: "ciNode",
+        position: { x: 0, y },
+        data: makeNodeData(ci, false),
+      });
+      seen.add(sourceId);
+    }
+
+    const color = RELATION_COLORS[rel.relation_type] ?? RELATION_COLORS["CONNECTED_TO"];
+    edges.push({
+      id: `in-${rel.id}`,
+      source: sourceId,
+      target: center.id,
+      label: rel.relation_type,
+      labelStyle: { fill: color.stroke, fontWeight: 600, fontSize: 10 },
+      labelBgStyle: { fill: color.bg, rx: 4 },
+      labelBgPadding: [4, 6] as [number, number],
+      style: { stroke: color.stroke, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: color.stroke },
+    });
+  });
+
+  // Outgoing: center → target
+  relations.outgoing.forEach((rel, i) => {
+    const targetId = rel.target_ci_id;
+    const y = i * (NODE_H + V_GAP);
+    const ci = allCIs.get(targetId) ?? {
+      id: targetId, name: rel.target_ci_name, apiSlug: rel.target_ci_slug,
+      ciType: null, criticality: "MEDIUM", environment: "PRODUCTION",
+    };
+
+    if (!seen.has(targetId)) {
+      nodes.push({
+        id: targetId, type: "ciNode",
+        position: { x: H_GAP * 2, y },
+        data: makeNodeData(ci, false),
+      });
+      seen.add(targetId);
+    }
+
+    const color = RELATION_COLORS[rel.relation_type] ?? RELATION_COLORS["CONNECTED_TO"];
+    edges.push({
+      id: `out-${rel.id}`,
+      source: center.id,
+      target: targetId,
+      label: rel.relation_type,
+      labelStyle: { fill: color.stroke, fontWeight: 600, fontSize: 10 },
+      labelBgStyle: { fill: color.bg, rx: 4 },
+      labelBgPadding: [4, 6] as [number, number],
+      style: { stroke: color.stroke, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: color.stroke },
+    });
+  });
 
   return { nodes, edges };
+}
+
+// ─── CI Selector ─────────────────────────────────────────────────────────────
+
+function CISelector({
+  cis, onSelect,
+}: {
+  cis: CIOption[];
+  onSelect: (ci: CIOption) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen]     = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const filtered = cis.filter(
+    (c) =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.apiSlug.toLowerCase().includes(search.toLowerCase())
+  );
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && e.target instanceof Element && !ref.current.contains(e.target)) setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-xl ring-1 ring-slate-200">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
+            <Network className="h-5 w-5 text-indigo-600" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-slate-900">Mapa de Dependencias</h1>
+            <p className="text-sm text-slate-500">Selecciona un CI para explorar sus relaciones</p>
+          </div>
+        </div>
+
+        <div ref={ref} className="relative">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-left text-sm hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors"
+          >
+            <span className="text-slate-400">Buscar CI por nombre o slug…</span>
+            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+          </button>
+
+          {open && (
+            <div className="absolute z-50 mt-2 w-full rounded-xl border border-slate-200 bg-white shadow-2xl">
+              <div className="border-b border-slate-100 p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    autoFocus
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Escriba para filtrar…"
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  />
+                </div>
+              </div>
+              <ul className="max-h-64 overflow-y-auto py-1">
+                {filtered.length === 0 ? (
+                  <li className="px-4 py-3 text-sm italic text-slate-400">Sin resultados</li>
+                ) : (
+                  filtered.map((ci) => {
+                    const badge = TYPE_BADGE[ci.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"];
+                    return (
+                      <li key={ci.id}>
+                        <button
+                          type="button"
+                          onClick={() => { onSelect(ci); setOpen(false); }}
+                          className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors"
+                        >
+                          <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
+                            {badge.label}
+                          </span>
+                          <span className="flex-1 min-w-0">
+                            <span className="font-medium text-slate-800 truncate block">{ci.name}</span>
+                            <span className="font-mono text-xs text-slate-400">{ci.apiSlug}</span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          {cis.length} CIs disponibles
+        </p>
+      </div>
+    </div>
+  );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MapPage() {
-  const [cis, setCis]   = useState<CI[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [allCIs, setAllCIs]             = useState<CIOption[]>([]);
+  const [allCIsMap, setAllCIsMap]       = useState<Map<string, CIOption>>(new Map());
+  const [loadingCIs, setLoadingCIs]     = useState(true);
+  const [selectedCI, setSelectedCI]     = useState<CIOption | null>(null);
+  const [relations, setRelations]       = useState<Relations | null>(null);
+  const [loadingRels, setLoadingRels]   = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [showRelModal, setShowRelModal] = useState(false);
+
   const [nodes, setNodes, onNodesChange] = useNodesState<CINodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
-  const fetchAndLayout = useCallback(async () => {
-    setLoading(true); setError(null);
+  // Load all CIs once (for selector + node lookup)
+  useEffect(() => {
+    apiFetch("/api/cis")
+      .then((r) => r.json())
+      .then((json: { data: CIOption[] }) => {
+        setAllCIs(json.data);
+        setAllCIsMap(new Map(json.data.map((c) => [c.id, c])));
+      })
+      .catch(() => setError("No se pudo cargar la lista de CIs"))
+      .finally(() => setLoadingCIs(false));
+  }, []);
+
+  const loadRelations = useCallback(async (ci: CIOption) => {
+    setLoadingRels(true);
+    setError(null);
     try {
-      const res = await apiFetch("/api/cis");
+      const res = await apiFetch(`/api/cis/${ci.id}/relations`);
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      const json: { total: number; data: CI[] } = await res.json();
-      setCis(json.data);
-      const { nodes: n, edges: e } = buildGraphElements(json.data);
-      setNodes(n); setEdges(e);
-    } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
-    finally { setLoading(false); }
-  }, [setNodes, setEdges]);
+      const data: Relations = await res.json();
+      setRelations(data);
+      const { nodes: n, edges: e } = buildFocusedGraph(ci, data, allCIsMap);
+      setNodes(n);
+      setEdges(e);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido");
+    } finally {
+      setLoadingRels(false);
+    }
+  }, [allCIsMap, setNodes, setEdges]);
 
-  useEffect(() => { fetchAndLayout(); }, [fetchAndLayout]);
+  const handleSelectCI = (ci: CIOption) => {
+    setSelectedCI(ci);
+    loadRelations(ci);
+  };
 
-  const hw       = useMemo(() => cis.filter((c) => c.hardware).length, [cis]);
-  const sw       = useMemo(() => cis.filter((c) => c.software).length, [cis]);
-  const oth      = useMemo(() => cis.filter((c) => !c.hardware && !c.software).length, [cis]);
-  const expired  = useMemo(() => cis.filter((c) => calcContractStatus(c.contracts).status === "EXPIRED").length, [cis]);
-  const expiring = useMemo(() => cis.filter((c) => calcContractStatus(c.contracts).status === "EXPIRING_SOON").length, [cis]);
-  const vulnCrit = useMemo(() => cis.filter((c) => (c.vulnerabilities ?? []).some((v) => v.severity === "CRITICAL" || v.severity === "HIGH")).length, [cis]);
-  const csProtected = useMemo(() => cis.filter((c) => calcCSStatus(c.agentStatus).csStatus === "protected").length, [cis]);
-  const csDetections = useMemo(() => cis.filter((c) => calcCSStatus(c.agentStatus).csStatus === "detections").length, [cis]);
+  const handleBack = () => {
+    setSelectedCI(null);
+    setRelations(null);
+    setNodes([]);
+    setEdges([]);
+    setError(null);
+  };
+
+  const handleRelationCreated = () => {
+    setShowRelModal(false);
+    if (selectedCI) loadRelations(selectedCI);
+  };
+
+  // ── Render: loading CIs ──
+  if (loadingCIs) {
+    return (
+      <div className="flex h-full items-center justify-center bg-slate-50">
+        <RefreshCw className="mr-2 h-5 w-5 animate-spin text-slate-400" />
+        <span className="text-sm text-slate-400">Cargando CIs…</span>
+      </div>
+    );
+  }
+
+  // ── Render: CI selector ──
+  if (!selectedCI) {
+    return <CISelector cis={allCIs} onSelect={handleSelectCI} />;
+  }
+
+  // ── Render: focused graph ──
+  const badge = TYPE_BADGE[selectedCI.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"];
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
-      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Network className="h-5 w-5 text-indigo-500" />
-            <div>
-              <h1 className="text-xl font-bold text-slate-900">Mapa de Dependencias</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{loading ? "Construyendo grafo…" : `${cis.length} nodos · ${edges.length} relaciones`}</p>
-            </div>
+    <div className="flex h-full flex-col bg-slate-50">
+      {showRelModal && (
+        <AddRelationModal
+          preselectedSourceId={selectedCI.id}
+          onClose={() => setShowRelModal(false)}
+          onCreated={handleRelationCreated}
+        />
+      )}
+
+      {/* Header */}
+      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-3">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" /> Cambiar CI
+          </button>
+
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
+              {badge.label}
+            </span>
+            <span className="font-bold text-slate-900 truncate">{selectedCI.name}</span>
+            <span className="font-mono text-xs text-slate-400 hidden sm:block">{selectedCI.apiSlug}</span>
           </div>
 
-          {!loading && !error && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500">
-              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-blue-300 bg-blue-50" />Hardware ({hw})</span>
-              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-emerald-300 bg-emerald-50" />Software ({sw})</span>
-              {oth > 0 && <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-slate-300 bg-slate-50" />Otro ({oth})</span>}
-              <span className="text-slate-200">|</span>
-              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-red-500 bg-red-50 contract-expired" /><span className="text-red-600 font-medium">Vencido ({expired})</span></span>
-              <span className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border-2 border-orange-400 bg-orange-50 contract-expiring" /><span className="text-orange-600 font-medium">Vence ≤60d ({expiring})</span></span>
-              <span className="text-slate-200">|</span>
-              <span className="flex items-center gap-1.5">
-                <span className="vuln-alert inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[9px]">⚠</span>
-                <span className="text-red-600 font-medium">Vuln ({vulnCrit})</span>
-              </span>
-              <span className="text-slate-200">|</span>
-              <span className="flex items-center gap-1.5"><span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><Shield className="h-2.5 w-2.5" /></span><span className="text-emerald-600 font-medium">Falcon OK ({csProtected})</span></span>
-              {csDetections > 0 && <span className="flex items-center gap-1.5"><span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-red-600"><Shield className="h-2.5 w-2.5" /></span><span className="text-red-600 font-medium">Detecciones ({csDetections})</span></span>}
-              <button onClick={fetchAndLayout} className="ml-2 flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 hover:bg-slate-50 transition-colors">
-                <RefreshCw className="h-3 w-3" />Actualizar
-              </button>
-            </div>
+          {relations && !loadingRels && (
+            <span className="ml-1 text-xs text-slate-400 hidden md:block">
+              {relations.incoming.length} entrantes · {relations.outgoing.length} salientes
+            </span>
           )}
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => selectedCI && loadRelations(selectedCI)}
+              disabled={loadingRels}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${loadingRels ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              onClick={() => setShowRelModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+            >
+              <Link2 className="h-4 w-4" /> Nueva Relación
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 relative">
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-50 z-10">
+      {/* Graph area */}
+      <div className="relative flex-1">
+        {loadingRels && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50">
             <RefreshCw className="mr-2 h-6 w-6 animate-spin text-slate-400" />
-            <span className="text-sm text-slate-400">Construyendo grafo…</span>
-          </div>
-        )}
-        {error && !loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-50 z-10">
-            <AlertTriangle className="h-10 w-10 text-red-400" />
-            <p className="text-sm font-medium text-red-600">{error}</p>
-            <button onClick={fetchAndLayout} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700">Reintentar</button>
+            <span className="text-sm text-slate-400">Cargando relaciones…</span>
           </div>
         )}
 
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-          nodeTypes={NODE_TYPES} fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.1} maxZoom={2}
-          proOptions={{ hideAttribution: true }}>
+        {error && !loadingRels && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-50">
+            <AlertTriangle className="h-10 w-10 text-red-400" />
+            <p className="text-sm font-medium text-red-600">{error}</p>
+            <button
+              onClick={() => selectedCI && loadRelations(selectedCI)}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {!loadingRels && !error && relations && relations.total === 0 && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-50">
+            <Network className="h-12 w-12 text-slate-300" />
+            <p className="text-sm font-medium text-slate-500">Este CI no tiene relaciones</p>
+            <button
+              onClick={() => setShowRelModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              <Link2 className="h-4 w-4" /> Crear primera relación
+            </button>
+          </div>
+        )}
+
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={NODE_TYPES}
+          fitView
+          fitViewOptions={{ padding: 0.25 }}
+          minZoom={0.2}
+          maxZoom={2}
+          proOptions={{ hideAttribution: true }}
+        >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#cbd5e1" />
           <Controls position="bottom-right" />
-          <MiniMap
-            position="bottom-left"
-            nodeColor={(node) => {
-              const d = node.data as CINodeData;
-              if (d?.hasHighVuln)                        return "#fca5a5";
-              if (d?.contractStatus === "EXPIRED")        return "#fca5a5";
-              if (d?.contractStatus === "EXPIRING_SOON")  return "#fdba74";
-              if (d?.csStatus === "detections")           return "#fca5a5";
-              if (d?.csStatus === "protected")            return d?.ciType === "HARDWARE" ? "#bfdbfe" : d?.ciType === "SOFTWARE" ? "#a7f3d0" : "#e2e8f0";
-              return d?.ciType === "HARDWARE" ? "#bfdbfe" : d?.ciType === "SOFTWARE" ? "#a7f3d0" : "#e2e8f0";
-            }}
-            nodeStrokeWidth={2} maskColor="rgba(248,250,252,0.85)"
-          />
         </ReactFlow>
       </div>
     </div>

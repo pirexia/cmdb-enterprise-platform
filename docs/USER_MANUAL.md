@@ -1,8 +1,8 @@
 # 📖 CMDB Enterprise Platform — Manual de Usuario
 
-**Versión:** 1.0.0  
-**Público:** Administradores CMDB y usuarios de consulta  
-**Fecha:** 2026-03-15
+**Versión:** 1.1.0
+**Público:** Administradores CMDB y usuarios de consulta
+**Fecha:** 2026-03-31
 
 ---
 
@@ -113,6 +113,7 @@ La plataforma tiene dos roles diferenciados:
 | Ver Inventario de CIs | ✅ | ✅ |
 | **Crear/modificar CIs** | ✅ | ❌ |
 | **Importar CSV masivo** | ✅ | ❌ |
+| **Crear/eliminar relaciones entre CIs** | ✅ | ❌ |
 | Ver Vulnerabilidades | ✅ | ✅ |
 | **Cambiar estado de vuln.** | ✅ | ❌ |
 | Ver Contratos | ✅ | ✅ |
@@ -242,8 +243,8 @@ La importación masiva permite cargar cientos de CIs desde un archivo Excel/CSV.
 | `licenseType` | Opcional | Tipo de licencia | `subscription` |
 | `status` | Opcional | `active` o `inactive` | `active` |
 
-### Tipos de CI válidos
-`PHYSICAL_SERVER`, `VIRTUAL_SERVER`, `DATABASE`, `NETWORK`, `STORAGE`, `BACKUP`, `HARDWARE`, `SOFTWARE`, `DESKTOP`, `LAPTOP`, `PRINTER`, `SCANNER`, `MONITOR`, `VIDEOCONFERENCE`, `SMART_DISPLAY`, `TIME_CLOCK`, `IP_PHONE`, `SMARTPHONE`, `TABLET`, `PDA`, `BARCODE_SCANNER`, `IP_CAMERA`, `UPS`, `WIFI_AP`, `CLOUD_INSTANCE`, `CLOUD_STORAGE`, `BASE_SOFTWARE`, `LICENSE`, `OTHER`
+### Tipos de CI válidos (enum `CIType`)
+`PHYSICAL_SERVER`, `VIRTUAL_SERVER`, `DATABASE`, `NETWORK_EQUIPMENT`, `STORAGE`, `BACKUP`, `BASE_SOFTWARE`
 
 ### Paso 2: Rellenar y subir el CSV
 1. Rellena el CSV con tus datos (puedes usar Excel)
@@ -279,26 +280,26 @@ La plataforma soporta relaciones N:M entre CIs para modelar la topología de inf
 
 ### Ver relaciones de un CI
 
-1. Ve al **Inventario de CIs**
-2. Haz clic en el CI que quieres consultar
-3. En el detalle, busca la pestaña **"Relaciones"** o **"Topología"**
-4. Verás dos listas:
-   - **Relaciones salientes** (este CI → otros CIs)
-   - **Relaciones entrantes** (otros CIs → este CI)
+En el **Mapa de Dependencias**, selecciona el CI para ver su grafo completo de relaciones entrantes y salientes (ver sección 15).
 
 ### Crear una nueva relación (solo ADMIN)
 
-1. En la vista de detalle del CI, sección **"Relaciones"**
-2. Haz clic en **"Añadir Relación"**
-3. Busca el CI destino usando el buscador (autocomplete por nombre)
-4. Selecciona el **tipo de relación** (HOSTS, DEPENDS_ON, etc.)
-5. Haz clic en **"Crear Relación"**
+**Desde el Inventario:**
+1. En la tabla de CIs, localiza el CI que actuará como **origen**
+2. Haz clic en el icono de **enlace** en la columna de acciones (junto a los botones de editar/borrar)
+3. Se abre el modal **"Nueva Relación"** con el CI origen preseleccionado
+4. Selecciona el **tipo de relación** mediante el desplegable
+5. Busca y selecciona el **CI destino** usando el campo de búsqueda con autocompletado
+6. Haz clic en **"Crear Relación"**
+
+**Desde el Mapa de Dependencias:**
+1. Selecciona un CI en el selector del mapa
+2. Haz clic en **"Nueva Relación"** (botón superior derecho del grafo)
+3. Completa los pasos 4-6 del flujo anterior
 
 ### Eliminar una relación (solo ADMIN)
 
-1. En la lista de relaciones del CI
-2. Haz clic en el icono 🗑️ junto a la relación que quieres eliminar
-3. Confirma la eliminación
+Las relaciones pueden eliminarse via la API (`DELETE /api/relations/:id`). Próximamente disponible desde la interfaz del mapa.
 
 ### Casos de uso prácticos
 
@@ -525,19 +526,47 @@ Muestra todos los usuarios del sistema con:
 
 ## 15. Mapa de Dependencias
 
-El Mapa de Dependencias visualiza las relaciones entre CIs (ej: una aplicación que depende de un servidor, que depende de un switch).
+El Mapa de Dependencias visualiza el grafo de relaciones directo de un CI seleccionado, mostrando tanto las relaciones entrantes como las salientes con sus tipos codificados por color.
 
 ### Acceder
 Haz clic en **"Mapa de Dependencias"** en el menú lateral.
 
-### Navegar el mapa
-- **Arrastrar**: Mueve nodos
-- **Rueda del ratón**: Zoom in/out
-- **Doble clic en nodo**: Ver detalles del CI
-- Las **flechas** representan dependencias (CI hijo → CI padre)
+### Paso 1 — Seleccionar un CI
+Al entrar al mapa se muestra un **buscador de CIs**. Escribe parte del nombre o del slug para filtrar y haz clic en el CI que quieres explorar.
 
-### Configurar dependencias
-Al crear o editar un CI, se puede configurar el campo **"CI Padre"** para establecer la jerarquía de dependencia.
+### Paso 2 — Explorar el grafo
+Una vez seleccionado el CI, el mapa muestra tres columnas:
+
+| Columna | Contenido |
+|---------|-----------|
+| Izquierda | CIs que **apuntan hacia** el CI seleccionado (relaciones entrantes) |
+| Centro | CI seleccionado (marcado con borde indigo y badge "origen") |
+| Derecha | CIs a los que **apunta** el CI seleccionado (relaciones salientes) |
+
+Cada arista lleva una etiqueta con el tipo de relación, codificada por color:
+
+| Color | Tipo de relación |
+|-------|-----------------|
+| Indigo | HOSTS |
+| Naranja | DEPENDS_ON |
+| Teal | CONNECTED_TO |
+| Esmeralda | PROVIDES_SERVICE |
+| Púrpura | BACKED_UP_BY |
+
+### Navegar el mapa
+- **Arrastrar**: Mueve el canvas
+- **Rueda del ratón**: Zoom in/out
+- Botón **"Volver"** (esquina superior izquierda): Vuelve al selector de CI
+- Botón **"Nueva Relación"**: Abre el modal para crear una relación nueva con el CI seleccionado como origen
+
+### Crear relaciones desde el mapa (solo ADMIN)
+1. Con un CI seleccionado, haz clic en **"Nueva Relación"** (botón superior derecho)
+2. El CI actual aparece preseleccionado como origen
+3. Elige el tipo de relación y el CI destino
+4. Haz clic en **"Crear Relación"** — el grafo se actualiza automáticamente
+
+### Estado vacío
+Si el CI no tiene ninguna relación registrada, el mapa muestra un mensaje con un botón directo a **"Crear primera relación"**.
 
 ---
 
@@ -554,6 +583,7 @@ El sistema registra automáticamente todas las acciones administrativas:
 | Acción registrada | Descripción |
 |-------------------|-------------|
 | `CREATE_CI` | Creación de un nuevo CI |
+| `CREATE_RELATION` | Creación de una relación entre dos CIs |
 | `UPDATE_VULN_STATUS` | Cambio de estado de una vulnerabilidad |
 | `UPDATE_VERIFICATION` | Actualización de fechas EOL/EOS verificadas |
 | `SET_ROLE` | Cambio de rol de usuario |

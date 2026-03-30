@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Arquitectura Técnica
 
-**Versión:** 1.0.0  
-**Fecha:** 2026-03-15  
+**Versión:** 1.1.0
+**Fecha:** 2026-03-31
 **Estado:** Producción
 
 ---
@@ -258,7 +258,7 @@ users                    configuration_items (CIs)
   ├── email                 ├── apiSlug (unique)
   ├── password (bcrypt)     ├── criticality (enum)
   ├── role (ADMIN/VIEWER)   ├── environment (enum)
-  ├── active                ├── ciType
+  ├── active                ├── ciType (PHYSICAL_SERVER | VIRTUAL_SERVER | DATABASE | NETWORK_EQUIPMENT | STORAGE | BACKUP | BASE_SOFTWARE)
   ├── mfa_secret            ├── status
   └── mfa_enabled           ├── eolDate / eosDate
                             ├── lastCheckDate
@@ -281,6 +281,14 @@ support_areas  branches     manufacturers  device_models  providers
   └── name       ├── name     └── name         ├── name       └── name
                  ├── code                       └── manufacturerId
                  └── supportAreaId
+
+ci_relations
+  ├── id (UUID)
+  ├── sourceCiId → configuration_items
+  ├── targetCiId → configuration_items
+  ├── relationType (HOSTS | DEPENDS_ON | CONNECTED_TO | PROVIDES_SERVICE | BACKED_UP_BY)
+  ├── createdAt
+  └── createdBy
 
 audit_logs
   ├── action
@@ -305,7 +313,8 @@ audit_logs
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
 | Configuración | `/settings` | `GET/PATCH /api/users/*` |
 | Perfil | `/profile` | `GET/POST /api/users/me/mfa/*` |
-| Mapa | `/map` | `GET /api/cis` (ReactFlow) |
+| Mapa | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations` |
+| Relaciones | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
 | Auth | `/login` | `POST /api/auth/login` |
 
 ---

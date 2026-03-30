@@ -57,6 +57,9 @@ export default function LoginPage() {
             <p className="text-xs text-white/70 mt-1">
               {mfaRequired ? "Verificación en dos pasos (MFA)" : "Configuration Management Database"}
             </p>
+            {!mfaRequired && (
+              <p className="text-xs text-white/50 mt-1">Soporta credenciales corporativas</p>
+            )}
           </div>
 
           {/* Form */}

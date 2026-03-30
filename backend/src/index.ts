@@ -227,14 +227,16 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         if (rows.length === 0) {
           const username  = email.split('@')[0];
           const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          // sso_external_id stores the LDAP identity so the user can be
+          // identified as LDAP-sourced (vs. locally created) at any point.
           await prisma.$executeRaw`
-            INSERT INTO "users" (id, username, email, password, role, created_at, updated_at)
-            VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', now(), now())
+            INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
+            VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
           `;
           rows = await prisma.$queryRaw<UserRow[]>`
             SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
           `;
-          log.info(`[POST /api/auth/login] Auto-provisioned LDAP user: ${email}`);
+          log.info(`[POST /api/auth/login] Auto-provisioned LDAP shadow user: ${email}`);
         }
         user = rows[0];
       }

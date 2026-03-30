@@ -154,13 +154,31 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
   └── Token → localStorage (browser)
 ```
 
-### Flujo de Autenticación LDAP
+### Flujo de Autenticación LDAP (cuando USE_LDAP=true)
 ```
 Browser → Frontend (3001) → API /api/auth/login (3000)
-  └── ldap-authentication → AD/LDAP (389/636)
-  └── [Auto-provisioning] → PostgreSQL (5432)
-  └── jwt.sign() → Token JWT (8h)
-  └── Token → localStorage (browser)
+  │
+  ├─ [Pre-check] ¿email termina en @cmdb.local / @cmdb.internal?
+  │    └── SÍ → salta LDAP, va directo al path local bcrypt
+  │
+  └─ NO → intento LDAP (timeout 5s)
+       │
+       ├─ [Estrategia 1: LDAP_BIND_DN configurado]
+       │    └── Service account bind → search por mail/uid → user bind
+       │
+       └─ [Estrategia 2: sin LDAP_BIND_DN]
+            └── Direct bind con email como UPN (AD) o uid= (OpenLDAP)
+       │
+       ├─ LDAP OK → ¿usuario existe en BD?
+       │    ├── SÍ  → carga user row
+       │    └── NO  → auto-provisioning (role=VIEWER, sso_external_id=email)
+       │
+       └─ LDAP FAIL → fallback bcrypt local (fail-safe)
+            └── ¿usuario existe con contraseña local? → bcrypt.compare()
+
+  └── [Común a ambos paths]
+       ├── ¿mfa_enabled? → verificar TOTP (speakeasy)
+       └── jwt.sign() → Token JWT (8h) → localStorage
 ```
 
 ### Flujo de API Protegida
@@ -325,7 +343,7 @@ audit_logs
 |---------|---------------|
 | Autenticación | JWT HS256 (8h) + bcrypt cost-10 |
 | MFA | TOTP RFC 6238 (speakeasy) |
-| LDAP/AD | Opcional via ldap-authentication |
+| LDAP/AD | Opcional via ldap-authentication; admin-bind+search (recomendado) o direct-bind; timeout 5s fail-safe; shadow user con `sso_external_id` |
 | RBAC | ADMIN / VIEWER con `requireAdmin` middleware |
 | Headers HTTP | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |
 | CORS | Lista blanca explícita (CORS_ORIGINS env var) |

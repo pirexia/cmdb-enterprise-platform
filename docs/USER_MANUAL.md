@@ -55,11 +55,17 @@ Si tu cuenta tiene MFA activado:
 4. El código cambia cada 30 segundos — introdúcelo antes de que expire
 
 ### Inicio de sesión con LDAP/Active Directory
-Si la organización usa Active Directory:
-1. Introduce tu email corporativo y contraseña de red
-2. La autenticación se verifica contra el servidor LDAP corporativo
-3. Si es tu primer login, se crea automáticamente tu cuenta con rol **VIEWER**
+Si la organización tiene el conector LDAP/AD activado, verás el mensaje **"Soporta credenciales corporativas"** en la pantalla de login. En ese caso:
+
+1. Introduce tu email corporativo y contraseña de red (las mismas del PC/dominio)
+2. El sistema comprueba primero el directorio corporativo (AD/LDAP)
+3. Si es tu primer login, se crea automáticamente un registro de usuario con rol **VIEWER**
 4. Un administrador puede elevar tu rol en **Configuración → Usuarios**
+5. Si tu cuenta tiene MFA activado, se pedirá el código TOTP en un segundo paso
+
+> **Comportamiento fail-safe:** Si el servidor LDAP no está disponible, el sistema cae automáticamente en autenticación local sin demoras. Las cuentas que terminan en `@cmdb.local` o `@cmdb.internal` siempre se autentican de forma local, independientemente de la configuración LDAP.
+
+> **Origen de cuenta:** En **Configuración → Usuarios**, las cuentas aprovisionadas por LDAP aparecen marcadas como 🏢 LDAP, mientras que las locales aparecen como 🔑 Local.
 
 ---
 

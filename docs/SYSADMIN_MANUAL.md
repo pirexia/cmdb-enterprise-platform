@@ -11,6 +11,7 @@
 1. [Requisitos del Sistema](#1-requisitos-del-sistema)
 2. [Despliegue Inicial](#2-despliegue-inicial)
 3. [Configuración del archivo .env](#3-configuración-del-archivo-env)
+   - [3b. Configuración LDAP / Active Directory](#3b-configuración-ldap--active-directory)
 4. [Gestión de Certificados SSL/HTTPS](#4-gestión-de-certificados-sslhttps)
 5. [Operaciones con Docker Compose](#5-operaciones-con-docker-compose)
 6. [Backups y Restauración de la Base de Datos](#6-backups-y-restauración-de-la-base-de-datos)
@@ -152,13 +153,14 @@ ALERT_RECIPIENT=it-ops@tudominio.com
 ALERT_WARN_DAYS=30
 ALERT_CRON_SCHEDULE=30 8 * * *
 
-# ── LDAP (Opcional) ────────────────────────────────────────────────────
+# ── LDAP / Active Directory (Opcional) ────────────────────────────────
 USE_LDAP=false
 # USE_LDAP=true
 # LDAP_URL=ldap://ad.tudominio.com:389
-# LDAP_BASE_DN=DC=tudominio,DC=com
 # LDAP_BIND_DN=CN=cmdb-svc,OU=Service Accounts,DC=tudominio,DC=com
 # LDAP_BIND_PASSWORD=<contraseña-cuenta-servicio>
+# LDAP_SEARCH_BASE=DC=tudominio,DC=com
+# LDAP_TLS_REJECT_UNAUTHORIZED=0    # Solo si usas cert autofirmado interno
 ```
 
 ### Generar secretos seguros
@@ -168,6 +170,94 @@ openssl rand -base64 48
 
 # Contraseña de base de datos (32 caracteres)
 openssl rand -base64 32
+```
+
+---
+
+## 3b. Configuración LDAP / Active Directory
+
+> Esta sección amplía la configuración LDAP del apartado 3. Solo es necesaria si `USE_LDAP=true`.
+
+### Variables de entorno
+
+| Variable | Obligatoria | Descripción | Ejemplo |
+|----------|-------------|-------------|---------|
+| `USE_LDAP` | ✅ | Activa el conector LDAP | `true` |
+| `LDAP_URL` | ✅ | URL del servidor LDAP o LDAPS | `ldap://dc.corp.local:389` |
+| `LDAP_SEARCH_BASE` | ✅ | Base DN donde se buscan los usuarios | `dc=corp,dc=local` |
+| `LDAP_BIND_DN` | Recomendada | DN de la cuenta de servicio | `cn=svc-cmdb,ou=ServiceAccounts,dc=corp,dc=local` |
+| `LDAP_BIND_PASSWORD` | Recomendada | Contraseña de la cuenta de servicio | — |
+| `LDAP_TLS_REJECT_UNAUTHORIZED` | Opcional | Poner `0` solo si el cert del DC es autofirmado | `0` |
+
+### Estrategias de autenticación
+
+El sistema aplica automáticamente la estrategia más segura disponible:
+
+**Estrategia 1 — Admin bind + search (recomendada para AD corporativo):**
+Se activa cuando `LDAP_BIND_DN` está configurado. La cuenta de servicio hace bind primero, luego busca al usuario por atributo `mail` (si el login es un email) o `uid`, y finalmente re-hace bind como ese usuario para verificar la contraseña.
+
+```bash
+# Ejemplo para Active Directory
+USE_LDAP=true
+LDAP_URL=ldap://dc01.corp.local:389
+LDAP_BIND_DN=CN=svc-cmdb,OU=Service Accounts,DC=corp,DC=local
+LDAP_BIND_PASSWORD=P@ssw0rd_Seguro
+LDAP_SEARCH_BASE=OU=Empleados,DC=corp,DC=local
+```
+
+**Estrategia 2 — Direct user bind (fallback):**
+Se usa cuando `LDAP_BIND_DN` está vacío. El sistema hace bind directamente con el email del usuario como UPN (`user@corp.local`), compatible con Active Directory. Para OpenLDAP construye `uid=<usuario>,<LDAP_SEARCH_BASE>`.
+
+```bash
+# Ejemplo mínimo (solo con UPN directo)
+USE_LDAP=true
+LDAP_URL=ldap://dc01.corp.local:389
+LDAP_SEARCH_BASE=DC=corp,DC=local
+```
+
+### Configuración con LDAPS (TLS en puerto 636)
+
+```bash
+LDAP_URL=ldaps://dc01.corp.local:636
+# Si el certificado del DC está firmado por una CA corporativa privada:
+LDAP_TLS_REJECT_UNAUTHORIZED=0
+```
+
+> ⚠️ `LDAP_TLS_REJECT_UNAUTHORIZED=0` desactiva la verificación del certificado del servidor LDAP. Úsalo solo en entornos controlados con CA interna. En producción con CA pública, no es necesario.
+
+### Comportamiento fail-safe y timeout
+
+- El conector LDAP tiene un **timeout de 5 segundos**. Si el servidor AD no responde en ese tiempo, la autenticación cae automáticamente al path local (bcrypt) sin impacto para el usuario.
+- Las cuentas `@cmdb.local` y `@cmdb.internal` **siempre** se autentican localmente, ignorando el servidor LDAP.
+- Si LDAP falla y el usuario no existe en BD local, el login devuelve `Invalid credentials`.
+
+### Aprovisionamiento automático de usuarios LDAP
+
+En el primer login exitoso de un usuario corporativo:
+1. Se crea un registro en la tabla `users` con rol `VIEWER`
+2. El campo `sso_external_id` almacena el email corporativo — esto identifica la cuenta como de origen LDAP
+3. La contraseña del registro es un hash aleatorio inutilizable (no es posible hacer login local con ella)
+
+Para promover a un usuario LDAP a `ADMIN`, ve a **Configuración → Usuarios** en la interfaz web.
+
+### Verificar la integración LDAP
+
+```bash
+# Probar conexión básica al DC desde el host
+ldapsearch -x -H ldap://dc01.corp.local:389 \
+  -D "CN=svc-cmdb,OU=Service Accounts,DC=corp,DC=local" \
+  -w "P@ssw0rd_Seguro" \
+  -b "DC=corp,DC=local" \
+  "(mail=usuario@corp.local)"
+
+# Verificar desde dentro del contenedor backend
+docker exec cmdb-backend-prod node -e "
+  process.env.LDAP_URL='ldap://dc01.corp.local:389';
+  const {authenticateLDAP} = require('./dist/src/services/ldap');
+  authenticateLDAP('usuario@corp.local','contraseña')
+    .then(() => console.log('OK'))
+    .catch(e => console.error('FAIL:', e.message));
+"
 ```
 
 ---

@@ -1,8 +1,8 @@
 # 🔧 CMDB Enterprise Platform — Manual del Administrador de Sistemas
 
-**Versión:** 1.0.0  
-**Público:** Equipo de Sistemas e Infraestructura (RHEL)  
-**Fecha:** 2026-03-15
+**Versión:** 1.1.0
+**Público:** Equipo de Sistemas e Infraestructura (RHEL)
+**Fecha:** 2026-03-31
 
 ---
 
@@ -102,11 +102,21 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml ps
 ```
 
+> **Seed automático:** En el primer arranque, el entrypoint del backend ejecuta `prisma migrate deploy` y, si no existe ningún usuario en la base de datos, lanza automáticamente el seed inicial (usuarios por defecto, CIs y contratos de ejemplo). En reinicios posteriores se detecta que ya hay usuarios y se omite el seed. No es necesario ningún paso manual de carga de datos.
+
 ### Paso 6: Verificar salud
 ```bash
 curl http://localhost:3000/health
 # Respuesta esperada: {"status":"ok","timestamp":"..."}
 ```
+
+### Credenciales por defecto tras el seed
+| Email | Contraseña | Rol |
+|-------|-----------|-----|
+| `admin@cmdb.local` | `Admin1234!` | ADMIN |
+| `auditor@cmdb.local` | `Audit1234!` | VIEWER |
+
+> ⚠️ Cambia las contraseñas inmediatamente tras el primer login en producción.
 
 ---
 

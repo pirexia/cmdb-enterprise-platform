@@ -5,7 +5,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-1.0.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.1.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.1.0)
 
 ---
 
@@ -29,7 +29,7 @@
 | 🔐 **Seguridad Enterprise** | Autenticación Híbrida LDAP/AD + Local con fail-soft fallback, MFA (TOTP RFC 6238), RBAC (Admin/Viewer), JWT HS256, bcrypt cost-10, conformidad ISO 27001. |
 | 📡 **Inteligencia de Ciclo de Vida** | Integración con endoflife.date API para automatización de EOL/EOSL, centro de consulta de hardware/software, verificación manual con fuentes externas. |
 | 📧 **Proactividad (Alertas)** | Motor de alertas diarias (cron) con informes personalizados por email sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas. |
-| 🕸️ **Topología y Dependencias** | Relaciones N:M entre CIs con tipos (HOSTS, DEPENDS_ON, CONNECTED_TO), análisis de impacto, mapeo visual con React Flow. |
+| 🕸️ **Topología y Dependencias** | Relaciones N:M entre CIs con 5 tipos (HOSTS, DEPENDS_ON, CONNECTED_TO, PROVIDES_SERVICE, BACKED_UP_BY), análisis de impacto, mapa de dependencias por CI con grafo enfocado e interactivo (React Flow). |
 | 🐳 **Infraestructura Production-Ready** | Despliegue Podman Rootless en RHEL con persistencia (loginctl enable-linger), imágenes multi-stage, usuario de servicio dedicado, conformidad Zero Trust. |
 
 ### CMDB Core
@@ -37,7 +37,7 @@
 | Módulo | Descripción |
 |--------|-------------|
 | 📊 **Dashboard** | Resumen ejecutivo interactivo de CIs, vulnerabilidades, contratos y estado de seguridad en tiempo real. |
-| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía oficial (Physical Server, Virtual Server, Database, Network Equipment, Storage, Backup), criticidad, entorno y metadatos hardware/software. |
+| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía oficial (Physical Server, Virtual Server, Database, Network Equipment, Storage, Backup, Base Software), criticidad, entorno y metadatos hardware/software. |
 | 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas jerárquicas y monitoreo automático de vencimientos. |
 | 🛡️ **Gestión de Vulnerabilidades** | Vista centralizada de CVEs, ciclo de vida (Nuevo → Asignado → En Curso → Resuelto), integración con Greenbone OpenVAS y CrowdStrike Falcon. |
 | 📋 **Centro de Reportes** | Generación de informes en PDF/CSV: obsolescencia, contratos próximos a vencer, informe ejecutivo de seguridad. |
@@ -149,14 +149,9 @@ Para poner el proyecto en marcha rápidamente en un entorno de desarrollo local 
    ```bash
    docker compose up -d --build
    ```
+   > El backend ejecuta automáticamente las migraciones y el seed inicial (usuarios, CIs y contratos de ejemplo) en el primer arranque. No es necesario ningún paso adicional.
 
-4. **Cargar datos iniciales (seed):**
-   Crea usuarios, un CI de ejemplo, un contrato y un proveedor.
-   ```bash
-   docker exec cmdb-backend npx ts-node prisma/seed.ts
-   ```
-
-5. **Accede a la plataforma:**
+4. **Accede a la plataforma:**
    - **Frontend (UI):** `http://localhost:3001`
    - **Backend (API):** `http://localhost:3000/health`
    - **Adminer (DB UI):** `http://localhost:8080` (usuario `admin`, contraseña de `.env`)

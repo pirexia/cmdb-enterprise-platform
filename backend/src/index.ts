@@ -1432,17 +1432,18 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
 app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
   const id = String(req.params.id);
   try {
-    const row = await prisma.cIType.findUnique({ where: { id }, select: { isSystem: true, code: true } });
+    const row = await prisma.cIType.findUnique({ where: { id }, select: { code: true } });
     if (!row) { res.status(404).json({ error: 'Tipo no encontrado' }); return; }
-    if (row.isSystem) { res.status(403).json({ error: `El tipo "${row.code}" es un tipo de sistema y no puede eliminarse` }); return; }
+    // Check if any CI uses this type before attempting delete
+    const ciCount = await prisma.cI.count({ where: { ciTypeId: id } });
+    if (ciCount > 0) {
+      res.status(409).json({ error: `No se puede eliminar: ${ciCount} CI${ciCount > 1 ? 's' : ''} tienen este tipo asignado` });
+      return;
+    }
     await prisma.cIType.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    // FK violation = CIs with this type exist
-    if (msg.includes('foreign key') || msg.includes('P2003') || msg.includes('violates')) {
-      res.status(409).json({ error: 'No se puede eliminar: existen CIs con este tipo asignado' }); return;
-    }
     res.status(500).json({ error: msg });
   }
 });

@@ -188,8 +188,10 @@ export default function MastersPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
+
+      {/* ── Header ── */}
+      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-900">{t('masters.title')}</h1>
@@ -201,23 +203,43 @@ export default function MastersPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8 max-w-5xl mx-auto">
-        {error && (
-          <div className="mb-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
-          </div>
-        )}
+      {/* ── Body: sidebar + content ── */}
+      <div className="flex flex-1 overflow-hidden">
 
-        {/* Tab bar */}
-        <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 mb-6 overflow-x-auto">
-          {tabs.map((item) => (
-            <button key={item.id} onClick={() => setTab(item.id)}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors flex-1 justify-center ${tab === item.id ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}>
-              {item.icon}{item.label}
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${tab === item.id ? "bg-indigo-500 text-white" : "bg-slate-100 text-slate-500"}`}>{item.count}</span>
-            </button>
-          ))}
-        </div>
+        {/* Sidebar nav */}
+        <aside className="w-56 flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto">
+          <nav className="py-3">
+            {tabs.map((item) => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors text-left ${
+                    active
+                      ? "bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <span className={active ? "text-indigo-600" : "text-slate-400"}>{item.icon}</span>
+                  <span className="flex-1 truncate">{item.label}</span>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    active ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                  }`}>{item.count}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        {/* Content area */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-8 py-8">
+            {error && (
+              <div className="mb-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+              </div>
+            )}
 
         {/* ── Support Areas ── */}
         {tab === "support-areas" && (
@@ -854,17 +876,12 @@ export default function MastersPage() {
                             title="Editar nombre o categoría">
                             <Pencil className="h-4 w-4" />
                           </button>
-                          {!t.isSystem && (
-                            <button
-                              onClick={() => deleteCIType(t.id, t.name)}
-                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Eliminar tipo">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                          {t.isSystem && (
-                            <span className="rounded-md px-2 py-1 text-[10px] font-medium text-slate-400 bg-slate-50">Sistema</span>
-                          )}
+                          <button
+                            onClick={() => deleteCIType(t.id, t.name)}
+                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            title="Eliminar tipo">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                     );
@@ -900,6 +917,8 @@ export default function MastersPage() {
             </div>
           </div>
         )}
+          </div>
+        </main>
       </div>
     </div>
   );

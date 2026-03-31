@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package, Wallet,
+  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock,
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
@@ -16,14 +16,17 @@ interface Manufacturer { id: string; name: string }
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
 interface Provider     { id: string; name: string }
 interface CostCenter   { id: string; code: string; name: string }
+interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean; categoryCode: string }
+interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types";
 
 type EditState =
   | { kind: "simple"; path: string; id: string; name: string }
   | { kind: "branch"; id: string; name: string; code: string; address: string; supportAreaId: string }
   | { kind: "model";  id: string; name: string; manufacturerId: string }
   | { kind: "cc";     id: string; code: string; name: string }
+  | { kind: "citype"; id: string; name: string; categoryCode: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -78,12 +81,13 @@ export default function MastersPage() {
   const { t } = useLanguage();
   const [tab, setTab] = useState<TabId>("support-areas");
 
-  const [supportAreas,  setSupportAreas]  = useState<SupportArea[]>([]);
-  const [branches,      setBranches]      = useState<Branch[]>([]);
-  const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
-  const [models,        setModels]        = useState<DeviceModel[]>([]);
-  const [providers,     setProviders]     = useState<Provider[]>([]);
-  const [costCenters,   setCostCenters]   = useState<CostCenter[]>([]);
+  const [supportAreas,     setSupportAreas]     = useState<SupportArea[]>([]);
+  const [branches,         setBranches]         = useState<Branch[]>([]);
+  const [manufacturers,    setManufacturers]    = useState<Manufacturer[]>([]);
+  const [models,           setModels]           = useState<DeviceModel[]>([]);
+  const [providers,        setProviders]        = useState<Provider[]>([]);
+  const [costCenters,      setCostCenters]      = useState<CostCenter[]>([]);
+  const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -96,6 +100,7 @@ export default function MastersPage() {
   const [newModel, setNewModel] = useState({ name: "", manufacturerId: "" });
   const [newProv, setNewProv] = useState("");
   const [newCC,   setNewCC]   = useState({ code: "", name: "" });
+  const [newCIType, setNewCIType] = useState({ name: "", categoryCode: "" });
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -112,13 +117,14 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
         apiFetch("/api/masters/device-models"),
         apiFetch("/api/masters/providers"),
         apiFetch("/api/masters/cost-centers"),
+        apiFetch("/api/masters/ci-type-categories"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -127,12 +133,14 @@ export default function MastersPage() {
       const dmData  = await dmRes.json();
       const pvData  = await pvRes.json();
       const ccData  = await ccRes.json();
-      setSupportAreas( safe(saData) as SupportArea[]);
-      setBranches(     safe(brData) as Branch[]);
-      setManufacturers(safe(mfData) as Manufacturer[]);
-      setModels(       safe(dmData) as DeviceModel[]);
-      setProviders(    safe(pvData) as Provider[]);
-      setCostCenters(  safe(ccData) as CostCenter[]);
+      const ctData  = await ctRes.json();
+      setSupportAreas(    safe(saData) as SupportArea[]);
+      setBranches(        safe(brData) as Branch[]);
+      setManufacturers(   safe(mfData) as Manufacturer[]);
+      setModels(          safe(dmData) as DeviceModel[]);
+      setProviders(       safe(pvData) as Provider[]);
+      setCostCenters(     safe(ccData) as CostCenter[]);
+      setCiTypeCategories(safe(ctData) as CITypeCategory[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -155,6 +163,8 @@ export default function MastersPage() {
     if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? `Error ${res.status}`); }
   };
 
+  const totalCITypes = ciTypeCategories.reduce((s, c) => s + c.ciTypes.length, 0);
+
   // ── Tab config ──────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count: number }[] = [
     { id: "support-areas",  label: t('masters.tabs.support_areas'), icon: <MapPin    className="h-4 w-4" />, count: supportAreas.length },
@@ -163,6 +173,7 @@ export default function MastersPage() {
     { id: "models",         label: t('masters.tabs.models'),        icon: <Layers    className="h-4 w-4" />, count: models.length },
     { id: "providers",      label: "Proveedores",                   icon: <Package   className="h-4 w-4" />, count: providers.length },
     { id: "cost-centers",   label: "Centros de Coste",              icon: <Wallet    className="h-4 w-4" />, count: costCenters.length },
+    { id: "ci-types",       label: "Tipos de CI",                   icon: <Tags      className="h-4 w-4" />, count: totalCITypes },
   ];
 
   return (
@@ -750,6 +761,106 @@ export default function MastersPage() {
                   );
                 })}
             </div>
+          </div>
+        )}
+
+        {/* ── CI Types ── */}
+        {tab === "ci-types" && (
+          <div className="space-y-6">
+            {/* Add new type form */}
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Tipo de CI</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">Las categorías principales son fijas. Solo puedes añadir subcategorías.</p>
+                <div className="flex gap-2 mt-2">
+                  <Sel value={newCIType.categoryCode} onChange={(e) => setNewCIType((p) => ({ ...p, categoryCode: e.target.value }))} className="w-52">
+                    <option value="">— Categoría —</option>
+                    {ciTypeCategories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                  </Sel>
+                  <Input placeholder="Nombre del tipo (ej: Firewall)" value={newCIType.name} onChange={(e) => setNewCIType((p) => ({ ...p, name: e.target.value }))} />
+                  <button
+                    onClick={async () => {
+                      if (!newCIType.categoryCode || !newCIType.name.trim()) { alert("Selecciona categoría e introduce un nombre"); return; }
+                      try {
+                        await post("/api/masters/ci-types", { name: newCIType.name, categoryCode: newCIType.categoryCode });
+                        setNewCIType({ name: "", categoryCode: "" });
+                        load();
+                      } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                    }}
+                    className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                    <Plus className="h-4 w-4" />Añadir
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Categories with their types */}
+            {ciTypeCategories.map((cat) => (
+              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
+                  <Tags className="h-4 w-4 text-indigo-500" />
+                  <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.ciTypes.length}</span>
+                  <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {cat.ciTypes.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-slate-400">Sin tipos en esta categoría.</p>
+                  ) : cat.ciTypes.map((t) => {
+                    const isEditing = editState?.kind === "citype" && editState.id === t.id;
+                    if (isEditing && editState?.kind === "citype") {
+                      return (
+                        <div key={t.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                          <Sel value={editState.categoryCode} onChange={(e) => setEditState({ ...editState, categoryCode: e.target.value })} className="w-44">
+                            {ciTypeCategories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                          </Sel>
+                          <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre" className="flex-1 min-w-[160px]" />
+                          <button
+                            onClick={async () => {
+                              try { await patch(`/api/masters/ci-types/${t.id}`, { name: editState.name, categoryCode: editState.categoryCode }); setEditState(null); load(); }
+                              catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors">
+                            <Check className="h-3.5 w-3.5" />Guardar
+                          </button>
+                          <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={t.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                        <div className="flex items-center gap-3">
+                          {t.isSystem && <span title="Tipo de sistema — no se puede eliminar"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0" /></span>}
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">{t.name}</p>
+                            <p className="text-xs font-mono text-slate-400">{t.code}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => setEditState({ kind: "citype", id: t.id, name: t.name, categoryCode: t.categoryCode })}
+                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            title="Editar nombre o categoría">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          {!t.isSystem && (
+                            <button
+                              onClick={() => del(`/api/masters/ci-types/${t.id}`, load)}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              title="Eliminar tipo">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                          {t.isSystem && (
+                            <span className="rounded-md px-2 py-1 text-[10px] font-medium text-slate-400 bg-slate-50">Sistema</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

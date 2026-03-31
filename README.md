@@ -5,7 +5,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-1.1.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.1.0)
+[![Version](https://img.shields.io/badge/version-1.2.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.2.0)
 
 ---
 
@@ -26,7 +26,7 @@
 | Módulo | Descripción |
 |--------|-------------|
 | 🌍 **Soporte Multilingüe (i18n)** | Interfaz completa en Español e Inglés con selector de idioma persistente y contextos compartidos. |
-| 🔐 **Seguridad Enterprise** | Autenticación Híbrida LDAP/AD + Local con fail-soft fallback, MFA (TOTP RFC 6238), RBAC (Admin/Viewer), JWT HS256, bcrypt cost-10, conformidad ISO 27001. |
+| 🔐 **Seguridad Enterprise** | Autenticación Híbrida LDAP/AD + Local con fail-soft fallback, MFA (TOTP RFC 6238) **obligatorio para admins** y sugerido para usuarios en primer login, dispositivos de confianza con TTL configurable, RBAC (Admin/Viewer), JWT HS256, bcrypt cost-10, conformidad ISO 27001. |
 | 📡 **Inteligencia de Ciclo de Vida** | Integración con endoflife.date API para automatización de EOL/EOSL, centro de consulta de hardware/software, verificación manual con fuentes externas. |
 | 📧 **Proactividad (Alertas)** | Motor de alertas diarias (cron) con informes personalizados por email sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas. |
 | 🕸️ **Topología y Dependencias** | Relaciones N:M entre CIs con 5 tipos (HOSTS, DEPENDS_ON, CONNECTED_TO, PROVIDES_SERVICE, BACKED_UP_BY), análisis de impacto, mapa de dependencias por CI con grafo enfocado e interactivo (React Flow). |
@@ -37,11 +37,11 @@
 | Módulo | Descripción |
 |--------|-------------|
 | 📊 **Dashboard** | Resumen ejecutivo interactivo de CIs, vulnerabilidades, contratos y estado de seguridad en tiempo real. |
-| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía oficial (Physical Server, Virtual Server, Database, Network Equipment, Storage, Backup, Base Software), criticidad, entorno y metadatos hardware/software. |
+| 🖥️ **Inventario de CIs** | Gestión completa (CRUD) de Configuration Items con taxonomía dinámica y extensible agrupada por categorías (Infraestructura, Dispositivos Usuario, Movilidad/IoT, Salas de Reunión, Software, Licencias), criticidad, entorno y metadatos hardware/software. |
 | 📜 **Contratos y Adendas** | Gestión de contratos M:N vinculados a CIs, soporte de adendas jerárquicas y monitoreo automático de vencimientos. |
 | 🛡️ **Gestión de Vulnerabilidades** | Vista centralizada de CVEs, ciclo de vida (Nuevo → Asignado → En Curso → Resuelto), integración con Greenbone OpenVAS y CrowdStrike Falcon. |
 | 📋 **Centro de Reportes** | Generación de informes en PDF/CSV: obsolescencia, contratos próximos a vencer, informe ejecutivo de seguridad. |
-| 🗂️ **Datos Maestros** | CRUD completo de tablas auxiliares: Áreas de Soporte, Sedes, Fabricantes, Modelos de Dispositivos, Proveedores. |
+| 🗂️ **Datos Maestros** | CRUD completo de tablas auxiliares: **Tipos de CI** (con categorías configurables), Áreas de Soporte, Sedes, Fabricantes, Modelos de Dispositivos, Proveedores. Navegación vertical en barra lateral. |
 | 🕵️ **Registro de Auditoría** | Trazabilidad completa de todas las acciones administrativas con purga automático de registros antiguos (retención configurable). |
 
 ### Security & Operations

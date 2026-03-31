@@ -1,9 +1,9 @@
 # 🔐 Security Audit & ISO 27001 Compliance Report
 
 **Platform:** CMDB Enterprise Platform  
-**Audit Date:** 2026-03-15  
-**Auditor:** DevSecOps Team (Misión 13)  
-**Version:** v1.0.0  
+**Audit Date:** 2026-03-31 (updated)
+**Auditor:** DevSecOps Team
+**Version:** v1.2.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -33,10 +33,13 @@ This document describes the security controls implemented in the CMDB Enterprise
 | A.9.2.5 Review of user access rights | Audit log (`audit_logs` table) records every CREATE_CI, UPDATE_VULN_STATUS, UPDATE_VERIFICATION, and admin action with timestamp and user email. | ✅ |
 | A.9.2.6 Removal/adjustment of access rights | User deletion via admin API immediately revokes access. JWT tokens expire after **8 hours**. | ✅ |
 
-**Multi-Factor Authentication (MFA):**
+**Multi-Factor Authentication (MFA) — Enhanced Enforcement:**
 - TOTP-based MFA implemented using `speakeasy` (RFC 6238 compliant).
-- QR code provisioning via `GET /api/users/me/mfa/setup`.
-- MFA enforcement on login: if `mfa_enabled=true`, login returns `MFA_REQUIRED` until valid TOTP is submitted.
+- QR code provisioning via `POST /api/auth/mfa/setup` (authenticated endpoint).
+- **Admin users (mandatory):** On first login without MFA configured, the server issues a *limited JWT* (`mfaSetupRequired: true`, 15 min TTL). This token is only accepted by MFA setup endpoints. The frontend forces the user through the setup wizard before granting full application access. Admin cannot skip or bypass this step.
+- **VIEWER users (recommended):** On first login without MFA configured, the server records `mfa_prompted_at = now()` and returns the full JWT with `requireAction: 'MFA_SETUP_SUGGESTED'`. The frontend shows a one-time suggestion screen; the user may configure MFA or skip. On subsequent logins, no suggestion is shown.
+- **Trusted devices:** After successful MFA verification, the user can mark the device as trusted. The server generates a 32-byte cryptographically random token (`crypto.randomBytes`), stores it in the `trusted_devices` table with an expiry of `TRUSTED_DEVICE_TTL_DAYS` days (default 30), and returns it to the client (stored in `localStorage`). On future logins, if the client presents a valid, non-expired device token, the MFA step is bypassed. Expired device records are automatically purged by a daily cron job (02:00 AM).
+- **Limited JWT scope enforcement:** The `authenticateToken` middleware rejects requests from `mfaSetupRequired` tokens to any path other than `/api/auth/mfa/setup` and `/api/auth/mfa/enable`, returning `403 MFA_SETUP_REQUIRED`.
 
 **LDAP / Active Directory Integration:**
 - Optional LDAP authentication via `USE_LDAP=true` environment variable.
@@ -171,7 +174,7 @@ CREATE TABLE "audit_logs" (
 | 🟠 MEDIUM | Rotate database password (`POSTGRES_PASSWORD`) from the default placeholder | DevOps |
 | 🟠 MEDIUM | Enable HSTS header in `frontend/next.config.ts` once HTTPS is active (uncomment the commented line) | Frontend |
 | 🟡 LOW | Implement certificate auto-renewal (Let's Encrypt via Certbot) for production deployments | DevOps |
-| 🟡 LOW | Add `fail2ban` or rate limiting on `POST /api/auth/login` to prevent brute-force | Backend |
+| ✅ DONE | Rate limiting on `POST /api/auth/login` — `express-rate-limit`: 10 failed attempts / 15 min per IP (`skipSuccessfulRequests: true`) | Backend |
 | 🟡 LOW | Implement log rotation and archival for `audit_logs` table | DBA |
 
 ---
@@ -181,6 +184,7 @@ CREATE TABLE "audit_logs" (
 | Date | Version | Author | Changes |
 |------|---------|--------|---------|
 | 2026-03-15 | 1.0.0 | DevSecOps (Misión 13) | Initial security audit — SSL, Helmet, CORS, ISO 27001 mapping |
+| 2026-03-31 | 1.2.0 | DevSecOps | MFA mandatory enforcement for admins; trusted device mechanism; limited JWT scope; rate limiting confirmed implemented |
 
 ---
 

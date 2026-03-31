@@ -32,14 +32,32 @@ enum LocationType {
   RACK
 }
 
-enum CIType {
-  PHYSICAL_SERVER
-  VIRTUAL_SERVER
-  DATABASE
-  NETWORK_EQUIPMENT
-  STORAGE
-  BACKUP
-  BASE_SOFTWARE
+// ─── CI Type master (replaces old CIType enum) ────────────────────────────────
+
+model CITypeCategory {
+  code      String      @id
+  name      String
+  sortOrder Int         @default(0) @map("sort_order")
+  ciTypes   CIType[]
+
+  @@map("ci_type_categories")
+}
+
+model CIType {
+  id           String          @id @default(uuid()) @db.Uuid
+  code         String          @unique
+  name         String
+  categoryCode String          @map("category_code")
+  sortOrder    Int             @default(0) @map("sort_order")
+  isSystem     Boolean         @default(false) @map("is_system")
+
+  category     CITypeCategory  @relation(fields: [categoryCode], references: [code])
+  cis          CI[]
+
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@map("ci_types")
 }
 
 enum RelationType {
@@ -222,7 +240,8 @@ model CI {
   environment     Environment
   eolDate            DateTime? @map("eol_date")
   eosDate            DateTime? @map("eos_date")
-  ciType             CIType?   @map("ci_type")
+  ciTypeId           String?   @db.Uuid @map("ci_type_id")
+  ciTypeDef          CIType?   @relation(fields: [ciTypeId], references: [id])
   lastCheckDate      DateTime? @map("last_check_date")
   verificationSource String?   @map("verification_source")
 

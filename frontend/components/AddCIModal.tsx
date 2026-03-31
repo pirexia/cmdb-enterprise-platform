@@ -10,21 +10,21 @@ interface User         { id: string; username: string; email: string }
 interface MasterItem   { id: string; name: string }
 interface Branch       { id: string; name: string; branch_code: string; support_area_id: string; support_area_name: string }
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
-
-type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIPMENT" | "STORAGE" | "BACKUP";
+interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean }
+interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
 
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 type BusinessImpact = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 type DataClassification = "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED";
 
-// CI type category helpers
-const HW_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE"];
-const SW_TYPES: CIType[] = ["DATABASE","BACKUP"];
-const INFRA_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE","BACKUP"];
+// Category-based section helpers (which category shows which form section)
+const HARDWARE_CATEGORIES = new Set(["INFRASTRUCTURE", "USER_DEVICE", "MOBILITY_IOT", "MEETING_ROOM"]);
+const SOFTWARE_CATEGORIES = new Set(["SOFTWARE"]);
+const LOCATION_CATEGORIES = new Set(["INFRASTRUCTURE"]);
 
 interface FormState {
-  type: CIType; name: string; apiSlug: string;
+  ciTypeId: string; name: string; apiSlug: string;
   environment: Environment; criticality: Criticality;
   status: string; inventoryNumber: string;
   businessOwnerId: string; technicalLeadId: string;
@@ -47,7 +47,7 @@ interface FormState {
 }
 
 const INITIAL_FORM: FormState = {
-  type: "PHYSICAL_SERVER", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
+  ciTypeId: "", name: "", apiSlug: "", environment: "PRODUCTION", criticality: "MEDIUM",
   status: "ACTIVO", inventoryNumber: "",
   businessOwnerId: "", technicalLeadId: "",
   branchId: "", manufacturerId: "", ciModelId: "",
@@ -79,12 +79,13 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export default function AddCIModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }): React.ReactElement {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
-  const [users,         setUsers]         = useState<User[]>([]);
-  const [branches,      setBranches]      = useState<Branch[]>([]);
-  const [manufacturers, setManufacturers] = useState<MasterItem[]>([]);
-  const [allModels,     setAllModels]     = useState<DeviceModel[]>([]);
-  const [submitting,    setSubmitting]    = useState(false);
-  const [error,         setError]         = useState<string | null>(null);
+  const [users,            setUsers]            = useState<User[]>([]);
+  const [branches,         setBranches]         = useState<Branch[]>([]);
+  const [manufacturers,    setManufacturers]    = useState<MasterItem[]>([]);
+  const [allModels,        setAllModels]        = useState<DeviceModel[]>([]);
+  const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
+  const [submitting,       setSubmitting]       = useState(false);
+  const [error,            setError]            = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value, ...(key === "name" ? { apiSlug: toSlug(value as string) } : {}) }));
@@ -96,13 +97,23 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       apiFetch("/api/masters/branches").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/manufacturers").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/device-models").then((r) => r.json()).catch(() => []),
-    ]).then(([u, b, m, dm]) => {
+      apiFetch("/api/masters/ci-type-categories").then((r) => r.json()).catch(() => []),
+    ]).then(([u, b, m, dm, cats]) => {
       setUsers(safe(u) as User[]);
       setBranches(safe(b) as Branch[]);
       setManufacturers(safe(m) as MasterItem[]);
       setAllModels(safe(dm) as DeviceModel[]);
+      setCiTypeCategories(safe(cats) as CITypeCategory[]);
     });
   }, []);
+
+  // Derive selected type's category code for section visibility
+  const allFlatTypes = ciTypeCategories.flatMap((c) => c.ciTypes.map((t) => ({ ...t, categoryCode: c.code })));
+  const selectedTypeInfo = allFlatTypes.find((t) => t.id === form.ciTypeId);
+  const selectedCategoryCode = selectedTypeInfo?.categoryCode ?? "";
+  const isHw    = HARDWARE_CATEGORIES.has(selectedCategoryCode);
+  const isSw    = SOFTWARE_CATEGORIES.has(selectedCategoryCode);
+  const isInfra = LOCATION_CATEGORIES.has(selectedCategoryCode);
 
   // Filter models by selected manufacturer
   const filteredModels = form.manufacturerId
@@ -117,7 +128,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
 
     const body: Record<string, unknown> = {
       name: form.name, apiSlug: form.apiSlug, environment: form.environment,
-      criticality: form.criticality, ciType: form.type,
+      criticality: form.criticality, ciTypeId: form.ciTypeId || undefined,
       status: form.status || undefined,
       inventoryNumber: form.inventoryNumber || undefined,
       branchId:  form.branchId  || undefined,
@@ -136,8 +147,8 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       dataClassification: form.dataClassification  || undefined,
     };
 
-    // All hardware types get hardware details
-    if (HW_TYPES.includes(form.type)) {
+    // Hardware categories get hardware details
+    if (isHw) {
       body.hardware = {
         serialNumber: form.serialNumber || `AUTO-${Date.now()}`,
         model:        form.model        || "Unknown",
@@ -145,17 +156,17 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       };
     }
 
-    // Database and Backup types get software details
-    if (SW_TYPES.includes(form.type)) {
-      body.software = { 
-        version: form.version || "1.0", 
-        licenseType: form.licenseType || "Unknown" 
+    // Software category gets software details
+    if (isSw) {
+      body.software = {
+        version: form.version || "1.0",
+        licenseType: form.licenseType || "Unknown"
       };
     }
 
-    // Infrastructure types get location and network details
+    // Infrastructure category gets location and network details
     const details: Record<string, unknown> = {};
-    if (INFRA_TYPES.includes(form.type)) {
+    if (isInfra) {
       if (form.floor)     details.floor     = form.floor;
       if (form.room)      details.room      = form.room;
       if (form.rack)      details.rack      = form.rack;
@@ -209,13 +220,15 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Type ── */}
           <div>
             <Label>Tipo *</Label>
-            <Select required value={form.type} onChange={(e) => set("type", e.target.value as CIType)}>
-              <option value="PHYSICAL_SERVER">Servidor Físico</option>
-              <option value="VIRTUAL_SERVER">Servidor Virtual</option>
-              <option value="DATABASE">Base de Datos</option>
-              <option value="NETWORK_EQUIPMENT">Equipo de Red</option>
-              <option value="STORAGE">Almacenamiento</option>
-              <option value="BACKUP">Backup</option>
+            <Select required value={form.ciTypeId} onChange={(e) => set("ciTypeId", e.target.value)}>
+              <option value="">— Seleccionar tipo —</option>
+              {ciTypeCategories.map((cat) => (
+                <optgroup key={cat.code} label={cat.name}>
+                  {cat.ciTypes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              ))}
             </Select>
           </div>
 
@@ -260,7 +273,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           </div>
 
           {/* ── Manufacturer + Model (master selects) ── */}
-          {(HW_TYPES.includes(form.type)) && (
+          {isHw && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label>Fabricante (catálogo)</Label>
@@ -296,7 +309,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           </div>
 
           {/* ── Hardware section ── */}
-          {HW_TYPES.includes(form.type) && (
+          {isHw && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -307,8 +320,8 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             </div>
           )}
 
-          {/* ── Software section (DATABASE and BACKUP) ── */}
-          {SW_TYPES.includes(form.type) && (
+          {/* ── Software section ── */}
+          {isSw && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -319,7 +332,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           )}
 
           {/* ── Technical Location + Network (infra) ── */}
-          {INFRA_TYPES.includes(form.type) && (
+          {isInfra && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">📍 Ubicación Técnica y Red</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

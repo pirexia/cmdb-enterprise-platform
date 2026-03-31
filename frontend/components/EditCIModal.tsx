@@ -10,8 +10,9 @@ interface User         { id: string; username: string; email: string }
 interface MasterItem   { id: string; name: string }
 interface Branch       { id: string; name: string; branch_code: string; support_area_id: string; support_area_name: string }
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
+interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean }
+interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
 
-type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIPMENT" | "STORAGE" | "BACKUP";
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 type BusinessImpact = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -29,6 +30,7 @@ interface CI {
   criticality: Criticality;
   environment: Environment;
   ciType: string | null;
+  ciTypeId: string | null;
   status: string | null;
   inventoryNumber: string | null;
   businessOwnerId: string | null;
@@ -52,7 +54,7 @@ interface FormState {
   name: string;
   criticality: Criticality;
   environment: Environment;
-  ciType: string;
+  ciTypeId: string;
   status: string;
   inventoryNumber: string;
   businessOwnerId: string;
@@ -88,7 +90,7 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
     name: ci.name,
     criticality: ci.criticality,
     environment: ci.environment,
-    ciType: ci.ciType || "",
+    ciTypeId: ci.ciTypeId || "",
     status: ci.status || "ACTIVO",
     inventoryNumber: ci.inventoryNumber || "",
     businessOwnerId: ci.businessOwnerId || "",
@@ -105,12 +107,13 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
     containsPii: ci.containsPii ?? false,
     dataClassification: (ci.dataClassification as DataClassification | null) || "",
   });
-  const [users,         setUsers]         = useState<User[]>([]);
-  const [branches,      setBranches]      = useState<Branch[]>([]);
-  const [manufacturers, setManufacturers] = useState<MasterItem[]>([]);
-  const [allModels,     setAllModels]     = useState<DeviceModel[]>([]);
-  const [submitting,    setSubmitting]    = useState(false);
-  const [error,         setError]         = useState<string | null>(null);
+  const [users,            setUsers]            = useState<User[]>([]);
+  const [branches,         setBranches]         = useState<Branch[]>([]);
+  const [manufacturers,    setManufacturers]    = useState<MasterItem[]>([]);
+  const [allModels,        setAllModels]        = useState<DeviceModel[]>([]);
+  const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
+  const [submitting,       setSubmitting]       = useState(false);
+  const [error,            setError]            = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -122,11 +125,13 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
       apiFetch("/api/masters/branches").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/manufacturers").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/device-models").then((r) => r.json()).catch(() => []),
-    ]).then(([u, b, m, dm]) => {
+      apiFetch("/api/masters/ci-type-categories").then((r) => r.json()).catch(() => []),
+    ]).then(([u, b, m, dm, cats]) => {
       setUsers(safe(u) as User[]);
       setBranches(safe(b) as Branch[]);
       setManufacturers(safe(m) as MasterItem[]);
       setAllModels(safe(dm) as DeviceModel[]);
+      setCiTypeCategories(safe(cats) as CITypeCategory[]);
     });
   }, []);
 
@@ -147,7 +152,7 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
       name: form.name,
       environment: form.environment,
       criticality: form.criticality,
-      ciType: form.ciType || null,
+      ciTypeId: form.ciTypeId || null,
       status: form.status || null,
       inventoryNumber: form.inventoryNumber || null,
       branchId:  form.branchId  || null,
@@ -214,14 +219,15 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
           {/* ── Type ── */}
           <div>
             <Label>Tipo</Label>
-            <Select value={form.ciType} onChange={(e) => set("ciType", e.target.value)}>
+            <Select value={form.ciTypeId} onChange={(e) => set("ciTypeId", e.target.value)}>
               <option value="">— Sin especificar —</option>
-              <option value="PHYSICAL_SERVER">Servidor Físico</option>
-              <option value="VIRTUAL_SERVER">Servidor Virtual</option>
-              <option value="DATABASE">Base de Datos</option>
-              <option value="NETWORK_EQUIPMENT">Equipo de Red</option>
-              <option value="STORAGE">Almacenamiento</option>
-              <option value="BACKUP">Backup</option>
+              {ciTypeCategories.map((cat) => (
+                <optgroup key={cat.code} label={cat.name}>
+                  {cat.ciTypes.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </optgroup>
+              ))}
             </Select>
           </div>
 

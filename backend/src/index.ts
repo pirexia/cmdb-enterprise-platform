@@ -206,6 +206,7 @@ const CI_INCLUDE = {
   technicalLead: { select: { id: true, username: true, email: true } },
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
+  ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
   contracts: {
     select: {
       id:             true,
@@ -215,6 +216,19 @@ const CI_INCLUDE = {
     },
   },
 } as const;
+
+// Flatten ciTypeDef relation into flat fields for backward-compatible API response
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function flattenCI(ci: any) {
+  const { ciTypeDef, ciTypeId, ...rest } = ci;
+  return {
+    ...rest,
+    ciTypeId:   ciTypeDef?.id           ?? null,
+    ciType:     ciTypeDef?.code         ?? null,
+    ciTypeName: ciTypeDef?.name         ?? null,
+    ciTypeCategoryCode: ciTypeDef?.categoryCode ?? null,
+  };
+}
 
 const CONTRACT_INCLUDE = {
   vendor: { select: { id: true, name: true } },
@@ -451,7 +465,7 @@ app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
       include: CI_INCLUDE,
       orderBy: { createdAt: 'asc' },
     });
-    res.json({ total: cis.length, data: cis });
+    res.json({ total: cis.length, data: cis.map(flattenCI) });
   } catch (error) {
     console.error('[GET /api/cis] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -468,7 +482,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
   try {
     const {
       name, apiSlug, criticality, environment,
-      ciType, status, inventoryNumber,
+      ciTypeId, status, inventoryNumber,
       branchId, ciModelId,
       businessOwnerId, technicalLeadId, hardware, software,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
@@ -476,7 +490,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
-      ciType?: string; status?: string; inventoryNumber?: string;
+      ciTypeId?: string; status?: string; inventoryNumber?: string;
       branchId?: string; ciModelId?: string;
       businessOwnerId?: string; technicalLeadId?: string;
       hardware?: { serialNumber: string; model: string; manufacturer: string };
@@ -517,7 +531,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     const ci = await prisma.cI.create({
       data: {
         name, apiSlug, criticality, environment,
-        ciType:          ciType          || null,
+        ciTypeId:        ciTypeId        || null,
         status:          status          || "ACTIVO",
         inventoryNumber: inventoryNumber || null,
         branchId:        branchId        || null,
@@ -545,7 +559,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, now())
     `;
 
-    res.status(201).json(ci);
+    res.status(201).json(flattenCI(ci));
   } catch (error: unknown) {
     console.error('[POST /api/cis] Error:', error);
     if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -567,13 +581,13 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
 
   try {
     const {
-      name, criticality, environment, ciType, status, inventoryNumber,
+      name, criticality, environment, ciTypeId, status, inventoryNumber,
       branchId, ciModelId, businessOwnerId, technicalLeadId,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
     } = req.body as {
       name?: string; criticality?: Criticality; environment?: Environment;
-      ciType?: string; status?: string; inventoryNumber?: string;
+      ciTypeId?: string | null; status?: string; inventoryNumber?: string;
       branchId?: string | null; ciModelId?: string | null;
       businessOwnerId?: string | null; technicalLeadId?: string | null;
       eolDate?: string | null; eosDate?: string | null;
@@ -585,7 +599,7 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
     if (name) updateData.name = name;
     if (criticality) updateData.criticality = criticality;
     if (environment) updateData.environment = environment;
-    if (ciType) updateData.ciType = ciType;
+    if (ciTypeId !== undefined) updateData.ciTypeId = ciTypeId || null;
     if (status) updateData.status = status;
     if (inventoryNumber !== undefined) updateData.inventoryNumber = inventoryNumber || null;
     if (branchId !== undefined) updateData.branchId = branchId || null;
@@ -613,7 +627,7 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
       VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
     `;
 
-    res.json(ci);
+    res.json(flattenCI(ci));
   } catch (error: unknown) {
     console.error('[PATCH /api/cis/:id] Error:', error);
     if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2025') {
@@ -852,28 +866,23 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
     return;
   }
 
-  // Official CI type categories (Enterprise standard)
-  const OFFICIAL_CI_TYPES = [
-    'PHYSICAL_SERVER',
-    'VIRTUAL_SERVER',
-    'DATABASE',
-    'NETWORK_EQUIPMENT',
-    'STORAGE',
-    'BACKUP',
-  ];
+  // Load ci_types lookup map (code → id) for bulk import resolution
+  const allCITypes = await prisma.cIType.findMany({ select: { id: true, code: true } });
+  const ciTypeCodeToId = new Map<string, string>(allCITypes.map(t => [t.code, t.id]));
+  // Legacy alias
+  if (ciTypeCodeToId.has('NETWORK')) ciTypeCodeToId.set('NETWORK_EQUIPMENT', ciTypeCodeToId.get('NETWORK')!);
 
   const validCriticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
   const validEnvironments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
-  
-  // Extended types for backward compatibility (imports)
+
   const hwTypes = [
-    ...OFFICIAL_CI_TYPES,
-    'HARDWARE','NETWORK','DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
+    'PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','NETWORK_EQUIPMENT','STORAGE','BACKUP',
+    'HARDWARE','DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR',
     'VIDEOCONFERENCE','SMART_DISPLAY','TIME_CLOCK','IP_PHONE',
     'SMARTPHONE','TABLET','PDA','BARCODE_SCANNER',
     'IP_CAMERA','UPS','WIFI_AP','CLOUD_INSTANCE','CLOUD_STORAGE',
   ];
-  const swTypes = ['SOFTWARE','DATABASE','BACKUP','BASE_SOFTWARE'];
+  const swTypes = ['SOFTWARE','DATABASE','BACKUP','BASE_SOFTWARE','LICENSE'];
 
   const results: { name: string; status: 'created' | 'error'; id?: string; error?: string }[] = [];
   let successCount = 0;
@@ -886,7 +895,8 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
       errorCount++; continue;
     }
 
-    const ciType  = (row.ciType ?? 'OTHER').trim().toUpperCase();
+    const ciTypeCode = (row.ciType ?? 'OTHER').trim().toUpperCase();
+    const ciTypeId   = ciTypeCodeToId.get(ciTypeCode) ?? ciTypeCodeToId.get('OTHER') ?? null;
     const crit    = (row.criticality ?? '').trim().toUpperCase();
     const env     = (row.environment  ?? '').trim().toUpperCase();
     const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
@@ -896,13 +906,13 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
     const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
     const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
 
-    const needsHw = hwTypes.includes(ciType);
-    const needsSw = swTypes.includes(ciType);
+    const needsHw = hwTypes.includes(ciTypeCode);
+    const needsSw = swTypes.includes(ciTypeCode);
 
     try {
       const ci = await prisma.cI.create({
         data: {
-          name, apiSlug, criticality, environment, ciType,
+          name, apiSlug, criticality, environment, ciTypeId,
           ...(needsHw && {
             hardware: {
               create: {
@@ -1358,6 +1368,81 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
 app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── CI Type Categories (read-only, fixed) ─────────────────────────────────────
+app.get('/api/masters/ci-type-categories', authenticateToken, async (_req, res) => {
+  try {
+    const cats = await prisma.cITypeCategory.findMany({
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        ciTypes: {
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, code: true, name: true, sortOrder: true, isSystem: true },
+        },
+      },
+    });
+    res.json(cats);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── CI Types CRUD ─────────────────────────────────────────────────────────────
+app.get('/api/masters/ci-types', authenticateToken, async (_req, res) => {
+  try {
+    const types = await prisma.cIType.findMany({
+      orderBy: [{ category: { sortOrder: 'asc' } }, { sortOrder: 'asc' }],
+      select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
+    });
+    res.json(types);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, res) => {
+  const { code, name, categoryCode, sortOrder } = req.body as { code?: string; name?: string; categoryCode?: string; sortOrder?: number };
+  if (!code?.trim() || !name?.trim() || !categoryCode?.trim()) {
+    res.status(400).json({ error: 'code, name and categoryCode are required' }); return;
+  }
+  try {
+    const row = await prisma.cIType.create({
+      data: { code: code.trim().toUpperCase(), name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
+      select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
+    });
+    res.status(201).json(row);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('unique') || msg.includes('Unique')) { res.status(409).json({ error: 'El código ya existe' }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+
+app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, categoryCode, sortOrder } = req.body as { name?: string; categoryCode?: string; sortOrder?: number };
+  if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+  try {
+    const row = await prisma.cIType.update({
+      where: { id: req.params.id },
+      data: { name: name.trim(), ...(categoryCode && { categoryCode }), ...(sortOrder !== undefined && { sortOrder }) },
+      select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
+    });
+    res.json(row);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const row = await prisma.cIType.findUnique({ where: { id: req.params.id }, select: { isSystem: true, code: true } });
+    if (!row) { res.status(404).json({ error: 'Tipo no encontrado' }); return; }
+    if (row.isSystem) { res.status(403).json({ error: `El tipo "${row.code}" es un tipo de sistema y no puede eliminarse` }); return; }
+    await prisma.cIType.delete({ where: { id: req.params.id } });
+    res.json({ ok: true });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // FK violation = CIs with this type exist
+    if (msg.includes('foreign key') || msg.includes('P2003') || msg.includes('violates')) {
+      res.status(409).json({ error: 'No se puede eliminar: existen CIs con este tipo asignado' }); return;
+    }
+    res.status(500).json({ error: msg });
+  }
 });
 
 /**

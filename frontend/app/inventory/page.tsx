@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
   Shield, ShieldAlert, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
+  ChevronUp, ChevronDown, ChevronsUpDown, FilterX,
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
@@ -45,6 +46,9 @@ interface ContractRef {
   vendor: { id: string; name: string };
 }
 
+interface CITypeItem   { id: string; code: string; name: string }
+interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
+
 interface CI {
   id:              string;
   name:            string;
@@ -52,6 +56,8 @@ interface CI {
   criticality:     Criticality;
   environment:     Environment;
   ciType:          string | null;
+  ciTypeId:        string | null;
+  ciTypeName:      string | null;
   eolDate:         string | null;
   eosDate:         string | null;
   status:          string | null;
@@ -232,10 +238,10 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
 export default function InventoryPage() {
   const { isAdmin }               = useAuth();
   const { t }                     = useLanguage();
-  const [cis, setCis]             = useState<CI[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [search, setSearch]       = useState("");
+  const [cis, setCis]                         = useState<CI[]>([]);
+  const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
+  const [loading, setLoading]                 = useState(true);
+  const [error, setError]                     = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingCI, setEditingCI] = useState<CI | null>(null);
   const [detailCI, setDetailCI]   = useState<CI | null>(null);
@@ -243,6 +249,21 @@ export default function InventoryPage() {
   const [relatingCI, setRelatingCI] = useState<CI | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
+
+  type SortCol = "name" | "ciType" | "environment" | "criticality" | null;
+  type SortDir = "asc" | "desc";
+  const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
+  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" });
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+
+  const toggleSort = (col: SortCol) =>
+    setSort((prev) => prev.col !== col ? { col, dir: "asc" } : prev.dir === "asc" ? { col, dir: "desc" } : { col: null, dir: "asc" });
+
+  const setFilter = (key: keyof typeof filters, val: string) =>
+    setFilters((prev) => ({ ...prev, [key]: val }));
+
+  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -255,9 +276,53 @@ export default function InventoryPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchCIs(); }, []);
+  useEffect(() => {
+    fetchCIs();
+    apiFetch("/api/masters/ci-type-categories").then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setCiTypeCategories(d); })
+      .catch(() => {});
+  }, []);
 
-  const filtered = cis.filter((ci) => ci.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(() => {
+    const CRIT_ORDER: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, MISSION_CRITICAL: 4 };
+    let result = cis.filter((ci) => {
+      const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
+      const openVulns = (ci.vulnerabilities ?? []).filter((v) => v.status !== "RESUELTO");
+      if (filters.name && !ci.name.toLowerCase().includes(filters.name.toLowerCase())) return false;
+      if (filters.ciType && resolvedType !== filters.ciType) return false;
+      if (filters.environment && ci.environment !== filters.environment) return false;
+      if (filters.criticality && ci.criticality !== filters.criticality) return false;
+      if (filters.vulns) {
+        if (filters.vulns === "no_data" && ci.vulnerabilities !== null) return false;
+        if (filters.vulns === "clean" && (ci.vulnerabilities === null || openVulns.length > 0)) return false;
+        if (filters.vulns === "with_vulns" && openVulns.length === 0) return false;
+        if (filters.vulns === "critical" && !openVulns.some((v) => v.severity === "CRITICAL")) return false;
+        if (filters.vulns === "high" && !openVulns.some((v) => v.severity === "HIGH")) return false;
+      }
+      if (filters.agent) {
+        if (filters.agent === "no_agent" && ci.agentStatus !== null) return false;
+        if (filters.agent === "protected" && (ci.agentStatus === null || ci.agentStatus.status !== "normal" || ci.agentStatus.preventionPolicy !== "active")) return false;
+        if (filters.agent === "detections" && (ci.agentStatus?.detections?.length ?? 0) === 0) return false;
+        if (filters.agent === "reduced" && ci.agentStatus?.status !== "reduced_functionality") return false;
+      }
+      return true;
+    });
+    if (sort.col) {
+      result = [...result].sort((a, b) => {
+        const dir = sort.dir === "asc" ? 1 : -1;
+        if (sort.col === "name")        return dir * a.name.localeCompare(b.name);
+        if (sort.col === "environment") return dir * a.environment.localeCompare(b.environment);
+        if (sort.col === "criticality") return dir * ((CRIT_ORDER[a.criticality] ?? 0) - (CRIT_ORDER[b.criticality] ?? 0));
+        if (sort.col === "ciType") {
+          const at = a.ciType ?? (a.hardware ? "HARDWARE" : a.software ? "SOFTWARE" : "OTHER");
+          const bt = b.ciType ?? (b.hardware ? "HARDWARE" : b.software ? "SOFTWARE" : "OTHER");
+          return dir * at.localeCompare(bt);
+        }
+        return 0;
+      });
+    }
+    return result;
+  }, [cis, filters, sort]);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Está seguro de eliminar el CI "${name}"? Esta acción no se puede deshacer.`)) return;
@@ -385,16 +450,23 @@ export default function InventoryPage() {
           </div>
         </header>
 
-        <div className="px-8 py-8 max-w-7xl mx-auto">
+        <div className="px-4 py-6">
           <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-sm font-semibold text-slate-700">Todos los activos</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-semibold text-slate-700">Todos los activos</h2>
+                {activeFilterCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                    <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input type="text" placeholder={t('inventory.search_placeholder')} value={search} onChange={(e) => setSearch(e.target.value)}
-                    className="w-64 rounded-lg border border-slate-300 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
-                </div>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                    <FilterX className="h-3.5 w-3.5" />Limpiar filtros
+                  </button>
+                )}
                 <button onClick={fetchCIs} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -433,25 +505,121 @@ export default function InventoryPage() {
             {!loading && !error && (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead>
+                  <thead className="sticky top-0 z-10">
+                    {/* ── Sort row ── */}
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('common.name')}</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.type')}</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.environment')}</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.criticality')}</th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        <div className="flex items-center gap-1.5"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div>
+                      {/* Name */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("name")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                          {t('common.name')}
+                          {sort.col === "name" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
                       </th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                        <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" />CrowdStrike</div>
+                      {/* Type */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("ciType")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                          {t('inventory.columns.type')}
+                          {sort.col === "ciType" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
                       </th>
-                      <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
-                      {isAdmin && <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
+                      {/* Environment */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("environment")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                          {t('inventory.columns.environment')}
+                          {sort.col === "environment" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
+                      </th>
+                      {/* Criticality */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("criticality")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                          {t('inventory.columns.criticality')}
+                          {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
+                      </th>
+                      <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div></th>
+                      <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><Shield className="h-3.5 w-3.5" />CrowdStrike</div></th>
+                      <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
+                      {isAdmin && <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
+                    </tr>
+                    {/* ── Filter row ── */}
+                    <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                      {/* Name filter */}
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input type="text" placeholder="Buscar nombre…" value={filters.name} onChange={(e) => setFilter("name", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                        </div>
+                      </td>
+                      {/* Type filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.ciType} onChange={(e) => setFilter("ciType", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.ciType ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todos los tipos</option>
+                          {ciTypeCategories.map((cat) => (
+                            <optgroup key={cat.code} label={cat.name}>
+                              {cat.ciTypes.map((t) => (
+                                <option key={t.code} value={t.code}>{CI_TYPE_META[t.code]?.label ?? t.name}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                      </td>
+                      {/* Environment filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.environment} onChange={(e) => setFilter("environment", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.environment ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todos</option>
+                          <option value="PRODUCTION">Production</option>
+                          <option value="STAGING">Staging</option>
+                          <option value="TESTING">Testing</option>
+                          <option value="DEVELOPMENT">Development</option>
+                        </select>
+                      </td>
+                      {/* Criticality filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.criticality} onChange={(e) => setFilter("criticality", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.criticality ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todas</option>
+                          <option value="MISSION_CRITICAL">Mission Critical</option>
+                          <option value="HIGH">High</option>
+                          <option value="MEDIUM">Medium</option>
+                          <option value="LOW">Low</option>
+                        </select>
+                      </td>
+                      {/* Vulns filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.vulns} onChange={(e) => setFilter("vulns", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.vulns ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todos</option>
+                          <option value="no_data">Sin datos escáner</option>
+                          <option value="clean">Sin vulns abiertas</option>
+                          <option value="with_vulns">Con vulns abiertas</option>
+                          <option value="critical">Con CRITICAL</option>
+                          <option value="high">Con HIGH</option>
+                        </select>
+                      </td>
+                      {/* Agent filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.agent} onChange={(e) => setFilter("agent", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.agent ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todos</option>
+                          <option value="no_agent">Sin agente</option>
+                          <option value="protected">Protegido (activo)</option>
+                          <option value="reduced">Funcionalidad reducida</option>
+                          <option value="detections">Con detecciones</option>
+                        </select>
+                      </td>
+                      {/* Responsable técnico — no filter, empty cell */}
+                      <td className="px-3 py-2" />
+                      {isAdmin && <td className="px-3 py-2" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-slate-400 text-sm">{t('inventory.no_cis')}</td></tr>
+                      <tr><td colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-slate-400 text-sm">
+                        {activeFilterCount > 0 ? "No hay CIs que coincidan con los filtros activos." : t('inventory.no_cis')}
+                      </td></tr>
                     ) : (
                       filtered.map((ci) => {
                         const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
@@ -459,7 +627,7 @@ export default function InventoryPage() {
 
                         return (
                           <tr key={ci.id} className="group hover:bg-indigo-50/40 transition-colors">
-                            <td className="px-6 py-4 font-medium text-slate-800">
+                            <td className="px-4 py-3 font-medium text-slate-800">
                               <button
                                 onClick={() => setDetailCI(ci)}
                                 className="text-left hover:text-indigo-700 transition-colors font-medium text-slate-800 group-hover:text-indigo-700"
@@ -487,16 +655,16 @@ export default function InventoryPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3">
                               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>
-                                {typeMeta.icon}{t(`inventory.ci_types.${resolvedType}`, {}) || typeMeta.label}
+                                {typeMeta.icon}{ci.ciTypeName ?? (t(`inventory.ci_types.${resolvedType}`, {}) || typeMeta.label)}
                               </span>
                             </td>
-                            <td className="px-6 py-4"><EnvironmentBadge env={ci.environment} /></td>
-                            <td className="px-6 py-4"><CriticalityBadge level={ci.criticality} /></td>
-                            <td className="px-6 py-4"><VulnBadge vulns={ci.vulnerabilities} /></td>
-                            <td className="px-6 py-4"><AgentBadge agent={ci.agentStatus} /></td>
-                            <td className="px-6 py-4">
+                            <td className="px-4 py-3"><EnvironmentBadge env={ci.environment} /></td>
+                            <td className="px-4 py-3"><CriticalityBadge level={ci.criticality} /></td>
+                            <td className="px-4 py-3"><VulnBadge vulns={ci.vulnerabilities} /></td>
+                            <td className="px-4 py-3"><AgentBadge agent={ci.agentStatus} /></td>
+                            <td className="px-4 py-3">
                               {ci.technicalLead ? (
                                 <div>
                                   <p className="font-medium text-slate-700">{ci.technicalLead.username}</p>
@@ -505,7 +673,7 @@ export default function InventoryPage() {
                               ) : <span className="text-xs italic text-slate-400">Sin asignar</span>}
                             </td>
                             {isAdmin && (
-                              <td className="px-6 py-4">
+                              <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => setRelatingCI(ci)}
@@ -542,8 +710,13 @@ export default function InventoryPage() {
             )}
 
             {!loading && !error && (
-              <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-                Mostrando {filtered.length} de {cis.length} activos
+              <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
+                <span>Mostrando <strong className="text-slate-600">{filtered.length}</strong> de <strong className="text-slate-600">{cis.length}</strong> activos</span>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="flex items-center gap-1 text-red-500 hover:text-red-700 transition-colors">
+                    <FilterX className="h-3 w-3" />Limpiar filtros
+                  </button>
+                )}
               </div>
             )}
           </div>

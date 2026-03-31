@@ -287,7 +287,14 @@ users                    configuration_items (CIs)
                             ├── branchId → branches
                             ├── ciModelId → device_models
                             ├── businessOwnerId → users
-                            └── technicalLeadId → users
+                            ├── technicalLeadId → users
+                            ├── businessImpact (TEXT: LOW|MEDIUM|HIGH|CRITICAL) ← NIS2
+                            ├── recoveryPriority (INT 1-5) ← ISO 22301
+                            ├── rto (INT minutes) ← ISO 22301
+                            ├── rpo (INT minutes) ← ISO 22301
+                            ├── spofRisk (BOOLEAN default false) ← ISO 22301
+                            ├── containsPii (BOOLEAN default false) ← GDPR
+                            └── dataClassification (TEXT: PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED) ← GDPR
 
 vendors      contracts         hardware          software
   └── name     ├── contractNumber  ├── serialNumber    ├── version
@@ -353,6 +360,33 @@ audit_logs
 | Secretos | Variables de entorno — nunca en código fuente |
 | Audit Log | Tabla `audit_logs` con todas las acciones administrativas |
 | Cumplimiento | ISO 27001 A.9.2 / A.10.1 / A.12.4 (ver SECURITY_AUDIT.md) |
+| NIS2 / GDPR | Campos `businessImpact`, `spofRisk`, `containsPii`, `dataClassification`, `rto`, `rpo` en el modelo CI |
+
+---
+
+## 9b. Modelo de Cumplimiento Normativo (NIS2 / ISO 22301 / GDPR)
+
+Los campos de cumplimiento se almacenan directamente en la tabla `configuration_items` como columnas TEXT/BOOLEAN/INT (sin tablas relacionales separadas para minimizar joins).
+
+### Mapeo Normativa → Campo
+
+| Normativa | Artículo / Cláusula | Campo en CI | Descripción |
+|-----------|---------------------|-------------|-------------|
+| NIS2 | Art. 21 - Gestión de riesgos | `businessImpact` | Clasificación del impacto (LOW/MEDIUM/HIGH/CRITICAL) |
+| NIS2 | Art. 23 - Notificación de incidentes | `businessImpact = CRITICAL` | Identifica sistemas cuyo incidente debe notificarse en <24h |
+| ISO 22301 | 8.4 - BCP / DRP | `rto`, `rpo` | Objetivos de recuperación en minutos |
+| ISO 22301 | 8.4 - SPOF Analysis | `spofRisk` | Marca sistemas sin redundancia |
+| ISO 22301 | 8.4 - Recovery Priority | `recoveryPriority` | Orden de restauración 1-5 |
+| GDPR | Art. 30 - Registro de actividades | `containsPii` | Flag de tratamiento de datos personales |
+| GDPR | Art. 5 - Principios del tratamiento | `dataClassification` | Clasificación: PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED |
+
+### Decisión de diseño: columnas planas vs. tabla de compliance separada
+
+Se optó por columnas planas en `configuration_items` porque:
+- El número de campos de compliance es fijo y conocido (normativas estables)
+- Evita JOIN adicional en la query más frecuente (GET /api/cis)
+- Los campos son opcionales (`NULL` = sin clasificar), sin penalización de espacio
+- Facilita filtrado y ordenación desde el inventario sin subconsultas
 
 ---
 

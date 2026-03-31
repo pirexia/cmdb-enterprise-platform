@@ -59,6 +59,14 @@ interface CI {
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
+  // NIS2 / GDPR
+  businessImpact:     string | null;
+  recoveryPriority:   number | null;
+  rto:                number | null;
+  rpo:                number | null;
+  spofRisk:           boolean;
+  containsPii:        boolean;
+  dataClassification: string | null;
 }
 
 // ─── Support status badge ─────────────────────────────────────────────────────
@@ -438,7 +446,18 @@ export default function InventoryPage() {
                             <td className="px-6 py-4 font-medium text-slate-800">
                               <span className="group-hover:text-indigo-700 transition-colors">{ci.name}</span>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
-                              <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} />
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} />
+                                {ci.spofRisk && (
+                                  <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Punto Único de Fallo">SPOF</span>
+                                )}
+                                {ci.containsPii && (
+                                  <span className="inline-block rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-semibold text-purple-700" title="Contiene datos personales (GDPR)">PII</span>
+                                )}
+                                {ci.businessImpact === "CRITICAL" && (
+                                  <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">NIS2 Crítico</span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>

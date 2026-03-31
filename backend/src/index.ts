@@ -402,6 +402,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       branchId, ciModelId,
       businessOwnerId, technicalLeadId, hardware, software,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
+      businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
@@ -411,6 +412,8 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       hardware?: { serialNumber: string; model: string; manufacturer: string };
       software?: { version: string; licenseType: string };
       eolDate?: string; eosDate?: string;
+      businessImpact?: string; recoveryPriority?: number; rto?: number; rpo?: number;
+      spofRisk?: boolean; containsPii?: boolean; dataClassification?: string;
     };
 
     if (!name || !apiSlug || !criticality || !environment) {
@@ -444,7 +447,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     const ci = await prisma.cI.create({
       data: {
         name, apiSlug, criticality, environment,
-        ciType:          ciType          || "OTHER",
+        ciType:          ciType          || null,
         status:          status          || "ACTIVO",
         inventoryNumber: inventoryNumber || null,
         branchId:        branchId        || null,
@@ -453,6 +456,13 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
         eosDate:         resolvedSupportDate || null,
         businessOwnerId: businessOwnerId || null,
         technicalLeadId: technicalLeadId || null,
+        businessImpact:     businessImpact     || null,
+        recoveryPriority:   recoveryPriority   ?? null,
+        rto:                rto                ?? null,
+        rpo:                rpo                ?? null,
+        spofRisk:           spofRisk           ?? false,
+        containsPii:        containsPii        ?? false,
+        dataClassification: dataClassification || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
         ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
       } as Parameters<typeof prisma.cI.create>[0]['data'],
@@ -490,12 +500,15 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
       name, criticality, environment, ciType, status, inventoryNumber,
       branchId, ciModelId, businessOwnerId, technicalLeadId,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
+      businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
     } = req.body as {
       name?: string; criticality?: Criticality; environment?: Environment;
       ciType?: string; status?: string; inventoryNumber?: string;
       branchId?: string | null; ciModelId?: string | null;
       businessOwnerId?: string | null; technicalLeadId?: string | null;
       eolDate?: string | null; eosDate?: string | null;
+      businessImpact?: string | null; recoveryPriority?: number | null; rto?: number | null; rpo?: number | null;
+      spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
     };
 
     const updateData: Record<string, unknown> = {};
@@ -511,6 +524,13 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
     if (technicalLeadId !== undefined) updateData.technicalLeadId = technicalLeadId || null;
     if (eolDateRaw !== undefined) updateData.eolDate = eolDateRaw ? new Date(eolDateRaw) : null;
     if (eosDateRaw !== undefined) updateData.eosDate = eosDateRaw ? new Date(eosDateRaw) : null;
+    if (businessImpact     !== undefined) updateData.businessImpact     = businessImpact     || null;
+    if (recoveryPriority   !== undefined) updateData.recoveryPriority   = recoveryPriority   ?? null;
+    if (rto                !== undefined) updateData.rto                = rto                ?? null;
+    if (rpo                !== undefined) updateData.rpo                = rpo                ?? null;
+    if (spofRisk           !== undefined) updateData.spofRisk           = spofRisk;
+    if (containsPii        !== undefined) updateData.containsPii        = containsPii;
+    if (dataClassification !== undefined) updateData.dataClassification = dataClassification || null;
 
     const ci = await prisma.cI.update({
       where: { id },

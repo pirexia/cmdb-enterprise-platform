@@ -15,6 +15,8 @@ type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIP
 
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
+type BusinessImpact = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+type DataClassification = "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED";
 
 // CI type category helpers
 const HW_TYPES: CIType[] = ["PHYSICAL_SERVER","VIRTUAL_SERVER","NETWORK_EQUIPMENT","STORAGE"];
@@ -39,6 +41,9 @@ interface FormState {
   assignedUser: string; userDni: string;
   // Location + network (infra)
   floor: string; room: string; rack: string; rackUnit: string; vlan: string; consoleIp: string;
+  // NIS2 / ISO 22301 / GDPR
+  businessImpact: BusinessImpact | ""; recoveryPriority: string; rto: string; rpo: string;
+  spofRisk: boolean; containsPii: boolean; dataClassification: DataClassification | "";
 }
 
 const INITIAL_FORM: FormState = {
@@ -52,6 +57,8 @@ const INITIAL_FORM: FormState = {
   eolDate: "", eosDate: "",
   assignedUser: "", userDni: "",
   floor: "", room: "", rack: "", rackUnit: "", vlan: "", consoleIp: "",
+  businessImpact: "", recoveryPriority: "", rto: "", rpo: "",
+  spofRisk: false, containsPii: false, dataClassification: "",
 };
 
 function toSlug(name: string) {
@@ -119,6 +126,14 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       eosDate:   form.eosDate   || undefined,
       businessOwnerId: form.businessOwnerId || undefined,
       technicalLeadId: form.technicalLeadId || undefined,
+      // NIS2 fields
+      businessImpact:     form.businessImpact     || undefined,
+      recoveryPriority:   form.recoveryPriority    ? parseInt(form.recoveryPriority) : undefined,
+      rto:                form.rto                 ? parseInt(form.rto)              : undefined,
+      rpo:                form.rpo                 ? parseInt(form.rpo)              : undefined,
+      spofRisk:           form.spofRisk,
+      containsPii:        form.containsPii,
+      dataClassification: form.dataClassification  || undefined,
     };
 
     // All hardware types get hardware details
@@ -329,6 +344,61 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
               <div><Label>End of Support (EoS)</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
+            </div>
+          </div>
+
+          {/* ── NIS2 / Resiliencia / GDPR ── */}
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">NIS2 · Resiliencia · GDPR</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Impacto de Negocio (NIS2)</Label>
+                <Select value={form.businessImpact} onChange={(e) => set("businessImpact", e.target.value as BusinessImpact | "")}>
+                  <option value="">— Sin clasificar —</option>
+                  <option value="LOW">Bajo</option>
+                  <option value="MEDIUM">Medio</option>
+                  <option value="HIGH">Alto</option>
+                  <option value="CRITICAL">Crítico</option>
+                </Select>
+              </div>
+              <div>
+                <Label>Clasificación de Datos (GDPR)</Label>
+                <Select value={form.dataClassification} onChange={(e) => set("dataClassification", e.target.value as DataClassification | "")}>
+                  <option value="">— Sin clasificar —</option>
+                  <option value="PUBLIC">Público</option>
+                  <option value="INTERNAL">Interno</option>
+                  <option value="CONFIDENTIAL">Confidencial</option>
+                  <option value="RESTRICTED">Restringido</option>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <Label>Prioridad de Recuperación (1-5)</Label>
+                <Input type="number" min="1" max="5" placeholder="1 = primero" value={form.recoveryPriority} onChange={(e) => set("recoveryPriority", e.target.value)} />
+              </div>
+              <div>
+                <Label>RTO (minutos)</Label>
+                <Input type="number" min="0" placeholder="ej. 60" value={form.rto} onChange={(e) => set("rto", e.target.value)} />
+                <p className="mt-1 text-[10px] text-slate-400">Recovery Time Objective</p>
+              </div>
+              <div>
+                <Label>RPO (minutos)</Label>
+                <Input type="number" min="0" placeholder="ej. 15" value={form.rpo} onChange={(e) => set("rpo", e.target.value)} />
+                <p className="mt-1 text-[10px] text-slate-400">Recovery Point Objective</p>
+              </div>
+            </div>
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.spofRisk} onChange={(e) => set("spofRisk", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
+                <span className="text-sm text-slate-700">Punto Único de Fallo (SPOF)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.containsPii} onChange={(e) => set("containsPii", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
+                <span className="text-sm text-slate-700">Contiene Datos Personales (PII / GDPR)</span>
+              </label>
             </div>
           </div>
 

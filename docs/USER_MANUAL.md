@@ -532,22 +532,41 @@ Muestra todos los usuarios del sistema con:
 
 ## 15. Mapa de Dependencias
 
-El Mapa de Dependencias visualiza el grafo de relaciones directo de un CI seleccionado, mostrando tanto las relaciones entrantes como las salientes con sus tipos codificados por color.
+El Mapa de Dependencias permite explorar las relaciones entre CIs en dos modos: **grafo visual interactivo** y **tabla exportable**. Soporta travesía multi-nivel para visualizar dependencias transitivas a varios saltos del CI seleccionado.
 
 ### Acceder
 Haz clic en **"Mapa de Dependencias"** en el menú lateral.
 
-### Paso 1 — Seleccionar un CI
-Al entrar al mapa se muestra un **buscador de CIs**. Escribe parte del nombre o del slug para filtrar y haz clic en el CI que quieres explorar.
+---
 
-### Paso 2 — Explorar el grafo
-Una vez seleccionado el CI, el mapa muestra tres columnas:
+### Paso 1 — Seleccionar CI y profundidad
 
-| Columna | Contenido |
-|---------|-----------|
-| Izquierda | CIs que **apuntan hacia** el CI seleccionado (relaciones entrantes) |
-| Centro | CI seleccionado (marcado con borde indigo y badge "origen") |
-| Derecha | CIs a los que **apunta** el CI seleccionado (relaciones salientes) |
+Al entrar se muestra el formulario de configuración con dos controles:
+
+**Buscador de CI:** escribe parte del nombre o del slug para filtrar y selecciona el CI que quieres explorar.
+
+**Profundidad de dependencia:** determina cuántos saltos se recorren desde el CI seleccionado.
+
+| Opción | Descripción |
+|--------|-------------|
+| **1 nivel** | Solo relaciones directas del CI (salientes e entrantes) |
+| **2 niveles** | Relaciones directas + relaciones de los CIs vecinos |
+| **3 niveles** | Hasta 3 saltos desde el CI raíz |
+
+> A mayor profundidad, más CIs y relaciones aparecen. Para CIs muy conectados, empezar con 1 nivel y ampliar progresivamente.
+
+Haz clic en **"Ver dependencias de…"** para cargar el grafo.
+
+---
+
+### Paso 2 — Explorar: Vista de Grafo
+
+El grafo sitúa el CI seleccionado como nodo central (borde indigo + badge "origen") y dispone los demás CIs en columnas según su dirección y distancia:
+
+- **Columnas a la izquierda**: CIs que apuntan *hacia* el CI raíz (entrantes)
+- **Columna central**: CI raíz
+- **Columnas a la derecha**: CIs a los que apunta el CI raíz (salientes)
+- Con profundidad > 1 se añaden columnas adicionales para cada nivel
 
 Cada arista lleva una etiqueta con el tipo de relación, codificada por color:
 
@@ -559,14 +578,46 @@ Cada arista lleva una etiqueta con el tipo de relación, codificada por color:
 | Esmeralda | PROVIDES_SERVICE |
 | Púrpura | BACKED_UP_BY |
 
-### Navegar el mapa
-- **Arrastrar**: Mueve el canvas
-- **Rueda del ratón**: Zoom in/out
-- Botón **"Volver"** (esquina superior izquierda): Vuelve al selector de CI
-- Botón **"Nueva Relación"**: Abre el modal para crear una relación nueva con el CI seleccionado como origen
+**Controles del canvas:**
+- **Arrastrar**: desplaza el grafo
+- **Rueda del ratón**: zoom in/out
+- Los controles de zoom también están disponibles en la esquina inferior derecha
+
+---
+
+### Paso 2 — Explorar: Vista de Tabla
+
+Haz clic en el botón **"Tabla"** (cabecera del mapa) para cambiar a la vista tabular. Muestra todas las relaciones encontradas en el nivel de profundidad seleccionado:
+
+| Columna | Descripción |
+|---------|-------------|
+| **Dir.** | `↗ Sal.` (saliente desde el CI raíz) / `↙ Ent.` (entrante hacia el CI raíz) |
+| **CI Origen** | Nombre y slug del CI de origen |
+| **Tipo de Relación** | Badge con el tipo, coloreado por categoría |
+| **CI Destino** | Nombre y slug del CI de destino |
+| **Nivel** | Profundidad del salto (solo visible cuando la profundidad > 1) |
+
+Las filas están ordenadas por nivel (ascendente) y luego por tipo de relación.
+
+#### Exportar a Excel
+
+En la vista de tabla, haz clic en **"Exportar Excel"** para descargar un archivo `.xlsx` con todas las relaciones visibles. El fichero se llama `dependencias-<slug-del-ci>.xlsx` e incluye las mismas columnas que la tabla, con anchos de columna ajustados automáticamente.
+
+---
+
+### Controles de la cabecera
+
+| Control | Función |
+|---------|---------|
+| **← Cambiar CI** | Vuelve al formulario de selección |
+| Badge de niveles | Muestra la profundidad activa |
+| **Grafo / Tabla** | Alterna entre los dos modos de visualización |
+| Botón de refresco | Recarga las relaciones sin cambiar la selección |
+| **Nueva Relación** | Abre el modal para crear una relación (solo ADMIN) |
 
 ### Crear relaciones desde el mapa (solo ADMIN)
-1. Con un CI seleccionado, haz clic en **"Nueva Relación"** (botón superior derecho)
+
+1. Con un CI seleccionado, haz clic en **"Nueva Relación"** (cabecera superior derecha)
 2. El CI actual aparece preseleccionado como origen
 3. Elige el tipo de relación y el CI destino
 4. Haz clic en **"Crear Relación"** — el grafo se actualiza automáticamente

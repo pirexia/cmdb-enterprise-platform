@@ -1176,6 +1176,15 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
+app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "support_areas" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
 app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
@@ -1200,6 +1209,17 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
+app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
+  if (!name?.trim() || !branchCode?.trim() || !supportAreaId) { res.status(400).json({ error: 'name, branchCode, supportAreaId required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`
+      UPDATE "branches" SET name=${name.trim()}, branch_code=${branchCode.trim()}, physical_address=${physicalAddress || null}, support_area_id=${supportAreaId}::uuid, updated_at=now()
+      WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
 app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
@@ -1219,6 +1239,15 @@ app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "manufacturers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -1245,6 +1274,17 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
+app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`
+      UPDATE "device_models" SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid, updated_at=now()
+      WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
 app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
@@ -1265,8 +1305,58 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
+app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "providers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
 app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Cost Centers
+app.get('/api/masters/cost-centers', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`SELECT id::text AS id, code, name FROM "cost_centers" ORDER BY code ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (req, res) => {
+  const { code, name } = req.body as { code?: string; name?: string };
+  if (!code?.trim() || !name?.trim()) { res.status(400).json({ error: 'code and name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      INSERT INTO "cost_centers"(id,code,name,created_at,updated_at) VALUES(gen_random_uuid(),${code.trim()},${name.trim()},now(),now())
+      RETURNING id::text AS id, code, name`;
+    res.status(201).json(rows[0]);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { code, name } = req.body as { code?: string; name?: string };
+  if (!code?.trim() || !name?.trim()) { res.status(400).json({ error: 'code and name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      UPDATE "cost_centers" SET code=${code.trim()}, name=${name.trim()}, updated_at=now()
+      WHERE id=${req.params.id}::uuid RETURNING id::text AS id, code, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    res.json(rows[0]);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
+    res.status(500).json({ error: msg });
+  }
+});
+app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try { await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
   catch (e) { res.status(500).json({ error: String(e) }); }
 });
 

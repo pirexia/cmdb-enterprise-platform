@@ -2,21 +2,29 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package,
-  Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight,
+  Building2, MapPin, Cpu, Layers, Package, Wallet,
+  Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SupportArea { id: string; name: string }
-interface Branch      { id: string; name: string; branch_code: string; physical_address: string | null; support_area_id: string; support_area_name: string }
+interface SupportArea  { id: string; name: string }
+interface Branch       { id: string; name: string; branch_code: string; physical_address: string | null; support_area_id: string; support_area_name: string }
 interface Manufacturer { id: string; name: string }
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
 interface Provider     { id: string; name: string }
+interface CostCenter   { id: string; code: string; name: string }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers";
+
+type EditState =
+  | { kind: "simple"; path: string; id: string; name: string }
+  | { kind: "branch"; id: string; name: string; code: string; address: string; supportAreaId: string }
+  | { kind: "model";  id: string; name: string; manufacturerId: string }
+  | { kind: "cc";     id: string; code: string; name: string }
+  | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
 
@@ -27,19 +35,39 @@ function Sel(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 ${props.className ?? ""}`} />;
 }
 
-// ─── Generic list row ─────────────────────────────────────────────────────────
+// ─── Editable list row (name-only) ───────────────────────────────────────────
 
-function ListRow({ label, sublabel, onDelete }: { label: string; sublabel?: string; onDelete: () => void }) {
+function EditableRow({ id, label, sublabel, editState, onStartEdit, onSaveEdit, onCancelEdit, onDelete }: {
+  id: string; label: string; sublabel?: string;
+  editState: EditState;
+  onStartEdit: () => void;
+  onSaveEdit: (name: string) => void;
+  onCancelEdit: () => void;
+  onDelete: () => void;
+}) {
+  const isEditing = editState !== null && editState.kind === "simple" && editState.id === id;
+  const [val, setVal] = useState(label);
+  useEffect(() => { if (!isEditing) setVal(label); }, [label, isEditing]);
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border-b border-indigo-100">
+        <Input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onSaveEdit(val); if (e.key === "Escape") onCancelEdit(); }} autoFocus className="flex-1" />
+        <button onClick={() => onSaveEdit(val)} className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"><Check className="h-4 w-4" /></button>
+        <button onClick={onCancelEdit} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
       <div>
         <p className="text-sm font-medium text-slate-700">{label}</p>
         {sublabel && <p className="text-xs text-slate-400">{sublabel}</p>}
       </div>
-      <button onClick={onDelete}
-        className="opacity-0 group-hover:opacity-100 rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+        <button onClick={onStartEdit} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+        <button onClick={onDelete} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+      </div>
     </div>
   );
 }
@@ -55,9 +83,11 @@ export default function MastersPage() {
   const [manufacturers, setManufacturers] = useState<Manufacturer[]>([]);
   const [models,        setModels]        = useState<DeviceModel[]>([]);
   const [providers,     setProviders]     = useState<Provider[]>([]);
+  const [costCenters,   setCostCenters]   = useState<CostCenter[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
+  const [editState, setEditState] = useState<EditState>(null);
 
   // Add forms state
   const [newSA,   setNewSA]   = useState("");
@@ -65,6 +95,7 @@ export default function MastersPage() {
   const [newMfr,  setNewMfr]  = useState("");
   const [newModel, setNewModel] = useState({ name: "", manufacturerId: "" });
   const [newProv, setNewProv] = useState("");
+  const [newCC,   setNewCC]   = useState({ code: "", name: "" });
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -81,12 +112,13 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
         apiFetch("/api/masters/device-models"),
         apiFetch("/api/masters/providers"),
+        apiFetch("/api/masters/cost-centers"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -94,13 +126,13 @@ export default function MastersPage() {
       const mfData  = await mfRes.json();
       const dmData  = await dmRes.json();
       const pvData  = await pvRes.json();
-      console.log("[CMDB Masters] load() — fabricantes recibidos:", mfData, "| esArray:", Array.isArray(mfData));
-      if (Array.isArray(mfData)) { console.table(mfData); }
+      const ccData  = await ccRes.json();
       setSupportAreas( safe(saData) as SupportArea[]);
       setBranches(     safe(brData) as Branch[]);
       setManufacturers(safe(mfData) as Manufacturer[]);
       setModels(       safe(dmData) as DeviceModel[]);
       setProviders(    safe(pvData) as Provider[]);
+      setCostCenters(  safe(ccData) as CostCenter[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -118,13 +150,19 @@ export default function MastersPage() {
     if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? `Error ${res.status}`); }
   };
 
+  const patch = async (path: string, body: Record<string, unknown>) => {
+    const res = await apiFetch(path, { method: "PATCH", body: JSON.stringify(body) });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? `Error ${res.status}`); }
+  };
+
   // ── Tab config ──────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count: number }[] = [
     { id: "support-areas",  label: t('masters.tabs.support_areas'), icon: <MapPin    className="h-4 w-4" />, count: supportAreas.length },
     { id: "branches",       label: t('masters.tabs.branches'),      icon: <Building2 className="h-4 w-4" />, count: branches.length },
     { id: "manufacturers",  label: t('masters.tabs.manufacturers'), icon: <Cpu       className="h-4 w-4" />, count: manufacturers.length },
     { id: "models",         label: t('masters.tabs.models'),        icon: <Layers    className="h-4 w-4" />, count: models.length },
-    { id: "providers",      label: "Proveedores",      icon: <Package   className="h-4 w-4" />, count: providers.length },
+    { id: "providers",      label: "Proveedores",                   icon: <Package   className="h-4 w-4" />, count: providers.length },
+    { id: "cost-centers",   label: "Centros de Coste",              icon: <Wallet    className="h-4 w-4" />, count: costCenters.length },
   ];
 
   return (
@@ -174,7 +212,13 @@ export default function MastersPage() {
             </div>
             <div className="divide-y divide-slate-50">
               {supportAreas.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin áreas registradas.</p> :
-                supportAreas.map((sa) => <ListRow key={sa.id} label={sa.name} onDelete={() => del(`/api/masters/support-areas/${sa.id}`, load)} />)}
+                supportAreas.map((sa) => (
+                  <EditableRow key={sa.id} id={sa.id} label={sa.name} editState={editState}
+                    onStartEdit={() => setEditState({ kind: "simple", path: "/api/masters/support-areas", id: sa.id, name: sa.name })}
+                    onSaveEdit={async (name) => { try { await patch(`/api/masters/support-areas/${sa.id}`, { name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); } }}
+                    onCancelEdit={() => setEditState(null)}
+                    onDelete={() => del(`/api/masters/support-areas/${sa.id}`, load)} />
+                ))}
             </div>
           </div>
         )}
@@ -200,12 +244,38 @@ export default function MastersPage() {
             </div>
             <div className="divide-y divide-slate-50">
               {branches.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin sedes registradas.</p> :
-                branches.map((b) => (
-                  <ListRow key={b.id}
-                    label={`${b.name} (${b.branch_code})`}
-                    sublabel={`${b.support_area_name}${b.physical_address ? " · " + b.physical_address : ""}`}
-                    onDelete={() => del(`/api/masters/branches/${b.id}`, load)} />
-                ))}
+                branches.map((b) => {
+                  const isEditing = editState?.kind === "branch" && editState.id === b.id;
+                  if (isEditing && editState?.kind === "branch") {
+                    return (
+                      <div key={b.id} className="grid grid-cols-1 gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100 sm:grid-cols-2">
+                        <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre" />
+                        <Input value={editState.code} onChange={(e) => setEditState({ ...editState, code: e.target.value })} placeholder="Código" maxLength={10} />
+                        <Input value={editState.address} onChange={(e) => setEditState({ ...editState, address: e.target.value })} placeholder="Dirección (opcional)" />
+                        <Sel value={editState.supportAreaId} onChange={(e) => setEditState({ ...editState, supportAreaId: e.target.value })}>
+                          <option value="">— Área de soporte —</option>
+                          {supportAreas.map((sa) => <option key={sa.id} value={sa.id}>{sa.name}</option>)}
+                        </Sel>
+                        <div className="flex gap-2 sm:col-span-2">
+                          <button onClick={async () => { try { await patch(`/api/masters/branches/${b.id}`, { name: editState.name, branchCode: editState.code, physicalAddress: editState.address, supportAreaId: editState.supportAreaId }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
+                          <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={b.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{b.name} <span className="text-slate-400">({b.branch_code})</span></p>
+                        <p className="text-xs text-slate-400">{b.support_area_name}{b.physical_address ? " · " + b.physical_address : ""}</p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => setEditState({ kind: "branch", id: b.id, name: b.name, code: b.branch_code, address: b.physical_address ?? "", supportAreaId: b.support_area_id })} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => del(`/api/masters/branches/${b.id}`, load)} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -272,7 +342,13 @@ export default function MastersPage() {
             </div>
             <div className="divide-y divide-slate-50">
               {manufacturers.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin fabricantes registrados.</p> :
-                manufacturers.map((m) => <ListRow key={m.id} label={m.name} onDelete={() => del(`/api/masters/manufacturers/${m.id}`, load)} />)}
+                manufacturers.map((m) => (
+                  <EditableRow key={m.id} id={m.id} label={m.name} editState={editState}
+                    onStartEdit={() => setEditState({ kind: "simple", path: "/api/masters/manufacturers", id: m.id, name: m.name })}
+                    onSaveEdit={async (name) => { try { await patch(`/api/masters/manufacturers/${m.id}`, { name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); } }}
+                    onCancelEdit={() => setEditState(null)}
+                    onDelete={() => del(`/api/masters/manufacturers/${m.id}`, load)} />
+                ))}
             </div>
           </div>
         )}
@@ -561,49 +637,118 @@ export default function MastersPage() {
             <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="divide-y divide-slate-50">
                 {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin modelos registrados.</p> :
-                  models.map((m) => (
-                    <div
-                      key={m.id}
-                      className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-indigo-50 ring-1 ring-indigo-200" : "hover:bg-slate-50"}`}
-                      onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                      title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
-                    >
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                          {consultModel?.id === m.id && <span className="text-indigo-500 text-xs">🔭</span>}
-                          {m.name}
-                        </p>
-                        <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
+                  models.map((m) => {
+                    const isEditing = editState?.kind === "model" && editState.id === m.id;
+                    if (isEditing && editState?.kind === "model") {
+                      return (
+                        <div key={m.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                          <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre del modelo" className="flex-1 min-w-[160px]" />
+                          <Sel value={editState.manufacturerId} onChange={(e) => setEditState({ ...editState, manufacturerId: e.target.value })} className="flex-1 min-w-[140px]">
+                            <option value="">— Fabricante —</option>
+                            {manufacturers.map((mfr) => <option key={mfr.id} value={mfr.id}>{mfr.name}</option>)}
+                          </Sel>
+                          <button onClick={async () => { try { await patch(`/api/masters/device-models/${m.id}`, { name: editState.name, manufacturerId: editState.manufacturerId }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
+                          <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div
+                        key={m.id}
+                        className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-indigo-50 ring-1 ring-indigo-200" : "hover:bg-slate-50"}`}
+                        onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
+                        title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                            {consultModel?.id === m.id && <span className="text-indigo-500 text-xs">🔭</span>}
+                            {m.name}
+                          </p>
+                          <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
+                        </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
+                                const d = await res.json();
+                                alert(d.message ?? "Sincronización completada");
+                              } catch { alert("Error al sincronizar EOL"); }
+                            }}
+                            className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+                            title="Sincronizar EOL desde endoflife.date"
+                          >
+                            🔄 EOL
+                          </button>
+                          <button
+                            onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
+                            className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors"
+                            title="Abrir Centro de Consulta Multi-Fuente"
+                          >
+                            🌐 Consultar
+                          </button>
+                          <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id })}
+                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors" title="Editar modelo">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
+                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={async () => {
-                            try {
-                              const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
-                              const d = await res.json();
-                              alert(d.message ?? "Sincronización completada");
-                            } catch { alert("Error al sincronizar EOL"); }
-                          }}
-                          className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
-                          title="Sincronizar EOL desde endoflife.date"
-                        >
-                          🔄 EOL
-                        </button>
-                        <button
-                          onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                          className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors"
-                          title="Abrir Centro de Consulta Multi-Fuente"
-                        >
-                          🌐 Consultar
-                        </button>
-                        <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Cost Centers ── */}
+        {tab === "cost-centers" && (
+          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Centro de Coste</p>
+              <div className="flex gap-2 mt-2">
+                <Input placeholder="Código (ej: CC-001)" value={newCC.code} onChange={(e) => setNewCC((p) => ({ ...p, code: e.target.value }))} className="w-36" />
+                <Input placeholder="Nombre del centro de coste" value={newCC.name} onChange={(e) => setNewCC((p) => ({ ...p, name: e.target.value }))} />
+                <button
+                  onClick={async () => {
+                    try { await post("/api/masters/cost-centers", { code: newCC.code, name: newCC.name }); setNewCC({ code: "", name: "" }); load(); }
+                    catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  <Plus className="h-4 w-4" />Añadir
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {costCenters.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin centros de coste registrados.</p> :
+                costCenters.map((cc) => {
+                  const isEditing = editState?.kind === "cc" && editState.id === cc.id;
+                  if (isEditing && editState?.kind === "cc") {
+                    return (
+                      <div key={cc.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                        <Input value={editState.code} onChange={(e) => setEditState({ ...editState, code: e.target.value })} placeholder="Código" className="w-32" />
+                        <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre" className="flex-1" />
+                        <button onClick={async () => { try { await patch(`/api/masters/cost-centers/${cc.id}`, { code: editState.code, name: editState.name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
+                        <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={cc.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{cc.name}</p>
+                        <p className="text-xs text-slate-400 font-mono">{cc.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onClick={() => setEditState({ kind: "cc", id: cc.id, code: cc.code, name: cc.name })} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => del(`/api/masters/cost-centers/${cc.id}`, load)} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
-                  ))}
-              </div>
+                  );
+                })}
             </div>
           </div>
         )}
@@ -623,7 +768,13 @@ export default function MastersPage() {
             </div>
             <div className="divide-y divide-slate-50">
               {providers.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin proveedores registrados.</p> :
-                providers.map((p) => <ListRow key={p.id} label={p.name} onDelete={() => del(`/api/masters/providers/${p.id}`, load)} />)}
+                providers.map((p) => (
+                  <EditableRow key={p.id} id={p.id} label={p.name} editState={editState}
+                    onStartEdit={() => setEditState({ kind: "simple", path: "/api/masters/providers", id: p.id, name: p.name })}
+                    onSaveEdit={async (name) => { try { await patch(`/api/masters/providers/${p.id}`, { name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); } }}
+                    onCancelEdit={() => setEditState(null)}
+                    onDelete={() => del(`/api/masters/providers/${p.id}`, load)} />
+                ))}
             </div>
           </div>
         )}

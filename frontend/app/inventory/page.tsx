@@ -14,6 +14,7 @@ import Papa from "papaparse";
 import AddCIModal from "@/components/AddCIModal";
 import EditCIModal from "@/components/EditCIModal";
 import AddRelationModal from "@/components/AddRelationModal";
+import CIDetailModal from "@/components/CIDetailModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -237,6 +238,7 @@ export default function InventoryPage() {
   const [search, setSearch]       = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingCI, setEditingCI] = useState<CI | null>(null);
+  const [detailCI, setDetailCI]   = useState<CI | null>(null);
   const [deletingCI, setDeletingCI] = useState<string | null>(null);
   const [relatingCI, setRelatingCI] = useState<CI | null>(null);
   const [importing, setImporting] = useState(false);
@@ -337,6 +339,14 @@ export default function InventoryPage() {
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
       {editingCI && <EditCIModal ci={editingCI} onClose={() => setEditingCI(null)} onUpdated={fetchCIs} />}
+      {detailCI && (
+        <CIDetailModal
+          ci={detailCI}
+          onClose={() => setDetailCI(null)}
+          onEdit={() => { setEditingCI(detailCI); setDetailCI(null); }}
+          onDelete={() => { handleDelete(detailCI.id, detailCI.name); setDetailCI(null); }}
+        />
+      )}
       {relatingCI && (
         <AddRelationModal
           preselectedSourceId={relatingCI.id}
@@ -450,7 +460,10 @@ export default function InventoryPage() {
                         return (
                           <tr key={ci.id} className="group hover:bg-indigo-50/40 transition-colors">
                             <td className="px-6 py-4 font-medium text-slate-800">
-                              <span className="group-hover:text-indigo-700 transition-colors">{ci.name}</span>
+                              <button
+                                onClick={() => setDetailCI(ci)}
+                                className="text-left hover:text-indigo-700 transition-colors font-medium text-slate-800 group-hover:text-indigo-700"
+                              >{ci.name}</button>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
                               <div className="flex flex-wrap gap-1 mt-1">
                                 <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} />

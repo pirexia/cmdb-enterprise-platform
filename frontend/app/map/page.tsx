@@ -17,10 +17,11 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import {
   Network, Search, Link2, RefreshCw, AlertTriangle, ArrowLeft,
-  ChevronDown, LayoutList, Download,
+  ChevronDown, LayoutList, Download, Trash2,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import AddRelationModal from "@/components/AddRelationModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -281,10 +282,14 @@ function TableView({
   relations,
   center,
   depth,
+  onDelete,
+  isAdmin,
 }: {
   relations: Relations;
   center: CIOption;
   depth: number;
+  onDelete: (id: string) => void;
+  isAdmin: boolean;
 }) {
   const allRows = relations.all ?? [...relations.outgoing, ...relations.incoming];
   // Deduplicate
@@ -327,6 +332,9 @@ function TableView({
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">CI Destino</th>
               {depth > 1 && (
                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">Nivel</th>
+              )}
+              {isAdmin && (
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">Acciones</th>
               )}
             </tr>
           </thead>
@@ -376,6 +384,18 @@ function TableView({
                       }`}>
                         {rowDepth}
                       </span>
+                    </td>
+                  )}
+                  {/* Delete */}
+                  {isAdmin && (
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => onDelete(r.id)}
+                        title="Eliminar relación"
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </td>
                   )}
                 </tr>
@@ -541,6 +561,8 @@ function CISelector({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MapPage() {
+  const { isAdmin } = useAuth();
+
   const [allCIs,      setAllCIs]      = useState<CIOption[]>([]);
   const [allCIsMap,   setAllCIsMap]   = useState<Map<string, CIOption>>(new Map());
   const [loadingCIs,  setLoadingCIs]  = useState(true);
@@ -602,6 +624,13 @@ export default function MapPage() {
 
   const handleRelationCreated = () => {
     setShowModal(false);
+    if (selectedCI) loadRelations(selectedCI, depth);
+  };
+
+  const handleDeleteRelation = async (id: string) => {
+    if (!confirm("¿Eliminar esta dependencia?")) return;
+    const res = await apiFetch(`/api/relations/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Error al eliminar la relación"); return; }
     if (selectedCI) loadRelations(selectedCI, depth);
   };
 
@@ -767,6 +796,7 @@ export default function MapPage() {
             minZoom={0.2}
             maxZoom={2}
             proOptions={{ hideAttribution: true }}
+            onEdgeClick={isAdmin ? (_, edge) => handleDeleteRelation(edge.id.replace("rel-", "")) : undefined}
           >
             <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="#cbd5e1" />
             <Controls position="bottom-right" />
@@ -776,7 +806,7 @@ export default function MapPage() {
         {/* Table view */}
         {viewMode === "table" && !loadingRels && !error && relations && relations.total > 0 && (
           <div className="absolute inset-0 flex flex-col bg-white">
-            <TableView relations={relations} center={selectedCI} depth={depth} />
+            <TableView relations={relations} center={selectedCI} depth={depth} onDelete={handleDeleteRelation} isAdmin={isAdmin} />
           </div>
         )}
       </div>

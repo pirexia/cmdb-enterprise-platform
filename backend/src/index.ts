@@ -1,5 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import { z } from 'zod';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 // @ts-ignore — helmet is installed in the Docker container via npm install
 const helmet = require('helmet') as { default: (...args: unknown[]) => unknown } | ((...args: unknown[]) => unknown);
@@ -103,6 +105,68 @@ app.use(cors({
 
 app.use(express.json({ limit: '2mb' }));
 
+// ── Rate limiting (OWASP: Brute-force prevention) ────────────────────────────
+
+// Strict limiter for login: 10 attempts per 15 minutes per IP
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de acceso. Inténtelo de nuevo en 15 minutos.' },
+  skipSuccessfulRequests: true, // only count failed attempts
+});
+
+// General API limiter: 300 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas peticiones. Inténtelo de nuevo en un momento.' },
+});
+
+app.use('/api/', apiLimiter);
+
+// ── Zod schemas (input validation) ───────────────────────────────────────────
+
+const LoginSchema = z.object({
+  email:    z.string().email('Email inválido').max(254),
+  password: z.string().min(1, 'La contraseña es obligatoria').max(128),
+});
+
+const CICreateSchema = z.object({
+  name:        z.string().min(1).max(200),
+  apiSlug:     z.string().min(1).max(200).regex(/^[a-z0-9-]+$/, 'Slug solo puede contener letras minúsculas, números y guiones'),
+  criticality: z.enum(['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL']),
+  environment: z.enum(['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION']),
+  ciType:      z.string().max(50).optional(),
+  status:      z.string().max(50).optional(),
+  inventoryNumber: z.string().max(100).optional(),
+  businessOwnerId: z.string().uuid().optional(),
+  technicalLeadId: z.string().uuid().optional(),
+  branchId:        z.string().uuid().optional(),
+  ciModelId:       z.string().uuid().optional(),
+  eolDate:         z.string().optional(),
+  eosDate:         z.string().optional(),
+  businessImpact:     z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).optional(),
+  recoveryPriority:   z.number().int().min(1).max(5).optional(),
+  rto:                z.number().int().min(0).optional(),
+  rpo:                z.number().int().min(0).optional(),
+  spofRisk:           z.boolean().optional(),
+  containsPii:        z.boolean().optional(),
+  dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).optional(),
+});
+
+const ContractCreateSchema = z.object({
+  contractNumber:    z.string().min(1).max(100),
+  startDate:         z.string().min(1),
+  endDate:           z.string().optional(),
+  vendorId:          z.string().uuid(),
+  parentContractId:  z.string().uuid().optional(),
+  ciIds:             z.array(z.string().uuid()).optional(),
+});
+
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
 function authenticateToken(req: Request, res: Response, next: NextFunction): void {
@@ -189,13 +253,14 @@ app.get('/health', (_req: Request, res: Response) => {
  * POST /api/auth/login
  * Returns a signed JWT on valid credentials.
  */
-app.post('/api/auth/login', async (req: Request, res: Response) => {
-  const { email, password, mfaCode } = req.body as { email?: string; password?: string; mfaCode?: string };
-
-  if (!email || !password) {
-    res.status(400).json({ error: 'email and password are required' });
+app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) => {
+  const parsed = LoginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos de acceso inválidos' });
     return;
   }
+  const { email, password } = parsed.data;
+  const { mfaCode } = req.body as { mfaCode?: string };
 
   try {
     // Extended user row — includes MFA fields (added via add_mfa_fields migration)
@@ -395,6 +460,11 @@ app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
 
 app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
+  const ciParsed = CICreateSchema.safeParse(req.body);
+  if (!ciParsed.success) {
+    res.status(400).json({ error: ciParsed.error.issues[0]?.message ?? 'Datos de CI inválidos' });
+    return;
+  }
   try {
     const {
       name, apiSlug, criticality, environment,
@@ -673,16 +743,13 @@ app.get('/api/contracts', authenticateToken, async (_req: Request, res: Response
 
 app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info('[POST /api/contracts] Body received:', JSON.stringify(req.body, null, 2));
+  const contractParsed = ContractCreateSchema.safeParse(req.body);
+  if (!contractParsed.success) {
+    res.status(400).json({ error: contractParsed.error.issues[0]?.message ?? 'Datos de contrato inválidos' });
+    return;
+  }
   try {
-    const { contractNumber, startDate, endDate, vendorId, parentContractId, ciIds } = req.body as {
-      contractNumber: string; startDate: string; endDate?: string;
-      vendorId: string; parentContractId?: string; ciIds?: string[];
-    };
-
-    if (!contractNumber || !startDate || !vendorId) {
-      res.status(400).json({ error: 'Missing required fields: contractNumber, startDate, vendorId' });
-      return;
-    }
+    const { contractNumber, startDate, endDate, vendorId, parentContractId, ciIds } = contractParsed.data;
 
     const contract = await prisma.contract.create({
       data: {

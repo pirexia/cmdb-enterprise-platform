@@ -21,7 +21,6 @@ const NAV_ITEMS = [
   { labelKey: "sidebar.integrations",   href: "/integrations",          icon: Plug,            adminOnly: true  },
   { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart,        adminOnly: false },
   { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText,        adminOnly: false },
-  { labelKey: "sidebar.entities",       href: "/entities",              icon: Building2,       adminOnly: false },
   { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle,      adminOnly: false },
   { labelKey: "sidebar.masters",         href: "/admin/masters",         icon: Building2,       adminOnly: true  },
   { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   adminOnly: true  },

@@ -1247,7 +1247,9 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
  * Returns all relationships for a specific CI (both outgoing and incoming).
  */
 app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: Response) => {
-  const id = req.params.id as string;
+  const id    = req.params.id as string;
+  // depth: how many hops from the root CI to traverse (1–4, default 1)
+  const depth = Math.min(Math.max(parseInt(req.query.depth as string) || 1, 1), 4);
 
   try {
     type RelationRow = {
@@ -1260,30 +1262,108 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
       source_slug: string;
       target_name: string;
       target_slug: string;
+      depth: number;
     };
 
-    const relations = await prisma.$queryRaw<RelationRow[]>`
-      SELECT
-        r.id::text,
-        r.source_ci_id::text,
-        r.target_ci_id::text,
-        r.relation_type,
-        r.created_at,
-        s.name AS source_name,
-        s.api_slug AS source_slug,
-        t.name AS target_name,
-        t.api_slug AS target_slug
-      FROM ci_relations r
-      JOIN configuration_items s ON r.source_ci_id = s.id
-      JOIN configuration_items t ON r.target_ci_id = t.id
-      WHERE r.source_ci_id = ${id}::uuid OR r.target_ci_id = ${id}::uuid
-      ORDER BY r.created_at DESC
-    `;
+    let relations: RelationRow[];
+
+    if (depth === 1) {
+      // Simple query — direct relations only
+      relations = await prisma.$queryRaw<RelationRow[]>`
+        SELECT
+          r.id::text,
+          r.source_ci_id::text,
+          r.target_ci_id::text,
+          r.relation_type,
+          r.created_at,
+          s.name        AS source_name,
+          s.api_slug    AS source_slug,
+          t.name        AS target_name,
+          t.api_slug    AS target_slug,
+          1             AS depth
+        FROM ci_relations r
+        JOIN configuration_items s ON r.source_ci_id = s.id
+        JOIN configuration_items t ON r.target_ci_id = t.id
+        WHERE r.source_ci_id = ${id}::uuid OR r.target_ci_id = ${id}::uuid
+        ORDER BY r.created_at DESC
+      `;
+    } else {
+      // Recursive CTE — traverses up to `depth` hops from the root CI.
+      // Cycle prevention: the `visited` array tracks CIs already on the
+      // current path; a frontier CI already in `visited` is not expanded.
+      // DISTINCT ON keeps the minimum-depth occurrence of each relation.
+      relations = await prisma.$queryRaw<RelationRow[]>`
+        WITH RECURSIVE traversal AS (
+          -- Base: edges directly touching the root CI
+          SELECT
+            r.id,
+            r.source_ci_id,
+            r.target_ci_id,
+            r.relation_type,
+            r.created_at,
+            s.name        AS source_name,
+            s.api_slug    AS source_slug,
+            t.name        AS target_name,
+            t.api_slug    AS target_slug,
+            1::int        AS depth,
+            CASE WHEN r.source_ci_id = ${id}::uuid
+                 THEN r.target_ci_id
+                 ELSE r.source_ci_id END AS frontier,
+            ARRAY[${id}::uuid]          AS visited
+          FROM ci_relations r
+          JOIN configuration_items s ON r.source_ci_id = s.id
+          JOIN configuration_items t ON r.target_ci_id = t.id
+          WHERE r.source_ci_id = ${id}::uuid
+             OR r.target_ci_id = ${id}::uuid
+
+          UNION ALL
+
+          -- Recursive: expand one hop from the frontier CI
+          SELECT
+            r.id,
+            r.source_ci_id,
+            r.target_ci_id,
+            r.relation_type,
+            r.created_at,
+            s.name,
+            s.api_slug,
+            t.name,
+            t.api_slug,
+            prev.depth + 1,
+            CASE WHEN r.source_ci_id = prev.frontier
+                 THEN r.target_ci_id
+                 ELSE r.source_ci_id END,
+            prev.visited || prev.frontier
+          FROM ci_relations r
+          JOIN configuration_items s ON r.source_ci_id = s.id
+          JOIN configuration_items t ON r.target_ci_id = t.id
+          JOIN traversal prev ON (
+               r.source_ci_id = prev.frontier
+            OR r.target_ci_id = prev.frontier
+          )
+          WHERE prev.depth < ${depth}
+            AND NOT (prev.frontier = ANY(prev.visited))
+        )
+        SELECT DISTINCT ON (id::text)
+          id::text,
+          source_ci_id::text,
+          target_ci_id::text,
+          relation_type,
+          created_at,
+          source_name,
+          source_slug,
+          target_name,
+          target_slug,
+          depth
+        FROM traversal
+        ORDER BY id::text, depth ASC
+      `;
+    }
 
     const outgoing = relations.filter((r) => r.source_ci_id === id);
     const incoming = relations.filter((r) => r.target_ci_id === id);
 
-    res.json({ outgoing, incoming, total: relations.length });
+    res.json({ outgoing, incoming, all: relations, total: relations.length });
   } catch (error) {
     console.error('[GET /api/cis/:id/relations] Error:', error);
     res.status(500).json({ error: 'Internal server error' });

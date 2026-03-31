@@ -17,6 +17,11 @@ type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
 type BusinessImpact = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 type DataClassification = "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED";
 
+interface ContractRef {
+  id: string; contractNumber: string; endDate: string | null;
+  vendor: { id: string; name: string };
+}
+
 interface CI {
   id: string;
   name: string;
@@ -32,6 +37,7 @@ interface CI {
   ciModelId: string | null;
   eolDate: string | null;
   eosDate: string | null;
+  contracts: ContractRef[];
   // NIS2 / GDPR
   businessImpact: string | null;
   recoveryPriority: number | null;
@@ -355,6 +361,27 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
               </label>
             </div>
           </div>
+
+          {/* ── Contratos asociados (solo lectura) ── */}
+          {ci.contracts && ci.contracts.length > 0 && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Contratos asociados</p>
+              <div className="space-y-1">
+                {ci.contracts.map((ct) => (
+                  <div key={ct.id} className="flex items-center justify-between rounded-lg bg-white border border-blue-100 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-slate-800">{ct.contractNumber}</p>
+                      <p className="text-xs text-slate-400">{ct.vendor?.name ?? '—'}</p>
+                    </div>
+                    {ct.endDate && (
+                      <span className="text-xs text-slate-500">Vence: {ct.endDate.slice(0,10)}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-blue-600">Para modificar contratos ve a la sección Contratos.</p>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>

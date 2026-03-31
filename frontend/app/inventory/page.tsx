@@ -39,6 +39,11 @@ interface AgentStatus {
   updatedAt:        string;
 }
 
+interface ContractRef {
+  id: string; contractNumber: string; endDate: string | null;
+  vendor: { id: string; name: string };
+}
+
 interface CI {
   id:              string;
   name:            string;
@@ -59,6 +64,7 @@ interface CI {
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
+  contracts:       ContractRef[];
   // NIS2 / GDPR
   businessImpact:     string | null;
   recoveryPriority:   number | null;
@@ -458,6 +464,15 @@ export default function InventoryPage() {
                                   <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">NIS2 Crítico</span>
                                 )}
                               </div>
+                              {ci.contracts && ci.contracts.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {ci.contracts.map((ct) => (
+                                    <span key={ct.id} className="inline-block rounded bg-blue-50 border border-blue-200 px-1.5 py-0.5 text-[10px] font-medium text-blue-700" title={`Proveedor: ${ct.vendor?.name ?? '—'}`}>
+                                      {ct.contractNumber}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                             <td className="px-6 py-4">
                               <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>

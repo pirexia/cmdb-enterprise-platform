@@ -31,6 +31,7 @@ interface CIOption {
   ciType: string | null;
   criticality: string;
   environment: string;
+  spofRisk?: boolean;
 }
 
 interface RelationRow {
@@ -59,6 +60,7 @@ interface CINodeData {
   environment: string;
   criticality: string;
   isCenter: boolean;
+  spofRisk: boolean;
 }
 
 type ViewMode = "graph" | "table";
@@ -105,9 +107,11 @@ function CINode({ data }: NodeProps<CINodeData>) {
 
   return (
     <div className={`relative w-52 rounded-xl border-2 shadow-md bg-white ${
-      data.isCenter
-        ? "border-indigo-500 ring-4 ring-indigo-100 shadow-indigo-100"
-        : "border-slate-200 hover:border-slate-300"
+      data.spofRisk
+        ? "border-red-400 ring-2 ring-red-100"
+        : data.isCenter
+          ? "border-indigo-500 ring-4 ring-indigo-100 shadow-indigo-100"
+          : "border-slate-200 hover:border-slate-300"
     }`}>
       <span className={`absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full border-2 border-white ${dot}`} />
       <div className="px-3 py-2.5">
@@ -115,11 +119,18 @@ function CINode({ data }: NodeProps<CINodeData>) {
           <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
             {badge.label}
           </span>
-          {data.isCenter && (
-            <span className="inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-              origen
-            </span>
-          )}
+          <div className="flex gap-1">
+            {data.spofRisk && (
+              <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Punto Único de Fallo">
+                SPOF
+              </span>
+            )}
+            {data.isCenter && (
+              <span className="inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+                origen
+              </span>
+            )}
+          </div>
         </div>
         <p className="text-sm font-bold text-slate-800 leading-tight truncate" title={data.label}>
           {data.label}
@@ -159,6 +170,7 @@ function buildGraph(
     environment: ci.environment,
     criticality: ci.criticality,
     isCenter,
+    spofRisk:    ci.spofRisk ?? false,
   });
 
   // BFS from root to assign column (positive = outgoing, negative = incoming)
@@ -206,7 +218,7 @@ function buildGraph(
         ? center
         : allCIsMap.get(ciId) ?? {
             id: ciId, name: ciId.slice(0, 8), apiSlug: ciId.slice(0, 8),
-            ciType: null, criticality: "MEDIUM", environment: "PRODUCTION",
+            ciType: null, criticality: "MEDIUM", environment: "PRODUCTION", spofRisk: false,
           };
       nodes.push({
         id: ciId, type: "ciNode",

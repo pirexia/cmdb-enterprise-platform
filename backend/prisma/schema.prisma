@@ -50,6 +50,22 @@ enum RelationType {
   BACKED_UP_BY       // Source is backed up by target
 }
 
+// ─── NIS2 / GDPR Enums (stored as TEXT in DB) ─────────────────────────────────
+
+enum BusinessImpact {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum DataClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
 model User {
   id              String   @id @default(uuid()) @db.Uuid
   username        String   @unique
@@ -253,6 +269,15 @@ model CI {
 
   vulnerabilities Json?        @map("vulnerabilities")
   agentStatus     Json?        @map("agent_status")
+
+  // ─── NIS2 / ISO 22301 / GDPR ──────────────────────────────────────────────
+  businessImpact     BusinessImpact?     @map("business_impact")
+  recoveryPriority   Int?                @map("recovery_priority")
+  rto                Int?                // Recovery Time Objective (minutes)
+  rpo                Int?                // Recovery Point Objective (minutes)
+  spofRisk           Boolean             @default(false) @map("spof_risk")
+  containsPii        Boolean             @default(false) @map("contains_pii")
+  dataClassification DataClassification? @map("data_classification")
 
   contracts       Contract[]   @relation("ContractToCI")
 

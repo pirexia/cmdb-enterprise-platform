@@ -25,6 +25,7 @@
 15. [Mapa de Dependencias](#15-mapa-de-dependencias)
 16. [Registro de Auditoría](#16-registro-de-auditoría)
 17. [Gestión de Certificados SSL/TLS](#17-gestión-de-certificados-ssltls)
+18. [Campos de Resiliencia NIS2 / GDPR](#18-campos-de-resiliencia-nis2--gdpr)
 
 ---
 
@@ -655,3 +656,52 @@ El sistema registra automáticamente todas las acciones administrativas:
 - **Fecha y hora**: Timestamp con precisión de segundos
 
 > El Registro de Auditoría es **append-only**: los registros no se pueden editar ni borrar desde la interfaz, garantizando la trazabilidad requerida por ISO 27001 A.12.4.
+
+---
+
+## 18. Campos de Resiliencia NIS2 / GDPR
+
+> Disponible en los formularios **Añadir CI** y **Editar CI** para usuarios con rol **ADMIN**
+
+La plataforma incluye un bloque de campos de cumplimiento normativo alineados con la **Directiva NIS2** (Network and Information Security), el estándar **ISO 22301** (continuidad de negocio) y el **Reglamento GDPR**.
+
+### Campos disponibles
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| **Impacto de Negocio (NIS2)** | Enum | Clasifica el impacto del CI en caso de fallo: `Bajo`, `Medio`, `Alto`, `Crítico` |
+| **Clasificación de Datos (GDPR)** | Enum | Nivel de sensibilidad de los datos: `Público`, `Interno`, `Confidencial`, `Restringido` |
+| **Prioridad de Recuperación** | Número (1-5) | Orden de restauración en un plan de contingencia (1 = primero en recuperarse) |
+| **RTO (minutos)** | Número | Recovery Time Objective — tiempo máximo tolerable de interrupción |
+| **RPO (minutos)** | Número | Recovery Point Objective — pérdida máxima tolerable de datos en tiempo |
+| **Punto Único de Fallo (SPOF)** | Booleano | Marca el CI como Single Point of Failure según ISO 22301 |
+| **Contiene Datos Personales (PII)** | Booleano | Indica si el CI procesa o almacena datos personales sujetos a GDPR |
+
+### Indicadores visuales en el Inventario
+
+Los CIs con flags activos muestran etiquetas en la columna de nombre:
+
+| Etiqueta | Color | Significado |
+|----------|-------|-------------|
+| `SPOF` | Rojo | El CI es un punto único de fallo |
+| `PII` | Morado | El CI maneja datos personales (GDPR) |
+| `NIS2 Crítico` | Naranja | El CI tiene impacto de negocio CRÍTICO |
+
+### Indicadores visuales en el Mapa de Dependencias
+
+Los nodos SPOF aparecen resaltados con **borde rojo** y la etiqueta `SPOF` en el grafo de dependencias, facilitando la identificación visual de riesgos en la topología.
+
+### Casos de uso por normativa
+
+**NIS2 (Directiva de Seguridad de Redes y Sistemas de Información):**
+- Clasifica los CIs por impacto de negocio para priorizar la protección de activos críticos
+- Facilita la notificación obligatoria de incidentes (art. 23 NIS2) al identificar sistemas afectados
+
+**ISO 22301 (Continuidad de Negocio):**
+- Los campos RTO/RPO alimentan directamente el Plan de Recuperación ante Desastres (DRP)
+- La marca SPOF permite identificar cuellos de botella en la topología que requieren redundancia
+- La prioridad de recuperación define el orden de restauración en el BCP
+
+**GDPR (Reglamento General de Protección de Datos):**
+- La clasificación de datos permite inventariar tratamientos de datos personales (art. 30 GDPR)
+- El flag PII facilita el cumplimiento del Registro de Actividades de Tratamiento

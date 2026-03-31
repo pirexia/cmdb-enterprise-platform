@@ -14,6 +14,8 @@ interface DeviceModel  { id: string; name: string; manufacturer_id: string; manu
 type CIType = "PHYSICAL_SERVER" | "VIRTUAL_SERVER" | "DATABASE" | "NETWORK_EQUIPMENT" | "STORAGE" | "BACKUP";
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
+type BusinessImpact = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+type DataClassification = "PUBLIC" | "INTERNAL" | "CONFIDENTIAL" | "RESTRICTED";
 
 interface CI {
   id: string;
@@ -21,7 +23,7 @@ interface CI {
   apiSlug: string;
   criticality: Criticality;
   environment: Environment;
-  ciType: string | null;  // API returns string, not enum
+  ciType: string | null;
   status: string | null;
   inventoryNumber: string | null;
   businessOwnerId: string | null;
@@ -30,13 +32,21 @@ interface CI {
   ciModelId: string | null;
   eolDate: string | null;
   eosDate: string | null;
+  // NIS2 / GDPR
+  businessImpact: string | null;
+  recoveryPriority: number | null;
+  rto: number | null;
+  rpo: number | null;
+  spofRisk: boolean;
+  containsPii: boolean;
+  dataClassification: string | null;
 }
 
 interface FormState {
   name: string;
   criticality: Criticality;
   environment: Environment;
-  ciType: string;  // Internal form state uses string
+  ciType: string;
   status: string;
   inventoryNumber: string;
   businessOwnerId: string;
@@ -45,6 +55,14 @@ interface FormState {
   ciModelId: string;
   eolDate: string;
   eosDate: string;
+  // NIS2 / GDPR
+  businessImpact: BusinessImpact | "";
+  recoveryPriority: string;
+  rto: string;
+  rpo: string;
+  spofRisk: boolean;
+  containsPii: boolean;
+  dataClassification: DataClassification | "";
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -73,6 +91,13 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
     ciModelId: ci.ciModelId || "",
     eolDate: ci.eolDate ? ci.eolDate.slice(0, 10) : "",
     eosDate: ci.eosDate ? ci.eosDate.slice(0, 10) : "",
+    businessImpact: (ci.businessImpact as BusinessImpact | null) || "",
+    recoveryPriority: ci.recoveryPriority != null ? String(ci.recoveryPriority) : "",
+    rto: ci.rto != null ? String(ci.rto) : "",
+    rpo: ci.rpo != null ? String(ci.rpo) : "",
+    spofRisk: ci.spofRisk ?? false,
+    containsPii: ci.containsPii ?? false,
+    dataClassification: (ci.dataClassification as DataClassification | null) || "",
   });
   const [users,         setUsers]         = useState<User[]>([]);
   const [branches,      setBranches]      = useState<Branch[]>([]);
@@ -125,6 +150,13 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
       eosDate:   form.eosDate   || null,
       businessOwnerId: form.businessOwnerId || null,
       technicalLeadId: form.technicalLeadId || null,
+      businessImpact:     form.businessImpact     || null,
+      recoveryPriority:   form.recoveryPriority    ? parseInt(form.recoveryPriority) : null,
+      rto:                form.rto                 ? parseInt(form.rto)              : null,
+      rpo:                form.rpo                 ? parseInt(form.rpo)              : null,
+      spofRisk:           form.spofRisk,
+      containsPii:        form.containsPii,
+      dataClassification: form.dataClassification  || null,
     };
 
     try {
@@ -266,6 +298,61 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
               <div><Label>End of Support (EoS)</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
+            </div>
+          </div>
+
+          {/* ── NIS2 / Resiliencia / GDPR ── */}
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">NIS2 · Resiliencia · GDPR</p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Impacto de Negocio (NIS2)</Label>
+                <Select value={form.businessImpact} onChange={(e) => set("businessImpact", e.target.value as BusinessImpact | "")}>
+                  <option value="">— Sin clasificar —</option>
+                  <option value="LOW">Bajo</option>
+                  <option value="MEDIUM">Medio</option>
+                  <option value="HIGH">Alto</option>
+                  <option value="CRITICAL">Crítico</option>
+                </Select>
+              </div>
+              <div>
+                <Label>Clasificación de Datos (GDPR)</Label>
+                <Select value={form.dataClassification} onChange={(e) => set("dataClassification", e.target.value as DataClassification | "")}>
+                  <option value="">— Sin clasificar —</option>
+                  <option value="PUBLIC">Público</option>
+                  <option value="INTERNAL">Interno</option>
+                  <option value="CONFIDENTIAL">Confidencial</option>
+                  <option value="RESTRICTED">Restringido</option>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <Label>Prioridad de Recuperación (1-5)</Label>
+                <Input type="number" min="1" max="5" placeholder="1 = primero" value={form.recoveryPriority} onChange={(e) => set("recoveryPriority", e.target.value)} />
+              </div>
+              <div>
+                <Label>RTO (minutos)</Label>
+                <Input type="number" min="0" placeholder="ej. 60" value={form.rto} onChange={(e) => set("rto", e.target.value)} />
+                <p className="mt-1 text-[10px] text-slate-400">Recovery Time Objective</p>
+              </div>
+              <div>
+                <Label>RPO (minutos)</Label>
+                <Input type="number" min="0" placeholder="ej. 15" value={form.rpo} onChange={(e) => set("rpo", e.target.value)} />
+                <p className="mt-1 text-[10px] text-slate-400">Recovery Point Objective</p>
+              </div>
+            </div>
+            <div className="flex gap-6">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.spofRisk} onChange={(e) => set("spofRisk", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
+                <span className="text-sm text-slate-700">Punto Único de Fallo (SPOF)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.containsPii} onChange={(e) => set("containsPii", e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
+                <span className="text-sm text-slate-700">Contiene Datos Personales (PII / GDPR)</span>
+              </label>
             </div>
           </div>
 

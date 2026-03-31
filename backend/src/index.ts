@@ -1418,9 +1418,10 @@ app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, r
 app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, categoryCode, sortOrder } = req.body as { name?: string; categoryCode?: string; sortOrder?: number };
   if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+  const id = String(req.params.id);
   try {
     const row = await prisma.cIType.update({
-      where: { id: req.params.id },
+      where: { id },
       data: { name: name.trim(), ...(categoryCode && { categoryCode }), ...(sortOrder !== undefined && { sortOrder }) },
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
@@ -1429,11 +1430,12 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
 });
 
 app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = String(req.params.id);
   try {
-    const row = await prisma.cIType.findUnique({ where: { id: req.params.id }, select: { isSystem: true, code: true } });
+    const row = await prisma.cIType.findUnique({ where: { id }, select: { isSystem: true, code: true } });
     if (!row) { res.status(404).json({ error: 'Tipo no encontrado' }); return; }
     if (row.isSystem) { res.status(403).json({ error: `El tipo "${row.code}" es un tipo de sistema y no puede eliminarse` }); return; }
-    await prisma.cIType.delete({ where: { id: req.params.id } });
+    await prisma.cIType.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);

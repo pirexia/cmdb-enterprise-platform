@@ -85,23 +85,39 @@ enum DataClassification {
 }
 
 model User {
-  id              String   @id @default(uuid()) @db.Uuid
-  username        String   @unique
-  email           String   @unique
-  password        String?  @map("password")
-  role            UserRole @default(VIEWER)
-  ssoExternalId   String?  @unique @map("sso_external_id")
-  active          Boolean  @default(true) @map("active")
-  mfaSecret       String?  @map("mfa_secret")
-  mfaEnabled      Boolean  @default(false) @map("mfa_enabled")
+  id              String          @id @default(uuid()) @db.Uuid
+  username        String          @unique
+  email           String          @unique
+  password        String?         @map("password")
+  role            UserRole        @default(VIEWER)
+  ssoExternalId   String?         @unique @map("sso_external_id")
+  active          Boolean         @default(true) @map("active")
+  mfaSecret       String?         @map("mfa_secret")
+  mfaEnabled      Boolean         @default(false) @map("mfa_enabled")
+  mfaPromptedAt   DateTime?       @map("mfa_prompted_at")
 
-  ownedCIs        CI[]     @relation("BusinessOwner")
-  technicalLedCIs CI[]     @relation("TechnicalLead")
+  ownedCIs        CI[]            @relation("BusinessOwner")
+  technicalLedCIs CI[]            @relation("TechnicalLead")
+  trustedDevices  TrustedDevice[]
 
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+model TrustedDevice {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String   @unique
+  userAgent   String?  @map("user_agent")
+  ipAddress   String?  @map("ip_address")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+
+  @@map("trusted_devices")
 }
 
 model CostCenter {

@@ -31,6 +31,9 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
+ARG NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS=30
+ENV NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS=$NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS
+
 RUN npm run build
 
 # ── Stage 3: Runner ──────────────────────────────────────────────────────────

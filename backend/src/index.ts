@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
+import crypto from 'crypto';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 // @ts-ignore — helmet is installed in the Docker container via npm install
 const helmet = require('helmet') as { default: (...args: unknown[]) => unknown } | ((...args: unknown[]) => unknown);
@@ -47,15 +48,19 @@ if (!JWT_SECRET) {
 }
 const JWT_SECRET_VALUE = JWT_SECRET ?? 'cmdb-dev-secret-change-in-production';
 
+// Trusted device TTL (default 30 days, configurable via env)
+const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type UserRole = 'ADMIN' | 'VIEWER';
 
 interface JwtPayload {
-  id:       string;
-  username: string;
-  email:    string;
-  role:     UserRole;
+  id:               string;
+  username:         string;
+  email:            string;
+  role:             UserRole;
+  mfaSetupRequired?: boolean; // true = limited token, only /api/auth/mfa/* allowed
 }
 
 // Extend Express Request to carry the decoded JWT payload
@@ -131,8 +136,11 @@ app.use('/api/', apiLimiter);
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 
 const LoginSchema = z.object({
-  email:    z.string().email('Email inválido').max(254),
-  password: z.string().min(1, 'La contraseña es obligatoria').max(128),
+  email:       z.string().email('Email inválido').max(254),
+  password:    z.string().min(1, 'La contraseña es obligatoria').max(128),
+  mfaCode:     z.string().length(6).regex(/^\d{6}$/).optional(),
+  trustDevice: z.boolean().optional(),
+  deviceToken: z.string().max(128).optional(),
 });
 
 const CICreateSchema = z.object({
@@ -180,6 +188,16 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
 
   try {
     const payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
+
+    // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
+    if (payload.mfaSetupRequired) {
+      const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
+      if (!allowedPaths.includes(req.path)) {
+        res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
+        return;
+      }
+    }
+
     req.user = payload;
     next();
   } catch {
@@ -266,6 +284,7 @@ app.get('/health', (_req: Request, res: Response) => {
 /**
  * POST /api/auth/login
  * Returns a signed JWT on valid credentials.
+ * Handles MFA verification, trusted devices, and first-login MFA prompts.
  */
 app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) => {
   const parsed = LoginSchema.safeParse(req.body);
@@ -273,47 +292,46 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos de acceso inválidos' });
     return;
   }
-  const { email, password } = parsed.data;
-  const { mfaCode } = req.body as { mfaCode?: string };
+  const { email, password, mfaCode, trustDevice, deviceToken } = parsed.data;
 
   try {
-    // Extended user row — includes MFA fields (added via add_mfa_fields migration)
-    type UserRow = { id: string; username: string; email: string; password: string | null; role: string; mfa_enabled: boolean; mfa_secret: string | null };
+    type UserRow = {
+      id: string; username: string; email: string; password: string | null;
+      role: string; active: boolean;
+      mfa_enabled: boolean; mfa_secret: string | null; mfa_prompted_at: Date | null;
+    };
 
     let user: UserRow | null = null;
     let ldapSuccess = false;
 
-    // ── Domain Pre-Check: Skip LDAP for local accounts (@cmdb.local) ─────────
     const isLocalAccount = email.endsWith('@cmdb.local') || email.endsWith('@cmdb.internal');
 
     if (process.env.USE_LDAP === 'true' && !isLocalAccount) {
-      // ── LDAP / Active Directory path with fail-soft fallback ────────────────
       try {
         await authenticateLDAP(email, password);
         ldapSuccess = true;
         log.info(`[POST /api/auth/login] LDAP authentication successful for ${email}`);
       } catch (ldapErr) {
         log.warn('[POST /api/auth/login] LDAP authentication failed, attempting local fallback:', ldapErr);
-        // Do NOT return — fall through to local bcrypt validation
       }
 
       if (ldapSuccess) {
-        // User authenticated via LDAP — check if exists in DB or auto-provision
         let rows = await prisma.$queryRaw<UserRow[]>`
-          SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
+          SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+                 mfa_enabled, mfa_secret, mfa_prompted_at
+          FROM "users" WHERE email = ${email} LIMIT 1
         `;
-
         if (rows.length === 0) {
           const username  = email.split('@')[0];
           const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
-          // sso_external_id stores the LDAP identity so the user can be
-          // identified as LDAP-sourced (vs. locally created) at any point.
           await prisma.$executeRaw`
             INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
             VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
           `;
           rows = await prisma.$queryRaw<UserRow[]>`
-            SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
+            SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+                   mfa_enabled, mfa_secret, mfa_prompted_at
+            FROM "users" WHERE email = ${email} LIMIT 1
           `;
           log.info(`[POST /api/auth/login] Auto-provisioned LDAP shadow user: ${email}`);
         }
@@ -321,10 +339,11 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       }
     }
 
-    // ── Local bcrypt path (if LDAP disabled, local account, or LDAP failed) ──
     if (!ldapSuccess) {
       const rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role, mfa_enabled, mfa_secret FROM "users" WHERE email = ${email} LIMIT 1
+        SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+               mfa_enabled, mfa_secret, mfa_prompted_at
+        FROM "users" WHERE email = ${email} LIMIT 1
       `;
       if (!rows[0] || !rows[0].password) {
         res.status(401).json({ error: 'Invalid credentials' });
@@ -339,28 +358,90 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       log.info(`[POST /api/auth/login] Local authentication successful for ${email}`);
     }
 
-    // ── Null check for user variable ─────────────────────────────────────────
     if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
-    // ── MFA check (common to both paths) ──────────────────────────────────────
+    if (!user.active) {
+      res.status(401).json({ error: 'Account is disabled. Contact your administrator.' });
+      return;
+    }
+
+    // ── Helper: build and sign full JWT ──────────────────────────────────────
+    const signFullToken = () => {
+      const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
+      return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h' });
+    };
+    const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role });
+
+    // ── Helper: create trusted device record ──────────────────────────────────
+    const createTrustedDevice = async (): Promise<string> => {
+      const tok      = crypto.randomBytes(32).toString('hex');
+      const expiry   = new Date();
+      expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
+      const ua  = req.headers['user-agent'] ?? null;
+      const ip  = req.ip ?? null;
+      await prisma.$executeRaw`
+        INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+        VALUES (gen_random_uuid(), ${user!.id}::uuid, ${tok}, ${ua}, ${ip}, ${expiry}, now(), now())
+      `;
+      return tok;
+    };
+
+    // ── MFA enabled path ──────────────────────────────────────────────────────
     if (user.mfa_enabled && user.mfa_secret) {
+      // Check trusted device first
+      if (deviceToken) {
+        const trusted = await prisma.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "trusted_devices"
+          WHERE token = ${deviceToken} AND user_id = ${user.id}::uuid AND expires_at > now()
+          LIMIT 1
+        `;
+        if (trusted.length > 0) {
+          await prisma.$executeRaw`UPDATE "trusted_devices" SET last_seen_at = now() WHERE token = ${deviceToken}`;
+          res.json({ token: signFullToken(), user: userObj() });
+          return;
+        }
+      }
+
+      // Need MFA code
       if (!mfaCode) {
         res.status(401).json({ error: 'MFA_REQUIRED' });
         return;
       }
+
       const mfaValid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 });
       if (!mfaValid) {
-        res.status(401).json({ error: 'Invalid MFA code' });
+        res.status(401).json({ error: 'INVALID_MFA_CODE' });
         return;
       }
+
+      let newDeviceToken: string | undefined;
+      if (trustDevice) newDeviceToken = await createTrustedDevice();
+
+      res.json({ token: signFullToken(), user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
+      return;
     }
 
-    const payload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole };
-    const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h' });
-    res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+    // ── MFA not enabled: check if setup is needed ─────────────────────────────
+    if (user.role === 'ADMIN') {
+      // Admin: mandatory MFA setup — issue short-lived limited token
+      const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
+      const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m' });
+      res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
+      return;
+    }
+
+    // Non-admin: suggest MFA on first login
+    if (!user.mfa_prompted_at) {
+      await prisma.$executeRaw`UPDATE "users" SET mfa_prompted_at = now(), updated_at = now() WHERE id = ${user.id}::uuid`;
+      res.json({ token: signFullToken(), user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
+      return;
+    }
+
+    // Normal login (non-admin, already prompted before or MFA skipped)
+    res.json({ token: signFullToken(), user: userObj() });
 
   } catch (error) {
     console.error('[POST /api/auth/login] Error:', error);
@@ -992,11 +1073,11 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
 
 /**
  * POST /api/auth/mfa/enable
- * Verifies the first TOTP code and persists the secret in the database.
- * Body: { code: string, secret: string }
+ * Verifies the first TOTP code, persists the secret, and returns a new full JWT.
+ * Body: { code: string, secret: string, trustDevice?: boolean }
  */
 app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Response) => {
-  const { code, secret } = req.body as { code?: string; secret?: string };
+  const { code, secret, trustDevice } = req.body as { code?: string; secret?: string; trustDevice?: boolean };
   if (!code || !secret) {
     res.status(400).json({ error: 'code and secret are required' });
     return;
@@ -1008,9 +1089,27 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
   }
   try {
     await prisma.$executeRaw`
-      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true WHERE id = ${req.user!.id}::uuid
+      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true, updated_at = now() WHERE id = ${req.user!.id}::uuid
     `;
-    res.json({ message: 'MFA enabled successfully' });
+    // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
+    const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
+    const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h' });
+
+    let newDeviceToken: string | undefined;
+    if (trustDevice) {
+      newDeviceToken = crypto.randomBytes(32).toString('hex');
+      const expiry = new Date();
+      expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
+      const ua = req.headers['user-agent'] ?? null;
+      const ip = req.ip ?? null;
+      await prisma.$executeRaw`
+        INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+        VALUES (gen_random_uuid(), ${req.user!.id}::uuid, ${newDeviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
+      `;
+    }
+
+    const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
+    res.json({ message: 'MFA enabled successfully', token: newToken, user: userObj, ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
   } catch (error) {
     console.error('[POST /api/auth/mfa/enable] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2051,6 +2150,16 @@ if (AUDIT_RETENTION_DAYS > 0) {
 } else {
   log.info('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
 }
+
+// ── Trusted device cleanup (daily at 02:00 AM) ────────────────────────────────
+cron.schedule('0 2 * * *', async () => {
+  try {
+    const result = await prisma.$executeRaw`DELETE FROM "trusted_devices" WHERE expires_at < now()`;
+    log.info(`[TrustedDeviceCron] Cleaned up ${Number(result)} expired trusted device(s)`);
+  } catch (e) {
+    log.error('[TrustedDeviceCron] Cleanup error:', e);
+  }
+}, { timezone: 'Europe/Madrid' });
 
 // ─── Server ───────────────────────────────────────────────────────────────────
 

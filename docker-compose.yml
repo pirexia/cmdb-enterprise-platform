@@ -60,8 +60,9 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-cmdb_pass123}@postgres:5432/${POSTGRES_DB:-cmdb_db}
       JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required — set it in .env}
       CORS_ORIGINS: ${CORS_ORIGINS}
+      HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
     volumes:
-      - ./certs:/app/certs:Z      
+      - ./backend/certs:/app/certs:Z
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:

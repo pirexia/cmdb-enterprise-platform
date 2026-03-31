@@ -1,6 +1,6 @@
 # 📖 CMDB Enterprise Platform — Manual de Usuario
 
-**Versión:** 1.1.0
+**Versión:** 1.2.0
 **Público:** Administradores CMDB y usuarios de consulta
 **Fecha:** 2026-03-31
 
@@ -22,6 +22,7 @@
 12. [Alertas Diarias Automáticas](#12-alertas-diarias-automáticas)
 13. [Centro de Reportes](#13-centro-de-reportes)
 14. [Configuración y Gestión de Usuarios](#14-configuración-y-gestión-de-usuarios)
+14b. [Datos Maestros — Gestión de Tipos de CI](#14b-datos-maestros--gestión-de-tipos-de-ci)
 15. [Mapa de Dependencias](#15-mapa-de-dependencias)
 16. [Registro de Auditoría](#16-registro-de-auditoría)
 17. [Gestión de Certificados SSL/TLS](#17-gestión-de-certificados-ssltls)
@@ -48,12 +49,40 @@ Tras la instalación inicial, el sistema tiene un usuario administrador creado e
 
 > ⚠️ **IMPORTANTE:** Cambia la contraseña inmediatamente tras el primer login.
 
-### Inicio de sesión con MFA
-Si tu cuenta tiene MFA activado:
-1. Introduce email y contraseña como siempre
-2. Abre tu app de autenticación (Google Authenticator, Aegis, Microsoft Authenticator…)
-3. Introduce el código de 6 dígitos cuando la plataforma lo solicite
-4. El código cambia cada 30 segundos — introdúcelo antes de que expire
+### Flujo MFA en el primer login
+
+#### Usuarios Administrador (ADMIN) — MFA obligatorio
+En el primer acceso, la plataforma **exige** configurar la autenticación de doble factor antes de acceder a la aplicación:
+
+1. Introduce email y contraseña → la pantalla cambia al **asistente de configuración MFA**
+2. Escanea el código QR con tu app de autenticación (Google Authenticator, Aegis, Authy, Microsoft Authenticator…)
+3. También puedes introducir la clave manual (ocúltala con el icono del ojo)
+4. Haz clic en **"Ya lo escaneé → Continuar"**
+5. Introduce el código de 6 dígitos generado por la app para confirmar
+6. Activa opcionalmente **"Confiar en este dispositivo durante N días"** para no pedir el código en este equipo
+7. Haz clic en **"Activar MFA y entrar"** → acceso completo a la aplicación
+
+> 🔒 No existe opción de omitir este paso para administradores. Es obligatorio por política de seguridad.
+
+#### Usuarios Estándar (VIEWER) — MFA recomendado
+En el primer acceso, la plataforma **sugiere** configurar MFA:
+
+1. Introduce email y contraseña → acceso concedido + pantalla de sugerencia
+2. Puedes elegir **"Configurar MFA ahora"** (sigue el mismo asistente QR) o **"Omitir por ahora"**
+3. La sugerencia solo se muestra **una vez**. En accesos posteriores no vuelve a aparecer.
+
+### Inicio de sesión con MFA ya configurado
+Si tu cuenta tiene MFA activado y el dispositivo **no es de confianza**:
+1. Introduce email y contraseña
+2. La pantalla cambia al paso de verificación TOTP
+3. Abre tu app de autenticación y copia el código de 6 dígitos
+4. Activa opcionalmente **"Confiar en este dispositivo durante N días"** para saltar este paso en futuros accesos desde este equipo
+5. Haz clic en **"Verificar código"**
+
+> El código cambia cada 30 segundos — introdúcelo antes de que expire.
+
+### Dispositivos de confianza
+Cuando marcas un equipo como de confianza, el token del dispositivo se guarda en el navegador. Durante el periodo configurado (`TRUSTED_DEVICE_TTL_DAYS`, por defecto 30 días), el paso MFA se omite automáticamente en ese dispositivo. Al cerrar sesión se borra el token de confianza del navegador.
 
 ### Inicio de sesión con LDAP/Active Directory
 Si la organización tiene el conector LDAP/AD activado, verás el mensaje **"Soporta credenciales corporativas"** en la pantalla de login. En ese caso:
@@ -89,22 +118,14 @@ La plataforma soporta **Español** e **Inglés**. Para cambiar el idioma:
 ### Acceder a tu perfil
 - Haz clic en **"Mi Perfil"** en el menú lateral
 
-### Activar la Autenticación de Doble Factor (MFA)
-El MFA añade una capa de seguridad adicional usando una app de autenticación (TOTP):
+### Activar la Autenticación de Doble Factor (MFA) desde el perfil
+Si ya tienes acceso a la aplicación (p. ej. eres VIEWER y omitiste la sugerencia inicial), puedes activar MFA en cualquier momento:
 
 1. Ve a **Mi Perfil → Autenticación de Doble Factor**
 2. Haz clic en **"Activar MFA"**
-3. Abre tu app de autenticación en el móvil
-4. Escanea el código QR que aparece en pantalla
-5. Introduce el código de 6 dígitos generado por la app para confirmar
-6. A partir de ahora, cada login requerirá el código MFA
-
-> **Apps compatibles:** Google Authenticator, Microsoft Authenticator, Aegis, Authy
-
-### Desactivar MFA
-1. Ve a **Mi Perfil → Autenticación de Doble Factor**
-2. Haz clic en **"Desactivar MFA"**
-3. Introduce tu contraseña para confirmar
+3. Escanea el código QR con tu app de autenticación (Google Authenticator, Microsoft Authenticator, Aegis, Authy…)
+4. Introduce el código de 6 dígitos generado por la app para confirmar
+5. A partir de ahora, cada login desde un dispositivo no reconocido requerirá el código MFA
 
 > ⚠️ Si pierdes acceso a tu app de MFA, contacta con un Administrador para que desactive el MFA de tu cuenta.
 
@@ -146,23 +167,28 @@ Para sacar el máximo partido a la plataforma y evitar registros huérfanos, se 
 ```
 Paso 1: Datos Maestros (solo ADMIN)
 │
-├── 1.1 Áreas de Soporte
+├── 1.1 Tipos de CI (opcional — el sistema incluye tipos predefinidos)
+│   → Ve a Datos Maestros → Tipos de CI para añadir, editar o eliminar tipos
+│   → Categorías disponibles: Infraestructura, Dispositivos Usuario, Movilidad/IoT,
+│      Salas de Reunión, Software, Licencias
+│
+├── 1.2 Áreas de Soporte
 │   Ej: "Zona Centro", "Datacenter Madrid", "Soporte LATAM"
 │
-├── 1.2 Sedes / Branches
+├── 1.3 Sedes / Branches
 │   Ej: "Sede Madrid (MAD)", "Oficina Barcelona (BCN)"
 │   → Cada sede se asocia a un Área de Soporte
 │
-├── 1.3 Fabricantes
+├── 1.4 Fabricantes
 │   Ej: Dell, HP, Cisco, Microsoft
 │   → Usa "✨ Sugerir Populares" para insertar 30 fabricantes de TI de una vez
 │
-├── 1.4 Modelos de Dispositivo
+├── 1.5 Modelos de Dispositivo
 │   Ej: "PowerEdge R740" (Dell), "ProLiant DL380 Gen10" (HP)
 │   → Cada modelo se asocia a un Fabricante
 │   → Usa el Centro de Consulta EOL para verificar fechas de soporte
 │
-└── 1.5 Proveedores
+└── 1.6 Proveedores
     Ej: Telefónica, AWS, Microsoft Azure
     → Se usarán al registrar Contratos
 
@@ -210,12 +236,18 @@ Paso 4: Integraciones (solo ADMIN)
 2. Rellena los campos obligatorios:
    - **Nombre** (único, descriptivo: `srv-prd-web-01`)
    - **Slug** (identificador URL: `srv-prd-web-01`)
-   - **Tipo de CI** (Servidor Físico, Virtual, Base de Datos, Laptop, etc.)
+   - **Tipo de CI** — selector agrupado por categoría:
+     - *Infraestructura*: Servidor Físico, Servidor Virtual, Base de Datos, Equipamiento de Red, Almacenamiento, Backup, Software Base
+     - *Dispositivos Usuario*: Laptop, Sobremesa, Monitor, Teclado/Ratón, Impresora/Escáner
+     - *Movilidad/IoT*: Smartphone, Tablet, Sensor IoT
+     - *Salas de Reunión*: Proyector/Pantalla, Sistema de Videoconferencia
+     - *Software*: Aplicación Web, Microservicio/API, Software de Escritorio, Contenedor/Docker
+     - *Licencias*: Licencia de Software
    - **Entorno** (Production, Staging, Testing, Development)
    - **Criticidad** (Low, Medium, High, Mission Critical)
 3. Opcionales pero recomendados:
-   - Hardware: Fabricante, Modelo, Número de Serie
-   - Software: Versión, Tipo de Licencia
+   - Hardware: Fabricante, Modelo, Número de Serie (solo en categorías de hardware)
+   - Software: Versión, Tipo de Licencia (solo en categorías de software)
    - Fechas EoL / EoS (o dejar en blanco para que se rellenen automáticamente desde endoflife.date)
 4. Haz clic en **"Crear CI"**
 
@@ -250,8 +282,11 @@ La importación masiva permite cargar cientos de CIs desde un archivo Excel/CSV.
 | `licenseType` | Opcional | Tipo de licencia | `subscription` |
 | `status` | Opcional | `active` o `inactive` | `active` |
 
-### Tipos de CI válidos (enum `CIType`)
-`PHYSICAL_SERVER`, `VIRTUAL_SERVER`, `DATABASE`, `NETWORK_EQUIPMENT`, `STORAGE`, `BACKUP`, `BASE_SOFTWARE`
+### Tipos de CI válidos (código `ciType`)
+Usa el código interno del tipo tal como aparece en la base de datos. Los tipos predefinidos incluyen:
+`PHYSICAL_SERVER`, `VIRTUAL_SERVER`, `DATABASE`, `NETWORK_EQUIPMENT`, `STORAGE`, `BACKUP`, `BASE_SOFTWARE`, `LAPTOP`, `DESKTOP`, `PRINTER_SCANNER`, `SMARTPHONE`, `TABLET`, `IOT_SENSOR`, `PROJECTOR_SCREEN`, `VIDEO_CONFERENCING`, `WEB_APP`, `MICROSERVICE`, `DESKTOP_SOFTWARE`, `CONTAINER`, `LICENSE`
+
+> Para obtener la lista exacta de tipos disponibles en tu instancia, consulta **Datos Maestros → Tipos de CI**.
 
 ### Paso 2: Rellenar y subir el CSV
 1. Rellena el CSV con tus datos (puedes usar Excel)
@@ -306,7 +341,18 @@ En el **Mapa de Dependencias**, selecciona el CI para ver su grafo completo de r
 
 ### Eliminar una relación (solo ADMIN)
 
-Las relaciones pueden eliminarse via la API (`DELETE /api/relations/:id`). Próximamente disponible desde la interfaz del mapa.
+Las relaciones se pueden eliminar desde dos puntos de la interfaz:
+
+**Desde el Mapa de Dependencias — Vista Grafo:**
+- Haz clic directamente sobre la **arista (flecha)** que une dos CIs
+- Se pide confirmación antes de eliminar
+
+**Desde el Mapa de Dependencias — Vista Tabla:**
+- Localiza la relación en la tabla
+- Haz clic en el icono de papelera (🗑️) en la columna **"Acciones"**
+- Se pide confirmación antes de eliminar
+
+> El grafo y la tabla se actualizan automáticamente tras la eliminación.
 
 ### Casos de uso prácticos
 
@@ -531,6 +577,47 @@ Muestra todos los usuarios del sistema con:
 
 ---
 
+## 14b. Datos Maestros — Gestión de Tipos de CI
+
+> Solo disponible para usuarios con rol **ADMIN**
+
+### Acceder
+Haz clic en **"Datos Maestros"** en el menú lateral → selecciona **"Tipos de CI"** en la barra de navegación lateral izquierda.
+
+### Estructura de la pantalla
+La vista muestra las categorías de CI como secciones colapsables. Dentro de cada categoría aparecen los tipos disponibles con opciones de edición y borrado.
+
+### Añadir un nuevo tipo de CI
+1. Haz clic en **"+ Tipo"** junto a la categoría deseada
+2. Introduce el nombre del tipo (ej. `Firewall`)
+3. Haz clic en **"Crear"**
+4. El nuevo tipo aparece inmediatamente disponible en el selector de CI del inventario
+
+### Editar un tipo de CI
+1. Haz clic en el icono de lápiz (✏️) junto al tipo
+2. Edita el nombre
+3. Haz clic en **"Guardar"**
+
+### Eliminar un tipo de CI
+1. Haz clic en el icono de papelera (🗑️) junto al tipo
+2. Confirma la eliminación en el diálogo
+3. Si existen CIs con ese tipo asignado, la eliminación se bloquea y se muestra el número de CIs afectados. Reasigna o elimina esos CIs primero.
+
+> Los tipos del sistema son tipos predefinidos. Pueden eliminarse siempre que no tengan CIs asignados.
+
+### Categorías disponibles
+
+| Categoría | Descripción |
+|-----------|-------------|
+| **Infraestructura** | Servidores, bases de datos, red, almacenamiento, backup |
+| **Dispositivos Usuario** | Equipos de trabajo individuales |
+| **Movilidad/IoT** | Dispositivos móviles y sensores conectados |
+| **Salas de Reunión** | Hardware audiovisual de salas |
+| **Software** | Aplicaciones, microservicios, contenedores |
+| **Licencias** | Licencias de software |
+
+---
+
 ## 15. Mapa de Dependencias
 
 El Mapa de Dependencias permite explorar las relaciones entre CIs en dos modos: **grafo visual interactivo** y **tabla exportable**. Soporta travesía multi-nivel para visualizar dependencias transitivas a varios saltos del CI seleccionado.
@@ -615,6 +702,8 @@ En la vista de tabla, haz clic en **"Exportar Excel"** para descargar un archivo
 | **Grafo / Tabla** | Alterna entre los dos modos de visualización |
 | Botón de refresco | Recarga las relaciones sin cambiar la selección |
 | **Nueva Relación** | Abre el modal para crear una relación (solo ADMIN) |
+| Clic en arista (Vista Grafo) | Elimina la relación seleccionada con confirmación (solo ADMIN) |
+| Icono 🗑️ por fila (Vista Tabla) | Elimina la relación de esa fila con confirmación (solo ADMIN) |
 
 ### Crear relaciones desde el mapa (solo ADMIN)
 

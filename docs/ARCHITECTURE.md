@@ -1,6 +1,6 @@
 # 🏗️ CMDB Enterprise Platform — Arquitectura Técnica
 
-**Versión:** 1.1.0
+**Versión:** 1.2.0
 **Fecha:** 2026-03-31
 **Estado:** Producción
 
@@ -149,10 +149,37 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 ### Flujo de Autenticación Local
 ```
 Browser → Frontend (3001) → API /api/auth/login (3000)
+  Body: { email, password, mfaCode?, trustDevice?, deviceToken? }
+
   └── bcrypt.compare(password) → PostgreSQL (5432)
-  └── jwt.sign() → Token JWT (8h)
-  └── [Si MFA activo] → speakeasy.totp.verify()
-  └── Token → localStorage (browser)
+  └── ¿user.active? → NO → 401 Account disabled
+  └── [Si MFA activo (mfa_enabled=true)]
+       ├── ¿deviceToken en body? → buscar en trusted_devices (expiresAt > now())
+       │    └── ENCONTRADO → update lastSeenAt → jwt.sign() → 200 OK
+       ├── ¿mfaCode? → speakeasy.totp.verify()
+       │    ├── INVÁLIDO → 401 INVALID_MFA_CODE
+       │    └── VÁLIDO → (si trustDevice=true) → crear TrustedDevice → devolver deviceToken
+       │         └── jwt.sign() → 200 { token, user, deviceToken? }
+       └── (sin código ni dispositivo) → 401 MFA_REQUIRED
+  └── [Si MFA no activo]
+       ├── ¿role=ADMIN? → jwt.sign(mfaSetupRequired:true, 15min) → 200 { token, requireAction:'MFA_SETUP_REQUIRED' }
+       └── ¿role=VIEWER + mfa_prompted_at IS NULL?
+            ├── SÍ → UPDATE mfa_prompted_at=now() → jwt.sign(8h) → 200 { token, requireAction:'MFA_SETUP_SUGGESTED' }
+            └── NO → jwt.sign(8h) → 200 { token, user } (login normal)
+```
+
+### Flujo MFA — Configuración en primer login (Admin)
+```
+Frontend recibe requireAction:'MFA_SETUP_REQUIRED'
+  └── Guarda token limitado (mfaSetupRequired=true) en localStorage
+  └── Muestra asistente MFA (no tiene botón "Omitir")
+  └── POST /api/auth/mfa/setup → genera secret + QR (con token limitado)
+  └── Usuario escanea QR → introduce código de verificación
+  └── POST /api/auth/mfa/enable { code, secret, trustDevice? }
+       └── UPDATE users SET mfa_enabled=true, mfa_secret=?
+       └── jwt.sign() sin mfaSetupRequired → Token JWT completo (8h)
+       └── (si trustDevice) → crear TrustedDevice → devolver deviceToken
+       └── Frontend: applySession(nuevoToken) → redirige a /
 ```
 
 ### Flujo de Autenticación LDAP (cuando USE_LDAP=true)
@@ -163,23 +190,17 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
   │    └── SÍ → salta LDAP, va directo al path local bcrypt
   │
   └─ NO → intento LDAP (timeout 5s)
-       │
        ├─ [Estrategia 1: LDAP_BIND_DN configurado]
        │    └── Service account bind → search por mail/uid → user bind
-       │
        └─ [Estrategia 2: sin LDAP_BIND_DN]
             └── Direct bind con email como UPN (AD) o uid= (OpenLDAP)
-       │
        ├─ LDAP OK → ¿usuario existe en BD?
        │    ├── SÍ  → carga user row
        │    └── NO  → auto-provisioning (role=VIEWER, sso_external_id=email)
-       │
        └─ LDAP FAIL → fallback bcrypt local (fail-safe)
             └── ¿usuario existe con contraseña local? → bcrypt.compare()
 
-  └── [Común a ambos paths]
-       ├── ¿mfa_enabled? → verificar TOTP (speakeasy)
-       └── jwt.sign() → Token JWT (8h) → localStorage
+  └── [Común a ambos paths: mismo flujo MFA/TrustedDevice descrito arriba]
 ```
 
 ### Flujo de API Protegida
@@ -271,30 +292,48 @@ graph TB
 ## 7. Modelo de Datos (Entidades Principales)
 
 ```
-users                    configuration_items (CIs)
-  ├── id (UUID)             ├── id (UUID)
-  ├── username              ├── name
-  ├── email                 ├── apiSlug (unique)
-  ├── password (bcrypt)     ├── criticality (enum)
-  ├── role (ADMIN/VIEWER)   ├── environment (enum)
-  ├── active                ├── ciType (PHYSICAL_SERVER | VIRTUAL_SERVER | DATABASE | NETWORK_EQUIPMENT | STORAGE | BACKUP | BASE_SOFTWARE)
-  ├── mfa_secret            ├── status
-  └── mfa_enabled           ├── eolDate / eosDate
-                            ├── lastCheckDate
-                            ├── verificationSource
-                            ├── vulnerabilities (JSONB)
-                            ├── agentStatus (JSONB)
-                            ├── branchId → branches
-                            ├── ciModelId → device_models
-                            ├── businessOwnerId → users
-                            ├── technicalLeadId → users
-                            ├── businessImpact (TEXT: LOW|MEDIUM|HIGH|CRITICAL) ← NIS2
-                            ├── recoveryPriority (INT 1-5) ← ISO 22301
-                            ├── rto (INT minutes) ← ISO 22301
-                            ├── rpo (INT minutes) ← ISO 22301
-                            ├── spofRisk (BOOLEAN default false) ← ISO 22301
-                            ├── containsPii (BOOLEAN default false) ← GDPR
-                            └── dataClassification (TEXT: PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED) ← GDPR
+users                          configuration_items (CIs)
+  ├── id (UUID)                  ├── id (UUID)
+  ├── username                   ├── name
+  ├── email                      ├── apiSlug (unique)
+  ├── password (bcrypt)          ├── criticality (enum)
+  ├── role (ADMIN/VIEWER)        ├── environment (enum)
+  ├── active                     ├── ciTypeId → ci_types         ← relacional
+  ├── mfa_secret                 ├── status
+  ├── mfa_enabled                ├── eolDate / eosDate
+  ├── mfa_prompted_at (TIMESTAMPTZ) ← primera sugerencia MFA   ├── lastCheckDate
+  └── sso_external_id            ├── verificationSource
+                                 ├── vulnerabilities (JSONB)
+                                 ├── agentStatus (JSONB)
+                                 ├── branchId → branches
+                                 ├── ciModelId → device_models
+                                 ├── businessOwnerId → users
+                                 ├── technicalLeadId → users
+                                 ├── businessImpact (TEXT: LOW|MEDIUM|HIGH|CRITICAL) ← NIS2
+                                 ├── recoveryPriority (INT 1-5) ← ISO 22301
+                                 ├── rto (INT minutes) ← ISO 22301
+                                 ├── rpo (INT minutes) ← ISO 22301
+                                 ├── spofRisk (BOOLEAN default false) ← ISO 22301
+                                 ├── containsPii (BOOLEAN default false) ← GDPR
+                                 └── dataClassification (TEXT: PUBLIC|INTERNAL|CONFIDENTIAL|RESTRICTED) ← GDPR
+
+ci_type_categories            ci_types
+  ├── code (PK)                 ├── id (UUID)
+  ├── name                      ├── code (unique)
+  └── sort_order                ├── name
+                                ├── categoryCode → ci_type_categories
+                                ├── sortOrder
+                                └── isSystem (BOOLEAN)
+
+trusted_devices               (dispositivos de confianza MFA)
+  ├── id (UUID)
+  ├── userId → users
+  ├── token (unique, 32-byte hex)
+  ├── userAgent
+  ├── ipAddress
+  ├── expiresAt (TIMESTAMPTZ)   ← configurable: TRUSTED_DEVICE_TTL_DAYS
+  ├── createdAt
+  └── lastSeenAt
 
 vendors      contracts         hardware          software
   └── name     ├── contractNumber  ├── serialNumber    ├── version
@@ -333,7 +372,7 @@ audit_logs
 | Inventario | `/inventory` | `GET/POST /api/cis`, `POST /api/cis/bulk` |
 | Vulnerabilidades | `/vulnerabilities` | `PATCH /api/vulnerabilities` |
 | Contratos | `/contracts` | `GET/POST /api/contracts` |
-| Datos Maestros | `/admin/masters` | `GET/POST/DELETE /api/masters/*` |
+| Datos Maestros | `/admin/masters` | `GET/POST/DELETE /api/masters/*`, `GET /api/masters/ci-type-categories`, `PATCH/DELETE /api/masters/ci-types/:id` |
 | Auditoría | `/audit` | `GET /api/audit-logs` |
 | Integraciones | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
@@ -350,7 +389,8 @@ audit_logs
 | Control | Implementación |
 |---------|---------------|
 | Autenticación | JWT HS256 (8h) + bcrypt cost-10 |
-| MFA | TOTP RFC 6238 (speakeasy) |
+| MFA | TOTP RFC 6238 (speakeasy). Admin: obligatorio en primer login (token limitado `mfaSetupRequired`). VIEWER: sugerido (once-only, tracked via `mfa_prompted_at`). |
+| Dispositivos de confianza | Token 32-byte hex en `trusted_devices` DB + localStorage. TTL configurable (`TRUSTED_DEVICE_TTL_DAYS`). Cleanup cron diario (02:00). |
 | LDAP/AD | Opcional via ldap-authentication; admin-bind+search (recomendado) o direct-bind; timeout 5s fail-safe; shadow user con `sso_external_id` |
 | RBAC | ADMIN / VIEWER con `requireAdmin` middleware |
 | Headers HTTP | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |

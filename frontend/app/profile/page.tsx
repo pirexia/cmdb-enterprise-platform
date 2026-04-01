@@ -6,6 +6,7 @@ import {
   CheckCircle2, KeyRound, Lock, Eye, EyeOff, Check, X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import type { AuthUser } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Password strength helpers ────────────────────────────────────────────────
@@ -60,7 +61,7 @@ function StrengthBar({ rules }: { rules: StrengthRule[] }) {
 // ─── Profile page ─────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, applySession } = useAuth();
 
   // ── MFA state ──
   const [qrDataUrl,  setQrDataUrl]  = useState<string | null>(null);
@@ -68,8 +69,11 @@ export default function ProfilePage() {
   const [mfaCode,    setMfaCode]    = useState("");
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaEnabling,setMfaEnabling]= useState(false);
-  const [mfaSuccess, setMfaSuccess] = useState(false);
+  const [mfaJustEnabled, setMfaJustEnabled] = useState(false); // activated in THIS session
   const [mfaError,   setMfaError]   = useState<string | null>(null);
+
+  // MFA is considered active if the backend says so OR if we just enabled it
+  const mfaActive = (user?.mfa_enabled ?? false) || mfaJustEnabled;
 
   // ── Password change state ──
   const [currentPwd,  setCurrentPwd]  = useState("");
@@ -111,11 +115,15 @@ export default function ProfilePage() {
         method: "POST",
         body: JSON.stringify({ code: mfaCode, secret: mfaSecret }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error ?? `Error ${res.status}`);
       }
-      setMfaSuccess(true);
+      // Update the session so user.mfa_enabled = true is reflected immediately
+      if (data.token && data.user && user) {
+        applySession(data.token, data.user as AuthUser, data.deviceToken);
+      }
+      setMfaJustEnabled(true);
       setQrDataUrl(null); setMfaSecret(null); setMfaCode("");
     } catch (err) {
       setMfaError(err instanceof Error ? err.message : "Error al activar MFA");
@@ -322,13 +330,17 @@ export default function ProfilePage() {
           </div>
           <div className="p-6 space-y-4">
 
-            {mfaSuccess ? (
+            {mfaActive ? (
               <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-4">
                 <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-emerald-800">MFA activado correctamente</p>
+                  <p className="text-sm font-semibold text-emerald-800">
+                    {mfaJustEnabled ? "MFA activado correctamente" : "MFA activado"}
+                  </p>
                   <p className="text-xs text-emerald-600 mt-0.5">
-                    A partir de ahora se pedirá tu código TOTP al iniciar sesión.
+                    {mfaJustEnabled
+                      ? "A partir de ahora se pedirá tu código TOTP al iniciar sesión."
+                      : "Tu cuenta está protegida con autenticación de doble factor (TOTP)."}
                   </p>
                 </div>
               </div>

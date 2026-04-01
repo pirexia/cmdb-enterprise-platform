@@ -499,7 +499,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
       return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h' });
     };
-    const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role });
+    const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
 
     // ── Helper: create trusted device record ──────────────────────────────────
     const createTrustedDevice = async (): Promise<string> => {
@@ -1346,7 +1346,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       `;
     }
 
-    const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
+    const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role, mfa_enabled: true };
     res.json({ message: 'MFA enabled successfully', token: newToken, user: userObj, ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
   } catch (error) {
     console.error('[POST /api/auth/mfa/enable] Error:', error);

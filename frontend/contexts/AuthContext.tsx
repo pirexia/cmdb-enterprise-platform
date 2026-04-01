@@ -135,7 +135,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     localStorage.removeItem("cmdb_token");
     localStorage.removeItem("cmdb_user");
-    localStorage.removeItem("cmdb_device_token");
+    // NOTE: cmdb_device_token is intentionally NOT removed here.
+    // Trusted device tokens are bound to the browser, not the session.
+    // They persist across logout/login cycles until they expire server-side
+    // (TTL controlled by TRUSTED_DEVICE_TTL_DAYS).
     setToken(null);
     setUser(null);
   }, []);

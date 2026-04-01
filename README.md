@@ -1,5 +1,7 @@
 # 🏛️ Enterprise CMDB & GRC Platform
 
+> 🇬🇧 [English version available](README.en.md)
+
 > **Configuration Management Database** — Plataforma integral para la gestión de activos de TI (CIs), contratos de proveedores, análisis de vulnerabilidades y visualización de dependencias, con autenticación JWT, control de acceso basado en roles (RBAC) y soporte multilingüe.
 
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
@@ -118,13 +120,13 @@ cmdb-enterprise-platform/
 
 Para una comprensión completa del sistema, su despliegue y uso, consulta la documentación oficial:
 
-- **📖 [Manual de Usuario](docs/USER_MANUAL.md)**: Guía completa para operadores y administradores de la CMDB, incluyendo gestión de perfiles, roles, inventario, vulnerabilidades, contratos, reportes y el centro de consulta de ciclo de vida.
-
-- **🛠️ [Manual del Administrador de Sistemas](docs/SYSADMIN_MANUAL.md)**: Instrucciones detalladas para el despliegue, configuración (`.env`, SSL/HTTPS), gestión de backups, monitorización y troubleshooting en entornos de producción RHEL/Podman.
-
-- **🚀 [Guía de Despliegue en Producción](DEPLOY.md)**: Comandos exactos y consideraciones para el despliegue optimizado en un servidor Red Hat, incluyendo SELinux y `firewalld`.
-
-- **🏗️ [Arquitectura Técnica](docs/ARCHITECTURE.md)**: Descripción profunda del stack tecnológico, la topología de red, flujos de tráfico y el modelo de datos de la plataforma.
+| Documento | 🇪🇸 Español | 🇬🇧 English |
+|-----------|------------|------------|
+| Manual de Usuario | [USER_MANUAL.md](docs/USER_MANUAL.md) | [USER_MANUAL.en.md](docs/USER_MANUAL.en.md) |
+| Manual del Administrador | [SYSADMIN_MANUAL.md](docs/SYSADMIN_MANUAL.md) | [SYSADMIN_MANUAL.en.md](docs/SYSADMIN_MANUAL.en.md) |
+| Guía de Despliegue | [DEPLOY.md](DEPLOY.md) | [DEPLOY.en.md](DEPLOY.en.md) |
+| Arquitectura Técnica | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md) |
+| Auditoría de Seguridad | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) *(en inglés)* |
 
 ---
 

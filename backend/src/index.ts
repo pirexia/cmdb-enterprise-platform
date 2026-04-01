@@ -51,6 +51,11 @@ const JWT_SECRET_VALUE = JWT_SECRET ?? 'cmdb-dev-secret-change-in-production';
 // Trusted device TTL (default 30 days, configurable via env)
 const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10);
 
+// ── Password Policy (configurable via env) ────────────────────────────────────
+const PASSWORD_MIN_LENGTH_ADMIN  = parseInt(process.env.PASSWORD_MIN_LENGTH_ADMIN  ?? '16', 10);
+const PASSWORD_MIN_LENGTH_VIEWER = parseInt(process.env.PASSWORD_MIN_LENGTH_VIEWER ?? '12', 10);
+const PASSWORD_HISTORY_COUNT     = parseInt(process.env.PASSWORD_HISTORY_COUNT     ?? '20', 10);
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
@@ -220,6 +225,118 @@ function requireAudit(req: Request, res: Response, next: NextFunction): void {
     return;
   }
   next();
+}
+
+// ─── Password Policy ──────────────────────────────────────────────────────────
+
+/** Common/weak passwords dictionary (case-insensitive check). */
+const COMMON_PASSWORDS = new Set([
+  'password','password1','password12','password123','password1234','password12345','password123456',
+  'password1!','password@123','password@1234','p@ssword','p@ssword1','p@ssw0rd','passw0rd',
+  'passw0rd1','passw0rd!','p@$$word','p@$$w0rd','passwort','contraseña','contrasena',
+  'admin','admin1','admin12','admin123','admin1234','admin12345','admin123456',
+  'admin@123','admin@1234','admin1234!','@dmin123','administrator','administrador',
+  'welcome','welcome1','welcome123','welcome1234','welcome@123','welcome@1234','bienvenido',
+  'letmein','letmein1','letmein123','letmein1234',
+  'qwerty','qwerty1','qwerty12','qwerty123','qwerty1234','qwerty12345','qwerty@123',
+  'azerty','azerty123','azerty@123',
+  'abc123','abc1234','abc12345','123abc','123abc!',
+  '123456','1234567','12345678','123456789','1234567890',
+  '123456789!','12345678!','1234567!','12345678@',
+  '11111111','22222222','33333333','44444444','55555555',
+  '99999999','00000000','111111111','000000000',
+  'aaaaaaaaa','aaaaaaaa1','aaaaaaaa!',
+  'iloveyou','iloveyou1','iloveyou!','tequiero',
+  'sunshine','sunshine1','monkey','monkey1','dragon','dragon1','master','master1',
+  'trustno1','baseball','football','soccer','hockey','tennis','basketball',
+  'batman','superman','spiderman','ironman','captain',
+  'michael','jessica','ashley','jennifer','thomas',
+  'changeme','changeme1','changeme123','changeme1234!','changeme@123',
+  'test','test1','test12','test123','test1234','test@123','test@1234','testing',
+  'pass','pass1','pass123','pass@123','pass@1234','pass1234',
+  'login','login1','login123','login@123',
+  'user','user1','user123','user@123','user1234','usuario',
+  'root','root1','root123','root@123','rootadmin','root@1234',
+  'secret','secret1','secret123','secret@123','secreto',
+  'default','default1','default123','default@123',
+  'company','company1','company123','company@123','empresa',
+  'summer','summer23','summer2023','summer@2023','summer2024',
+  'winter','winter23','winter2023','winter@2023','winter2024',
+  'spring','spring23','spring2023','spring@2023',
+  'autumn','autumn23','autumn2023',
+  'january','february','march','april','august',
+  'september','october','november','december',
+  'monday','tuesday','wednesday','thursday','friday',
+  'computer','computer1','computer@1','internet','internet1',
+  'security','security1','security@1','seguridad',
+  'qazwsx','qazwsxedc','zxcvbnm','asdfgh','asdfghjk',
+  'asd123','123qwe','123asd',
+  'helpme','helpme1','helpme123','mustang','shadow','ranger','hunter',
+  'corvette','porsche','ferrari','mercedes','toyota',
+  'liverpool','chelsea','madrid','barcelona','arsenal',
+  'google','google123','facebook','facebook1','twitter',
+  'linkedin','linkedin1','microsoft','microsoft1','windows',
+  'manager','manager1','manager@1','gerente',
+  'support','support1','support@1','soporte',
+  'service','service1','service@1','servicio',
+  'system','system1','system@1','sistema',
+  'cmdb','cmdb123','cmdb@123','cmdb1234','cmdb@1234',
+]);
+
+/**
+ * Validates a password against the security policy.
+ * Returns an array of error messages (empty = valid).
+ * Only applies to local (non-LDAP) users.
+ */
+function validatePasswordPolicy(password: string, role: UserRole): string[] {
+  const errors: string[] = [];
+  const minLen = role === 'ADMIN' ? PASSWORD_MIN_LENGTH_ADMIN : PASSWORD_MIN_LENGTH_VIEWER;
+
+  if (password.length < minLen) {
+    errors.push(`La contraseña debe tener al menos ${minLen} caracteres para el rol ${role}.`);
+  }
+  if (!/[A-Z]/.test(password)) errors.push('Debe contener al menos una letra mayúscula (A-Z).');
+  if (!/[a-z]/.test(password)) errors.push('Debe contener al menos una letra minúscula (a-z).');
+  if (!/[0-9]/.test(password)) errors.push('Debe contener al menos un número (0-9).');
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push('Debe contener al menos un carácter especial (!@#$%^&*…).');
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) {
+    errors.push('La contraseña es demasiado común o predecible. Elige una más segura.');
+  }
+  return errors;
+}
+
+/** Returns true if the password matches any of the last N history entries. */
+async function isPasswordInHistory(userId: string, newPassword: string): Promise<boolean> {
+  type HistRow = { hash: string };
+  const history = await prisma.$queryRaw<HistRow[]>`
+    SELECT hash FROM "password_history"
+    WHERE user_id = ${userId}::uuid
+    ORDER BY created_at DESC
+    LIMIT ${PASSWORD_HISTORY_COUNT}
+  `;
+  for (const entry of history) {
+    if (await bcrypt.compare(newPassword, entry.hash)) return true;
+  }
+  return false;
+}
+
+/** Inserts a new hash into password_history and prunes entries beyond the limit. */
+async function recordPasswordHistory(userId: string, hash: string): Promise<void> {
+  await prisma.$executeRaw`
+    INSERT INTO "password_history"(id, user_id, hash, created_at)
+    VALUES(gen_random_uuid(), ${userId}::uuid, ${hash}, now())
+  `;
+  // Prune old entries beyond the configured limit
+  await prisma.$executeRaw`
+    DELETE FROM "password_history"
+    WHERE user_id = ${userId}::uuid
+    AND id NOT IN (
+      SELECT id FROM "password_history"
+      WHERE user_id = ${userId}::uuid
+      ORDER BY created_at DESC
+      LIMIT ${PASSWORD_HISTORY_COUNT}
+    )
+  `;
 }
 
 // ─── Prisma includes ──────────────────────────────────────────────────────────
@@ -528,6 +645,118 @@ app.patch('/api/users/:id/status', authenticateToken, requireAdmin, async (req: 
     res.json({ id, active, message: active ? 'User activated' : 'User deactivated' });
   } catch (e) {
     console.error('[PATCH /api/users/:id/status]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/change-password
+ * Authenticated user changes their own password. Local (non-LDAP) accounts only.
+ * Body: { currentPassword, newPassword }
+ */
+app.post('/api/profile/change-password', authenticateToken, async (req: Request, res: Response) => {
+  const { currentPassword, newPassword } = req.body as { currentPassword?: string; newPassword?: string };
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: 'currentPassword and newPassword are required.' });
+    return;
+  }
+  try {
+    type UserRow = { id: string; password: string | null; sso_external_id: string | null; role: string };
+    const rows = await prisma.$queryRaw<UserRow[]>`
+      SELECT id, password, sso_external_id, role FROM "users" WHERE id = ${req.user!.id}::uuid
+    `;
+    const user = rows[0];
+    if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+
+    // LDAP/AD users cannot change password here
+    if (user.sso_external_id) {
+      res.status(403).json({ error: 'LDAP_USER', message: 'Los usuarios LDAP/AD deben cambiar su contraseña a través del controlador de dominio.' });
+      return;
+    }
+    if (!user.password) { res.status(400).json({ error: 'No hay contraseña local configurada.' }); return; }
+
+    // Verify current password
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) {
+      res.status(401).json({ error: 'WRONG_CURRENT_PASSWORD', message: 'La contraseña actual es incorrecta.' });
+      return;
+    }
+
+    // Cannot reuse current password
+    if (currentPassword === newPassword) {
+      res.status(422).json({ error: 'PASSWORD_POLICY', details: ['La nueva contraseña no puede ser igual a la actual.'] });
+      return;
+    }
+
+    // Policy check (length, complexity, dictionary)
+    const policyErrors = validatePasswordPolicy(newPassword, user.role as UserRole);
+    if (policyErrors.length > 0) {
+      res.status(422).json({ error: 'PASSWORD_POLICY', details: policyErrors });
+      return;
+    }
+
+    // Password history check
+    const inHistory = await isPasswordInHistory(user.id, newPassword);
+    if (inHistory) {
+      res.status(422).json({ error: 'PASSWORD_HISTORY', message: `No puedes reutilizar ninguna de tus últimas ${PASSWORD_HISTORY_COUNT} contraseñas.` });
+      return;
+    }
+
+    // Apply change
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
+    await recordPasswordHistory(user.id, newHash);
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'CHANGE_PASSWORD', 'USER', ${user.id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ message: 'Contraseña actualizada correctamente.' });
+  } catch (e) {
+    console.error('[POST /api/profile/change-password]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/users/:id/reset-password
+ * Admin resets another user's password. Local (non-LDAP) accounts only.
+ * Body: { newPassword }
+ */
+app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const { newPassword } = req.body as { newPassword?: string };
+  if (!newPassword) { res.status(400).json({ error: 'newPassword is required.' }); return; }
+  try {
+    type UserRow = { id: string; sso_external_id: string | null; role: string; email: string };
+    const rows = await prisma.$queryRaw<UserRow[]>`
+      SELECT id, sso_external_id, role, email FROM "users" WHERE id = ${id}::uuid
+    `;
+    const user = rows[0];
+    if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+
+    if (user.sso_external_id) {
+      res.status(403).json({ error: 'LDAP_USER', message: 'No se puede resetear la contraseña de usuarios LDAP/AD.' });
+      return;
+    }
+
+    const policyErrors = validatePasswordPolicy(newPassword, user.role as UserRole);
+    if (policyErrors.length > 0) {
+      res.status(422).json({ error: 'PASSWORD_POLICY', details: policyErrors });
+      return;
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
+    await recordPasswordHistory(user.id, newHash);
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'RESET_PASSWORD', 'USER', ${id}, ${req.user!.email}, now())
+    `;
+
+    res.json({ message: `Contraseña reseteada para el usuario ${user.email}.` });
+  } catch (e) {
+    console.error('[POST /api/users/:id/reset-password]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

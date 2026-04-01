@@ -118,6 +118,32 @@ La plataforma soporta **Español** e **Inglés**. Para cambiar el idioma:
 ### Acceder a tu perfil
 - Haz clic en **"Mi Perfil"** en el menú lateral
 
+### Cambiar la contraseña (usuarios locales)
+
+> Esta función solo está disponible para cuentas **locales**. Los usuarios autenticados vía LDAP/AD deben cambiar su contraseña en el controlador de dominio.
+
+1. Ve a **Mi Perfil → Cambiar Contraseña**
+2. Introduce tu contraseña actual
+3. Introduce la nueva contraseña (el indicador de fortaleza muestra en tiempo real si se cumplen los requisitos)
+4. Confirma la nueva contraseña
+5. Haz clic en **"Cambiar contraseña"**
+
+#### Política de contraseñas
+
+| Requisito | ADMIN | AUDITOR / VIEWER |
+|-----------|:-----:|:----------------:|
+| Longitud mínima | 16 caracteres* | 12 caracteres* |
+| Letras mayúsculas (A-Z) | ✅ | ✅ |
+| Letras minúsculas (a-z) | ✅ | ✅ |
+| Números (0-9) | ✅ | ✅ |
+| Caracteres especiales (!@#$%…) | ✅ | ✅ |
+| No puede ser contraseña común | ✅ | ✅ |
+| Historial de contraseñas | Últimas 20* | Últimas 20* |
+
+> \* Los valores marcados con asterisco son configurables en el fichero `.env` del servidor: `PASSWORD_MIN_LENGTH_ADMIN`, `PASSWORD_MIN_LENGTH_VIEWER`, `PASSWORD_HISTORY_COUNT`.
+
+**El indicador de fortaleza** muestra en tiempo real el cumplimiento de cada requisito con un código de colores (rojo → naranja → amarillo → azul → verde).
+
 ### Activar la Autenticación de Doble Factor (MFA) desde el perfil
 Si ya tienes acceso a la aplicación (p. ej. eres VIEWER y omitiste la sugerencia inicial), puedes activar MFA en cualquier momento:
 
@@ -571,6 +597,9 @@ Muestra todos los usuarios del sistema con:
 2. Confirma la acción en el diálogo
 3. Una cuenta **desactivada** no puede iniciar sesión
 4. No puedes desactivar tu propia cuenta (medida de seguridad)
+
+#### Resetear la contraseña de un usuario (solo ADMIN, solo cuentas locales)
+El reset de contraseña se realiza mediante la API (`POST /api/users/:id/reset-password`). La nueva contraseña debe cumplir la misma política de seguridad que el cambio propio. La acción queda registrada en el Audit Log como `RESET_PASSWORD`. Los usuarios LDAP/AD no pueden ser afectados por esta operación.
 
 ### Pestaña: 🔌 Integraciones y Sistema
 - **Backend API**: Estado del servidor (Operativo / No responde)

@@ -3,7 +3,7 @@
 **Platform:** CMDB Enterprise Platform  
 **Audit Date:** 2026-04-01 (updated)
 **Auditor:** DevSecOps Team
-**Version:** v1.3.0  
+**Version:** v1.4.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -29,7 +29,7 @@ This document describes the security controls implemented in the CMDB Enterprise
 | A.9.2.1 User registration & de-registration | Users are created/deleted via `POST /api/users` by ADMIN role only. | ✅ |
 | A.9.2.2 User access provisioning | Role-based access control (RBAC): three roles — `ADMIN`, `AUDITOR`, `VIEWER` — enforced on every protected endpoint via `authenticateToken` + `requireAdmin` / `requireAudit` middleware. | ✅ |
 | A.9.2.3 Management of privileged access | Write operations (`POST`, `PATCH`, `DELETE`, `PUT`) require `ADMIN` role. `AUDITOR` has read-only access + exclusive access to audit logs. `VIEWER` has read-only access to inventory, vulnerabilities, contracts and reports. | ✅ |
-| A.9.2.4 Authentication credentials | Passwords hashed with **bcrypt** (salt rounds ≥ 10). Passwords never returned in API responses. | ✅ |
+| A.9.2.4 Authentication credentials | Passwords hashed with **bcrypt** (salt rounds ≥ 10). Passwords never returned in API responses. **Password policy** enforced for local users: minimum length by role (ADMIN: 16 chars, VIEWER/AUDITOR: 12 chars, both configurable), complexity requirements (upper, lower, digit, special char), dictionary blocklist (~100 common passwords), and password history (last 20 entries, configurable). LDAP/AD users are excluded from local password policy. | ✅ |
 | A.9.2.5 Review of user access rights | Audit log (`audit_logs` table) records every CREATE_CI, UPDATE_VULN_STATUS, UPDATE_VERIFICATION, and admin action with timestamp and user email. | ✅ |
 | A.9.2.6 Removal/adjustment of access rights | User deletion via admin API immediately revokes access. JWT tokens expire after **8 hours**. | ✅ |
 
@@ -45,6 +45,24 @@ This document describes the security controls implemented in the CMDB Enterprise
 - Optional LDAP authentication via `USE_LDAP=true` environment variable.
 - LDAP users are auto-provisioned on first login with `VIEWER` role.
 - Configured via `LDAP_URL`, `LDAP_BASE_DN`, `LDAP_BIND_DN`, `LDAP_BIND_PASSWORD`.
+
+**Password Policy (local users only — ISO 27001 A.9.3 / A.9.4):**
+
+| Rule | ADMIN | AUDITOR / VIEWER | Configurable |
+|------|:-----:|:----------------:|:------------:|
+| Minimum length | 16 chars | 12 chars | `PASSWORD_MIN_LENGTH_ADMIN` / `PASSWORD_MIN_LENGTH_VIEWER` |
+| Uppercase letters | ✅ | ✅ | — |
+| Lowercase letters | ✅ | ✅ | — |
+| Digits | ✅ | ✅ | — |
+| Special characters | ✅ | ✅ | — |
+| Common password blocklist | ✅ (~100 entries) | ✅ | — |
+| Password history | Last 20 | Last 20 | `PASSWORD_HISTORY_COUNT` |
+
+- Policy is enforced server-side via `validatePasswordPolicy()` on `POST /api/profile/change-password` and `POST /api/users/:id/reset-password`.
+- Password history stored in `password_history` table as bcrypt hashes; entries beyond the configured limit are pruned automatically.
+- LDAP/AD users (`sso_external_id IS NOT NULL`) are explicitly excluded — password managed by the domain controller.
+- Frontend provides real-time strength indicator (5-bar colour-coded checklist) derived from the same rules.
+- `CHANGE_PASSWORD` and `RESET_PASSWORD` actions are logged in `audit_logs`.
 
 ---
 
@@ -186,6 +204,7 @@ CREATE TABLE "audit_logs" (
 | 2026-03-15 | 1.0.0 | DevSecOps (Misión 13) | Initial security audit — SSL, Helmet, CORS, ISO 27001 mapping |
 | 2026-03-31 | 1.2.0 | DevSecOps | MFA mandatory enforcement for admins; trusted device mechanism; limited JWT scope; rate limiting confirmed implemented |
 | 2026-04-01 | 1.3.0 | DevSecOps | Added AUDITOR role (RBAC three-tier); `requireAudit` middleware; AUDITOR has exclusive audit log read access; seed user `auditor@cmdb.local` migrated from VIEWER to AUDITOR |
+| 2026-04-01 | 1.4.0 | DevSecOps | Password policy for local users: role-aware min length (ADMIN 16 / others 12), complexity rules, ~100-entry common-password blocklist, 20-entry history (all configurable via .env); `password_history` table; `CHANGE_PASSWORD` and `RESET_PASSWORD` audit events; frontend real-time strength indicator |
 
 ---
 

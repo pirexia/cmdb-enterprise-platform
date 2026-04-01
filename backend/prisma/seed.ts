@@ -33,14 +33,14 @@ async function main() {
   `;
   console.log(`✅ User created: admin [ADMIN] (admin@cmdb.local)`);
 
-  // auditor@cmdb.local — VIEWER
+  // auditor@cmdb.local — AUDITOR
   const auditorUser = await prisma.user.create({
     data: { username: 'auditor', email: 'auditor@cmdb.local' },
   });
   await prisma.$executeRaw`
-    UPDATE "users" SET password = ${auditHash}, role = 'VIEWER' WHERE id = ${auditorUser.id}::uuid
+    UPDATE "users" SET password = ${auditHash}, role = 'AUDITOR' WHERE id = ${auditorUser.id}::uuid
   `;
-  console.log(`✅ User created: auditor [VIEWER] (auditor@cmdb.local)`);
+  console.log(`✅ User created: auditor [AUDITOR] (auditor@cmdb.local)`);
 
   // Demo users for CI ownership
   const businessOwner = await prisma.user.create({
@@ -147,7 +147,7 @@ async function main() {
   console.log('─'.repeat(50));
   console.log('  🔑 Login credentials:');
   console.log('     admin@cmdb.local   / Admin1234!  [ADMIN]');
-  console.log('     auditor@cmdb.local / Audit1234!  [VIEWER]');
+  console.log('     auditor@cmdb.local / Audit1234!  [AUDITOR]');
   console.log('─'.repeat(50));
   console.log('  ⚠️  Change passwords immediately after first login in production!');
 }

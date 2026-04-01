@@ -53,7 +53,7 @@ const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type UserRole = 'ADMIN' | 'VIEWER';
+type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
 
 interface JwtPayload {
   id:               string;
@@ -208,6 +208,15 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!req.user || req.user.role !== 'ADMIN') {
     res.status(403).json({ error: 'Admin role required for this operation.' });
+    return;
+  }
+  next();
+}
+
+/** Allows ADMIN and AUDITOR roles (read-only audit access). */
+function requireAudit(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user || !(['ADMIN', 'AUDITOR'] as UserRole[]).includes(req.user.role)) {
+    res.status(403).json({ error: 'Audit access requires ADMIN or AUDITOR role.' });
     return;
   }
   next();
@@ -476,8 +485,8 @@ app.get('/api/users', authenticateToken, async (_req: Request, res: Response) =>
 app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { role } = req.body as { role?: string };
-  if (!role || !['ADMIN', 'VIEWER'].includes(role)) {
-    res.status(400).json({ error: 'role must be "ADMIN" or "VIEWER"' });
+  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER'] as string[]).includes(role)) {
+    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR" or "VIEWER"' });
     return;
   }
   try {
@@ -1033,9 +1042,9 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
 /**
  * GET /api/audit-logs
  * Returns the last 50 audit log entries ordered by date descending.
- * ADMIN only.
+ * ADMIN and AUDITOR only.
  */
-app.get('/api/audit-logs', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+app.get('/api/audit-logs', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
   try {
     type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date };
     const logs = await prisma.$queryRaw<AuditRow[]>`

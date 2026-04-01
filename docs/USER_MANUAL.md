@@ -40,14 +40,14 @@ http://cmdb-server:3001
 (o la URL que te haya proporcionado tu equipo de sistemas)
 
 ### Credenciales por defecto
-Tras la instalación inicial, el sistema tiene un usuario administrador creado en el `seed`:
+Tras la instalación inicial, el sistema crea estos usuarios de ejemplo en el `seed`:
 
-| Campo | Valor por defecto |
-|-------|------------------|
-| Email | `admin@cmdb.local` |
-| Contraseña | `Admin1234!` |
+| Email | Contraseña | Rol |
+|-------|-----------|-----|
+| `admin@cmdb.local` | `Admin1234!` | ADMIN |
+| `auditor@cmdb.local` | `Audit1234!` | AUDITOR |
 
-> ⚠️ **IMPORTANTE:** Cambia la contraseña inmediatamente tras el primer login.
+> ⚠️ **IMPORTANTE:** Cambia las contraseñas inmediatamente tras el primer login.
 
 ### Flujo MFA en el primer login
 
@@ -64,7 +64,7 @@ En el primer acceso, la plataforma **exige** configurar la autenticación de dob
 
 > 🔒 No existe opción de omitir este paso para administradores. Es obligatorio por política de seguridad.
 
-#### Usuarios Estándar (VIEWER) — MFA recomendado
+#### Usuarios Estándar (AUDITOR / VIEWER) — MFA recomendado
 En el primer acceso, la plataforma **sugiere** configurar MFA:
 
 1. Introduce email y contraseña → acceso concedido + pantalla de sugerencia
@@ -133,30 +133,33 @@ Si ya tienes acceso a la aplicación (p. ej. eres VIEWER y omitiste la sugerenci
 
 ## 4. Matriz de Roles
 
-La plataforma tiene dos roles diferenciados:
+La plataforma tiene tres roles diferenciados:
 
-| Funcionalidad | ADMIN | VIEWER |
-|---------------|-------|--------|
-| Ver Dashboard | ✅ | ✅ |
-| Ver Inventario de CIs | ✅ | ✅ |
-| **Crear/modificar CIs** | ✅ | ❌ |
-| **Importar CSV masivo** | ✅ | ❌ |
-| **Crear/eliminar relaciones entre CIs** | ✅ | ❌ |
-| Ver Vulnerabilidades | ✅ | ✅ |
-| **Cambiar estado de vuln.** | ✅ | ❌ |
-| Ver Contratos | ✅ | ✅ |
-| **Crear contratos** | ✅ | ❌ |
-| Ver Datos Maestros | ✅ | ❌ |
-| **Gestionar Datos Maestros** | ✅ | ❌ |
-| Ver Integraciones | ✅ | ❌ |
-| **Subir informes Greenbone/CrowdStrike** | ✅ | ❌ |
-| Ver Reportes | ✅ | ✅ |
-| **Configuración y Usuarios** | ✅ | ❌ |
-| Ver Auditoría | ✅ | ❌ |
-| **Enviar correo de prueba** | ✅ | ❌ |
-| **Cambiar rol de usuarios** | ✅ | ❌ |
+| Funcionalidad | ADMIN | AUDITOR | VIEWER |
+|---------------|:-----:|:-------:|:------:|
+| Ver Dashboard | ✅ | ✅ | ✅ |
+| Ver Inventario de CIs | ✅ | ✅ | ✅ |
+| **Crear/modificar CIs** | ✅ | ❌ | ❌ |
+| **Importar CSV masivo** | ✅ | ❌ | ❌ |
+| **Crear/eliminar relaciones entre CIs** | ✅ | ❌ | ❌ |
+| Ver Vulnerabilidades | ✅ | ✅ | ✅ |
+| **Cambiar estado de vuln.** | ✅ | ❌ | ❌ |
+| Ver Contratos | ✅ | ✅ | ✅ |
+| **Crear contratos** | ✅ | ❌ | ❌ |
+| Ver Datos Maestros | ✅ | ❌ | ❌ |
+| **Gestionar Datos Maestros** | ✅ | ❌ | ❌ |
+| Ver Integraciones | ✅ | ❌ | ❌ |
+| **Subir informes Greenbone/CrowdStrike** | ✅ | ❌ | ❌ |
+| Ver Reportes | ✅ | ✅ | ✅ |
+| **Configuración y Usuarios** | ✅ | ❌ | ❌ |
+| **Ver Auditoría** | ✅ | ✅ | ❌ |
+| **Enviar correo de prueba** | ✅ | ❌ | ❌ |
+| **Cambiar rol de usuarios** | ✅ | ❌ | ❌ |
+| MFA en primer login | Obligatorio | Sugerido | Sugerido |
 
-> Los usuarios con rol VIEWER tienen acceso de **solo lectura** a toda la información de inventario, vulnerabilidades, contratos y reportes.
+> **AUDITOR** — rol diseñado para responsables de compliance, equipos de auditoría interna/externa y revisión ISO 27001. Tiene acceso de solo lectura al inventario, vulnerabilidades, contratos y reportes, y acceso exclusivo al **Registro de Auditoría** (trazabilidad de todas las acciones de la plataforma).
+>
+> **VIEWER** — acceso de solo lectura a inventario, vulnerabilidades, contratos y reportes. Sin acceso al log de auditoría ni a la configuración.
 
 ---
 
@@ -555,12 +558,12 @@ Muestra todos los usuarios del sistema con:
 - Nombre de usuario y email
 - Origen (🏢 LDAP / 🔑 Local)
 - Estado de MFA (Activo / Inactivo)
-- Rol actual (ADMIN / VIEWER)
+- Rol actual (ADMIN / AUDITOR / VIEWER)
 - Toggle de Activo/Inactivo
 
 #### Cambiar el rol de un usuario
 1. En la columna "Rol", usa el selector desplegable
-2. Selecciona **ADMIN** o **VIEWER**
+2. Selecciona **ADMIN**, **AUDITOR** o **VIEWER**
 3. El cambio se aplica inmediatamente y se registra en el Audit Log
 
 #### Desactivar/Activar una cuenta

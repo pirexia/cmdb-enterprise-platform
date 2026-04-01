@@ -1,9 +1,9 @@
 # 🔐 Security Audit & ISO 27001 Compliance Report
 
 **Platform:** CMDB Enterprise Platform  
-**Audit Date:** 2026-03-31 (updated)
+**Audit Date:** 2026-04-01 (updated)
 **Auditor:** DevSecOps Team
-**Version:** v1.2.0  
+**Version:** v1.3.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -27,8 +27,8 @@ This document describes the security controls implemented in the CMDB Enterprise
 | Sub-control | Implementation | Status |
 |-------------|---------------|--------|
 | A.9.2.1 User registration & de-registration | Users are created/deleted via `POST /api/users` by ADMIN role only. | ✅ |
-| A.9.2.2 User access provisioning | Role-based access control (RBAC): `ADMIN` and `VIEWER` roles enforced on every protected endpoint via `authenticateToken` + `requireAdmin` middleware. | ✅ |
-| A.9.2.3 Management of privileged access | Write operations (`POST`, `PATCH`, `DELETE`, `PUT`) require `ADMIN` role. `VIEWER` role has read-only access. | ✅ |
+| A.9.2.2 User access provisioning | Role-based access control (RBAC): three roles — `ADMIN`, `AUDITOR`, `VIEWER` — enforced on every protected endpoint via `authenticateToken` + `requireAdmin` / `requireAudit` middleware. | ✅ |
+| A.9.2.3 Management of privileged access | Write operations (`POST`, `PATCH`, `DELETE`, `PUT`) require `ADMIN` role. `AUDITOR` has read-only access + exclusive access to audit logs. `VIEWER` has read-only access to inventory, vulnerabilities, contracts and reports. | ✅ |
 | A.9.2.4 Authentication credentials | Passwords hashed with **bcrypt** (salt rounds ≥ 10). Passwords never returned in API responses. | ✅ |
 | A.9.2.5 Review of user access rights | Audit log (`audit_logs` table) records every CREATE_CI, UPDATE_VULN_STATUS, UPDATE_VERIFICATION, and admin action with timestamp and user email. | ✅ |
 | A.9.2.6 Removal/adjustment of access rights | User deletion via admin API immediately revokes access. JWT tokens expire after **8 hours**. | ✅ |
@@ -37,7 +37,7 @@ This document describes the security controls implemented in the CMDB Enterprise
 - TOTP-based MFA implemented using `speakeasy` (RFC 6238 compliant).
 - QR code provisioning via `POST /api/auth/mfa/setup` (authenticated endpoint).
 - **Admin users (mandatory):** On first login without MFA configured, the server issues a *limited JWT* (`mfaSetupRequired: true`, 15 min TTL). This token is only accepted by MFA setup endpoints. The frontend forces the user through the setup wizard before granting full application access. Admin cannot skip or bypass this step.
-- **VIEWER users (recommended):** On first login without MFA configured, the server records `mfa_prompted_at = now()` and returns the full JWT with `requireAction: 'MFA_SETUP_SUGGESTED'`. The frontend shows a one-time suggestion screen; the user may configure MFA or skip. On subsequent logins, no suggestion is shown.
+- **AUDITOR / VIEWER users (recommended):** On first login without MFA configured, the server records `mfa_prompted_at = now()` and returns the full JWT with `requireAction: 'MFA_SETUP_SUGGESTED'`. The frontend shows a one-time suggestion screen; the user may configure MFA or skip. On subsequent logins, no suggestion is shown.
 - **Trusted devices:** After successful MFA verification, the user can mark the device as trusted. The server generates a 32-byte cryptographically random token (`crypto.randomBytes`), stores it in the `trusted_devices` table with an expiry of `TRUSTED_DEVICE_TTL_DAYS` days (default 30), and returns it to the client (stored in `localStorage`). On future logins, if the client presents a valid, non-expired device token, the MFA step is bypassed. Expired device records are automatically purged by a daily cron job (02:00 AM).
 - **Limited JWT scope enforcement:** The `authenticateToken` middleware rejects requests from `mfaSetupRequired` tokens to any path other than `/api/auth/mfa/setup` and `/api/auth/mfa/enable`, returning `403 MFA_SETUP_REQUIRED`.
 
@@ -185,6 +185,7 @@ CREATE TABLE "audit_logs" (
 |------|---------|--------|---------|
 | 2026-03-15 | 1.0.0 | DevSecOps (Misión 13) | Initial security audit — SSL, Helmet, CORS, ISO 27001 mapping |
 | 2026-03-31 | 1.2.0 | DevSecOps | MFA mandatory enforcement for admins; trusted device mechanism; limited JWT scope; rate limiting confirmed implemented |
+| 2026-04-01 | 1.3.0 | DevSecOps | Added AUDITOR role (RBAC three-tier); `requireAudit` middleware; AUDITOR has exclusive audit log read access; seed user `auditor@cmdb.local` migrated from VIEWER to AUDITOR |
 
 ---
 

@@ -16,7 +16,7 @@ interface User {
   id:               string;
   username:         string;
   email:            string;
-  role:             "ADMIN" | "VIEWER";
+  role:             "ADMIN" | "AUDITOR" | "VIEWER";
   active:           boolean;
   sso_external_id:  string | null;
   mfa_enabled:      boolean;
@@ -107,7 +107,7 @@ export default function SettingsPage() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   // ── Change role ────────────────────────────────────────────────────────────
-  const handleRoleChange = async (userId: string, role: "ADMIN" | "VIEWER") => {
+  const handleRoleChange = async (userId: string, role: "ADMIN" | "AUDITOR" | "VIEWER") => {
     setSaving((p) => ({ ...p, [`role_${userId}`]: true }));
     try {
       const res = await apiFetch(`/api/users/${userId}/role`, {
@@ -357,9 +357,10 @@ export default function SettingsPage() {
                               <Sel
                                 value={u.role}
                                 disabled={!isAdmin || isSelf || roleSaving}
-                                onChange={(e) => handleRoleChange(u.id, e.target.value as "ADMIN" | "VIEWER")}
+                                onChange={(e) => handleRoleChange(u.id, e.target.value as "ADMIN" | "AUDITOR" | "VIEWER")}
                               >
                                 <option value="ADMIN">{t('settings.users.role_admin')}</option>
+                                <option value="AUDITOR">{t('settings.users.role_auditor')}</option>
                                 <option value="VIEWER">{t('settings.users.role_viewer')}</option>
                               </Sel>
                               {roleSaving && <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />}

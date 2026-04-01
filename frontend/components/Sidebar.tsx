@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,18 +14,19 @@ import type { Locale } from "@/contexts/LanguageContext";
 
 // ─── Nav item definitions (keys reference locales/[lang].json) ────────────────
 
-const NAV_ITEMS = [
-  { labelKey: "sidebar.dashboard",       href: "/",                      icon: LayoutDashboard, adminOnly: false },
-  { labelKey: "sidebar.inventory",       href: "/inventory",             icon: Monitor,         adminOnly: false },
-  { labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities",        icon: Shield,          adminOnly: false },
-  { labelKey: "sidebar.map",             href: "/map",                   icon: Network,         adminOnly: false },
-  { labelKey: "sidebar.integrations",   href: "/integrations",          icon: Plug,            adminOnly: true  },
-  { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart,        adminOnly: false },
-  { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText,        adminOnly: false },
-  { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle,      adminOnly: false },
-  { labelKey: "sidebar.masters",         href: "/admin/masters",         icon: Building2,       adminOnly: true  },
-  { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   adminOnly: true  },
-  { labelKey: "sidebar.settings",       href: "/settings",              icon: Settings,        adminOnly: true  },
+// roles: undefined = all authenticated users; string[] = restricted to those roles
+const NAV_ITEMS: { labelKey: string; href: string; icon: React.ElementType; roles?: string[] }[] = [
+  { labelKey: "sidebar.dashboard",       href: "/",                      icon: LayoutDashboard },
+  { labelKey: "sidebar.inventory",       href: "/inventory",             icon: Monitor         },
+  { labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities",       icon: Shield          },
+  { labelKey: "sidebar.map",             href: "/map",                   icon: Network         },
+  { labelKey: "sidebar.integrations",   href: "/integrations",          icon: Plug,            roles: ["ADMIN"]                  },
+  { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart        },
+  { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText        },
+  { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle      },
+  { labelKey: "sidebar.masters",        href: "/admin/masters",         icon: Building2,       roles: ["ADMIN"]                  },
+  { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   roles: ["ADMIN", "AUDITOR"]       },
+  { labelKey: "sidebar.settings",       href: "/settings",              icon: Settings,        roles: ["ADMIN"]                  },
 ];
 
 // ─── Language selector ────────────────────────────────────────────────────────
@@ -55,6 +57,7 @@ function LangSelector() {
 export default function Sidebar() {
   const pathname               = usePathname();
   const { user, logout, isAdmin } = useAuth();
+  const userRole = user?.role ?? "";
   const { t }                  = useLanguage();
 
   const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || t("brand.name");
@@ -82,7 +85,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.filter(({ adminOnly }) => !adminOnly || isAdmin).map(({ labelKey, href, icon: Icon }) => {
+        {NAV_ITEMS.filter(({ roles }) => !roles || roles.includes(userRole)).map(({ labelKey, href, icon: Icon }) => {
           const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <Link
@@ -110,7 +113,11 @@ export default function Sidebar() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold text-slate-700 truncate">{user.username}</p>
-              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${isAdmin ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-500"}`}>
+              <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                user.role === "ADMIN"   ? "bg-red-100 text-red-700"    :
+                user.role === "AUDITOR" ? "bg-amber-100 text-amber-700" :
+                                          "bg-slate-100 text-slate-500"
+              }`}>
                 {user.role}
               </span>
             </div>

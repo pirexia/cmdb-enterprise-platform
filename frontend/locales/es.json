@@ -254,6 +254,7 @@
       "mfa_active":     "Activo",
       "mfa_inactive":   "Inactivo",
       "role_admin":     "👑 ADMIN",
+      "role_auditor":   "🔍 AUDITOR",
       "role_viewer":    "👁️ VIEWER",
       "me_label":       "(yo)",
       "viewer_notice":  "Necesitas rol {role} para modificar la configuración. Modo de sólo lectura.",

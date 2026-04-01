@@ -165,31 +165,84 @@ USE_LDAP=false
 
 ### Optional variables — Document Repository
 
+The Document Repository stores **all file types** managed by the platform: contracts, addendums, licences, technical documents, quotes, and any custom type. All share the same storage directory on disk.
+
 ```bash
 # ── Document Storage ───────────────────────────────────────────────────
 # Host path where uploaded files are stored.
-# If not set, the named Docker volume 'cmdb-documents' is used.
-# Can point to a local path or an NFS mount.
-DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
-# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+# Default: ./document-storage (relative to the compose file directory).
+# Can point to a local absolute path or an NFS/CIFS mount.
+DOCUMENTS_STORAGE_PATH=./document-storage
+# DOCUMENTS_STORAGE_PATH=/data/cmdb/documents      # absolute local path
+# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs        # NFS mount point
 ```
 
-> **Important:** If `DOCUMENTS_STORAGE_PATH` is defined, the directory must exist on the host before starting the services and must be readable and writable by the UID of the `node` process inside the container (`UID 1000` in standard Alpine images).
+> **Important:** The directory must exist on the host before starting the services and must be readable and writable by UID `1000` (the `node` user in Alpine images). The container does **not** create the parent directory automatically.
 
-**Example with NFS mount:**
+#### Prepare the directory for a new installation
+
 ```bash
-# 1. Mount the NFS share (add to /etc/fstab for persistence)
+# Option A — local path
+sudo mkdir -p /data/cmdb/documents
+sudo chown 1000:1000 /data/cmdb/documents
+sudo chmod 750 /data/cmdb/documents
+
+# Add to .env
+echo "DOCUMENTS_STORAGE_PATH=/data/cmdb/documents" >> .env
+```
+
+#### Configure an NFS mount
+
+```bash
+# 1. Create the mount point
 sudo mkdir -p /mnt/nfs/cmdb-docs
+
+# 2. Mount the share (add to /etc/fstab for persistence on reboot)
+#    nfs-server.corp.local:/exports/cmdb-docs  /mnt/nfs/cmdb-docs  nfs  defaults,_netdev  0  0
 sudo mount -t nfs nfs-server.corp.local:/exports/cmdb-docs /mnt/nfs/cmdb-docs
 
-# 2. Assign permissions to the container UID
+# 3. Assign permissions to the container UID
 sudo chown 1000:1000 /mnt/nfs/cmdb-docs
 
-# 3. Configure in .env
+# 4. Configure in .env
 echo "DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs" >> .env
+
+# 5. Restart the backend to pick up the new bind mount
+docker compose up -d backend
 ```
 
-> The storage directory (bind mount or named volume) must be included in the backup strategy alongside the PostgreSQL volume. See section 6 for the backup procedure.
+#### Migrate to a new volume (post-installation)
+
+When moving storage to a different path (e.g. from local to NFS):
+
+```bash
+# 1. Stop the backend to prevent writes during the copy
+docker compose stop backend
+
+# 2. Copy all files to the new destination, preserving permissions
+sudo rsync -av --progress \
+  "${DOCUMENTS_STORAGE_PATH:-./document-storage}/" \
+  /new/path/
+
+# 3. Verify file count matches
+find "${DOCUMENTS_STORAGE_PATH:-./document-storage}" -type f | wc -l
+find /new/path -type f | wc -l
+
+# 4. Fix permissions on the destination
+sudo chown -R 1000:1000 /new/path
+
+# 5. Update .env
+sed -i "s|^DOCUMENTS_STORAGE_PATH=.*|DOCUMENTS_STORAGE_PATH=/new/path|" .env
+
+# 6. Start the backend with the new bind mount
+docker compose up -d backend
+
+# 7. Verify a document loads correctly in the UI before removing the old path
+# 8. Once confirmed, remove the old path (only if it was local):
+#    sudo rm -rf /old/path
+```
+
+> The storage directory must be included in the backup strategy alongside the PostgreSQL volume. See section 6 for the backup procedure.
 
 ### Generating secure secrets
 ```bash
@@ -511,10 +564,60 @@ EOF
 | Metric | Alert threshold | Action |
 |--------|----------------|--------|
 | Disk usage at /opt/cmdb/backups | > 80% of disk | Reduce RETENTION_DAYS |
+| **Disk usage at DOCUMENTS_STORAGE_PATH** | **> 70% of filesystem** | **Expand volume / move to NFS** |
 | API /health response time | > 2s | Review backend logs |
 | Backend container memory | > 1.5 GB | Restart backend |
 | Error rate in logs | > 10 errors/min | Review logs |
 | SSL certificate expiry | < 30 days | Renew (section 4.3) |
+
+#### Monitoring the document volume
+
+```bash
+# Current directory usage
+du -sh "${DOCUMENTS_STORAGE_PATH:-./document-storage}"
+
+# Filesystem usage for the mount
+df -h "${DOCUMENTS_STORAGE_PATH:-./document-storage}"
+```
+
+**Full monitoring script** — save to `/opt/cmdb/scripts/check-docs-storage.sh`:
+
+```bash
+#!/bin/bash
+# check-docs-storage.sh — Monitors the document repository volume
+set -e
+
+DOCS_PATH="${DOCUMENTS_STORAGE_PATH:-/opt/cmdb/document-storage}"
+WARN_PCT=70
+CRIT_PCT=85
+RECIPIENT="${ALERT_RECIPIENT:-admin@yourdomain.com}"
+
+USAGE=$(df --output=pcent "$DOCS_PATH" 2>/dev/null | tail -1 | tr -d ' %')
+
+if [ -z "$USAGE" ]; then
+  echo "ERROR: Cannot read disk usage for $DOCS_PATH" >&2
+  exit 1
+fi
+
+FILE_COUNT=$(find "$DOCS_PATH" -type f 2>/dev/null | wc -l)
+TOTAL_SIZE=$(du -sh "$DOCS_PATH" 2>/dev/null | cut -f1)
+
+if [ "$USAGE" -ge "$CRIT_PCT" ]; then
+  echo "[CMDB][CRITICAL] Document storage at ${USAGE}% (${TOTAL_SIZE}, ${FILE_COUNT} files) on $(hostname)" \
+    | mail -s "[CMDB][CRITICAL] Document storage" "$RECIPIENT"
+elif [ "$USAGE" -ge "$WARN_PCT" ]; then
+  echo "[CMDB][WARNING] Document storage at ${USAGE}% (${TOTAL_SIZE}, ${FILE_COUNT} files) on $(hostname)" \
+    | mail -s "[CMDB][WARNING] Document storage" "$RECIPIENT"
+fi
+```
+
+```bash
+# Make executable and add to crontab (daily check at 08:00)
+chmod +x /opt/cmdb/scripts/check-docs-storage.sh
+(crontab -l 2>/dev/null; echo "0 8 * * * /opt/cmdb/scripts/check-docs-storage.sh") | crontab -
+```
+
+> For NFS installations, also monitor share availability: `mountpoint -q /mnt/nfs/cmdb-docs || echo "NFS not mounted"`. Include this check in your monitoring system's health-check scripts (Zabbix, Nagios, Prometheus, etc.).
 
 ---
 

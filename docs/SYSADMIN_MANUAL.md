@@ -165,31 +165,84 @@ USE_LDAP=false
 
 ### Variables opcionales — Repositorio Documental
 
+El Repositorio Documental almacena **todos los tipos de fichero** gestionados por la plataforma: contratos, adendas, licencias, documentos técnicos, ofertas y cualquier tipo personalizado. Todos comparten el mismo directorio de almacenamiento en disco.
+
 ```bash
 # ── Almacenamiento de Documentos ──────────────────────────────────────
 # Ruta en el host donde se almacenan los archivos subidos.
-# Si no se define, se usa el volumen Docker nombrado 'cmdb-documents'.
-# Puede apuntar a una ruta local o a un montaje NFS.
-DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
-# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+# Valor por defecto: ./document-storage (relativo al directorio del proyecto).
+# Puede apuntar a una ruta local absoluta o a un montaje NFS/CIFS.
+DOCUMENTS_STORAGE_PATH=./document-storage
+# DOCUMENTS_STORAGE_PATH=/data/cmdb/documents      # ruta absoluta local
+# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs        # montaje NFS
 ```
 
-> **Importante:** Si se define `DOCUMENTS_STORAGE_PATH`, el directorio debe existir en el host antes de arrancar los servicios y debe ser accesible (lectura/escritura) para el UID del proceso `node` dentro del contenedor (`UID 1000` en las imágenes Alpine estándar).
+> **Importante:** El directorio debe existir en el host antes de arrancar los servicios y debe ser accesible (lectura/escritura) para el UID `1000` (usuario `node` de las imágenes Alpine). El contenedor **no** crea el directorio padre automáticamente.
 
-**Ejemplo con montaje NFS:**
+#### Preparar el directorio en instalación nueva
+
 ```bash
-# 1. Montar el share NFS (añadir a /etc/fstab para persistencia)
+# Opción A — ruta local
+sudo mkdir -p /data/cmdb/documents
+sudo chown 1000:1000 /data/cmdb/documents
+sudo chmod 750 /data/cmdb/documents
+
+# Añadir al .env
+echo "DOCUMENTS_STORAGE_PATH=/data/cmdb/documents" >> .env
+```
+
+#### Configurar un montaje NFS
+
+```bash
+# 1. Crear el punto de montaje
 sudo mkdir -p /mnt/nfs/cmdb-docs
+
+# 2. Montar el share (añadir a /etc/fstab para persistencia al reinicio)
+#    nfs-server.corp.local:/exports/cmdb-docs  /mnt/nfs/cmdb-docs  nfs  defaults,_netdev  0  0
 sudo mount -t nfs nfs-server.corp.local:/exports/cmdb-docs /mnt/nfs/cmdb-docs
 
-# 2. Asignar permisos al UID del contenedor
+# 3. Asignar permisos al UID del contenedor
 sudo chown 1000:1000 /mnt/nfs/cmdb-docs
 
-# 3. Configurar en .env
+# 4. Configurar en .env
 echo "DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs" >> .env
+
+# 5. Reiniciar el backend para que tome el nuevo bind mount
+docker compose up -d backend
 ```
 
-> El directorio de almacenamiento (bind mount o volumen nombrado) debe incluirse en la estrategia de backup junto con el volumen de PostgreSQL. Ver sección 6 para el procedimiento de backup.
+#### Migrar a un nuevo volumen (post-instalación)
+
+Cuando se decide mover el almacenamiento a una ruta diferente (p.ej. de local a NFS):
+
+```bash
+# 1. Detener el backend (evitar escrituras durante la copia)
+docker compose stop backend
+
+# 2. Copiar todos los ficheros al nuevo destino preservando permisos
+sudo rsync -av --progress \
+  "${DOCUMENTS_STORAGE_PATH:-./document-storage}/" \
+  /ruta/nueva/
+
+# 3. Verificar recuento de ficheros (deben coincidir)
+find "${DOCUMENTS_STORAGE_PATH:-./document-storage}" -type f | wc -l
+find /ruta/nueva -type f | wc -l
+
+# 4. Ajustar permisos en el destino
+sudo chown -R 1000:1000 /ruta/nueva
+
+# 5. Actualizar .env
+sed -i "s|^DOCUMENTS_STORAGE_PATH=.*|DOCUMENTS_STORAGE_PATH=/ruta/nueva|" .env
+
+# 6. Arrancar el backend con el nuevo bind mount
+docker compose up -d backend
+
+# 7. Verificar carga de un documento en la UI antes de eliminar la ruta anterior
+# 8. Una vez confirmado, eliminar la ruta antigua (solo si era local):
+#    sudo rm -rf /ruta/antigua
+```
+
+> El directorio de almacenamiento debe incluirse en la estrategia de backup junto con el volumen de PostgreSQL. Ver sección 6 para el procedimiento de backup.
 
 ### Generar secretos seguros
 ```bash
@@ -511,10 +564,70 @@ EOF
 | Métrica | Umbral de alerta | Acción |
 |---------|-----------------|--------|
 | Espacio en /opt/cmdb/backups | > 80% disco | Reducir RETENTION_DAYS |
+| **Espacio en DOCUMENTS_STORAGE_PATH** | **> 70% del filesystem** | **Ampliar volumen / mover a NFS** |
 | Tiempo de respuesta API /health | > 2s | Revisar logs backend |
 | Memoria contenedor backend | > 1.5 GB | Reiniciar backend |
 | Error rate en logs | > 10 errores/min | Revisar logs |
 | Certificado SSL expiry | < 30 días | Renovar (sección 4.3) |
+
+#### Monitorizar el volumen de documentos
+
+```bash
+# Ver uso actual del directorio de documentos
+du -sh "${DOCUMENTS_STORAGE_PATH:-./document-storage}"
+
+# Ver uso del filesystem donde está montado
+df -h "${DOCUMENTS_STORAGE_PATH:-./document-storage}"
+
+# Alerta cuando supere el 70 % (añadir a crontab para ejecución diaria)
+DOCS_PATH="${DOCUMENTS_STORAGE_PATH:-/opt/cmdb/document-storage}"
+USAGE=$(df --output=pcent "$DOCS_PATH" | tail -1 | tr -d ' %')
+if [ "$USAGE" -gt 70 ]; then
+  echo "ALERTA: Volumen de documentos al ${USAGE}% en $(hostname)" \
+    | mail -s "[CMDB] Almacenamiento documentos crítico" admin@tudominio.com
+fi
+```
+
+**Script de monitorización completo** — guardar en `/opt/cmdb/scripts/check-docs-storage.sh`:
+
+```bash
+#!/bin/bash
+# check-docs-storage.sh — Monitoriza el volumen del repositorio documental
+set -e
+
+DOCS_PATH="${DOCUMENTS_STORAGE_PATH:-/opt/cmdb/document-storage}"
+WARN_PCT=70
+CRIT_PCT=85
+RECIPIENT="${ALERT_RECIPIENT:-admin@tudominio.com}"
+
+USAGE=$(df --output=pcent "$DOCS_PATH" 2>/dev/null | tail -1 | tr -d ' %')
+
+if [ -z "$USAGE" ]; then
+  echo "ERROR: No se puede leer el uso de disco en $DOCS_PATH" >&2
+  exit 1
+fi
+
+FILE_COUNT=$(find "$DOCS_PATH" -type f 2>/dev/null | wc -l)
+TOTAL_SIZE=$(du -sh "$DOCS_PATH" 2>/dev/null | cut -f1)
+
+if [ "$USAGE" -ge "$CRIT_PCT" ]; then
+  echo "[CMDB][CRÍTICO] Almacenamiento de documentos al ${USAGE}% (${TOTAL_SIZE}, ${FILE_COUNT} ficheros) en $(hostname)" \
+    | mail -s "[CMDB][CRÍTICO] Almacenamiento documentos" "$RECIPIENT"
+elif [ "$USAGE" -ge "$WARN_PCT" ]; then
+  echo "[CMDB][AVISO] Almacenamiento de documentos al ${USAGE}% (${TOTAL_SIZE}, ${FILE_COUNT} ficheros) en $(hostname)" \
+    | mail -s "[CMDB][AVISO] Almacenamiento documentos" "$RECIPIENT"
+fi
+```
+
+```bash
+# Hacer ejecutable y añadir al crontab (comprobación diaria a las 08:00)
+chmod +x /opt/cmdb/scripts/check-docs-storage.sh
+
+# Añadir a crontab (como root o el usuario que gestiona los contenedores)
+(crontab -l 2>/dev/null; echo "0 8 * * * /opt/cmdb/scripts/check-docs-storage.sh") | crontab -
+```
+
+> Para instalaciones con NFS, monitoriza también la disponibilidad del share: `mountpoint -q /mnt/nfs/cmdb-docs || echo "NFS no montado"`. Incluye esta comprobación en el script de health-check de tu sistema de monitorización (Zabbix, Nagios, Prometheus, etc.).
 
 ---
 

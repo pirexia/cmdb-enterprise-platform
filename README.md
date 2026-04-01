@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-1.4.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.4.0)
+[![Version](https://img.shields.io/badge/version-1.5.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.5.0)
 
 ---
 
@@ -45,6 +45,7 @@
 | 📋 **Centro de Reportes** | Generación de informes en PDF/CSV: obsolescencia, contratos próximos a vencer, informe ejecutivo de seguridad. |
 | 🗂️ **Datos Maestros** | CRUD completo de tablas auxiliares: **Tipos de CI** (con categorías configurables), Áreas de Soporte, Sedes, Fabricantes, Modelos de Dispositivos, Proveedores. Navegación vertical en barra lateral. |
 | 🕵️ **Registro de Auditoría** | Trazabilidad completa de todas las acciones administrativas con purga automático de registros antiguos (retención configurable). |
+| 📁 **Repositorio Documental** | Gestión segura de documentos con control de versiones, tipos configurables, relaciones entre documentos y asociaciones bidireccionales entre CIs, documentos y contratos. Visor embebido (PDF, imagen, texto), notas inmutables por documento, validación de magic bytes, almacenamiento con UUID y descarga autenticada. Almacenamiento configurable mediante bind mount o NFS (`DOCUMENTS_STORAGE_PATH`). |
 
 ### Security & Operations
 

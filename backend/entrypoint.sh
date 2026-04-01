@@ -8,6 +8,10 @@ echo "  CMDB Enterprise Platform — Backend"
 echo "=========================================="
 
 echo ""
+echo "▶  Ensuring document storage directory exists..."
+mkdir -p "${DOCUMENTS_DIR:-/app/documents}"
+
+echo ""
 echo "▶  Running Prisma migrations (migrate deploy)..."
 npx prisma migrate deploy
 

@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Arquitectura Técnica
 
-**Versión:** 1.2.0
-**Fecha:** 2026-03-31
+**Versión:** 1.5.0
+**Fecha:** 2026-04-02
 **Estado:** Producción
 
 ---
@@ -60,6 +60,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Alertas Email | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
 | HTTPS      | Node.js https (built-in) | — |
+| Upload de ficheros | multer | 1.x |
 
 ### Base de Datos
 | Componente | Tecnología | Versión |
@@ -360,7 +361,70 @@ audit_logs
   ├── entity / entity_id
   ├── user_email
   └── created_at
+
+document_types                documents
+  ├── id (UUID)                 ├── id (UUID)
+  ├── code (unique)             ├── name
+  └── name                      ├── description
+                                ├── typeId → document_types
+                                ├── storedFilename (UUID-based)
+                                ├── originalFilename
+                                ├── mimeType
+                                ├── sizeBytes
+                                ├── uploadedBy → users
+                                └── createdAt
+
+document_versions             document_relations
+  ├── id (UUID)                 ├── id (UUID)
+  ├── documentId → documents    ├── sourceDocumentId → documents
+  ├── versionNumber (INT)       ├── targetDocumentId → documents
+  ├── storedFilename (UUID)     ├── relationType (AMENDMENT_OF | RELATED_TO | SUPERSEDES)
+  ├── originalFilename          └── createdAt
+  ├── sizeBytes
+  ├── uploadedBy → users
+  └── createdAt
+
+document_cis                  document_contracts
+  ├── documentId → documents    ├── documentId → documents
+  └── ciId → configuration_items└── contractId → contracts
 ```
+
+---
+
+## 7b. Almacenamiento de Ficheros (Repositorio Documental)
+
+Los archivos subidos a través del Repositorio Documental se gestionan con las siguientes garantías de seguridad:
+
+| Aspecto | Implementación |
+|---------|---------------|
+| **Librería de upload** | `multer` (multipart/form-data) |
+| **Validación de tipo** | Doble validación: extensión permitida (allowlist) + magic bytes del fichero (cabecera binaria). Rechaza archivos cuyo contenido no coincida con la extensión declarada. |
+| **Nombre en disco** | UUID v4 generado en el servidor; el nombre original nunca se escribe en el sistema de ficheros. Previene path traversal y colisiones. |
+| **Tamaño máximo** | 50 MB por fichero (configurable vía variable de entorno) |
+| **Ubicación** | Ruta configurable en el host (bind mount), definida por la variable de entorno `DOCUMENTS_STORAGE_PATH`. Por defecto se utiliza un volumen Docker nombrado `cmdb-documents`, pero en producción se recomienda un bind mount hacia una ruta dedicada (local o NFS). |
+| **Descarga** | Servida exclusivamente a través del endpoint autenticado `GET /api/documents/:id/download`. El backend comprueba el JWT antes de enviar el stream del fichero. |
+| **Extensiones admitidas** | PDF, DOCX, DOC, PPTX, XLSX, ODT, ODS, TXT, CSV, PNG, JPG |
+
+### Almacenamiento configurable (bind mount)
+
+A partir de la versión 1.5.0, la ruta de almacenamiento de documentos se configura mediante la variable de entorno `DOCUMENTS_STORAGE_PATH` en el archivo `.env`:
+
+```bash
+# Ruta local en el host
+DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
+
+# Montaje NFS (ejemplo)
+DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+```
+
+Cuando `DOCUMENTS_STORAGE_PATH` está definida, el contenedor `cmdb-backend` monta esa ruta del host en `/app/documents`, reemplazando el volumen Docker nombrado. Esto facilita:
+- Backups mediante herramientas estándar del sistema de ficheros
+- Integración con almacenamiento compartido NFS en entornos de alta disponibilidad
+- Acceso directo para auditorías sin acceder al interior del contenedor
+
+El directorio debe existir en el host antes de arrancar los servicios y debe ser accesible para el UID del proceso `node` dentro del contenedor.
+
+El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrategia de backup junto con el volumen de PostgreSQL.
 
 ---
 
@@ -381,6 +445,26 @@ audit_logs
 | Mapa | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relaciones | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
 | Auth | `/login` | `POST /api/auth/login` |
+| Repositorio Documental | `/documents` | `GET /api/documents`, `POST /api/documents` (multipart/multer), `GET /api/documents/:id`, `PATCH /api/documents/:id`, `DELETE /api/documents/:id`, `POST /api/documents/:id/versions`, `GET /api/documents/:id/versions`, `GET /api/documents/:id/download`, `GET/POST/DELETE /api/documents/:id/relations`, `POST /api/documents/:id/cis`, `POST /api/documents/:id/contracts` |
+| Inventario — Documentos y Contratos | `/inventory` (modal detalle CI) | `GET /api/cis/:id/contracts`, `POST /api/cis/:id/contracts`, `DELETE /api/cis/:id/contracts/:contractId`, `POST /api/cis/:id/documents`, `DELETE /api/cis/:id/documents/:docId` |
+| Contratos — CIs y Documentos | `/contracts` (fila expandida) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
+
+### Asociaciones bidireccionales CI ↔ Documento ↔ Contrato
+
+A partir de la versión 1.5.0, las asociaciones entre CIs, documentos y contratos pueden gestionarse desde cualquiera de las tres vistas de entidad:
+
+| Acción | Vista de origen | Endpoint |
+|--------|----------------|----------|
+| Asociar CIs a un documento | Detalle del documento | `POST /api/documents/:id/cis` — body: `{ ciIds: string[] }` |
+| Asociar contratos a un documento | Detalle del documento | `POST /api/documents/:id/contracts` — body: `{ contractIds: string[] }` |
+| Asociar documentos a un CI | Pestaña Documentos del CI | `POST /api/cis/:id/documents` — body: `{ documentIds: string[] }` |
+| Desvincular documento de un CI | Pestaña Documentos del CI | `DELETE /api/cis/:id/documents/:docId` |
+| Asociar contratos a un CI | Pestaña Contratos del CI | `POST /api/cis/:id/contracts` — body: `{ contractIds: string[] }` |
+| Desvincular contrato de un CI | Pestaña Contratos del CI | `DELETE /api/cis/:id/contracts/:contractId` |
+| Asociar CIs a un contrato | Fila expandida del contrato | `POST /api/contracts/:id/cis` — body: `{ ciIds: string[] }` |
+| Desvincular CI de un contrato | Fila expandida del contrato | `DELETE /api/contracts/:id/cis/:ciId` |
+
+Todas las operaciones de escritura requieren rol ADMIN y generan entradas en `audit_logs`.
 
 ---
 

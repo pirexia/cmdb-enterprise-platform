@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-1.4.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.4.0)
+[![Version](https://img.shields.io/badge/version-1.5.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.5.0)
 
 ---
 
@@ -45,6 +45,7 @@
 | 📋 **Reports Centre** | PDF/CSV report generation: obsolescence, upcoming contract expiry, executive security report. |
 | 🗂️ **Master Data** | Full CRUD for auxiliary tables: **CI Types** (with configurable categories), Support Areas, Sites, Manufacturers, Device Models, Vendors. Vertical navigation in the sidebar. |
 | 🕵️ **Audit Log** | Complete traceability of all administrative actions with automatic purging of old records (configurable retention). |
+| 📁 **Document Repository** | Secure document management with version control, configurable types, document relationships, and bidirectional associations between CIs, documents, and contracts. Embedded viewer (PDF, image, plain text), immutable per-document notes, magic bytes validation, UUID storage, and authenticated download. Configurable storage via bind mount or NFS (`DOCUMENTS_STORAGE_PATH`). |
 
 ### Security & Operations
 

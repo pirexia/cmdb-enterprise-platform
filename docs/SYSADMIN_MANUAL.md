@@ -163,6 +163,34 @@ USE_LDAP=false
 # LDAP_TLS_REJECT_UNAUTHORIZED=0    # Solo si usas cert autofirmado interno
 ```
 
+### Variables opcionales — Repositorio Documental
+
+```bash
+# ── Almacenamiento de Documentos ──────────────────────────────────────
+# Ruta en el host donde se almacenan los archivos subidos.
+# Si no se define, se usa el volumen Docker nombrado 'cmdb-documents'.
+# Puede apuntar a una ruta local o a un montaje NFS.
+DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
+# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+```
+
+> **Importante:** Si se define `DOCUMENTS_STORAGE_PATH`, el directorio debe existir en el host antes de arrancar los servicios y debe ser accesible (lectura/escritura) para el UID del proceso `node` dentro del contenedor (`UID 1000` en las imágenes Alpine estándar).
+
+**Ejemplo con montaje NFS:**
+```bash
+# 1. Montar el share NFS (añadir a /etc/fstab para persistencia)
+sudo mkdir -p /mnt/nfs/cmdb-docs
+sudo mount -t nfs nfs-server.corp.local:/exports/cmdb-docs /mnt/nfs/cmdb-docs
+
+# 2. Asignar permisos al UID del contenedor
+sudo chown 1000:1000 /mnt/nfs/cmdb-docs
+
+# 3. Configurar en .env
+echo "DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs" >> .env
+```
+
+> El directorio de almacenamiento (bind mount o volumen nombrado) debe incluirse en la estrategia de backup junto con el volumen de PostgreSQL. Ver sección 6 para el procedimiento de backup.
+
 ### Generar secretos seguros
 ```bash
 # JWT Secret (mínimo 48 caracteres)

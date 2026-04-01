@@ -1,6 +1,10 @@
 "use client";
 
-import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity } from "lucide-react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
 
@@ -13,6 +17,7 @@ interface UserRef        { id: string; username: string; email: string }
 interface Vulnerability  { cve: string; severity: VulnSeverity; description: string; source?: string; status?: VulnStatus }
 interface AgentStatus    { agentId: string; agentVersion: string; status: string; preventionPolicy: string; lastSeen: string; detections: unknown[]; source: string; updatedAt: string }
 interface ContractRef    { id: string; contractNumber: string; endDate: string | null; vendor: { id: string; name: string } }
+interface DocRef         { id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: string }
 
 export interface CIDetail {
   id:              string;
@@ -127,6 +132,64 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
   const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
   const typeLabel = CI_TYPE_LABELS[resolvedType] ?? resolvedType;
   const typeIcon  = CI_TYPE_ICONS[resolvedType] ?? <Server className="h-4 w-4" />;
+
+  const { token, isAdmin } = useAuth();
+  const [docs, setDocs]         = useState<DocRef[]>([]);
+  const [docsLoading, setDocsLoading] = useState(true);
+  const [contracts, setContracts] = useState<ContractRef[]>(ci.contracts ?? []);
+  const [showAddDocs, setShowAddDocs] = useState(false);
+  const [showAddContracts, setShowAddContracts] = useState(false);
+
+  const loadDocs = () => {
+    setDocsLoading(true);
+    apiFetch(`/api/cis/${ci.id}/documents`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: DocRef[]) => setDocs(data))
+      .catch(() => setDocs([]))
+      .finally(() => setDocsLoading(false));
+  };
+
+  const loadContracts = () => {
+    apiFetch(`/api/cis/${ci.id}/contracts`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: ContractRef[]) => setContracts(data))
+      .catch(() => {/* keep existing */});
+  };
+
+  useEffect(() => {
+    loadDocs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ci.id]);
+
+  const handleRemoveDoc = async (docId: string) => {
+    if (!confirm("¿Quitar este documento del CI?")) return;
+    try {
+      await apiFetch(`/api/cis/${ci.id}/documents/${docId}`, { method: "DELETE" });
+      loadDocs();
+    } catch {/* silent */}
+  };
+
+  const handleRemoveContract = async (contractId: string) => {
+    if (!confirm("¿Quitar este contrato del CI?")) return;
+    try {
+      await apiFetch(`/api/cis/${ci.id}/contracts/${contractId}`, { method: "DELETE" });
+      loadContracts();
+    } catch {/* silent */}
+  };
+
+  const handleDownload = async (docId: string, fileName: string) => {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${docId}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const openVulns = (ci.vulnerabilities ?? []).filter((v) => v.status !== "RESUELTO");
   const criticalVulns = openVulns.filter((v) => v.severity === "CRITICAL").length;
@@ -286,24 +349,119 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
           )}
 
           {/* Contracts */}
-          {ci.contracts && ci.contracts.length > 0 && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-              <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-blue-700">Contratos Asociados</p>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Contratos Asociados</p>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAddContracts(true)}
+                  className="flex items-center gap-1 rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 transition-colors"
+                >
+                  <Plus className="h-3 w-3" />Asociar Contratos
+                </button>
+              )}
+            </div>
+            {contracts.length === 0 ? (
+              <p className="text-sm italic text-blue-400">No hay contratos asociados.</p>
+            ) : (
               <div className="space-y-2">
-                {ci.contracts.map((ct) => (
-                  <div key={ct.id} className="flex items-center justify-between rounded-lg bg-white border border-blue-100 px-3 py-2">
+                {contracts.map((ct) => (
+                  <div key={ct.id} className="flex items-center justify-between rounded-lg bg-white border border-blue-100 px-3 py-2 group">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-blue-700">{ct.contractNumber}</span>
                       <span className="text-xs text-slate-500">{ct.vendor?.name ?? "—"}</span>
                     </div>
-                    {ct.endDate && (
-                      <span className="text-xs text-slate-400">Vence: {new Date(ct.endDate).toLocaleDateString("es-ES")}</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {ct.endDate && (
+                        <span className="text-xs text-slate-400">Vence: {new Date(ct.endDate).toLocaleDateString("es-ES")}</span>
+                      )}
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveContract(ct.id)}
+                          className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Quitar contrato"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Documents */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Documentos adjuntos</p>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowAddDocs(true)}
+                  className="flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 transition-colors"
+                >
+                  <Plus className="h-3 w-3" />Asociar Documentos
+                </button>
+              )}
             </div>
-          )}
+            {docsLoading ? (
+              <div className="flex items-center gap-2 text-slate-400 text-sm">
+                <FileText className="h-4 w-4 animate-pulse" />
+                <span>Cargando documentos…</span>
+              </div>
+            ) : docs.length === 0 ? (
+              <p className="text-sm italic text-slate-400">No hay documentos asociados.</p>
+            ) : (
+              <div className="space-y-2">
+                {docs.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between rounded-lg bg-white border border-slate-100 px-3 py-2 gap-3 group">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <FileText className="h-4 w-4 flex-shrink-0 text-indigo-400 mt-0.5" />
+                      <div className="min-w-0">
+                        <Link href={`/documents/${doc.id}`} className="text-sm font-medium text-indigo-700 hover:underline truncate block">
+                          {doc.title}
+                        </Link>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-600">
+                            {doc.documentTypeName}
+                          </span>
+                          <span className="text-[11px] text-slate-400 truncate">{doc.originalName}</span>
+                          <span className="text-[11px] text-slate-400">v{doc.versionNumber}</span>
+                          <span className="text-[11px] text-slate-400">{new Date(doc.createdAt).toLocaleDateString("es-ES")}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        onClick={() => handleDownload(doc.id, doc.originalName)}
+                        className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                        title="Descargar"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Descargar
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveDoc(doc.id)}
+                          className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Quitar documento"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!docsLoading && (
+              <div className="mt-3 text-right">
+                <Link href="/documents" className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline transition-colors">
+                  Ver todos los documentos →
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
@@ -313,6 +471,302 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
           </button>
           <button onClick={onEdit} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
             <Pencil className="h-4 w-4" />Editar CI
+          </button>
+        </div>
+      </div>
+
+      {/* Associate Documents sub-modal */}
+      {showAddDocs && (
+        <AddDocumentsSubModal
+          ciId={ci.id}
+          existingDocIds={docs.map((d) => d.id)}
+          onClose={() => setShowAddDocs(false)}
+          onSuccess={() => { setShowAddDocs(false); loadDocs(); }}
+        />
+      )}
+
+      {/* Associate Contracts sub-modal */}
+      {showAddContracts && (
+        <AddContractsSubModal
+          ciId={ci.id}
+          existingContractIds={contracts.map((c) => c.id)}
+          onClose={() => setShowAddContracts(false)}
+          onSuccess={() => { setShowAddContracts(false); loadContracts(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── AddDocumentsSubModal ─────────────────────────────────────────────────────
+
+interface DocListItem {
+  id: string;
+  title: string;
+  documentTypeName: string;
+}
+
+function AddDocumentsSubModal({
+  ciId,
+  existingDocIds,
+  onClose,
+  onSuccess,
+}: {
+  ciId: string;
+  existingDocIds: string[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [allDocs, setAllDocs] = useState<DocListItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch("/api/documents")
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: DocListItem[]) => {
+        setAllDocs(data.filter((d) => !existingDocIds.includes(d.id)));
+      })
+      .catch(() => setAllDocs([]))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ciId]);
+
+  const filtered = allDocs.filter(
+    (d) =>
+      d.title.toLowerCase().includes(search.toLowerCase()) ||
+      d.documentTypeName.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/cis/${ciId}/documents`, {
+        method: "POST",
+        body: JSON.stringify({ documentIds: Array.from(selected) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? `Error ${res.status}`);
+      }
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <h2 className="text-base font-semibold text-slate-900">Asociar Documentos</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+            </div>
+          )}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar documento por título o tipo…"
+            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
+              <RefreshCw className="h-4 w-4 animate-spin" />Cargando datos…
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">No hay documentos disponibles para asociar.</p>
+          ) : (
+            <div className="overflow-y-auto max-h-64 divide-y divide-slate-50 rounded-lg border border-slate-200">
+              {filtered.map((d) => (
+                <label key={d.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(d.id)}
+                    onChange={() => toggle(d.id)}
+                    className="accent-indigo-600 h-4 w-4"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 truncate">{d.title}</p>
+                    <p className="text-xs text-slate-400 truncate">{d.documentTypeName}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || selected.size === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Asociar seleccionados
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AddContractsSubModal ─────────────────────────────────────────────────────
+
+interface ContractSubItem {
+  id: string;
+  contractNumber: string;
+  vendor: { name: string } | null;
+}
+
+function AddContractsSubModal({
+  ciId,
+  existingContractIds,
+  onClose,
+  onSuccess,
+}: {
+  ciId: string;
+  existingContractIds: string[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [allContracts, setAllContracts] = useState<ContractSubItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    apiFetch("/api/contracts")
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: ContractSubItem[]) => {
+        setAllContracts(data.filter((c) => !existingContractIds.includes(c.id)));
+      })
+      .catch(() => setAllContracts([]))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ciId]);
+
+  const filtered = allContracts.filter(
+    (c) =>
+      c.contractNumber.toLowerCase().includes(search.toLowerCase()) ||
+      (c.vendor?.name ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (selected.size === 0) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/cis/${ciId}/contracts`, {
+        method: "POST",
+        body: JSON.stringify({ contractIds: Array.from(selected) }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? `Error ${res.status}`);
+      }
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <h2 className="text-base font-semibold text-slate-900">Asociar Contratos</h2>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-6 py-5 space-y-3">
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+            </div>
+          )}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar contrato por número o proveedor…"
+            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
+              <RefreshCw className="h-4 w-4 animate-spin" />Cargando datos…
+            </div>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">No hay contratos disponibles para añadir.</p>
+          ) : (
+            <div className="overflow-y-auto max-h-64 divide-y divide-slate-50 rounded-lg border border-slate-200">
+              {filtered.map((c) => (
+                <label key={c.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(c.id)}
+                    onChange={() => toggle(c.id)}
+                    className="accent-indigo-600 h-4 w-4"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-800 font-mono truncate">{c.contractNumber}</p>
+                    <p className="text-xs text-slate-400 truncate">{c.vendor?.name ?? "—"}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || selected.size === 0}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Asociar seleccionados
           </button>
         </div>
       </div>

@@ -163,6 +163,34 @@ USE_LDAP=false
 # LDAP_TLS_REJECT_UNAUTHORIZED=0    # Only if using an internal self-signed cert
 ```
 
+### Optional variables — Document Repository
+
+```bash
+# ── Document Storage ───────────────────────────────────────────────────
+# Host path where uploaded files are stored.
+# If not set, the named Docker volume 'cmdb-documents' is used.
+# Can point to a local path or an NFS mount.
+DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
+# DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+```
+
+> **Important:** If `DOCUMENTS_STORAGE_PATH` is defined, the directory must exist on the host before starting the services and must be readable and writable by the UID of the `node` process inside the container (`UID 1000` in standard Alpine images).
+
+**Example with NFS mount:**
+```bash
+# 1. Mount the NFS share (add to /etc/fstab for persistence)
+sudo mkdir -p /mnt/nfs/cmdb-docs
+sudo mount -t nfs nfs-server.corp.local:/exports/cmdb-docs /mnt/nfs/cmdb-docs
+
+# 2. Assign permissions to the container UID
+sudo chown 1000:1000 /mnt/nfs/cmdb-docs
+
+# 3. Configure in .env
+echo "DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs" >> .env
+```
+
+> The storage directory (bind mount or named volume) must be included in the backup strategy alongside the PostgreSQL volume. See section 6 for the backup procedure.
+
 ### Generating secure secrets
 ```bash
 # JWT Secret (minimum 48 characters)

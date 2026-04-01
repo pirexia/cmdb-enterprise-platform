@@ -74,11 +74,13 @@ services:
       LDAP_BASE_DN:         ${LDAP_BASE_DN:-}
       LDAP_BIND_DN:         ${LDAP_BIND_DN:-}
       LDAP_BIND_PASSWORD:   ${LDAP_BIND_PASSWORD:-}
+      DOCUMENTS_DIR:        /app/documents
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
       # Mount TLS certs volume (generate via scripts/generate-certs.sh)
       - tls-certs:/app/certs:ro,Z
+      - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
     networks:
       - cmdb-internal
       - cmdb-public
@@ -122,6 +124,7 @@ volumes:
     name: cmdb-tls-certs
     # To pre-populate: docker volume create cmdb-tls-certs
     # Then copy certs: docker run --rm -v cmdb-tls-certs:/certs -v $(pwd)/backend/certs:/src alpine cp /src/server.key /src/server.crt /certs/
+
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 networks:

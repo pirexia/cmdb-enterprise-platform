@@ -14,10 +14,11 @@ import { apiFetch } from "@/lib/apiFetch";
 export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER";
 
 export interface AuthUser {
-  id:       string;
-  username: string;
-  email:    string;
-  role:     UserRole;
+  id:          string;
+  username:    string;
+  email:       string;
+  role:        UserRole;
+  mfa_enabled: boolean;
 }
 
 export interface LoginOptions {

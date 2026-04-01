@@ -61,8 +61,10 @@ services:
       JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required — set it in .env}
       CORS_ORIGINS: ${CORS_ORIGINS}
       HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
+      DOCUMENTS_DIR: /app/documents
     volumes:
       - ./backend/certs:/app/certs:Z
+      - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     depends_on:

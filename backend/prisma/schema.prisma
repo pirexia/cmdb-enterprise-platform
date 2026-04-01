@@ -186,8 +186,10 @@ model Contract {
   vendor            Vendor     @relation(fields: [vendorId], references: [id])
   parentContract    Contract?  @relation("ContractAddendums", fields: [parentContractId], references: [id])
   addendums         Contract[] @relation("ContractAddendums")
-  
+
   cis               CI[]       @relation("ContractToCI")
+
+  documents         DocumentContract[]
 
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
@@ -333,6 +335,8 @@ model CI {
   relationsFrom   CIRelation[] @relation("SourceCI")
   relationsTo     CIRelation[] @relation("TargetCI")
 
+  documents       DocumentCI[]
+
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
@@ -387,4 +391,109 @@ model AuditLog {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("audit_logs")
+}
+
+// ─── Document Repository ──────────────────────────────────────────────────────
+
+model DocumentType {
+  id        String     @id @default(uuid()) @db.Uuid
+  code      String     @unique
+  name      String
+  isSystem  Boolean    @default(false) @map("is_system")
+  documents Document[]
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@map("document_types")
+}
+
+model Document {
+  id             String   @id @default(uuid()) @db.Uuid
+  title          String
+  description    String?
+
+  documentTypeId String   @db.Uuid @map("document_type_id")
+  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+
+  // Versioning: rootId null = root document; non-null = a version of rootId
+  rootId         String?  @db.Uuid @map("root_id")
+  root           Document?  @relation("DocumentVersions", fields: [rootId], references: [id])
+  versions       Document[] @relation("DocumentVersions")
+  versionNumber  Int      @default(1) @map("version_number")
+  isLatest       Boolean  @default(true) @map("is_latest")
+
+  // File info
+  fileName       String   @map("file_name")       // UUID-based stored filename
+  originalName   String   @map("original_name")   // Original user filename
+  mimeType       String   @map("mime_type")
+  fileSize       Int      @map("file_size")        // bytes
+
+  // Who uploaded
+  uploadedBy     String   @map("uploaded_by")     // user email
+
+  // Associations
+  cis            DocumentCI[]
+  contracts      DocumentContract[]
+
+  // Relations between documents
+  relationsFrom  DocumentRelation[] @relation("SourceDocument")
+  relationsTo    DocumentRelation[] @relation("TargetDocument")
+  notes          DocumentNote[]
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("documents")
+}
+
+model DocumentRelation {
+  id             String   @id @default(uuid()) @db.Uuid
+  sourceDocId    String   @db.Uuid @map("source_doc_id")
+  targetDocId    String   @db.Uuid @map("target_doc_id")
+  relationType   String   @map("relation_type")  // AMENDMENT_OF, RELATED_TO, SUPERSEDES
+
+  sourceDoc      Document @relation("SourceDocument", fields: [sourceDocId], references: [id], onDelete: Cascade)
+  targetDoc      Document @relation("TargetDocument", fields: [targetDocId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([sourceDocId, targetDocId])
+  @@map("document_relations")
+}
+
+model DocumentCI {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid @map("document_id")
+  ciId       String   @db.Uuid @map("ci_id")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  ci         CI       @relation(fields: [ciId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, ciId])
+  @@map("document_cis")
+}
+
+model DocumentContract {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid @map("document_id")
+  contractId String   @db.Uuid @map("contract_id")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, contractId])
+  @@map("document_contracts")
+}
+
+model DocumentNote {
+  id         String   @id @default(uuid()) @db.Uuid
+  documentId String   @db.Uuid @map("document_id")
+  content    String
+  createdBy  String   @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("document_notes")
 }

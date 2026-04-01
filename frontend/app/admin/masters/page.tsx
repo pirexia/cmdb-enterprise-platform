@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock,
+  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText,
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
@@ -18,15 +18,17 @@ interface Provider     { id: string; name: string }
 interface CostCenter   { id: string; code: string; name: string }
 interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean; categoryCode: string }
 interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
+interface DocumentTypeItem { id: string; code: string; name: string; isSystem: boolean }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types";
 
 type EditState =
-  | { kind: "simple"; path: string; id: string; name: string }
-  | { kind: "branch"; id: string; name: string; code: string; address: string; supportAreaId: string }
-  | { kind: "model";  id: string; name: string; manufacturerId: string }
-  | { kind: "cc";     id: string; code: string; name: string }
-  | { kind: "citype"; id: string; name: string; categoryCode: string }
+  | { kind: "simple";  path: string; id: string; name: string }
+  | { kind: "branch";  id: string; name: string; code: string; address: string; supportAreaId: string }
+  | { kind: "model";   id: string; name: string; manufacturerId: string }
+  | { kind: "cc";      id: string; code: string; name: string }
+  | { kind: "citype";  id: string; name: string; categoryCode: string }
+  | { kind: "doctype"; id: string; name: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -88,6 +90,7 @@ export default function MastersPage() {
   const [providers,        setProviders]        = useState<Provider[]>([]);
   const [costCenters,      setCostCenters]      = useState<CostCenter[]>([]);
   const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
+  const [docTypes,         setDocTypes]         = useState<DocumentTypeItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -101,6 +104,7 @@ export default function MastersPage() {
   const [newProv, setNewProv] = useState("");
   const [newCC,   setNewCC]   = useState({ code: "", name: "" });
   const [newCIType, setNewCIType] = useState({ name: "", categoryCode: "" });
+  const [newDocType, setNewDocType] = useState({ code: "", name: "" });
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -117,7 +121,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
@@ -125,6 +129,7 @@ export default function MastersPage() {
         apiFetch("/api/masters/providers"),
         apiFetch("/api/masters/cost-centers"),
         apiFetch("/api/masters/ci-type-categories"),
+        apiFetch("/api/masters/document-types"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -134,6 +139,7 @@ export default function MastersPage() {
       const pvData  = await pvRes.json();
       const ccData  = await ccRes.json();
       const ctData  = await ctRes.json();
+      const dtData  = await dtRes.json();
       setSupportAreas(    safe(saData) as SupportArea[]);
       setBranches(        safe(brData) as Branch[]);
       setManufacturers(   safe(mfData) as Manufacturer[]);
@@ -141,6 +147,7 @@ export default function MastersPage() {
       setProviders(       safe(pvData) as Provider[]);
       setCostCenters(     safe(ccData) as CostCenter[]);
       setCiTypeCategories(safe(ctData) as CITypeCategory[]);
+      setDocTypes(        safe(dtData) as DocumentTypeItem[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -185,6 +192,7 @@ export default function MastersPage() {
     { id: "providers",      label: "Proveedores",                   icon: <Package   className="h-4 w-4" />, count: providers.length },
     { id: "cost-centers",   label: "Centros de Coste",              icon: <Wallet    className="h-4 w-4" />, count: costCenters.length },
     { id: "ci-types",       label: "Tipos de CI",                   icon: <Tags      className="h-4 w-4" />, count: totalCITypes },
+    { id: "doc-types",      label: t('masters.doc_types'),          icon: <FileText  className="h-4 w-4" />, count: docTypes.length },
   ];
 
   return (
@@ -914,6 +922,125 @@ export default function MastersPage() {
                     onCancelEdit={() => setEditState(null)}
                     onDelete={() => del(`/api/masters/providers/${p.id}`, load)} />
                 ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Document Types ── */}
+        {tab === "doc-types" && (
+          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Tipo de Documento</p>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  placeholder="Código (ej: POLICY)"
+                  value={newDocType.code}
+                  onChange={(e) => setNewDocType((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
+                  className="w-40"
+                />
+                <Input
+                  placeholder="Nombre (ej: Política)"
+                  value={newDocType.name}
+                  onChange={(e) => setNewDocType((p) => ({ ...p, name: e.target.value }))}
+                />
+                <button
+                  onClick={async () => {
+                    if (!newDocType.code.trim() || !newDocType.name.trim()) { alert("Introduce código y nombre"); return; }
+                    try {
+                      await post("/api/masters/document-types", { code: newDocType.code.trim(), name: newDocType.name.trim() });
+                      setNewDocType({ code: "", name: "" });
+                      load();
+                    } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />Añadir
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {docTypes.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-400">Sin tipos de documento registrados.</p>
+              ) : (
+                docTypes.map((dt) => {
+                  const isEditing = editState?.kind === "doctype" && editState.id === dt.id;
+                  if (isEditing && editState?.kind === "doctype") {
+                    return (
+                      <div key={dt.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border-b border-indigo-100">
+                        <Input
+                          value={editState.name}
+                          onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              void (async () => {
+                                try { await patch(`/api/masters/document-types/${dt.id}`, { name: editState.name }); setEditState(null); load(); }
+                                catch (err) { alert(err instanceof Error ? err.message : "Error"); }
+                              })();
+                            }
+                            if (e.key === "Escape") setEditState(null);
+                          }}
+                          autoFocus
+                          className="flex-1"
+                        />
+                        <button
+                          onClick={async () => {
+                            try { await patch(`/api/masters/document-types/${dt.id}`, { name: editState.name }); setEditState(null); load(); }
+                            catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                          }}
+                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => setEditState(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={dt.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div className="flex items-center gap-3">
+                        {dt.isSystem && (
+                          <span title="Tipo de sistema — no se puede editar ni eliminar">
+                            <Lock className="h-3 w-3 text-slate-300 flex-shrink-0" />
+                          </span>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-slate-700">{dt.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{dt.code}</p>
+                        </div>
+                      </div>
+                      {!dt.isSystem && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => setEditState({ kind: "doctype", id: dt.id, name: dt.name })}
+                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar el tipo "${dt.name}"?`)) return;
+                              try {
+                                const res = await apiFetch(`/api/masters/document-types/${dt.id}`, { method: "DELETE" });
+                                if (!res.ok) {
+                                  const d = await res.json().catch(() => ({})) as { error?: string };
+                                  alert(d.error ?? `Error ${res.status}`);
+                                  return;
+                                }
+                                load();
+                              } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                            }}
+                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Technical Architecture
 
-**Version:** 1.2.0
-**Date:** 2026-03-31
+**Version:** 1.5.0
+**Date:** 2026-04-02
 **Status:** Production
 
 ---
@@ -60,6 +60,7 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | Email Alerts | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
 | HTTPS      | Node.js https (built-in) | — |
+| File upload | multer | 1.x |
 
 ### Database
 | Component | Technology | Version |
@@ -360,7 +361,70 @@ audit_logs
   ├── entity / entity_id
   ├── user_email
   └── created_at
+
+document_types                documents
+  ├── id (UUID)                 ├── id (UUID)
+  ├── code (unique)             ├── name
+  └── name                      ├── description
+                                ├── typeId → document_types
+                                ├── storedFilename (UUID-based)
+                                ├── originalFilename
+                                ├── mimeType
+                                ├── sizeBytes
+                                ├── uploadedBy → users
+                                └── createdAt
+
+document_versions             document_relations
+  ├── id (UUID)                 ├── id (UUID)
+  ├── documentId → documents    ├── sourceDocumentId → documents
+  ├── versionNumber (INT)       ├── targetDocumentId → documents
+  ├── storedFilename (UUID)     ├── relationType (AMENDMENT_OF | RELATED_TO | SUPERSEDES)
+  ├── originalFilename          └── createdAt
+  ├── sizeBytes
+  ├── uploadedBy → users
+  └── createdAt
+
+document_cis                  document_contracts
+  ├── documentId → documents    ├── documentId → documents
+  └── ciId → configuration_items└── contractId → contracts
 ```
+
+---
+
+## 7b. File Storage (Document Repository)
+
+Files uploaded through the Document Repository are handled with the following security guarantees:
+
+| Aspect | Implementation |
+|--------|---------------|
+| **Upload library** | `multer` (multipart/form-data) |
+| **Type validation** | Dual validation: allowed extension (allowlist) + file magic bytes (binary header). Rejects files whose content does not match the declared extension. |
+| **On-disk filename** | Server-generated UUID v4; the original filename is never written to the filesystem. Prevents path traversal and collisions. |
+| **Maximum size** | 50 MB per file (configurable via environment variable) |
+| **Location** | Configurable host path (bind mount), defined by the `DOCUMENTS_STORAGE_PATH` environment variable. A named Docker volume `cmdb-documents` is used by default, but a bind mount to a dedicated path (local or NFS) is recommended in production. |
+| **Download** | Served exclusively through the authenticated endpoint `GET /api/documents/:id/download`. The backend verifies the JWT before streaming the file. |
+| **Allowed extensions** | PDF, DOCX, DOC, PPTX, XLSX, ODT, ODS, TXT, CSV, PNG, JPG |
+
+### Configurable storage (bind mount)
+
+From version 1.5.0 onwards, the document storage path is configured via the `DOCUMENTS_STORAGE_PATH` environment variable in the `.env` file:
+
+```bash
+# Local host path
+DOCUMENTS_STORAGE_PATH=/var/lib/cmdb/documents
+
+# NFS mount (example)
+DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs
+```
+
+When `DOCUMENTS_STORAGE_PATH` is set, the `cmdb-backend` container mounts that host path at `/app/documents`, replacing the named Docker volume. This enables:
+- Backups using standard filesystem tools
+- Integration with shared NFS storage in high-availability environments
+- Direct access for audits without entering the container
+
+The directory must exist on the host before starting the services and must be accessible to the UID of the `node` process inside the container.
+
+The storage directory (whether a bind mount or a named volume) must be included in the backup strategy alongside the PostgreSQL volume.
 
 ---
 
@@ -381,6 +445,26 @@ audit_logs
 | Map | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relations | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
 | Auth | `/login` | `POST /api/auth/login` |
+| Document Repository | `/documents` | `GET /api/documents`, `POST /api/documents` (multipart/multer), `GET /api/documents/:id`, `PATCH /api/documents/:id`, `DELETE /api/documents/:id`, `POST /api/documents/:id/versions`, `GET /api/documents/:id/versions`, `GET /api/documents/:id/download`, `GET/POST/DELETE /api/documents/:id/relations`, `POST /api/documents/:id/cis`, `POST /api/documents/:id/contracts` |
+| Inventory — Documents & Contracts | `/inventory` (CI detail modal) | `GET /api/cis/:id/contracts`, `POST /api/cis/:id/contracts`, `DELETE /api/cis/:id/contracts/:contractId`, `POST /api/cis/:id/documents`, `DELETE /api/cis/:id/documents/:docId` |
+| Contracts — CIs & Documents | `/contracts` (expanded row) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
+
+### Bidirectional associations: CI ↔ Document ↔ Contract
+
+From version 1.5.0 onwards, associations between CIs, documents, and contracts can be managed from any of the three entity views:
+
+| Action | Source view | Endpoint |
+|--------|------------|----------|
+| Associate CIs with a document | Document detail | `POST /api/documents/:id/cis` — body: `{ ciIds: string[] }` |
+| Associate contracts with a document | Document detail | `POST /api/documents/:id/contracts` — body: `{ contractIds: string[] }` |
+| Associate documents with a CI | CI Documents tab | `POST /api/cis/:id/documents` — body: `{ documentIds: string[] }` |
+| Unlink a document from a CI | CI Documents tab | `DELETE /api/cis/:id/documents/:docId` |
+| Associate contracts with a CI | CI Contracts tab | `POST /api/cis/:id/contracts` — body: `{ contractIds: string[] }` |
+| Unlink a contract from a CI | CI Contracts tab | `DELETE /api/cis/:id/contracts/:contractId` |
+| Associate CIs with a contract | Contract expanded row | `POST /api/contracts/:id/cis` — body: `{ ciIds: string[] }` |
+| Unlink a CI from a contract | Contract expanded row | `DELETE /api/contracts/:id/cis/:ciId` |
+
+All write operations require the ADMIN role and generate entries in `audit_logs`.
 
 ---
 

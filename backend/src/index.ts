@@ -19,6 +19,7 @@ import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
 import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
+import multer from 'multer';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -2309,6 +2310,709 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
     console.error('[POST /api/integrations/crowdstrike] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ─── Document Repository ──────────────────────────────────────────────────────
+
+const DOCUMENTS_DIR = process.env.DOCUMENTS_DIR ?? '/app/documents';
+const MAX_FILE_SIZE = parseInt(process.env.MAX_DOCUMENT_SIZE_MB ?? '50', 10) * 1024 * 1024;
+
+// Allowed file extensions and their expected magic bytes
+const ALLOWED_EXTENSIONS = new Set([
+  'pdf', 'docx', 'xlsx', 'pptx', 'doc', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'odt', 'ods',
+]);
+
+// Magic bytes map: extension → [offset, bytes as hex string]
+const MAGIC_BYTES: Record<string, Array<{ offset: number; hex: string }>> = {
+  pdf:  [{ offset: 0, hex: '25504446' }],                                     // %PDF
+  png:  [{ offset: 0, hex: '89504e47' }],                                     // PNG
+  jpg:  [{ offset: 0, hex: 'ffd8ff' }],                                       // JPEG
+  jpeg: [{ offset: 0, hex: 'ffd8ff' }],
+  // DOCX, XLSX, PPTX, ODT, ODS are ZIP-based:
+  docx: [{ offset: 0, hex: '504b0304' }],
+  xlsx: [{ offset: 0, hex: '504b0304' }],
+  pptx: [{ offset: 0, hex: '504b0304' }],
+  odt:  [{ offset: 0, hex: '504b0304' }],
+  ods:  [{ offset: 0, hex: '504b0304' }],
+  // DOC (legacy): D0CF11E0 (Compound Document)
+  doc:  [{ offset: 0, hex: 'd0cf11e0' }],
+  // TXT and CSV: no reliable magic bytes, allow if extension matches
+  txt:  [],
+  csv:  [],
+};
+
+function validateMagicBytes(buffer: Buffer, ext: string): boolean {
+  const checks = MAGIC_BYTES[ext];
+  if (!checks) return false;
+  if (checks.length === 0) return true; // txt/csv: accept on extension
+  return checks.some(({ offset, hex }) => {
+    const slice = buffer.slice(offset, offset + hex.length / 2);
+    return slice.toString('hex').startsWith(hex.toLowerCase());
+  });
+}
+
+// Ensure documents directory exists
+if (!fs.existsSync(DOCUMENTS_DIR)) {
+  fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+}
+
+// Multer storage: memory storage so we can validate before writing to disk
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    if (ALLOWED_EXTENSIONS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de archivo no permitido: .${ext}`));
+    }
+  },
+});
+
+// ── Document Types master ─────────────────────────────────────────────────────
+
+app.get('/api/masters/document-types', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string; isSystem: boolean }[]>`
+      SELECT id::text AS id, code, name, is_system AS "isSystem"
+      FROM "document_types" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (req, res) => {
+  const { code, name } = req.body as { code?: string; name?: string };
+  if (!code?.trim() || !name?.trim()) { res.status(400).json({ error: 'code and name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      INSERT INTO "document_types"(id,code,name,is_system,created_at,updated_at)
+      VALUES(gen_random_uuid(),${code.trim().toUpperCase()},${name.trim()},false,now(),now())
+      RETURNING id::text AS id, code, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name } = req.body as { name?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      UPDATE "document_types" SET name=${name.trim()}, updated_at=now()
+      WHERE id=${req.params.id}::uuid AND is_system=false
+      RETURNING id::text AS id, code, name`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await prisma.$executeRaw`
+      DELETE FROM "document_types" WHERE id=${req.params.id}::uuid AND is_system=false`;
+    if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ── Documents CRUD ────────────────────────────────────────────────────────────
+
+// GET /api/documents — list root documents with latest version info
+app.get('/api/documents', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; title: string; description: string | null;
+      documentTypeId: string; documentTypeName: string; documentTypeCode: string;
+      versionNumber: number; originalName: string; mimeType: string;
+      fileSize: number; uploadedBy: string; createdAt: Date;
+      latestVersionId: string;
+    }[]>`
+      SELECT d.id::text AS id, d.title, d.description,
+             d.document_type_id::text AS "documentTypeId",
+             dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             COALESCE(v.version_number, d.version_number) AS "versionNumber",
+             COALESCE(v.original_name, d.original_name) AS "originalName",
+             COALESCE(v.mime_type, d.mime_type) AS "mimeType",
+             COALESCE(v.file_size, d.file_size) AS "fileSize",
+             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+             d.created_at AS "createdAt",
+             COALESCE(v.id::text, d.id::text) AS "latestVersionId"
+      FROM "documents" d
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+      WHERE d.root_id IS NULL
+      ORDER BY d.created_at DESC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/documents/:id — document detail with versions, relations, associations
+app.get('/api/documents/:id', authenticateToken, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; title: string; description: string | null;
+      documentTypeId: string; documentTypeName: string; documentTypeCode: string;
+      rootId: string | null; versionNumber: number; isLatest: boolean;
+      fileName: string; originalName: string; mimeType: string;
+      fileSize: number; uploadedBy: string; createdAt: Date;
+    }[]>`
+      SELECT d.id::text AS id, d.title, d.description,
+             d.document_type_id::text AS "documentTypeId",
+             dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             d.root_id::text AS "rootId", d.version_number AS "versionNumber",
+             d.is_latest AS "isLatest", d.file_name AS "fileName",
+             d.original_name AS "originalName", d.mime_type AS "mimeType",
+             d.file_size AS "fileSize", d.uploaded_by AS "uploadedBy",
+             d.created_at AS "createdAt"
+      FROM "documents" d
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      WHERE d.id = ${req.params.id}::uuid`;
+    if (!rows.length) { res.status(404).json({ error: 'Document not found' }); return; }
+    const doc = rows[0];
+
+    // Root id for version queries
+    const rootId = doc.rootId ?? doc.id;
+
+    const [versions, relations, cis, contracts, notes] = await Promise.all([
+      // All versions of this document tree
+      prisma.$queryRaw<{ id: string; versionNumber: number; isLatest: boolean; originalName: string; mimeType: string; uploadedBy: string; createdAt: Date }[]>`
+        SELECT id::text AS id, version_number AS "versionNumber", is_latest AS "isLatest",
+               original_name AS "originalName", mime_type AS "mimeType", uploaded_by AS "uploadedBy", created_at AS "createdAt"
+        FROM "documents"
+        WHERE (root_id = ${rootId}::uuid OR id = ${rootId}::uuid)
+        ORDER BY version_number ASC`,
+      // Document relations
+      prisma.$queryRaw<{ id: string; targetDocId: string; targetTitle: string; relationType: string }[]>`
+        SELECT dr.id::text AS id, dr.target_doc_id::text AS "targetDocId",
+               td.title AS "targetTitle", dr.relation_type AS "relationType"
+        FROM "document_relations" dr
+        JOIN "documents" td ON dr.target_doc_id = td.id
+        WHERE dr.source_doc_id = ${rootId}::uuid`,
+      // Associated CIs
+      prisma.$queryRaw<{ ciId: string; ciName: string; ciSlug: string }[]>`
+        SELECT dc.ci_id::text AS "ciId", ci.name AS "ciName", ci.api_slug AS "ciSlug"
+        FROM "document_cis" dc
+        JOIN "configuration_items" ci ON dc.ci_id = ci.id
+        WHERE dc.document_id = ${rootId}::uuid`,
+      // Associated Contracts
+      prisma.$queryRaw<{ contractId: string; contractNumber: string }[]>`
+        SELECT dco.contract_id::text AS "contractId", c.contract_number AS "contractNumber"
+        FROM "document_contracts" dco
+        JOIN "contracts" c ON dco.contract_id = c.id
+        WHERE dco.document_id = ${rootId}::uuid`,
+      // Notes
+      prisma.$queryRaw<{ id: string; content: string; createdBy: string; createdAt: Date }[]>`
+        SELECT id::text AS id, content, created_by AS "createdBy", created_at AS "createdAt"
+        FROM "document_notes"
+        WHERE document_id = ${rootId}::uuid
+        ORDER BY created_at ASC`,
+    ]);
+
+    res.json({ ...doc, versions, relations, cis, contracts, notes });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents — upload new document
+app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'), async (req: Request, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: 'File required' }); return; }
+
+  const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
+  if (!validateMagicBytes(req.file.buffer, ext)) {
+    res.status(400).json({ error: 'El contenido del archivo no coincide con la extensión declarada' });
+    return;
+  }
+
+  const { title, description, documentTypeId, ciIds, contractIds } = req.body as {
+    title?: string; description?: string; documentTypeId?: string;
+    ciIds?: string; contractIds?: string;
+  };
+
+  if (!title?.trim() || !documentTypeId) {
+    res.status(400).json({ error: 'title and documentTypeId required' });
+    return;
+  }
+
+  // Store with UUID-based filename (prevents path traversal / enumeration)
+  const storedFileName = `${crypto.randomUUID()}.${ext}`;
+  const filePath = path.join(DOCUMENTS_DIR, storedFileName);
+
+  try {
+    fs.writeFileSync(filePath, req.file.buffer);
+  } catch {
+    res.status(500).json({ error: 'Error saving file' });
+    return;
+  }
+
+  try {
+    const parsedCiIds: string[] = ciIds ? JSON.parse(ciIds) : [];
+    const parsedContractIds: string[] = contractIds ? JSON.parse(contractIds) : [];
+
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "documents"(id,title,description,document_type_id,root_id,version_number,is_latest,file_name,original_name,mime_type,file_size,uploaded_by,created_at,updated_at)
+      VALUES(gen_random_uuid(),${title.trim()},${description?.trim() || null},${documentTypeId}::uuid,NULL,1,true,${storedFileName},${req.file.originalname},${req.file.mimetype},${req.file.size},${req.user!.email},now(),now())
+      RETURNING id::text AS id`;
+
+    const docId = rows[0].id;
+
+    // Create CI associations
+    for (const ciId of parsedCiIds) {
+      await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${docId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+    }
+    // Create Contract associations
+    for (const contractId of parsedContractIds) {
+      await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${docId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
+    }
+
+    // Audit log
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Document',${docId},${req.user!.email},now())`;
+
+    res.status(201).json({ id: docId });
+  } catch (e) {
+    // Clean up uploaded file on DB error
+    try { fs.unlinkSync(filePath); } catch {}
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// PATCH /api/documents/:id — update metadata (title, description, type)
+app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { title, description, documentTypeId } = req.body as { title?: string; description?: string; documentTypeId?: string };
+  if (!title?.trim()) { res.status(400).json({ error: 'title required' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      UPDATE "documents" SET title=${title.trim()}, description=${description?.trim() || null},
+        document_type_id=COALESCE(${documentTypeId || null}::uuid, document_type_id), updated_at=now()
+      WHERE id=${req.params.id}::uuid RETURNING id::text AS id`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE','Document',${req.params.id},${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/documents/:id — delete document (and file from disk)
+app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ file_name: string; root_id: string | null }[]>`
+      SELECT file_name, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    await prisma.$executeRaw`DELETE FROM "documents" WHERE id=${req.params.id}::uuid`;
+
+    // Delete file from disk
+    const filePath = path.join(DOCUMENTS_DIR, rows[0].file_name);
+    try { fs.unlinkSync(filePath); } catch {}
+
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','Document',${req.params.id},${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/documents/:id/download — authenticated file download
+// Supports both Authorization header and ?token= query param (for embedded viewers like iframe/img)
+// Supports ?inline=true to display in browser instead of triggering download
+app.get('/api/documents/:id/download', async (req, res) => {
+  // Support both Authorization header and ?token= query param (for embedded viewers)
+  const authHeader = req.headers['authorization'];
+  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  const tokenStr = headerToken ?? queryToken;
+
+  if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
+
+  try {
+    jwt.verify(tokenStr, JWT_SECRET_VALUE) as JwtPayload;
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' }); return;
+  }
+
+  // Also support ?inline=true to display in browser instead of download
+  const inline = req.query.inline === 'true';
+
+  try {
+    const rows = await prisma.$queryRaw<{ file_name: string; original_name: string; mime_type: string }[]>`
+      SELECT file_name, original_name, mime_type FROM "documents" WHERE id=${req.params.id}::uuid`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const { file_name, original_name, mime_type } = rows[0];
+    const filePath = path.join(DOCUMENTS_DIR, file_name);
+    if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
+    res.setHeader('Content-Type', mime_type);
+    const disposition = inline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+    res.setHeader('Content-Disposition', disposition);
+    fs.createReadStream(filePath).pipe(res as unknown as NodeJS.WritableStream);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents/:id/versions — upload new version
+app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.single('file'), async (req: Request, res: Response) => {
+  if (!req.file) { res.status(400).json({ error: 'File required' }); return; }
+
+  const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
+  if (!validateMagicBytes(req.file.buffer, ext)) {
+    res.status(400).json({ error: 'El contenido del archivo no coincide con la extensión declarada' });
+    return;
+  }
+
+  try {
+    // Find the root document
+    const rootRows = await prisma.$queryRaw<{ id: string; root_id: string | null }[]>`
+      SELECT id::text AS id, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
+    if (!rootRows.length) { res.status(404).json({ error: 'Document not found' }); return; }
+
+    const rootId = rootRows[0].root_id ?? rootRows[0].id;
+
+    // Get current max version number
+    const maxRows = await prisma.$queryRaw<{ max: number }[]>`
+      SELECT COALESCE(MAX(version_number), 0) AS max FROM "documents"
+      WHERE root_id = ${rootId}::uuid OR id = ${rootId}::uuid`;
+    const nextVersion = (maxRows[0]?.max ?? 0) + 1;
+
+    // Store file
+    const storedFileName = `${crypto.randomUUID()}.${ext}`;
+    const filePath = path.join(DOCUMENTS_DIR, storedFileName);
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    // Mark previous latest as not latest (only version children, not the root document itself)
+    await prisma.$executeRaw`UPDATE "documents" SET is_latest=false WHERE root_id=${rootId}::uuid`;
+
+    // Get document type and title from root
+    const metaRows = await prisma.$queryRaw<{ title: string; document_type_id: string }[]>`
+      SELECT title, document_type_id::text AS document_type_id FROM "documents" WHERE id=${rootId}::uuid`;
+
+    // Insert new version
+    const newRows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "documents"(id,title,description,document_type_id,root_id,version_number,is_latest,file_name,original_name,mime_type,file_size,uploaded_by,created_at,updated_at)
+      VALUES(gen_random_uuid(),${metaRows[0].title},NULL,${metaRows[0].document_type_id}::uuid,${rootId}::uuid,${nextVersion},true,${storedFileName},${req.file.originalname},${req.file.mimetype},${req.file.size},${req.user!.email},now(),now())
+      RETURNING id::text AS id`;
+
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'VERSION','Document',${newRows[0].id},${req.user!.email},now())`;
+
+    res.status(201).json({ id: newRows[0].id, versionNumber: nextVersion });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/documents/:rootId/versions/:versionId — delete a specific version
+app.delete('/api/documents/:rootId/versions/:versionId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    // Fetch the version to delete
+    const vRows = await prisma.$queryRaw<{ id: string; root_id: string | null; is_latest: boolean; file_name: string; version_number: number }[]>`
+      SELECT id::text AS id, root_id::text AS root_id, is_latest, file_name, version_number
+      FROM "documents" WHERE id=${req.params.versionId}::uuid`;
+    if (!vRows.length) { res.status(404).json({ error: 'Version not found' }); return; }
+    const ver = vRows[0];
+
+    // Cannot delete root document via this endpoint
+    if (!ver.root_id) { res.status(400).json({ error: 'Use DELETE /api/documents/:id to delete the root document' }); return; }
+
+    const wasLatest = ver.is_latest;
+
+    // Delete the version record
+    await prisma.$executeRaw`DELETE FROM "documents" WHERE id=${req.params.versionId}::uuid`;
+
+    // Delete the file from disk
+    try { fs.unlinkSync(path.join(DOCUMENTS_DIR, ver.file_name)); } catch {}
+
+    // If this was the latest version, promote the previous one
+    if (wasLatest) {
+      const prevRows = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "documents"
+        WHERE root_id=${ver.root_id}::uuid
+        ORDER BY version_number DESC LIMIT 1`;
+      if (prevRows.length) {
+        await prisma.$executeRaw`UPDATE "documents" SET is_latest=true WHERE id=${prevRows[0].id}::uuid`;
+      }
+      // If no more versions, the root document is the current file (is_latest stays true on root)
+    }
+
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_VERSION','Document',${req.params.versionId},${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents/:id/relations — add relation to another document
+app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async (req, res) => {
+  const { targetDocId, relationType } = req.body as { targetDocId?: string; relationType?: string };
+  if (!targetDocId || !relationType) { res.status(400).json({ error: 'targetDocId and relationType required' }); return; }
+  const validTypes = ['AMENDMENT_OF', 'RELATED_TO', 'SUPERSEDES'];
+  if (!validTypes.includes(relationType)) { res.status(400).json({ error: 'Invalid relationType' }); return; }
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "document_relations"(id,source_doc_id,target_doc_id,relation_type,created_at)
+      VALUES(gen_random_uuid(),${req.params.id}::uuid,${targetDocId}::uuid,${relationType},now())
+      ON CONFLICT DO NOTHING`;
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/documents/:id/relations/:targetId — remove relation
+app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents/:id/ci/:ciId — associate document with CI
+app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/documents/:id/ci/:ciId — remove CI association
+app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents/:id/contract/:contractId — associate with contract
+app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
+    res.status(201).json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/documents/:id/contract/:contractId — remove contract association
+app.delete('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/cis/:id/documents — get documents for a CI
+app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: Date; latestVersionId: string }[]>`
+      SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             COALESCE(v.original_name, d.original_name) AS "originalName",
+             COALESCE(v.version_number, d.version_number) AS "versionNumber",
+             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+             d.created_at AS "createdAt",
+             COALESCE(v.id::text, d.id::text) AS "latestVersionId"
+      FROM "document_cis" dc
+      JOIN "documents" d ON dc.document_id = d.id
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+      WHERE dc.ci_id = ${req.params.id}::uuid AND d.root_id IS NULL
+      ORDER BY d.created_at DESC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/contracts/:id/documents — get documents for a contract
+app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: Date; latestVersionId: string; mimeType: string }[]>`
+      SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             COALESCE(v.original_name, d.original_name) AS "originalName",
+             COALESCE(v.version_number, d.version_number) AS "versionNumber",
+             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+             d.created_at AS "createdAt",
+             COALESCE(v.id::text, d.id::text) AS "latestVersionId",
+             COALESCE(v.mime_type, d.mime_type) AS "mimeType"
+      FROM "document_contracts" dc
+      JOIN "documents" d ON dc.document_id = d.id
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+      WHERE dc.contract_id = ${req.params.id}::uuid AND d.root_id IS NULL
+      ORDER BY d.created_at DESC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ─── Bulk Association Endpoints ───────────────────────────────────────────────
+
+// POST /api/documents/:id/cis — Bulk associate CIs to a document
+app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
+  const { ciIds } = parsed.data;
+  const docId = req.params.id;
+  try {
+    let associated = 0;
+    for (const ciId of ciIds) {
+      await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${docId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+      associated++;
+    }
+    res.json({ associated });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to document' }); }
+});
+
+// POST /api/documents/:id/contracts — Bulk associate contracts to a document
+app.post('/api/documents/:id/contracts', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ contractIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'contractIds must be a non-empty array of UUIDs' }); return; }
+  const { contractIds } = parsed.data;
+  const docId = req.params.id;
+  try {
+    let associated = 0;
+    for (const contractId of contractIds) {
+      await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${docId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
+      associated++;
+    }
+    res.json({ associated });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate contracts to document' }); }
+});
+
+// GET /api/cis/:id/contracts — List contracts associated with a CI
+app.get('/api/cis/:id/contracts', authenticateToken, async (req, res) => {
+  const ciId = req.params.id as string;
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; contractNumber: string; startDate: Date; endDate: Date | null; vendorId: string; vendorName: string }[]>`
+      SELECT c.id::text AS id, c.contract_number AS "contractNumber", c.start_date AS "startDate", c.end_date AS "endDate",
+             v.id::text AS "vendorId", v.name AS "vendorName"
+      FROM contracts c
+      JOIN vendors v ON c.vendor_id = v.id
+      JOIN "_ContractToCI" ctc ON ctc."A" = c.id
+      WHERE ctc."B" = ${ciId}::uuid`;
+    const result = rows.map((r) => ({
+      id: r.id,
+      contractNumber: r.contractNumber,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      vendor: { id: r.vendorId, name: r.vendorName },
+    }));
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch contracts for CI' }); }
+});
+
+// POST /api/cis/:id/contracts — Bulk associate contracts to a CI
+app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ contractIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'contractIds must be a non-empty array of UUIDs' }); return; }
+  const { contractIds } = parsed.data;
+  const ciId = req.params.id as string;
+  try {
+    await prisma.cI.update({
+      where: { id: ciId },
+      data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
+    });
+    res.json({ associated: contractIds.length });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate contracts to CI' }); }
+});
+
+// DELETE /api/cis/:id/contracts/:contractId — Disassociate contract from CI
+app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin, async (req, res) => {
+  const ciId = req.params.id as string;
+  const contractId = req.params.contractId as string;
+  try {
+    await prisma.cI.update({
+      where: { id: ciId },
+      data: { contracts: { disconnect: [{ id: contractId }] } },
+    });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to disassociate contract from CI' }); }
+});
+
+// POST /api/cis/:id/documents — Bulk associate documents to a CI
+app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ documentIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'documentIds must be a non-empty array of UUIDs' }); return; }
+  const { documentIds } = parsed.data;
+  const ciId = req.params.id as string;
+  try {
+    let associated = 0;
+    for (const documentId of documentIds) {
+      await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+      associated++;
+    }
+    res.json({ associated });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate documents to CI' }); }
+});
+
+// DELETE /api/cis/:id/documents/:docId — Remove document association from CI
+app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+  const ciId = req.params.id as string;
+  const docId = req.params.docId as string;
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to remove document association from CI' }); }
+});
+
+// GET /api/contracts/:id/cis — List CIs associated with a contract
+app.get('/api/contracts/:id/cis', authenticateToken, async (req, res) => {
+  const contractId = req.params.id as string;
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; name: string; apiSlug: string; environment: string; criticality: string }[]>`
+      SELECT ci.id::text AS id, ci.name, ci.api_slug AS "apiSlug", ci.environment::text AS environment, ci.criticality::text AS criticality
+      FROM "CI" ci
+      JOIN "_ContractToCI" ctc ON ctc."B" = ci.id
+      WHERE ctc."A" = ${contractId}::uuid`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch CIs for contract' }); }
+});
+
+// POST /api/contracts/:id/cis — Bulk associate CIs to a contract
+app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
+  const { ciIds } = parsed.data;
+  const contractId = req.params.id as string;
+  try {
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
+    });
+    res.json({ associated: ciIds.length });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to contract' }); }
+});
+
+// DELETE /api/contracts/:id/cis/:ciId — Disassociate CI from contract
+app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+  const contractId = req.params.id as string;
+  const ciId = req.params.ciId as string;
+  try {
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { cis: { disconnect: [{ id: ciId }] } },
+    });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to disassociate CI from contract' }); }
+});
+
+// ─── Document Notes ───────────────────────────────────────────────────────────
+
+// GET /api/documents/:id/notes — get all notes for a document (resolves to root)
+app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
+  try {
+    const docRows = await prisma.$queryRaw<{ id: string; root_id: string | null }[]>`
+      SELECT id::text AS id, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
+    if (!docRows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const rootId = docRows[0].root_id ?? docRows[0].id;
+    const rows = await prisma.$queryRaw<{ id: string; content: string; createdBy: string; createdAt: Date }[]>`
+      SELECT id::text AS id, content, created_by AS "createdBy", created_at AS "createdAt"
+      FROM "document_notes"
+      WHERE document_id = ${rootId}::uuid
+      ORDER BY created_at ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/documents/:id/notes — add a note (any authenticated user)
+app.post('/api/documents/:id/notes', authenticateToken, async (req, res) => {
+  const { content } = req.body as { content?: string };
+  if (!content?.trim()) { res.status(400).json({ error: 'content required' }); return; }
+  try {
+    const docRows = await prisma.$queryRaw<{ id: string; root_id: string | null }[]>`
+      SELECT id::text AS id, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
+    if (!docRows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const rootId = docRows[0].root_id ?? docRows[0].id;
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "document_notes"(id, document_id, content, created_by, created_at)
+      VALUES(gen_random_uuid(), ${rootId}::uuid, ${content.trim()}, ${req.user!.email}, now())
+      RETURNING id::text AS id`;
+    res.status(201).json({ id: rows[0].id });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 // ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────

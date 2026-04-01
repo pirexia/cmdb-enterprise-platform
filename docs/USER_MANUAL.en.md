@@ -17,8 +17,9 @@
 7. [Bulk Import by CSV](#7-bulk-import-by-csv)
 8. [Relationship and Topology Management](#8-relationship-and-topology-management)
 9. [Vulnerability Management](#9-vulnerability-management)
-10. [Contracts and Addenda](#10-contracts-and-addenda)
-11. [Lifecycle Lookup Center (EOL/EOS)](#11-lifecycle-lookup-center-eoless)
+10. [Document Repository](#10-document-repository)
+11. [Contracts and Addenda](#11-contracts-and-addenda)
+12. [Lifecycle Lookup Center (EOL/EOS)](#12-lifecycle-lookup-center-eoless)
 12. [Automated Daily Alerts](#12-automated-daily-alerts)
 13. [Reports Center](#13-reports-center)
 14. [Configuration and User Management](#14-configuration-and-user-management)
@@ -177,6 +178,9 @@ The platform has three distinct roles:
 | View Integrations | ✅ | ❌ | ❌ |
 | **Upload Greenbone/CrowdStrike reports** | ✅ | ❌ | ❌ |
 | View Reports | ✅ | ✅ | ✅ |
+| View/download documents | ✅ | ✅ | ✅ |
+| **Upload/edit/delete documents** | ✅ | ❌ | ❌ |
+| **Manage Document Types** | ✅ | ❌ | ❌ |
 | **Settings and Users** | ✅ | ❌ | ❌ |
 | **View Audit Log** | ✅ | ✅ | ❌ |
 | **Send test email** | ✅ | ❌ | ❌ |
@@ -445,7 +449,242 @@ Relationships can be deleted from two points in the interface:
 
 ---
 
-## 10. Contracts and Addenda
+## 10. Document Repository
+
+The Document Repository is the centralised module for storing, versioning, and consulting corporate documentation linked to CIs and contracts. It meets the document traceability requirements of ISO 27001 and NIS2.
+
+### Accessing the repository
+Click **"Document Repository"** in the sidebar menu. The module is accessible to all authenticated users.
+
+### Viewing and downloading documents
+
+1. The main list shows all registered documents with: name, type, current version, size, and upload date
+2. Click on any document to open its **detail view**
+3. The detail view displays:
+   - Metadata: name, description, type, tags, and the user who uploaded it
+   - CIs and contracts associated with the document
+   - Version history (the most recent version is shown by default)
+4. Click **"⬇️ Download"** to retrieve the file. An active authenticated session is required
+
+### Supported file formats
+
+The system validates both the file extension and the header bytes (magic bytes) to guarantee integrity:
+
+| Category | Allowed extensions |
+|----------|--------------------|
+| Office documents | PDF, DOCX, DOC, PPTX, XLSX, ODT, ODS |
+| Plain text | TXT, CSV |
+| Images | PNG, JPG |
+
+> The maximum file size is **50 MB**.
+
+### Uploading a new document (ADMIN only)
+
+1. Click **"+ New Document"**
+2. Select the file from your machine
+3. Fill in the metadata:
+   - **Name** — descriptive name for the document
+   - **Document Type** — select from the list of configured types (see Master Data section)
+   - **Description** — optional summary of the content
+4. Optionally, associate the document with one or more **CIs** and/or **Contracts**
+5. Click **"Upload"**
+
+> The system stores the file under an automatically generated filename (UUID) to avoid collisions and conceal the original name in the filesystem.
+
+### Editing document metadata (ADMIN only)
+
+1. Open the document detail view
+2. Click **"✏️ Edit"**
+3. Modify the desired fields (name, description, type, associations)
+4. Click **"Save"**
+
+> Editing metadata does not create a new version. Only uploading a new file generates an entry in the version history.
+
+### Deleting a document (ADMIN only)
+
+1. Open the document detail view
+2. Click **"🗑️ Delete"**
+3. Confirm the action in the dialog
+4. The record and all its stored versions are deleted
+
+> This action is irreversible.
+
+### Version control
+
+Each document maintains a complete version history. The most recent version is displayed by default.
+
+**To upload a new version:**
+1. Open the document detail view
+2. Click **"📤 New Version"**
+3. Select the new file and confirm
+4. The new version becomes the current one; previous versions remain accessible in the history
+
+**To browse earlier versions:**
+- In the detail view, expand the **"Version History"** section
+- Each entry shows: version number, upload date, user, and file size
+- Any earlier version can be downloaded individually
+
+### Document relationships
+
+Documents can be linked to each other via typed relationships:
+
+| Relationship type | Meaning |
+|------------------|---------|
+| **AMENDMENT_OF** | The document is an amendment of another (e.g. an addendum to a contract) |
+| **RELATED_TO** | Thematically related documents |
+| **SUPERSEDES** | The document replaces another (major version, new edition) |
+
+To create a relationship:
+1. In the detail view, go to the **"Related Documents"** section
+2. Click **"+ Add relationship"**
+3. Select the relationship type and search for the target document
+4. Confirm
+
+### Document Types (Master Data)
+
+Document types are configurable from **Master Data → Document Types** (ADMIN only). The predefined types are:
+
+| Code | Description |
+|------|-------------|
+| CONTRACT | Contracts with vendors and third parties |
+| ADDENDUM | Contractual amendments and annexes |
+| TECHNICAL DOC. | Technical specifications, diagrams, manuals |
+| OFFER | Commercial proposals and quotations |
+| LICENSE | Software licence documentation |
+
+### Association with CIs and Contracts
+
+Documents can be linked to:
+- **CIs** — the document appears on the "Documents" tab in the CI detail view
+- **Contracts** — the document appears in the contract detail view
+
+This linkage makes it easy to locate all documentation related to an asset or contractual agreement directly from its own record.
+
+### Document preview
+
+The document detail view includes a **"Preview"** section that renders the file content directly in the browser without requiring a download. The preview always shows the latest version of the document.
+
+Behaviour varies by file type:
+
+| File type | Behaviour |
+|-----------|-----------|
+| PDF | Embedded PDF viewer (iframe) |
+| Images (PNG, JPG, JPEG) | Inline image display |
+| Text / CSV | Formatted text preview |
+| Other formats | "Preview not available" message |
+
+> The preview does not replace the download. To retrieve the original file, use the **"Download"** button.
+
+### Document notes
+
+The document detail view includes a **"Notes"** section, accessible to all authenticated users. Notes allow free-text comments to be recorded against the root document, visible from any version view.
+
+**Key characteristics:**
+- Any authenticated user can add free-text notes
+- Notes are **append-only**: they cannot be edited or deleted from the UI
+- Each note displays the author's email and the creation timestamp
+- Notes are attached to the root document and are visible across all version views
+
+**Typical use case:** the legal team adds a note on the legal status of the document; then the technical team adds a note with technical observations. Both notes remain recorded immutably.
+
+To add a note:
+1. Open the document detail view
+2. Scroll to the **"Notes"** section
+3. Type the text in the input field
+4. Click **"Add note"**
+
+### Deleting a version (ADMIN only)
+
+ADMIN users can delete individual versions from the version history without deleting the entire document.
+
+1. Open the document detail view
+2. Expand the **"Version History"** section
+3. Hover over the version you want to delete; a trash icon appears
+4. Click the trash icon and confirm the action
+
+**Automatic behaviour:**
+- If the deleted version was the current (latest) version, the immediately preceding version is automatically promoted to become the new latest version
+- The root document itself cannot be deleted via this button. To delete the full document and all its versions, use the **"Delete"** button in the header of the detail view
+
+> This action is irreversible.
+
+### Composable filters and sortable columns in the document list
+
+The main Document Repository page provides advanced search and sorting tools.
+
+**Available filters (independent of each other):**
+
+| Filter | Type | Description |
+|--------|------|-------------|
+| Title | Free text | Search by document name |
+| Document type | Dropdown | Filter by type configured in Master Data |
+| Uploaded by | Free text | Search by email or name of the user who uploaded the document |
+
+The three filters can be combined freely. When any filter is active, a **"Clear filters"** button appears and the number of matching results is shown.
+
+**Sortable columns:**
+
+All table columns are sortable. Click a column header to sort by that field; click again to toggle between ascending and descending order. All 7 data columns support sorting.
+
+### Associating CIs and Contracts from the document
+
+From the document detail view it is possible to manage associations with CIs and contracts directly, without editing the full document record.
+
+**Adding CIs to the document:**
+1. Open the document detail view
+2. In the **"Associated CIs"** section, click **"Add CIs"**
+3. A panel opens with a search field; type to filter the list of available CIs
+4. Select one or more CIs using the checkboxes
+5. Confirm the selection; the CIs are linked to the document immediately
+
+**Adding Contracts to the document:**
+1. In the **"Associated Contracts"** section, click **"Add Contracts"**
+2. Select one or more contracts in the search panel
+3. Confirm the selection
+
+> Associations created from the document are bidirectional: the document appears automatically on the "Documents" tab of the CI and in the corresponding contract view.
+
+### Associating documents and contracts from the CI
+
+The CI detail view includes dedicated tabs for managing its associated documents and contracts.
+
+**"Documents" tab of the CI:**
+- Lists all documents linked to the CI with name, type, and current version
+- Click **"Associate document"** to open a searchable multi-select panel
+- To unlink a document, click the unlink icon next to the corresponding row
+- Unlinking does not delete the document; it only removes the association with that CI
+
+**"Contracts" tab of the CI:**
+- Lists all contracts linked to the CI
+- Click **"Associate contract"** to open a multi-select panel
+- To unlink a contract, click the unlink icon
+
+> Only users with the ADMIN role can create or remove associations.
+
+### Contracts view: document viewer and associations
+
+The expanded row of a contract on the Contracts and Addenda page includes advanced document viewing and management capabilities.
+
+**Embedded document viewer:**
+- PDF documents associated with the contract are displayed in an embedded viewer (iframe) without requiring a download
+- Images (PNG, JPG) are rendered inline
+- Text and CSV files are shown in a readable format
+- For other formats, a **"Download"** button is displayed
+
+**Associating CIs with the contract:**
+1. In the expanded contract row, open the **"Associated CIs"** panel
+2. Click **"Add CIs"** to open the searchable multi-select panel
+3. Select the CIs covered by the contract and confirm
+4. To unlink a CI from the contract, click the unlink icon next to the CI row
+
+**Associating documents with the contract:**
+1. In the expanded contract row, open the **"Associated Documents"** panel
+2. Click **"Associate document"** to search and select existing documents from the repository
+3. The selected documents are linked to the contract and appear in the viewer
+
+---
+
+## 11. Contracts and Addenda
 
 ### Viewing contracts
 1. Click **"Contracts and Addenda"** in the sidebar menu

@@ -17,8 +17,9 @@
 7. [Importación Masiva por CSV](#7-importación-masiva-por-csv)
 8. [Gestión de Relaciones y Topología](#8-gestión-de-relaciones-y-topología)
 9. [Gestión de Vulnerabilidades](#9-gestión-de-vulnerabilidades)
-10. [Contratos y Adendas](#10-contratos-y-adendas)
-11. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#11-centro-de-consulta-de-ciclo-de-vida-eoless)
+10. [Repositorio Documental](#10-repositorio-documental)
+11. [Contratos y Adendas](#11-contratos-y-adendas)
+12. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#12-centro-de-consulta-de-ciclo-de-vida-eoless)
 12. [Alertas Diarias Automáticas](#12-alertas-diarias-automáticas)
 13. [Centro de Reportes](#13-centro-de-reportes)
 14. [Configuración y Gestión de Usuarios](#14-configuración-y-gestión-de-usuarios)
@@ -177,6 +178,9 @@ La plataforma tiene tres roles diferenciados:
 | Ver Integraciones | ✅ | ❌ | ❌ |
 | **Subir informes Greenbone/CrowdStrike** | ✅ | ❌ | ❌ |
 | Ver Reportes | ✅ | ✅ | ✅ |
+| Ver/descargar documentos | ✅ | ✅ | ✅ |
+| **Subir/editar/eliminar documentos** | ✅ | ❌ | ❌ |
+| **Gestionar Tipos de Documento** | ✅ | ❌ | ❌ |
 | **Configuración y Usuarios** | ✅ | ❌ | ❌ |
 | **Ver Auditoría** | ✅ | ✅ | ❌ |
 | **Enviar correo de prueba** | ✅ | ❌ | ❌ |
@@ -445,7 +449,242 @@ Las relaciones se pueden eliminar desde dos puntos de la interfaz:
 
 ---
 
-## 10. Contratos y Adendas
+## 10. Repositorio Documental
+
+El Repositorio Documental es el módulo centralizado para almacenar, versionar y consultar documentación corporativa vinculada a CIs y contratos. Cumple con los requisitos de trazabilidad documental de ISO 27001 y NIS2.
+
+### Acceder al repositorio
+Haz clic en **"Repositorio Documental"** en el menú lateral. El módulo es accesible para todos los usuarios autenticados.
+
+### Ver y descargar documentos
+
+1. En la lista principal, se muestran todos los documentos registrados con: nombre, tipo, versión vigente, tamaño y fecha de subida
+2. Haz clic sobre cualquier documento para abrir su **vista de detalle**
+3. En la vista de detalle se muestra:
+   - Metadatos: nombre, descripción, tipo, etiquetas y usuario que lo subió
+   - CIs y contratos asociados a ese documento
+   - Historial de versiones (con la versión más reciente visible por defecto)
+4. Haz clic en **"⬇️ Descargar"** para obtener el archivo. La descarga requiere autenticación activa
+
+### Formatos de archivo admitidos
+
+El sistema valida tanto la extensión como los bytes de cabecera del archivo (magic bytes) para garantizar la integridad:
+
+| Categoría | Extensiones permitidas |
+|-----------|----------------------|
+| Documentos Office | PDF, DOCX, DOC, PPTX, XLSX, ODT, ODS |
+| Texto plano | TXT, CSV |
+| Imágenes | PNG, JPG |
+
+> El tamaño máximo por archivo es de **50 MB**.
+
+### Subir un nuevo documento (solo ADMIN)
+
+1. Haz clic en **"+ Nuevo Documento"**
+2. Selecciona el archivo desde tu equipo
+3. Rellena los metadatos:
+   - **Nombre** — nombre descriptivo del documento
+   - **Tipo de Documento** — selecciona de la lista de tipos configurados (ver sección de Datos Maestros)
+   - **Descripción** — resumen opcional del contenido
+4. Opcionalmente, asocia el documento a uno o varios **CIs** y/o **Contratos**
+5. Haz clic en **"Subir"**
+
+> El sistema almacena el archivo con un nombre de fichero generado automáticamente (UUID) para evitar colisiones y ocultar el nombre original en el sistema de ficheros.
+
+### Editar metadatos de un documento (solo ADMIN)
+
+1. Abre la vista de detalle del documento
+2. Haz clic en **"✏️ Editar"**
+3. Modifica los campos deseados (nombre, descripción, tipo, asociaciones)
+4. Haz clic en **"Guardar"**
+
+> La edición de metadatos no crea una nueva versión. Solo la subida de un nuevo archivo genera una entrada en el historial de versiones.
+
+### Eliminar un documento (solo ADMIN)
+
+1. Abre la vista de detalle del documento
+2. Haz clic en **"🗑️ Eliminar"**
+3. Confirma la acción en el diálogo
+4. Se eliminan el registro y todas sus versiones almacenadas
+
+> Esta acción es irreversible.
+
+### Control de versiones
+
+Cada documento mantiene un historial completo de versiones. La versión más reciente se muestra por defecto.
+
+**Para subir una nueva versión:**
+1. Abre la vista de detalle del documento
+2. Haz clic en **"📤 Nueva Versión"**
+3. Selecciona el nuevo archivo y confirma
+4. La nueva versión pasa a ser la vigente; las anteriores quedan accesibles en el historial
+
+**Para consultar versiones anteriores:**
+- En la vista de detalle, despliega la sección **"Historial de Versiones"**
+- Cada entrada muestra: número de versión, fecha de subida, usuario y tamaño del archivo
+- Se puede descargar cualquier versión anterior individualmente
+
+### Relaciones entre documentos
+
+Los documentos pueden estar relacionados entre sí mediante vínculos tipados:
+
+| Tipo de relación | Significado |
+|-----------------|-------------|
+| **AMENDMENT_OF** | El documento es una enmienda de otro (ej. adenda de un contrato) |
+| **RELATED_TO** | Documentos relacionados temáticamente |
+| **SUPERSEDES** | El documento reemplaza a otro (versión mayor, nueva edición) |
+
+Para crear una relación:
+1. En la vista de detalle, ve a la sección **"Documentos relacionados"**
+2. Haz clic en **"+ Añadir relación"**
+3. Selecciona el tipo de relación y busca el documento destino
+4. Confirma
+
+### Tipos de Documento (Datos Maestros)
+
+Los tipos de documento son configurables desde **Datos Maestros → Tipos de Documento** (solo ADMIN). Los tipos predefinidos son:
+
+| Código | Descripción |
+|--------|-------------|
+| CONTRATO | Contratos con proveedores y terceros |
+| ADENDA | Modificaciones y anexos contractuales |
+| DOC. TÉCNICO | Especificaciones técnicas, diagramas, manuales |
+| OFERTA | Propuestas comerciales y presupuestos |
+| LICENCIA | Documentación de licencias de software |
+
+### Asociación con CIs y Contratos
+
+Los documentos pueden vincularse a:
+- **CIs** — el documento aparece en la pestaña "Documentos" de la vista de detalle del CI
+- **Contratos** — el documento aparece en la vista de detalle del contrato
+
+Esta vinculación permite localizar rápidamente toda la documentación relativa a un activo o acuerdo contractual desde su propio registro.
+
+### Vista previa del documento
+
+En la vista de detalle de un documento, la sección **"Vista previa"** muestra el contenido del archivo directamente en el navegador sin necesidad de descargarlo. La vista previa muestra siempre la versión más reciente del documento.
+
+El comportamiento varía según el tipo de archivo:
+
+| Tipo de archivo | Comportamiento |
+|-----------------|----------------|
+| PDF | Visor PDF embebido (iframe) |
+| Imágenes (PNG, JPG, JPEG) | Imagen mostrada en línea |
+| Texto / CSV | Vista de texto con formato |
+| Otros formatos | Mensaje "Vista previa no disponible" |
+
+> La vista previa no sustituye a la descarga. Para obtener el archivo original, utiliza el botón **"Descargar"**.
+
+### Notas del documento
+
+En la vista de detalle de un documento existe la sección **"Notas"**, accesible para todos los usuarios autenticados. Las notas permiten registrar comentarios libres asociados al documento raíz, visibles desde cualquier vista de versión.
+
+**Características:**
+- Cualquier usuario autenticado puede añadir notas de texto libre
+- Las notas son de **solo adición** (append-only): no se pueden editar ni eliminar desde la interfaz
+- Cada nota muestra el email del autor y la marca de tiempo de creación
+- Las notas están vinculadas al documento raíz y son visibles en todas las vistas de versión
+
+**Caso de uso típico:** el equipo jurídico añade una nota sobre el estado legal del documento; a continuación, el equipo técnico añade una nota con observaciones técnicas. Ambas notas quedan registradas de forma inmutable.
+
+Para añadir una nota:
+1. Abre la vista de detalle del documento
+2. Desplázate hasta la sección **"Notas"**
+3. Escribe el texto en el campo de entrada
+4. Haz clic en **"Añadir nota"**
+
+### Eliminar una versión (solo ADMIN)
+
+Los usuarios con rol ADMIN pueden eliminar versiones individuales del historial sin necesidad de eliminar el documento completo.
+
+1. Abre la vista de detalle del documento
+2. Despliega la sección **"Historial de Versiones"**
+3. Pasa el cursor sobre la versión que deseas eliminar; aparecerá el icono de papelera
+4. Haz clic en el icono de papelera y confirma la acción
+
+**Comportamiento automático:**
+- Si la versión eliminada era la versión más reciente (vigente), la versión inmediatamente anterior es promovida automáticamente como nueva versión vigente
+- No es posible eliminar el documento raíz a través de este botón. Para eliminar el documento completo con todas sus versiones, utiliza el botón **"Eliminar"** de la cabecera de la vista de detalle
+
+> Esta acción es irreversible.
+
+### Filtros compuestos y columnas ordenables en la lista de documentos
+
+La página principal del Repositorio Documental ofrece herramientas de búsqueda y ordenación avanzadas.
+
+**Filtros disponibles (independientes entre sí):**
+
+| Filtro | Tipo | Descripción |
+|--------|------|-------------|
+| Título | Texto libre | Busca por nombre del documento |
+| Tipo de documento | Desplegable | Filtra por tipo configurado en Datos Maestros |
+| Subido por | Texto libre | Busca por email o nombre del usuario que subió el documento |
+
+Los tres filtros pueden combinarse libremente. Cuando algún filtro está activo, aparece el botón **"Limpiar filtros"** y se muestra el número de resultados encontrados.
+
+**Columnas ordenables:**
+
+Todas las columnas de la tabla son ordenables. Haz clic sobre el encabezado de una columna para ordenar por ese campo; haz clic de nuevo para alternar entre orden ascendente y descendente. Las 7 columnas de datos admiten ordenación.
+
+### Asociar CIs y Contratos desde el documento
+
+Desde la vista de detalle de un documento es posible gestionar sus asociaciones con CIs y contratos directamente, sin necesidad de editar el documento completo.
+
+**Añadir CIs al documento:**
+1. Abre la vista de detalle del documento
+2. En la sección **"CIs asociados"**, haz clic en **"Añadir CIs"**
+3. Se abre un panel con un campo de búsqueda; escribe para filtrar la lista de CIs disponibles
+4. Selecciona uno o varios CIs mediante las casillas de verificación
+5. Confirma la selección; los CIs quedan vinculados de inmediato al documento
+
+**Añadir Contratos al documento:**
+1. En la sección **"Contratos asociados"**, haz clic en **"Añadir Contratos"**
+2. Selecciona uno o varios contratos en el panel de búsqueda
+3. Confirma la selección
+
+> Las asociaciones creadas desde el documento son bidireccionales: el documento aparece automáticamente en la pestaña "Documentos" del CI y en la vista del contrato correspondiente.
+
+### Asociar documentos y contratos desde el CI
+
+La vista de detalle de un CI incluye pestañas dedicadas para gestionar sus documentos y contratos asociados.
+
+**Pestaña "Documentos" del CI:**
+- Lista todos los documentos vinculados al CI con nombre, tipo y versión vigente
+- Haz clic en **"Asociar documento"** para abrir un panel de búsqueda y selección múltiple
+- Para desvincular un documento, haz clic en el icono de desvinculación junto a la fila correspondiente
+- La operación de desvinculación no elimina el documento; únicamente rompe la asociación con ese CI
+
+**Pestaña "Contratos" del CI:**
+- Lista todos los contratos vinculados al CI
+- Haz clic en **"Asociar contrato"** para abrir un panel de selección múltiple
+- Para desvincular un contrato, haz clic en el icono de desvinculación
+
+> Solo los usuarios con rol ADMIN pueden crear o eliminar asociaciones.
+
+### Vista de Contratos: visor y asociaciones
+
+La fila expandida de un contrato en la página de Contratos y Adendas incorpora funcionalidades avanzadas de visualización y gestión documental.
+
+**Visor de documentos embebido:**
+- Los documentos PDF asociados al contrato se muestran en un visor embebido (iframe) sin necesidad de descargarlos
+- Las imágenes (PNG, JPG) se muestran en línea
+- Los archivos de texto y CSV se muestran en formato legible
+- Para otros formatos, aparece el botón **"Descargar"**
+
+**Asociar CIs al contrato:**
+1. En la fila expandida del contrato, abre el panel **"CIs asociados"**
+2. Haz clic en **"Añadir CIs"** para abrir el selector múltiple con búsqueda
+3. Selecciona los CIs que cubre el contrato y confirma
+4. Para desvincular un CI del contrato, haz clic en el icono de desvinculación junto a la fila del CI
+
+**Asociar documentos al contrato:**
+1. En la fila expandida del contrato, abre el panel **"Documentos asociados"**
+2. Haz clic en **"Asociar documento"** para buscar y seleccionar documentos existentes en el repositorio
+3. Los documentos seleccionados quedan vinculados al contrato y aparecen en el visor
+
+---
+
+## 11. Contratos y Adendas
 
 ### Ver contratos
 1. Haz clic en **"Contratos y Adendas"** en el menú lateral

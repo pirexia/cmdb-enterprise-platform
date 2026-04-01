@@ -1,0 +1,171 @@
+# 🏛️ Enterprise CMDB & GRC Platform
+
+> 🇪🇸 [Versión en Español](README.md)
+
+> **Configuration Management Database** — A comprehensive platform for managing IT assets (CIs), vendor contracts, vulnerability analysis and dependency visualisation, with JWT authentication, role-based access control (RBAC) and multilingual support.
+
+[![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
+[![Version](https://img.shields.io/badge/version-1.4.0-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.4.0)
+
+---
+
+## 📋 Table of Contents
+
+1. [Features](#-enterprise-features)
+2. [Technology Stack](#️-technology-stack)
+3. [Project Structure](#-project-structure)
+4. [Official Documentation](#-official-documentation)
+5. [Development Quickstart](#-development-quickstart)
+
+---
+
+## ✨ Enterprise Features
+
+### Core Features
+
+| Module | Description |
+|--------|-------------|
+| 🌍 **Multilingual Support (i18n)** | Full interface in Spanish and English with a persistent language selector and shared contexts. |
+| 🔐 **Enterprise Security** | Hybrid LDAP/AD + Local authentication with fail-soft fallback, MFA (TOTP RFC 6238) **mandatory for admins** and suggested for users on first login, trusted devices with configurable TTL, three-level RBAC (Admin/Auditor/Viewer), JWT HS256, bcrypt cost-10, **configurable password policy** (length by role, complexity, dictionary, 20-entry history), ISO 27001 compliance. |
+| 📡 **Lifecycle Intelligence** | Integration with the endoflife.date API for EOL/EOSL automation, hardware/software lookup centre, manual verification with external sources. |
+| 📧 **Proactive Alerts** | Daily alert engine (cron) with personalised email reports on contract expiry, CIs approaching EoL/EoS, and critical/high vulnerabilities. |
+| 🕸️ **Topology and Dependencies** | N:M relationships between CIs with 5 types (HOSTS, DEPENDS_ON, CONNECTED_TO, PROVIDES_SERVICE, BACKED_UP_BY), impact analysis, per-CI dependency map with a focused, interactive graph (React Flow). |
+| 🐳 **Production-Ready Infrastructure** | Podman Rootless deployment on RHEL with persistence (loginctl enable-linger), multi-stage images, dedicated service user, Zero Trust compliance. |
+
+### CMDB Core
+
+| Module | Description |
+|--------|-------------|
+| 📊 **Dashboard** | Interactive executive summary of CIs, vulnerabilities, contracts and real-time security status. |
+| 🖥️ **CI Inventory** | Full CRUD management of Configuration Items with a dynamic and extensible taxonomy grouped by category (Infrastructure, User Devices, Mobility/IoT, Meeting Rooms, Software, Licences), criticality, environment and hardware/software metadata. |
+| 📜 **Contracts and Addenda** | M:N contract management linked to CIs, support for hierarchical addenda and automatic expiry monitoring. |
+| 🛡️ **Vulnerability Management** | Centralised CVE view, lifecycle tracking (New → Assigned → In Progress → Resolved), integration with Greenbone OpenVAS and CrowdStrike Falcon. |
+| 📋 **Reports Centre** | PDF/CSV report generation: obsolescence, upcoming contract expiry, executive security report. |
+| 🗂️ **Master Data** | Full CRUD for auxiliary tables: **CI Types** (with configurable categories), Support Areas, Sites, Manufacturers, Device Models, Vendors. Vertical navigation in the sidebar. |
+| 🕵️ **Audit Log** | Complete traceability of all administrative actions with automatic purging of old records (configurable retention). |
+
+### Security & Operations
+
+| Feature | Description |
+|---------|-------------|
+| 🔒 **SSL/TLS Management** | CSR generation via UI, upload of signed certificates, automatic TLS fallback to HTTP if certificates are missing. |
+| 🔑 **LDAP/AD Hybrid Auth** | Domain pre-check (@cmdb.local bypasses LDAP), fail-soft fallback to local database on AD outages. |
+| 📦 **Database Maintenance** | Automatic audit log purging (AUDIT_RETENTION_DAYS), weekly VACUUM ANALYZE + REINDEX script, PostgreSQL bloat monitoring. |
+| 💾 **Capacity Planning** | Dedicated LVM documentation for /home (Podman rootless), sizing tables by CI volume (1K, 5K, 20K+). |
+| 🏗️ **ISO 27001 Ready** | Dedicated service user, restrictive permissions (750/600), cgroupfs configuration for RHEL/Podman stability. |
+| 🌐 **Dynamic Branding** | White-label: company name, logo and corporate colours configurable via environment variables. |
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Database** | PostgreSQL 16 |
+| **ORM** | Prisma 5 |
+| **Backend** | Node.js 20 · Express 5 · TypeScript 5 |
+| **Auth** | JWT (jsonwebtoken) · bcrypt · speakeasy (MFA) · ldap-authentication |
+| **Frontend** | Next.js 16 (App Router) · React 19 · Tailwind CSS 4 |
+| **Visualisation** | React Flow 11 · Lucide React |
+| **Containers** | Docker CE / Podman · Docker Compose v2 |
+| **Security** | Helmet 8 · HTTPS/TLS (native Node.js) |
+| **Automation** | node-cron · nodemailer |
+
+---
+
+## 📁 Project Structure
+
+```
+cmdb-enterprise-platform/
+│
+├── 📄 docker-compose.yml        ← Orchestration for DEVELOPMENT (with Adminer)
+├── 📄 docker-compose.prod.yml   ← Orchestration for PRODUCTION (optimised, without Adminer)
+├── 📄 .env.example              ← Environment variables template
+├── 📄 .gitignore / .gitattributes
+├── 📄 README.md
+│
+├── 📂 backend/                  ← API engine (Express + Prisma)
+│   ├── Dockerfile               ← Multi-stage Node.js build
+│   ├── entrypoint.sh            ← Runs migrations + starts the server
+│   ├── src/
+│   │   └── index.ts             ← Express server: routes, JWT auth, CORS, cron jobs
+│   │   └── services/            ← Business logic: LDAP, EoL, emailService
+│   ├── prisma/
+│   │   ├── schema.prisma        ← Data models (CI, User, Contract, Vendor…)
+│   │   ├── seed.ts              ← Initial data (users, CIs, contracts)
+│   │   └── migrations/          ← SQL migration history
+│   └── scripts/                 ← generate-certs.sh/ps1, resetVulnerabilities.ts
+│
+├── 📂 frontend/                 ← Web interface (Next.js)
+│   ├── Dockerfile               ← Multi-stage Next.js standalone build
+│   ├── next.config.ts           ← output: standalone (for Docker), security headers
+│   ├── app/                     ← Pages (App Router): inventory, contracts, map, settings…
+│   ├── components/              ← Reusable components: Sidebar, AppShell, AddCIModal…
+│   ├── contexts/                ← AuthContext, LanguageContext
+│   ├── lib/                     ← apiFetch, csvExport, printReport
+│   ├── locales/                 ← es.json, en.json (i18n dictionaries)
+│   └── public/                  ← Static assets
+│
+└── 📂 docs/                    ← Official platform documentation
+    ├── ARCHITECTURE.md          ← Technical architecture and topology
+    ├── SYSADMIN_MANUAL.md       ← Guide for system administrators
+    └── USER_MANUAL.md           ← End-user manual
+```
+
+---
+
+## 📚 Official Documentation
+
+For a full understanding of the system, its deployment and usage, refer to the official documentation:
+
+| Document | 🇬🇧 English | 🇪🇸 Español |
+|----------|------------|------------|
+| User Manual | [USER_MANUAL.en.md](docs/USER_MANUAL.en.md) | [USER_MANUAL.md](docs/USER_MANUAL.md) |
+| System Administrator Manual | [SYSADMIN_MANUAL.en.md](docs/SYSADMIN_MANUAL.en.md) | [SYSADMIN_MANUAL.md](docs/SYSADMIN_MANUAL.md) |
+| Production Deployment Guide | [DEPLOY.en.md](DEPLOY.en.md) | [DEPLOY.md](DEPLOY.md) |
+| Technical Architecture | [ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md) | [ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Security Audit | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) *(English only)* |
+
+---
+
+## 👨‍💻 Development Quickstart
+
+To get the project running quickly in a local development environment with Docker Compose (using `docker-compose.yml`):
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/pirexia/cmdb-enterprise-platform.git
+   cd cmdb-enterprise-platform
+   ```
+
+2. **Configure environment variables:**
+   Copy the example file and edit it with your values (especially the DB passwords and `JWT_SECRET`)
+   ```bash
+   cp .env.example .env
+   # edit .env with your favourite editor
+   ```
+
+3. **Start the services:**
+   ```bash
+   docker compose up -d --build
+   ```
+   > The backend automatically runs migrations and the initial seed (sample users, CIs and contracts) on first startup. No additional steps are required.
+
+4. **Access the platform:**
+   - **Frontend (UI):** `http://localhost:3001`
+   - **Backend (API):** `http://localhost:3000/health`
+   - **Adminer (DB UI):** `http://localhost:8080` (user `admin`, password from `.env`)
+
+   **Default credentials (development):**
+   - Admin: `admin@cmdb.local` / `Admin1234!`
+   - Auditor: `auditor@cmdb.local` / `Audit1234!`
+
+   ⚠️ **Change passwords immediately after the first login in production.**
+
+---
+
+## 📜 Licence
+
+MIT — free for personal and commercial use.

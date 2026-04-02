@@ -478,7 +478,7 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Vulnerabilidades | `/vulnerabilities` | `PATCH /api/vulnerabilities` |
 | Contratos | `/contracts` | `GET/POST /api/contracts` |
 | Datos Maestros | `/admin/masters` | `GET/POST/DELETE /api/masters/*`, `GET /api/masters/ci-type-categories`, `PATCH/DELETE /api/masters/ci-types/:id` |
-| Auditoría | `/audit` | `GET /api/audit-logs` |
+| Auditoría | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integraciones | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
 | Configuración | `/settings` | `GET/PATCH /api/users/*` |
@@ -540,7 +540,7 @@ Los catálogos de referencia (métricas y tipos) se gestionan a través de los e
 | HTTPS | Node.js https module + certificados en volumen Docker |
 | DB Aislada | Red `cmdb-internal` — puerto 5432 nunca expuesto |
 | Secretos | Variables de entorno — nunca en código fuente |
-| Audit Log | Tabla `audit_logs` con todas las acciones administrativas |
+| Audit Log | Tabla `audit_logs` append-only. El endpoint `GET /api/audit-logs` enriquece cada entrada con `entity_name` resuelto via LEFT JOINs (`configuration_items`, `documents`, `users`, `ci_relations`) en una sola `$queryRaw`. Soporta filtrado de rango de fechas con parámetros `?from` y `?to` (validación server-side + query parametrizada vía `Prisma.sql`). |
 | Cumplimiento | ISO 27001 A.9.2 / A.10.1 / A.12.4 (ver SECURITY_AUDIT.md) |
 | NIS2 / GDPR | Campos `businessImpact`, `spofRisk`, `containsPii`, `dataClassification`, `rto`, `rpo` en el modelo CI |
 

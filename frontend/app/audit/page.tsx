@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ClipboardList, FilterX, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ClipboardList, Download, FilterX, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
+import * as XLSX from "xlsx";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AuditLog {
-  id:         string;
-  action:     string;
-  entity:     string;
-  entity_id:  string;
-  user_email: string;
-  created_at: string;
+  id:          string;
+  action:      string;
+  entity:      string;
+  entity_id:   string;
+  user_email:  string;
+  created_at:  string;
+  entity_name: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -72,17 +74,30 @@ export default function AuditPage() {
   const [logs, setLogs]       = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [filters, setFilters] = useState({ search: "", entity: "", action: "" });
+  const [filters, setFilters] = useState({
+    search: "",
+    entity: "",
+    action: "",
+    dateFrom: "",
+    dateTo: "",
+  });
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
-  const clearFilters = () => setFilters({ search: "", entity: "", action: "" });
+  const clearFilters = () =>
+    setFilters({ search: "", entity: "", action: "", dateFrom: "", dateTo: "" });
 
-  const fetchLogs = async () => {
-    setLoading(true); setError(null);
+  const fetchLogs = useCallback(async (currentFilters: typeof filters) => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await apiFetch("/api/audit-logs");
+      const params = new URLSearchParams();
+      if (currentFilters.dateFrom) params.set("from", currentFilters.dateFrom);
+      if (currentFilters.dateTo)
+        params.set("to", new Date(currentFilters.dateTo + "T23:59:59").toISOString());
+      const url = `/api/audit-logs${params.toString() ? "?" + params.toString() : ""}`;
+      const res = await apiFetch(url);
       if (!res.ok) throw new Error(`Status ${res.status}`);
       const json: { total: number; data: AuditLog[] } = await res.json();
       setLogs(json.data ?? []);
@@ -91,9 +106,13 @@ export default function AuditPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchLogs(); }, []);
+  // Fetch on mount and whenever the date range changes
+  useEffect(() => {
+    fetchLogs(filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.dateFrom, filters.dateTo]);
 
   const filtered = useMemo(() => {
     return logs.filter((l) => {
@@ -103,12 +122,28 @@ export default function AuditPage() {
         l.action.toLowerCase().includes(q) ||
         l.entity.toLowerCase().includes(q) ||
         l.entity_id.toLowerCase().includes(q) ||
-        l.user_email.toLowerCase().includes(q);
+        l.user_email.toLowerCase().includes(q) ||
+        (l.entity_name ?? "").toLowerCase().includes(q);
       const matchesEntity = !filters.entity || l.entity === filters.entity;
       const matchesAction = !filters.action || l.action.startsWith(filters.action);
       return matchesSearch && matchesEntity && matchesAction;
     });
-  }, [logs, filters]);
+  }, [logs, filters.search, filters.entity, filters.action]);
+
+  const exportExcel = () => {
+    const rows = filtered.map((l) => ({
+      "Fecha/Hora":      formatDateTime(l.created_at),
+      "Usuario":         l.user_email,
+      "Acción":          l.action,
+      "Entidad":         l.entity,
+      "Nombre/Detalle":  l.entity_name ?? "",
+      "ID Afectado":     l.entity_id,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Auditoría");
+    XLSX.writeFile(wb, `auditoria_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -124,12 +159,21 @@ export default function AuditPage() {
               </p>
             </div>
           </div>
-          <button
-            onClick={fetchLogs}
-            className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />Actualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={exportExcel}
+              disabled={filtered.length === 0}
+              className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download className="h-3.5 w-3.5" />Excel
+            </button>
+            <button
+              onClick={() => fetchLogs(filters)}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />Actualizar
+            </button>
+          </div>
         </div>
       </header>
 
@@ -168,7 +212,10 @@ export default function AuditPage() {
               <AlertTriangle className="h-8 w-8" />
               <p className="text-sm font-medium">Error al cargar los logs</p>
               <p className="text-xs text-slate-400">{error}</p>
-              <button onClick={fetchLogs} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">
+              <button
+                onClick={() => fetchLogs(filters)}
+                className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
+              >
                 Reintentar
               </button>
             </div>
@@ -184,10 +231,31 @@ export default function AuditPage() {
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Usuario</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acción</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Entidad</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Nombre / Detalle</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Afectado</th>
                   </tr>
+                  {/* Filter row — 6 cells matching 6 columns */}
                   <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
-                    <td className="px-3 py-2" colSpan={2}>
+                    {/* Cell 1 — Fecha/Hora: date range inputs */}
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="date"
+                          value={filters.dateFrom}
+                          onChange={(e) => setFilter("dateFrom", e.target.value)}
+                          className="rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 w-36"
+                        />
+                        <span className="text-slate-400 text-xs">→</span>
+                        <input
+                          type="date"
+                          value={filters.dateTo}
+                          onChange={(e) => setFilter("dateTo", e.target.value)}
+                          className="rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 w-36"
+                        />
+                      </div>
+                    </td>
+                    {/* Cell 2 — Usuario: search input */}
+                    <td className="px-3 py-2">
                       <div className="relative">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input
@@ -199,6 +267,7 @@ export default function AuditPage() {
                         />
                       </div>
                     </td>
+                    {/* Cell 3 — Acción: action select */}
                     <td className="px-3 py-2">
                       <select
                         value={filters.action}
@@ -212,6 +281,7 @@ export default function AuditPage() {
                         <option value="UPDATE">UPDATE</option>
                       </select>
                     </td>
+                    {/* Cell 4 — Entidad: entity select */}
                     <td className="px-3 py-2">
                       <select
                         value={filters.entity}
@@ -223,13 +293,16 @@ export default function AuditPage() {
                         <option value="VULNERABILITY">VULNERABILITY</option>
                       </select>
                     </td>
+                    {/* Cell 5 — Nombre/Detalle: empty */}
+                    <td className="px-3 py-2" />
+                    {/* Cell 6 — ID Afectado: empty */}
                     <td className="px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="py-16 text-center text-slate-400 text-sm">
+                      <td colSpan={6} className="py-16 text-center text-slate-400 text-sm">
                         {logs.length === 0
                           ? "No hay eventos de auditoría registrados aún."
                           : "No hay resultados para la búsqueda."}
@@ -254,6 +327,14 @@ export default function AuditPage() {
                         <td className="px-6 py-3">
                           <EntityBadge entity={log.entity} />
                         </td>
+                        {/* Entity Name */}
+                        <td className="px-6 py-3">
+                          {log.entity_name ? (
+                            <span className="text-sm font-medium text-slate-700">{log.entity_name}</span>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">—</span>
+                          )}
+                        </td>
                         {/* Entity ID */}
                         <td className="px-6 py-3">
                           <code className="text-xs font-mono text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 break-all">
@@ -271,7 +352,7 @@ export default function AuditPage() {
           {/* Footer */}
           {!loading && !error && (
             <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-              Mostrando {filtered.length} de {logs.length} eventos{activeFilterCount > 0 ? ` · ${activeFilterCount} filtro${activeFilterCount !== 1 ? "s" : ""} activo${activeFilterCount !== 1 ? "s" : ""}` : ""} · máximo 50 más recientes
+              Mostrando {filtered.length} de {logs.length} eventos{activeFilterCount > 0 ? ` · ${activeFilterCount} filtro${activeFilterCount !== 1 ? "s" : ""} activo${activeFilterCount !== 1 ? "s" : ""}` : ""} · máximo 500 más recientes
             </div>
           )}
         </div>

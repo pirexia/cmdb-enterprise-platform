@@ -1066,10 +1066,10 @@ If the CI has no registered relationships, the map displays a message with a dir
 
 ## 16. Audit Log
 
-> Only available for users with the **ADMIN** role
+> Only available for users with the **ADMIN** and **AUDITOR** roles
 
 ### Accessing
-Click **"🕵️ Audit"** in the sidebar menu.
+Click **"Audit"** in the sidebar menu.
 
 ### What is recorded?
 The system automatically records all administrative actions:
@@ -1083,13 +1083,39 @@ The system automatically records all administrative actions:
 | `SET_ROLE` | Change of user role |
 | `ACTIVATE_USER` | User account activation |
 | `DEACTIVATE_USER` | User account deactivation |
+| `UPDATE` | Update of a document or other object |
+| `DELETE` | Deletion of an object |
 
 ### Information recorded per entry
-- **Action**: What was done
-- **Entity**: On which object (CI, VULNERABILITY, USER…)
-- **Entity ID**: Identifier of the affected object
-- **User**: Email of the user who performed the action
-- **Date and time**: Timestamp with second-level precision
+The table shows **6 columns**:
+
+| Column | Description |
+|--------|-------------|
+| **Date / Time** | Event timestamp (format `dd Mon yyyy, hh:mm:ss`) |
+| **User** | Email of the user who performed the action |
+| **Action** | Colour-coded badge with the action type (`CREATE_CI`, `UPDATE_VULN_STATUS`, etc.) |
+| **Entity** | Type of affected object (`CI`, `VULNERABILITY`, `Document`, `USER`, `CI_RELATION`, `SYSTEM`) |
+| **Name / Detail** | Human-readable name of the object: CI name, document title, user email, CVE code combined with CI name, etc. |
+| **Affected ID** | UUID or internal identifier of the affected object |
+
+### Available filters
+
+The filter row in the table header allows you to narrow results:
+
+| Filter | Type | Behaviour |
+|--------|------|-----------|
+| **Date from / to** | Date picker | Filters on the server — reloads records for the selected range (inclusive). Maximum 500 most recent events within the period. |
+| **Search** (user, ID…) | Free text | Client-side filter on loaded data (action, entity, ID, user, and name/detail). |
+| **Action** | Dropdown | Shows only events of the selected type. |
+| **Entity** | Dropdown | Shows only events for the selected entity (CI, VULNERABILITY…). |
+
+The active filter count is shown in the toolbar along with a **Clear** button to remove all filters at once.
+
+### Export to Excel
+
+The **Excel** button (top-right corner) exports the **currently visible** records (after applying filters) to a `.xlsx` file. The exported columns match the table: Date/Time, User, Action, Entity, Name/Detail, and Affected ID. The file is automatically named `auditoria_YYYY-MM-DD.xlsx`.
+
+> The button is automatically disabled when there are no records to export.
 
 > The Audit Log is **append-only**: records cannot be edited or deleted from the interface, guaranteeing the traceability required by ISO 27001 A.12.4.
 

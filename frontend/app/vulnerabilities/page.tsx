@@ -178,7 +178,7 @@ export default function VulnerabilitiesPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8 max-w-7xl mx-auto space-y-6">
+      <div className="px-8 py-8 w-full space-y-6">
         {/* Summary cards */}
         {!loading && !error && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">

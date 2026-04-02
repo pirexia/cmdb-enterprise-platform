@@ -277,7 +277,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8 space-y-8 max-w-6xl mx-auto">
+      <div className="px-8 py-8 space-y-8 w-full">
         {error && (
           <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />

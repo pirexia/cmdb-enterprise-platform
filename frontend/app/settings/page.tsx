@@ -243,9 +243,9 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Settings className="h-5 w-5 text-slate-400" />
@@ -260,32 +260,47 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8 max-w-5xl mx-auto space-y-6">
-        {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
-          </div>
-        )}
+      {/* Body: sidebar + content */}
+      <div className="flex flex-1 overflow-hidden">
 
-        {!isAdmin && (
-          <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            Necesitas rol <strong>ADMIN</strong> para modificar la configuración. Modo de sólo lectura.
-          </div>
-        )}
+        {/* Sidebar nav */}
+        <aside className="w-56 flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto">
+          <nav className="py-3">
+            {tabs.map((item) => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setTab(item.id)}
+                  className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors text-left ${
+                    active
+                      ? "bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600"
+                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  <span className={active ? "text-indigo-600" : "text-slate-400"}>{item.icon}</span>
+                  <span className="flex-1 truncate">{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-200 overflow-x-auto">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium whitespace-nowrap transition-colors flex-1 justify-center ${tab === t.id ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
-            >
-              {t.icon}{t.label}
-            </button>
-          ))}
-        </div>
+        {/* Content area */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-8 py-8 space-y-6">
+            {error && (
+              <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+              </div>
+            )}
+
+            {!isAdmin && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                Necesitas rol <strong>ADMIN</strong> para modificar la configuración. Modo de sólo lectura.
+              </div>
+            )}
 
         {/* ── Tab: Users ── */}
         {tab === "users" && (
@@ -690,6 +705,8 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+          </div>
+        </main>
       </div>
     </div>
   );

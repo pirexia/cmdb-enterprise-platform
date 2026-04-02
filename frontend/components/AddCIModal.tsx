@@ -334,7 +334,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Technical Location + Network (infra) ── */}
           {isInfra && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">📍 Ubicación Técnica y Red</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Ubicación Técnica y Red</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><Label>Planta / Piso</Label><Input placeholder="PB" value={form.floor} onChange={(e) => set("floor", e.target.value)} /></div>
                 <div><Label>Sala / CPD</Label><Input placeholder="CPD-01" value={form.room} onChange={(e) => set("room", e.target.value)} /></div>
@@ -351,7 +351,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── EOL / EoS dates (optional override — backend auto-fills from endoflife.date) ── */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
-              🕐 Fechas de Ciclo de Vida (EoL / EoS)
+              Fechas de Ciclo de Vida (EoL / EoS)
               <span className="text-[10px] font-normal text-slate-400 lowercase">— se autocompletarán vía endoflife.date si se dejan vacías</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

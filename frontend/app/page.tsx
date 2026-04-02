@@ -351,7 +351,7 @@ export default function DashboardPage() {
               <p className="mt-1 text-sm text-indigo-600">
                 Ve a <Link href="/inventory" className="font-bold underline">Inventario de CIs</Link> para ver y escanear activos.
                 Usa <Link href="/map" className="font-bold underline">Mapa de Dependencias</Link> para visualizar relaciones.
-                Genera informes ejecutivos desde <Link href="/reports" className="font-bold underline">📊 Reportes</Link>.
+                Genera informes ejecutivos desde <Link href="/reports" className="font-bold underline">Reportes</Link>.
               </p>
             </div>
           </div>

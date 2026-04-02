@@ -279,7 +279,7 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
               <option value="">— Esta es una licencia principal —</option>
               {licenses.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.licenseNumber})</option>)}
             </Select>
-            {isSubLicense && <p className="mt-1.5 text-xs text-amber-600 font-medium">⚠️ Se guardará como sub-licencia de la licencia seleccionada.</p>}
+            {isSubLicense && <p className="mt-1.5 text-xs text-amber-600 font-medium">Se guardará como sub-licencia de la licencia seleccionada.</p>}
           </div>
 
           {/* Notes */}

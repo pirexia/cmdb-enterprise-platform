@@ -463,13 +463,13 @@ export default function SettingsPage() {
                     >
                       {testingEmail
                         ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Enviando…</>
-                        : <><Mail className="h-3.5 w-3.5" />📧 Enviar Correo de Prueba</>
+                        : <><Mail className="h-3.5 w-3.5" />Enviar Correo de Prueba</>
                       }
                     </button>
                   )}
                   {emailResult && (
                     <div className={`rounded-lg px-3 py-2 text-xs font-medium mt-1 ${emailResult.ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-600 border border-red-200"}`}>
-                      {emailResult.ok ? "✅" : "❌"} {emailResult.message}
+                      {emailResult.ok ? "OK" : "Error"} {emailResult.message}
                     </div>
                   )}
                 </div>

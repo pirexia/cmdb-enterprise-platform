@@ -176,9 +176,9 @@ function IntegrationCard({
               <span className="text-sm font-semibold">{result.message}</span>
             </div>
             <div className="flex gap-4 text-xs">
-              <span className="font-medium text-emerald-700">✅ {result.totalMatched} CIs actualizados</span>
+              <span className="font-medium text-emerald-700">{result.totalMatched} CIs actualizados</span>
               {result.totalUnmatched > 0 && (
-                <span className="font-medium text-amber-600">⚠️ {result.totalUnmatched} sin coincidencia</span>
+                <span className="font-medium text-amber-600">{result.totalUnmatched} sin coincidencia</span>
               )}
             </div>
             <div className="max-h-36 overflow-y-auto space-y-1">

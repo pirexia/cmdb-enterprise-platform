@@ -31,14 +31,14 @@
     "cancel":           "Cancel",
     "delete":           "Delete",
     "edit":             "Edit",
-    "export_csv":       "📥 Export CSV",
+    "export_csv":       "Export CSV",
     "generate_pdf":     "Generate PDF",
     "retry":            "Retry",
     "search":           "Search",
     "import":           "Import",
     "download_template":"CSV Template",
     "sync":             "Sync",
-    "send_test_email":  "📧 Send Test Email",
+    "send_test_email":  "Send Test Email",
     "test":             "Test"
   },
   "common": {
@@ -75,7 +75,7 @@
     "export_csv":       "Export CSV",
     "no_cis":           "No CIs in inventory.",
     "loading":          "Loading inventory…",
-    "import_success":   "✅ {success} CIs imported successfully, {errors} errors",
+    "import_success":   "{success} CIs imported successfully, {errors} errors",
     "columns": {
       "ci":             "CI / Asset",
       "type":           "Type",
@@ -89,9 +89,9 @@
       "support":        "Support"
     },
     "support_badge": {
-      "expired":        "🔴 End of support",
-      "warning":        "🟠 EoL in {days}d",
-      "ok":             "🟢 Active"
+      "expired":        "End of support",
+      "warning":        "EoL in {days}d",
+      "ok":             "Active"
     },
     "vuln_badge": {
       "no_data":        "No data",
@@ -324,8 +324,8 @@
     "manufacturers": {
       "new":            "New Manufacturer",
       "placeholder":    "E.g.: Dell, HP, Cisco",
-      "suggest_popular":"✨ Suggest Popular",
-      "delete_all":     "🗑️ Delete all",
+      "suggest_popular":"Suggest Popular",
+      "delete_all":     "Delete all",
       "empty":          "No manufacturers registered.",
       "confirm_delete_all": "Insert 30 popular IT manufacturers? Duplicates will be skipped."
     },
@@ -334,15 +334,15 @@
       "placeholder":    "E.g.: PowerEdge R740",
       "manufacturer_label": "— Manufacturer —",
       "type_label":     "— Type —",
-      "type_software":  "💿 Software",
-      "type_hardware":  "🖥️ Hardware",
-      "suggest_dates":  "✨ Suggest Standard Dates",
-      "eol_search":     "🔍 EOL Catalog",
+      "type_software":  "Software",
+      "type_hardware":  "Hardware",
+      "suggest_dates":  "Suggest Standard Dates",
+      "eol_search":     "EOL Catalog",
       "empty":          "No models registered.",
-      "consult_btn":    "🌐 Consult",
-      "sync_eol":       "🔄 EOL",
+      "consult_btn":    "Consult",
+      "sync_eol":       "EOL",
       "consultation_center": "Lifecycle Consultation Center",
-      "suggested_dates": "✨ Suggested Dates"
+      "suggested_dates": "Suggested Dates"
     },
     "providers": {
       "new":            "New Provider",
@@ -354,8 +354,8 @@
     "title":            "Settings",
     "subtitle":         "Users, roles and system integrations",
     "tabs": {
-      "users":          "👥 User Management",
-      "integrations":   "🔌 Integrations & System"
+      "users":          "User Management",
+      "integrations":   "Integrations & System"
     },
     "users": {
       "header":         "System users",
@@ -368,13 +368,13 @@
         "role":         "Role",
         "active":       "Active"
       },
-      "origin_ldap":    "🏢 LDAP",
-      "origin_local":   "🔑 Local",
+      "origin_ldap":    "LDAP",
+      "origin_local":   "Local",
       "mfa_active":     "Active",
       "mfa_inactive":   "Inactive",
-      "role_admin":     "👑 ADMIN",
-      "role_auditor":   "🔍 AUDITOR",
-      "role_viewer":    "👁️ VIEWER",
+      "role_admin":     "ADMIN",
+      "role_auditor":   "AUDITOR",
+      "role_viewer":    "VIEWER",
       "me_label":       "(me)",
       "viewer_notice":  "You need the {role} role to change settings. Read-only mode.",
       "confirm_activate":   "Activate user \"{name}\"?",

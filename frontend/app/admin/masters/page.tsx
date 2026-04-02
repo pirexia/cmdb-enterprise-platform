@@ -383,11 +383,11 @@ export default function MastersPage() {
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 transition-colors"
                   title="Inserta fabricantes populares de TI desde catálogo curado"
                 >
-                  ✨ Sugerir Populares
+                  Sugerir Populares
                 </button>
                 <button
                   onClick={async () => {
-                    if (!confirm("⚠️ Esto eliminará TODOS los fabricantes. ¿Continuar?")) return;
+                    if (!confirm("Esto eliminará TODOS los fabricantes. ¿Continuar?")) return;
                     try {
                       const res = await apiFetch("/api/masters/manufacturers/all", { method: "DELETE" });
                       const d = await res.json();
@@ -402,7 +402,7 @@ export default function MastersPage() {
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 transition-colors"
                   title="Eliminar todos los fabricantes"
                 >
-                  🗑️ Borrar todo
+                  Borrar todo
                 </button>
               </div>
             </div>
@@ -442,8 +442,8 @@ export default function MastersPage() {
                   </Sel>
                   <Sel value={newModelType} onChange={(e) => { setNewModelType(e.target.value as "software" | "hardware" | ""); setSuggestedDates(null); }} className="w-36">
                     <option value="">— Tipo —</option>
-                    <option value="software">💿 Software</option>
-                    <option value="hardware">🖥️ Hardware</option>
+                    <option value="software">Software</option>
+                    <option value="hardware">Hardware</option>
                   </Sel>
                 </div>
 
@@ -483,7 +483,7 @@ export default function MastersPage() {
                     }}
                     title={newModelType ? "Calcular fechas estándar según el tipo" : "Selecciona primero el tipo (Software/Hardware)"}
                     className="flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors disabled:opacity-40">
-                    ✨ Sugerir Fechas Estándar
+                    Sugerir Fechas Estándar
                   </button>
 
                   {/* 🔍 EOL Catalog Search */}
@@ -491,7 +491,7 @@ export default function MastersPage() {
                     onClick={() => setEolSearchOpen((v) => !v)}
                     className="flex items-center gap-1.5 rounded-lg bg-teal-500 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-600 transition-colors"
                     title="Buscar producto en endoflife.date e importar versiones como modelos">
-                    🔍 Catálogo EOL
+                    Catálogo EOL
                   </button>
                 </div>
 
@@ -499,11 +499,11 @@ export default function MastersPage() {
                 {suggestedDates && (
                   <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1">✨ Fechas Sugeridas</p>
+                      <p className="text-xs font-semibold text-violet-700 uppercase tracking-wide mb-1">Fechas Sugeridas</p>
                       <p className="text-sm text-violet-800 font-medium">{suggestedDates.label}</p>
                       <div className="flex gap-4 mt-1 text-xs text-violet-600">
-                        <span>📅 EoL estimado: <strong>{suggestedDates.eolDate}</strong></span>
-                        <span>🛡️ EoS estimado: <strong>{suggestedDates.eosDate}</strong></span>
+                        <span>EoL estimado: <strong>{suggestedDates.eolDate}</strong></span>
+                        <span>EoS estimado: <strong>{suggestedDates.eosDate}</strong></span>
                       </div>
                       <p className="text-xs text-violet-500 mt-1">Estas fechas se calcularán automáticamente al sincronizar EOL. Úsalas como referencia si las fuentes externas no son concluyentes.</p>
                     </div>
@@ -586,7 +586,7 @@ export default function MastersPage() {
               <div className="rounded-2xl border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-violet-50 shadow-md overflow-hidden">
                 <div className="flex items-center justify-between px-6 py-3 bg-indigo-600">
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">🔭</span>
+                    <span className="text-lg"></span>
                     <div>
                       <p className="text-sm font-bold text-white">Centro de Consulta de Ciclo de Vida</p>
                       <p className="text-xs text-indigo-200">{consultModel.name} · {consultModel.manufacturer_name}</p>
@@ -601,7 +601,7 @@ export default function MastersPage() {
                     {/* Source 1: endoflife.date (internal API) */}
                     <div className="rounded-xl border border-teal-200 bg-white p-4 space-y-2 shadow-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">🖥️</span>
+                        <span className="text-xl"></span>
                         <div>
                           <p className="text-xs font-bold text-slate-800">endoflife.date</p>
                           <p className="text-[10px] text-slate-500">Software / OS / Firmware</p>
@@ -614,7 +614,7 @@ export default function MastersPage() {
                           window.open(`https://endoflife.date/${encodeURIComponent(slug)}`, "_blank");
                         }}
                         className="w-full rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700 transition-colors">
-                        🔍 Buscar en endoflife.date
+                        Buscar en endoflife.date
                       </button>
                       <button
                         onClick={async () => {
@@ -632,14 +632,14 @@ export default function MastersPage() {
                           } catch { alert("Error al consultar endoflife.date"); }
                         }}
                         className="w-full rounded-lg border border-teal-400 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors">
-                        📥 Importar versiones
+                        Importar versiones
                       </button>
                     </div>
 
                     {/* Source 2: Park Place Technologies */}
                     <div className="rounded-xl border border-orange-200 bg-white p-4 space-y-2 shadow-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">🏢</span>
+                        <span className="text-xl"></span>
                         <div>
                           <p className="text-xs font-bold text-slate-800">Park Place Technologies</p>
                           <p className="text-[10px] text-slate-500">Enterprise Hardware EOSL</p>
@@ -652,7 +652,7 @@ export default function MastersPage() {
                           window.open(`https://www.parkplacetechnologies.com/eosl-search/?search=${q}`, "_blank");
                         }}
                         className="w-full rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 transition-colors">
-                        🔍 Buscar en Park Place
+                        Buscar en Park Place
                       </button>
                       <p className="text-[10px] text-slate-400 text-center">Dell, HP, Cisco, IBM, NetApp…</p>
                     </div>
@@ -660,7 +660,7 @@ export default function MastersPage() {
                     {/* Source 3: Cloud-Shelf */}
                     <div className="rounded-xl border border-blue-200 bg-white p-4 space-y-2 shadow-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-xl">📦</span>
+                        <span className="text-xl"></span>
                         <div>
                           <p className="text-xs font-bold text-slate-800">Cloud-Shelf</p>
                           <p className="text-[10px] text-slate-500">General Hardware Search</p>
@@ -673,7 +673,7 @@ export default function MastersPage() {
                           window.open(`https://cloud-shelf.com/search?q=${q}`, "_blank");
                         }}
                         className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
-                        🔍 Buscar en Cloud-Shelf
+                        Buscar en Cloud-Shelf
                       </button>
                       <p className="text-[10px] text-slate-400 text-center">Multimarca · Precios · Stock</p>
                     </div>
@@ -681,7 +681,7 @@ export default function MastersPage() {
 
                   <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 flex items-center justify-between gap-4">
                     <p className="text-xs text-indigo-700">
-                      <strong>Fuente verificada:</strong> Tras consultar las fuentes, usa "🔄 Sincronizar EOL" en el modelo para actualizar los CIs.
+                      <strong>Fuente verificada:</strong> Tras consultar las fuentes, usa "Sincronizar EOL" en el modelo para actualizar los CIs.
                     </p>
                     <button
                       onClick={async () => {
@@ -692,7 +692,7 @@ export default function MastersPage() {
                         } catch { alert("Error al sincronizar EOL"); }
                       }}
                       className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors">
-                      🔄 Sincronizar EOL ahora
+                      Sincronizar EOL ahora
                     </button>
                   </div>
                 </div>
@@ -727,7 +727,7 @@ export default function MastersPage() {
                       >
                         <div>
                           <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                            {consultModel?.id === m.id && <span className="text-indigo-500 text-xs">🔭</span>}
+                            {consultModel?.id === m.id && <span className="text-indigo-500 text-xs">Ver</span>}
                             {m.name}
                           </p>
                           <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
@@ -744,14 +744,14 @@ export default function MastersPage() {
                             className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
                             title="Sincronizar EOL desde endoflife.date"
                           >
-                            🔄 EOL
+                            EOL
                           </button>
                           <button
                             onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
                             className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors"
                             title="Abrir Centro de Consulta Multi-Fuente"
                           >
-                            🌐 Consultar
+                            Consultar
                           </button>
                           <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id })}
                             className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors" title="Editar modelo">

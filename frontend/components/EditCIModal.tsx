@@ -305,8 +305,8 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
           {/* ── EOL / EoS dates ── */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
-              🕐 Fechas de Ciclo de Vida (EoL / EoS)
-            </p>
+              Fechas de Ciclo de Vida (EoL / EoS)
+</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
               <div><Label>End of Support (EoS)</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>

@@ -208,7 +208,7 @@ export default function VulnerabilitiesPage() {
               disabled={loading || filtered.length === 0}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 ml-auto order-last sm:order-none sm:ml-0"
             >
-              <Download className="h-3.5 w-3.5" />📥 Exportar CSV ({filtered.length})
+              <Download className="h-3.5 w-3.5" />Exportar CSV ({filtered.length})
             </button>
             {/* Search */}
             <div className="relative flex-1 min-w-48">

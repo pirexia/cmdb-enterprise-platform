@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Monitor, FileText, Building2, Settings,
   Server, Network, User, LogOut, Plug, Shield, BarChart,
-  ClipboardList, UserCircle, FolderOpen,
+  ClipboardList, UserCircle, FolderOpen, Key,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -24,6 +24,7 @@ const NAV_ITEMS: { labelKey: string; href: string; icon: React.ElementType; role
   { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart        },
   { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText        },
   { labelKey: "sidebar.documents",      href: "/documents",             icon: FolderOpen      },
+  { labelKey: "sidebar.licenses",       href: "/licenses",              icon: Key             },
   { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle      },
   { labelKey: "sidebar.masters",        href: "/admin/masters",         icon: Building2,       roles: ["ADMIN"]                  },
   { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   roles: ["ADMIN", "AUDITOR"]       },

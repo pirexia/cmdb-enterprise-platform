@@ -1,8 +1,8 @@
 # 📖 CMDB Enterprise Platform — Manual de Usuario
 
-**Versión:** 1.2.0
+**Versión:** 1.3.0
 **Público:** Administradores CMDB y usuarios de consulta
-**Fecha:** 2026-03-31
+**Fecha:** 2026-04-02
 
 ---
 
@@ -19,6 +19,7 @@
 9. [Gestión de Vulnerabilidades](#9-gestión-de-vulnerabilidades)
 10. [Repositorio Documental](#10-repositorio-documental)
 11. [Contratos y Adendas](#11-contratos-y-adendas)
+11b. [Repositorio de Licencias](#11b-repositorio-de-licencias)
 12. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#12-centro-de-consulta-de-ciclo-de-vida-eoless)
 12. [Alertas Diarias Automáticas](#12-alertas-diarias-automáticas)
 13. [Centro de Reportes](#13-centro-de-reportes)
@@ -705,6 +706,81 @@ La fila expandida de un contrato en la página de Contratos y Adendas incorpora 
 1. Aplica los filtros que necesites en la tabla
 2. Haz clic en **"📥 Exportar CSV"**
 3. Se descarga el CSV con los registros **filtrados** (no toda la base de datos)
+
+---
+
+## 11b. Repositorio de Licencias
+
+El Repositorio de Licencias centraliza la gestión del inventario de licencias de software, asociando cada licencia con su proveedor, tipo, métrica de uso, coste, CIs cubiertos, documentos adjuntos y usuarios asignados.
+
+### Acceder al módulo
+
+1. Haz clic en **"Licencias"** (icono de llave) en el menú lateral izquierdo
+2. La tabla muestra todas las licencias registradas, con las columnas:
+
+| Columna | Descripción |
+|---------|-------------|
+| **Licencia** | Nombre y número de licencia |
+| **Proveedor** | Empresa proveedora de la licencia |
+| **Tipo / Métrica** | Categoría de licencia y métrica de medición (p. ej. Usuario nominal, CPU Socket) |
+| **Estado / Vencimiento** | Estado actual (Activa, Por vencer, Vencida, Borrador) y fecha de fin |
+| **Coste** | Importe y moneda |
+| **CIs** | Número de Configuration Items asociados |
+
+### Estados de licencias
+
+- **Activa** — La licencia está vigente (más de 60 días hasta el vencimiento o sin fecha de fin)
+- **Por vencer** — Vence en los próximos 60 días
+- **Vencida** — La fecha de fin ya ha pasado
+- **Borrador** — Licencia en proceso de registro, no activa en producción
+
+### Crear una nueva licencia (solo ADMIN)
+
+1. Haz clic en **"Nueva Licencia"**
+2. Rellena los campos del formulario:
+   - **Nombre** — Denominación interna de la licencia (obligatorio)
+   - **Número de licencia** — Identificador o clave de licencia del proveedor
+   - **Proveedor** — Selecciona el proveedor del catálogo de vendedores
+   - **Tipo de licencia** — Elige entre las categorías disponibles (p. ej. Perpetua, Suscripción anual, OEM)
+   - **Métrica de licencia** — Unidad de medida del uso (p. ej. Usuario nominal, Núcleo de procesador, Dispositivo gestionado)
+   - **Valor de métrica / Unidad** — Cantidad y descripción de la unidad
+   - **Fecha de inicio / Fecha de fin** — Periodo de vigencia
+   - **Coste / Moneda** — Importe económico de la licencia
+   - **Estado** — Estado inicial (Borrador o Activa)
+   - **Notas** — Comentarios adicionales
+   - **Licencia padre** — Para licencias hijo o sublicencias, selecciona la licencia principal
+3. Haz clic en **"Crear Licencia"**
+
+### Ver detalle y asociaciones de una licencia
+
+Haz clic en la fila de una licencia para desplegar su detalle. Se muestran tres pestañas:
+
+#### CIs asociados
+- Lista los Configuration Items cubiertos por esta licencia
+- Para **añadir un CI**: haz clic en **"Asociar CI"** y selecciona el CI del buscador
+- Para **desvincular un CI**: haz clic en el botón de eliminar junto al CI
+
+#### Documentos adjuntos
+- Muestra los documentos vinculados (contratos, anexos, certificados…)
+- Para **asociar un documento existente**: haz clic en **"Asociar Documento"** y selecciónalo del repositorio documental
+- Para **ver el documento**: haz clic en el nombre — se abre el visor embebido (PDF, imagen, texto)
+- Para **desvincular**: haz clic en el botón de eliminar junto al documento
+
+#### Usuarios de licencia
+Registra los usuarios finales asignados a esta licencia (no tienen por qué ser usuarios del sistema CMDB):
+
+- **Nombre** — Nombre completo del usuario
+- **DNI** — Documento nacional de identidad u otro identificador
+- **Email** — Correo electrónico del usuario
+
+Para **añadir un usuario**: rellena los tres campos y haz clic en **"Añadir Usuario"**.
+Para **eliminar un usuario**: haz clic en el icono de papelera junto al usuario.
+
+> Las operaciones de escritura (crear, editar, eliminar licencias; añadir/quitar CIs, documentos y usuarios) requieren el rol **ADMIN**. Los usuarios con rol AUDITOR o VIEWER solo pueden consultar.
+
+### Métricas y Tipos de Licencia (Datos Maestros)
+
+Los catálogos de métricas y tipos de licencia son gestionados por los administradores desde **Configuración → Datos Maestros**, en las pestañas de solo lectura **"Métricas de Licencia"** y **"Tipos de Licencia"**. Estos catálogos son precargados por el sistema con 25 métricas y 14 tipos estándar en el seed inicial.
 
 ---
 

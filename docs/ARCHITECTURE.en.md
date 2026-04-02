@@ -1,6 +1,6 @@
 # 🏗️ CMDB Enterprise Platform — Technical Architecture
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 **Date:** 2026-04-02
 **Status:** Production
 
@@ -387,6 +387,47 @@ document_versions             document_relations
 document_cis                  document_contracts
   ├── documentId → documents    ├── documentId → documents
   └── ciId → configuration_items└── contractId → contracts
+
+license_metric_categories     license_metrics
+  ├── id (UUID)                  ├── id (UUID)
+  ├── code (unique)              ├── code (unique)
+  └── name                       ├── name
+                                 └── categoryId → license_metric_categories
+
+license_type_categories       license_types
+  ├── id (UUID)                  ├── id (UUID)
+  ├── code (unique)              ├── code (unique)
+  └── name                       ├── name
+                                 └── categoryId → license_type_categories
+
+licenses
+  ├── id (UUID)
+  ├── name
+  ├── licenseNumber
+  ├── vendorId → vendors
+  ├── startDate
+  ├── endDate
+  ├── licenseTypeId → license_types
+  ├── licenseMetricId → license_metrics
+  ├── metricValue (INT)
+  ├── metricUnit (TEXT)
+  ├── cost (DECIMAL)
+  ├── currency (TEXT)
+  ├── status (ACTIVE | EXPIRING | EXPIRED | DRAFT)
+  ├── notes
+  ├── parentLicenseId → licenses   ← hierarchy (sub-licences)
+  └── createdAt
+
+license_users                 _LicenseToCI (Prisma implicit M2M)
+  ├── id (UUID)                  ├── A → licenses
+  ├── licenseId → licenses       └── B → configuration_items
+  ├── name
+  ├── dni
+  └── email
+
+document_licenses             (M2M between Document and License)
+  ├── documentId → documents
+  └── licenseId → licenses
 ```
 
 ---
@@ -448,6 +489,8 @@ The storage directory (whether a bind mount or a named volume) must be included 
 | Document Repository | `/documents` | `GET /api/documents`, `POST /api/documents` (multipart/multer), `GET /api/documents/:id`, `PATCH /api/documents/:id`, `DELETE /api/documents/:id`, `POST /api/documents/:id/versions`, `GET /api/documents/:id/versions`, `GET /api/documents/:id/download`, `GET/POST/DELETE /api/documents/:id/relations`, `POST /api/documents/:id/cis`, `POST /api/documents/:id/contracts` |
 | Inventory — Documents & Contracts | `/inventory` (CI detail modal) | `GET /api/cis/:id/contracts`, `POST /api/cis/:id/contracts`, `DELETE /api/cis/:id/contracts/:contractId`, `POST /api/cis/:id/documents`, `DELETE /api/cis/:id/documents/:docId` |
 | Contracts — CIs & Documents | `/contracts` (expanded row) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
+| License Repository | `/licenses` | `GET /api/licenses`, `POST /api/licenses`, `GET /api/licenses/:id`, `PATCH /api/licenses/:id`, `DELETE /api/licenses/:id`, `GET/POST/DELETE /api/licenses/:id/cis`, `GET/POST/DELETE /api/licenses/:id/documents`, `GET/POST/DELETE /api/licenses/:id/users` |
+| Master Data — Licences | `/admin/masters` (tabs) | `GET/POST /api/masters/license-metric-categories`, `GET/POST/PATCH/DELETE /api/masters/license-metrics/:id`, `GET/POST /api/masters/license-type-categories`, `GET/POST/PATCH/DELETE /api/masters/license-types/:id` |
 
 ### Bidirectional associations: CI ↔ Document ↔ Contract
 
@@ -465,6 +508,21 @@ From version 1.5.0 onwards, associations between CIs, documents, and contracts c
 | Unlink a CI from a contract | Contract expanded row | `DELETE /api/contracts/:id/cis/:ciId` |
 
 All write operations require the ADMIN role and generate entries in `audit_logs`.
+
+### License Repository — Associations
+
+The licence module extends the association model with the following relationships:
+
+| Action | Endpoint |
+|--------|----------|
+| Associate CIs with a licence | `POST /api/licenses/:id/cis` — body: `{ ciId: string }` |
+| Unlink a CI from a licence | `DELETE /api/licenses/:id/cis/:ciId` |
+| Associate documents with a licence | `POST /api/licenses/:id/documents` — body: `{ documentId: string }` |
+| Unlink a document from a licence | `DELETE /api/licenses/:id/documents/:docId` |
+| Add a licence user | `POST /api/licenses/:id/users` — body: `{ name, dni, email }` |
+| Remove a licence user | `DELETE /api/licenses/:id/users/:userId` |
+
+The reference catalogues (metrics and types) are managed through the `/api/masters/license-*` endpoints and are pre-loaded in the seed with 6 metric categories, 25 metrics, 3 type categories, and 14 standard types.
 
 ---
 

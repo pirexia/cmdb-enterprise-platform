@@ -701,7 +701,7 @@ export default function LicensesPage() {
               <div className="flex items-center gap-2">
                 <button onClick={handleExportCSV} disabled={loading || licenses.length === 0}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50">
-                  <Download className="h-3.5 w-3.5" />📥 CSV
+                  <Download className="h-3.5 w-3.5" />CSV
                 </button>
                 <button onClick={fetchLicenses}
                   className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">

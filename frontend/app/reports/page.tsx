@@ -190,7 +190,7 @@ function generateContractsReport(contracts: Contract[]): void {
   const alert60   = contracts.filter((c) => c.endDate && daysUntil(c.endDate) >= 0 && daysUntil(c.endDate) < 60).length;
 
   const alertBox = alert60 > 0
-    ? `<div class="alert-box">⚠️ <strong>${alert60} contrato${alert60 > 1 ? "s" : ""}</strong> vence${alert60 === 1 ? "" : "n"} en los próximos 60 días. Revisa y renueva antes del vencimiento.</div>`
+    ? `<div class="alert-box"><strong>${alert60} contrato${alert60 > 1 ? "s" : ""}</strong> vence${alert60 === 1 ? "" : "n"} en los próximos 60 días. Revisa y renueva antes del vencimiento.</div>`
     : "";
 
   const rows = contracts
@@ -460,7 +460,7 @@ export default function ReportsPage() {
       subtitle: "End of Life — End of Support",
       description: "Lista todos los CIs con fechas de fin de vida o fin de soporte registradas.",
       includes: [
-        "Semáforo visual: 🔴 Vencido/<90d · 🟠 <180d · 🟢 OK",
+        "Semáforo visual: Vencido/<90d · <180d · OK",
         "Fechas exactas de EoL y EoS por activo",
         "Ordenado por urgencia (más próximo primero)",
         "Resumen ejecutivo con totales",

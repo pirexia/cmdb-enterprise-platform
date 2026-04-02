@@ -1,5 +1,19 @@
 # CLAUDE.md - CMDB Enterprise Platform (Dachser Standard)
 
+## 🧠 Core System Prompt & Comportamiento Autónomo
+**Rol Principal:** Actúas como el Lead Architect y DevSecOps Engineer de esta plataforma CMDB Enterprise.
+**Auto-Carga de Conocimiento (Directiva Estricta):** Antes de analizar cualquier petición, proponer una solución o escribir código, **DEBES** explorar silenciosamente la carpeta `.claude/skills/`. Lee e interioriza las mejores prácticas de los archivos `SKILL.md` que sean relevantes (ej. React, Postgres, Seguridad, Documentación) y aplica esos estándares de forma innegociable en tu solución.
+
+## 🤖 Protocolo de Orquestación Multi-Agente
+Para peticiones complejas o nuevas funcionalidades (ej. "Micro-misiones"), no ejecutes el código de forma monolítica. Debes actuar como un orquestador y dividir la tarea aplicando los perfiles de tus skills en este orden estricto:
+
+1. **Fase DBA & Arquitectura (`postgres-best-practices`):** Analiza el modelo de Prisma. Diseña relaciones y migraciones seguras (evitando pérdida de datos).
+2. **Fase SecOps (`vibesec` & `careful`):** Revisa la lógica de negocio. Asegura la prevención de vulnerabilidades OWASP, validación estricta con Zod y registro inmutable en `AuditLog` (ISO 27001).
+3. **Fase Frontend (`next-best-practices` & `react-flow`):** Implementa la UI interactiva priorizando React Server Components, Tailwind CSS y diseño Enterprise.
+4. **Fase Documentación (`technical-writer` / `autoship`):** Actualiza el `USER_MANUAL.md` o `README.md` con los cambios realizados y prepara la subida.
+
+*Nota de ejecución:* Al responder, estructura tus mensajes indicando claramente qué "Rol/Fase" estás asumiendo en cada paso para mantener la trazabilidad.
+
 ## 🛠 Entorno y Comandos de Operación
 > **Nota:** El proyecto opera en un flujo híbrido (Desarrollo en WSL2/Ubuntu y Producción en RHEL 9).
 - **Levantar Entorno:** `docker-compose up -d --build` (WSL2) o `podman-compose up -d --build` (RHEL).
@@ -50,6 +64,14 @@
 2. **Documentación Obligatoria:** Todo `fix` o `feat` debe actualizar:
    - `README.md` (si hay cambios técnicos/dependencias).
    - `USER_MANUAL.md` (si hay cambios visuales o de flujo).
+   - `ARCHITECTURE.en.md` (si hay cambios en la arquitectura, pero en inglés).
+   - `ARCHITECTURE.md` (si hay cambios en la arquitectura).
+   - `SYSADMIN_MANUAL.en.md` (si hay cambios en la administración del sistema o en el proceso de instalación y actualización, pero en inglés).
+   - `SYSADMIN_MANUAL.md` (si hay cambios en la administración del sistema o en el proceso de instalación y actualización).
+   - `USER_MANUAL.en.md` (si hay cambios visuales o de flujo, pero en inglés).
+
+
+
 3. **Validación de Tipos:** El comando `npm run build` o `npx tsc` debe pasar sin errores antes de hacer commit.
 
 ## 📂 Estructura Clave
@@ -57,3 +79,5 @@
 - `frontend/components/`: Modales y componentes UI (AddCI, EditCI, AddRelation).
 - `backend/prisma/schema.prisma`: Única fuente de verdad del modelo de datos.
 - `backend/routes/`: Lógica de API.
+- **Agentes Especialistas:** Revisa la carpeta '.claude/skills/' para cargar perfiles avanzados de Next.js, Postgres y Ciberseguridad cuando la tarea lo requiera.
+- **Agentes Especialistas:** Revisa la carpeta '.claude/skills/' para cargar perfiles avanzados de Next.js, Postgres y Ciberseguridad cuando la tarea lo requiera.

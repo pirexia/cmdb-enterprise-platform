@@ -31,14 +31,14 @@
     "cancel":           "Cancelar",
     "delete":           "Eliminar",
     "edit":             "Editar",
-    "export_csv":       "📥 Exportar CSV",
+    "export_csv":       "Exportar CSV",
     "generate_pdf":     "Generar PDF",
     "retry":            "Reintentar",
     "search":           "Buscar",
     "import":           "Importar",
     "download_template":"Plantilla CSV",
     "sync":             "Sincronizar",
-    "send_test_email":  "📧 Enviar Correo de Prueba",
+    "send_test_email":  "Enviar Correo de Prueba",
     "test":             "Probar"
   },
   "common": {
@@ -75,7 +75,7 @@
     "export_csv":       "Exportar CSV",
     "no_cis":           "Sin CIs en el inventario.",
     "loading":          "Cargando inventario…",
-    "import_success":   "✅ {success} CIs importados correctamente, {errors} errores",
+    "import_success":   "{success} CIs importados correctamente, {errors} errores",
     "columns": {
       "ci":             "CI / Activo",
       "type":           "Tipo",
@@ -89,9 +89,9 @@
       "support":        "Soporte"
     },
     "support_badge": {
-      "expired":        "🔴 Sin soporte",
-      "warning":        "🟠 EoL en {days}d",
-      "ok":             "🟢 Activo"
+      "expired":        "Sin soporte",
+      "warning":        "EoL en {days}d",
+      "ok":             "Activo"
     },
     "vuln_badge": {
       "no_data":        "Sin datos",
@@ -324,8 +324,8 @@
     "manufacturers": {
       "new":            "Nuevo Fabricante",
       "placeholder":    "Ej: Dell, HP, Cisco",
-      "suggest_popular":"✨ Sugerir Populares",
-      "delete_all":     "🗑️ Borrar todo",
+      "suggest_popular":"Sugerir Populares",
+      "delete_all":     "Borrar todo",
       "empty":          "Sin fabricantes registrados.",
       "confirm_delete_all": "¿Insertar 30 fabricantes populares de TI? Los duplicados se omitirán."
     },
@@ -334,15 +334,15 @@
       "placeholder":    "Ej: PowerEdge R740",
       "manufacturer_label": "— Fabricante —",
       "type_label":     "— Tipo —",
-      "type_software":  "💿 Software",
-      "type_hardware":  "🖥️ Hardware",
-      "suggest_dates":  "✨ Sugerir Fechas Estándar",
-      "eol_search":     "🔍 Catálogo EOL",
+      "type_software":  "Software",
+      "type_hardware":  "Hardware",
+      "suggest_dates":  "Sugerir Fechas Estándar",
+      "eol_search":     "Catálogo EOL",
       "empty":          "Sin modelos registrados.",
-      "consult_btn":    "🌐 Consultar",
-      "sync_eol":       "🔄 EOL",
+      "consult_btn":    "Consultar",
+      "sync_eol":       "EOL",
       "consultation_center": "Centro de Consulta de Ciclo de Vida",
-      "suggested_dates": "✨ Fechas Sugeridas"
+      "suggested_dates": "Fechas Sugeridas"
     },
     "providers": {
       "new":            "Nuevo Proveedor",
@@ -354,8 +354,8 @@
     "title":            "Configuración",
     "subtitle":         "Usuarios, roles e integraciones del sistema",
     "tabs": {
-      "users":          "👥 Gestión de Usuarios",
-      "integrations":   "🔌 Integraciones y Sistema"
+      "users":          "Gestión de Usuarios",
+      "integrations":   "Integraciones y Sistema"
     },
     "users": {
       "header":         "Usuarios del sistema",
@@ -368,13 +368,13 @@
         "role":         "Rol",
         "active":       "Activo"
       },
-      "origin_ldap":    "🏢 LDAP",
-      "origin_local":   "🔑 Local",
+      "origin_ldap":    "LDAP",
+      "origin_local":   "Local",
       "mfa_active":     "Activo",
       "mfa_inactive":   "Inactivo",
-      "role_admin":     "👑 ADMIN",
-      "role_auditor":   "🔍 AUDITOR",
-      "role_viewer":    "👁️ VIEWER",
+      "role_admin":     "ADMIN",
+      "role_auditor":   "AUDITOR",
+      "role_viewer":    "VIEWER",
       "me_label":       "(yo)",
       "viewer_notice":  "Necesitas rol {role} para modificar la configuración. Modo de sólo lectura.",
       "confirm_activate":   "¿Activar al usuario \"{name}\"?",

@@ -159,7 +159,7 @@ export default function AddContractModal({ onClose, onCreated }: { onClose: () =
               <option value="">— Este es un contrato principal —</option>
               {contracts.map((c) => <option key={c.id} value={c.id}>{c.contractNumber}</option>)}
             </Select>
-            {isAddendum && <p className="mt-1.5 text-xs text-amber-600 font-medium">⚠️ Se guardará como adenda del contrato seleccionado.</p>}
+            {isAddendum && <p className="mt-1.5 text-xs text-amber-600 font-medium">Se guardará como adenda del contrato seleccionado.</p>}
           </div>
           <div>
             <Label optional>CIs Cubiertos</Label>

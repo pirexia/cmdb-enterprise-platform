@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { ClipboardList, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardList, FilterX, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -72,7 +72,12 @@ export default function AuditPage() {
   const [logs, setLogs]       = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [search, setSearch]   = useState("");
+  const [filters, setFilters] = useState({ search: "", entity: "", action: "" });
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const setFilter = (key: keyof typeof filters, val: string) =>
+    setFilters((prev) => ({ ...prev, [key]: val }));
+  const clearFilters = () => setFilters({ search: "", entity: "", action: "" });
 
   const fetchLogs = async () => {
     setLoading(true); setError(null);
@@ -90,16 +95,20 @@ export default function AuditPage() {
 
   useEffect(() => { fetchLogs(); }, []);
 
-  const filtered = logs.filter((l) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      l.action.toLowerCase().includes(q) ||
-      l.entity.toLowerCase().includes(q) ||
-      l.entity_id.toLowerCase().includes(q) ||
-      l.user_email.toLowerCase().includes(q)
-    );
-  });
+  const filtered = useMemo(() => {
+    return logs.filter((l) => {
+      const q = filters.search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        l.action.toLowerCase().includes(q) ||
+        l.entity.toLowerCase().includes(q) ||
+        l.entity_id.toLowerCase().includes(q) ||
+        l.user_email.toLowerCase().includes(q);
+      const matchesEntity = !filters.entity || l.entity === filters.entity;
+      const matchesAction = !filters.action || l.action.startsWith(filters.action);
+      return matchesSearch && matchesEntity && matchesAction;
+    });
+  }, [logs, filters]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -130,16 +139,19 @@ export default function AuditPage() {
           <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
             <ClipboardList className="h-4 w-4 text-slate-400 flex-shrink-0" />
             <h2 className="text-sm font-semibold text-slate-700 flex-1">Registro de eventos</h2>
-            <div className="relative w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Buscar por usuario, acción…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-              />
-            </div>
+            {activeFilterCount > 0 && (
+              <>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                  <FilterX className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""}
+                </span>
+                <button
+                  onClick={clearFilters}
+                  className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
+                >
+                  <FilterX className="h-3.5 w-3.5" />Limpiar
+                </button>
+              </>
+            )}
           </div>
 
           {/* Loading */}
@@ -173,6 +185,45 @@ export default function AuditPage() {
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acción</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Entidad</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Afectado</th>
+                  </tr>
+                  <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                    <td className="px-3 py-2" colSpan={2}>
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar usuario, ID…"
+                          value={filters.search}
+                          onChange={(e) => setFilter("search", e.target.value)}
+                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                        />
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={filters.action}
+                        onChange={(e) => setFilter("action", e.target.value)}
+                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.action ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
+                      >
+                        <option value="">Todas las acciones</option>
+                        <option value="CREATE_CI">CREATE_CI</option>
+                        <option value="UPDATE_VULN_STATUS">UPDATE_VULN_STATUS</option>
+                        <option value="DELETE">DELETE</option>
+                        <option value="UPDATE">UPDATE</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={filters.entity}
+                        onChange={(e) => setFilter("entity", e.target.value)}
+                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.entity ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
+                      >
+                        <option value="">Todas las entidades</option>
+                        <option value="CI">CI</option>
+                        <option value="VULNERABILITY">VULNERABILITY</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -220,7 +271,7 @@ export default function AuditPage() {
           {/* Footer */}
           {!loading && !error && (
             <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-              Mostrando {filtered.length} de {logs.length} eventos · máximo 50 más recientes
+              Mostrando {filtered.length} de {logs.length} eventos{activeFilterCount > 0 ? ` · ${activeFilterCount} filtro${activeFilterCount !== 1 ? "s" : ""} activo${activeFilterCount !== 1 ? "s" : ""}` : ""} · máximo 50 más recientes
             </div>
           )}
         </div>

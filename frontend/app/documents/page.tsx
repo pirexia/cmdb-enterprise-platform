@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   FolderOpen, Upload, Trash2, Download, RefreshCw,
   AlertTriangle, FileText, X, ChevronUp, ChevronDown, ChevronsUpDown,
+  FilterX, Search,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -252,6 +253,7 @@ export default function DocumentsPage() {
   };
 
   const hasFilters = filterTitle || filterType || filterUser;
+  const activeFilterCount = [filterTitle, filterType, filterUser].filter(Boolean).length;
   const clearFilters = () => { setFilterTitle(""); setFilterType(""); setFilterUser(""); };
 
   const load = useCallback(async () => {
@@ -336,6 +338,16 @@ export default function DocumentsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {activeFilterCount > 0 && (
+                <>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                    <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
+                  </span>
+                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                    <FilterX className="h-3.5 w-3.5" />Limpiar filtros
+                  </button>
+                </>
+              )}
               <button onClick={() => void load()} disabled={loading}
                 className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -350,36 +362,6 @@ export default function DocumentsPage() {
             </div>
           </div>
 
-          {/* Composable filters */}
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <input
-              value={filterTitle}
-              onChange={(e) => setFilterTitle(e.target.value)}
-              placeholder={t("documents.filter_title")}
-              className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 min-w-[180px]"
-            />
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            >
-              <option value="">{t("documents.filter_type")}</option>
-              {docTypes.map((dt) => <option key={dt.code} value={dt.code}>{dt.name}</option>)}
-            </select>
-            <input
-              value={filterUser}
-              onChange={(e) => setFilterUser(e.target.value)}
-              placeholder={t("documents.filter_user")}
-              className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 min-w-[180px]"
-            />
-            {hasFilters && (
-              <button onClick={clearFilters}
-                className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors">
-                <X className="h-3.5 w-3.5" />{t("documents.clear_filters")}
-              </button>
-            )}
-            <span className="text-xs text-slate-400 ml-auto">{filtered.length} {filtered.length === 1 ? "documento" : "documentos"}</span>
-          </div>
         </header>
 
         {/* Content */}
@@ -399,7 +381,7 @@ export default function DocumentsPage() {
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-slate-400">
               <FolderOpen className="h-12 w-12 mb-3 opacity-30" />
-              <p className="text-sm">{hasFilters ? "No hay documentos que coincidan con los filtros." : t("documents.no_documents")}</p>
+              <p className="text-sm">{activeFilterCount > 0 ? "No hay documentos que coincidan con los filtros." : t("documents.no_documents")}</p>
             </div>
           ) : (
             <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
@@ -414,6 +396,46 @@ export default function DocumentsPage() {
                     <SortTh field="uploadedBy"      label={t("documents.doc_uploaded_by")} {...sortProps} />
                     <SortTh field="createdAt"       label={t("documents.doc_date")}       {...sortProps} />
                     <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("common.actions")}</th>
+                  </tr>
+                  <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                    {/* Título */}
+                    <td className="px-3 py-2">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input type="text" placeholder="Buscar título…" value={filterTitle}
+                          onChange={(e) => setFilterTitle(e.target.value)}
+                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                      </div>
+                    </td>
+                    {/* Tipo */}
+                    <td className="px-3 py-2">
+                      <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
+                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filterType ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                        <option value="">Todos los tipos</option>
+                        {docTypes.map((dt) => (
+                          <option key={dt.code} value={dt.code}>{dt.name}</option>
+                        ))}
+                      </select>
+                    </td>
+                    {/* Archivo — no filter */}
+                    <td className="px-3 py-2" />
+                    {/* Tamaño — no filter */}
+                    <td className="px-3 py-2" />
+                    {/* Versión — no filter */}
+                    <td className="px-3 py-2" />
+                    {/* Subido por */}
+                    <td className="px-3 py-2">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input type="text" placeholder="Usuario…" value={filterUser}
+                          onChange={(e) => setFilterUser(e.target.value)}
+                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                      </div>
+                    </td>
+                    {/* Fecha — no filter */}
+                    <td className="px-3 py-2" />
+                    {/* Actions — no filter */}
+                    <td className="px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import {
   Key, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
   ChevronRight, Download, Eye, EyeOff, X, Search, Check, User,
-  FileText, Trash2, Mail,
+  FileText, Trash2, Mail, FilterX,
 } from "lucide-react";
 import AddLicenseModal from "@/components/AddLicenseModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -630,6 +630,28 @@ export default function LicensesPage() {
 
   useEffect(() => { fetchLicenses(); }, []);
 
+  const [filters, setFilters] = useState({ name: "", vendor: "", licenseType: "", status: "" });
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const setFilter = (key: keyof typeof filters, val: string) => setFilters((prev) => ({ ...prev, [key]: val }));
+  const clearFilters = () => setFilters({ name: "", vendor: "", licenseType: "", status: "" });
+
+  const filteredLicenses = useMemo(() => {
+    return licenses.filter((l) => {
+      if (filters.name && !l.name.toLowerCase().includes(filters.name.toLowerCase()) &&
+          !l.licenseNumber.toLowerCase().includes(filters.name.toLowerCase())) return false;
+      if (filters.vendor && !(l.vendorName ?? "").toLowerCase().includes(filters.vendor.toLowerCase())) return false;
+      if (filters.licenseType && !(l.licenseTypeName ?? "").toLowerCase().includes(filters.licenseType.toLowerCase())) return false;
+      if (filters.status) {
+        const st = getLicenseStatus(l.status, l.endDate);
+        if (filters.status === "activa" && st.label !== "Activa") return false;
+        if (filters.status === "renueva" && st.label !== "Renueva pronto") return false;
+        if (filters.status === "expirada" && st.label !== "Expirada") return false;
+        if (filters.status === "baja" && st.label !== "Baja") return false;
+      }
+      return true;
+    });
+  }, [licenses, filters]);
+
   const total    = licenses.length;
   const expiredCount = licenses.filter((l) => l.endDate && new Date(l.endDate) < new Date()).length;
   const activeCount  = licenses.filter((l) => {
@@ -699,6 +721,16 @@ export default function LicensesPage() {
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2"><Key className="h-4 w-4 text-slate-400" />Listado de licencias</h2>
               <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                      <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
+                    </span>
+                    <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                      <FilterX className="h-3.5 w-3.5" />Limpiar filtros
+                    </button>
+                  </>
+                )}
                 <button onClick={handleExportCSV} disabled={loading || licenses.length === 0}
                   className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" />CSV
@@ -738,14 +770,62 @@ export default function LicensesPage() {
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">CIs</th>
                       <th className="px-4 py-3" />
                     </tr>
+                    <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                      {/* Licencia name/number search */}
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input type="text" placeholder="Nombre o nº licencia…" value={filters.name}
+                            onChange={(e) => setFilter("name", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                        </div>
+                      </td>
+                      {/* Proveedor */}
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input type="text" placeholder="Proveedor…" value={filters.vendor}
+                            onChange={(e) => setFilter("vendor", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                        </div>
+                      </td>
+                      {/* Tipo — text search on type name */}
+                      <td className="px-3 py-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                          <input type="text" placeholder="Tipo…" value={filters.licenseType}
+                            onChange={(e) => setFilter("licenseType", e.target.value)}
+                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                        </div>
+                      </td>
+                      {/* Estado */}
+                      <td className="px-3 py-2">
+                        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
+                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.status ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">Todos</option>
+                          <option value="activa">Activa</option>
+                          <option value="renueva">Renueva pronto</option>
+                          <option value="expirada">Expirada</option>
+                          <option value="baja">Baja</option>
+                        </select>
+                      </td>
+                      {/* Coste — no filter */}
+                      <td className="px-3 py-2" />
+                      {/* CIs — no filter */}
+                      <td className="px-3 py-2" />
+                      {/* Chevron — empty */}
+                      <td className="px-3 py-2" />
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {licenses.length === 0 ? (
+                    {filteredLicenses.length === 0 ? (
                       <tr><td colSpan={7} className="py-16 text-center text-slate-400 text-sm">
-                        No hay licencias. {isAdmin && <><strong>Nueva Licencia</strong> para empezar.</>}
+                        {licenses.length === 0
+                          ? <>{`No hay licencias. `}{isAdmin && <><strong>Nueva Licencia</strong> para empezar.</>}</>
+                          : "Ninguna licencia coincide con los filtros activos."}
                       </td></tr>
                     ) : (
-                      licenses.map((l) => (
+                      filteredLicenses.map((l) => (
                         <LicenseRow
                           key={l.id}
                           license={l}
@@ -761,7 +841,8 @@ export default function LicensesPage() {
 
             {!loading && !error && (
               <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-                {total} licencia{total !== 1 ? "s" : ""} · Haz clic en una fila para ver detalles
+                {filteredLicenses.length} licencia{filteredLicenses.length !== 1 ? "s" : ""}
+                {activeFilterCount > 0 ? ` (de ${total} totales)` : " · Haz clic en una fila para ver detalles"}
               </div>
             )}
           </div>

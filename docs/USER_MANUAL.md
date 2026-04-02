@@ -1066,10 +1066,10 @@ Si el CI no tiene ninguna relación registrada, el mapa muestra un mensaje con u
 
 ## 16. Registro de Auditoría
 
-> Solo disponible para usuarios con rol **ADMIN**
+> Solo disponible para usuarios con rol **ADMIN** y **AUDITOR**
 
 ### Acceder
-Haz clic en **"🕵️ Auditoría"** en el menú lateral.
+Haz clic en **"Auditoría"** en el menú lateral.
 
 ### ¿Qué se registra?
 El sistema registra automáticamente todas las acciones administrativas:
@@ -1083,13 +1083,39 @@ El sistema registra automáticamente todas las acciones administrativas:
 | `SET_ROLE` | Cambio de rol de usuario |
 | `ACTIVATE_USER` | Activación de cuenta de usuario |
 | `DEACTIVATE_USER` | Desactivación de cuenta de usuario |
+| `UPDATE` | Actualización de un documento u otro objeto |
+| `DELETE` | Eliminación de un objeto |
 
 ### Información registrada por entrada
-- **Acción**: Qué se hizo
-- **Entidad**: Sobre qué objeto (CI, VULNERABILITY, USER…)
-- **ID de entidad**: Identificador del objeto afectado
-- **Usuario**: Email del usuario que realizó la acción
-- **Fecha y hora**: Timestamp con precisión de segundos
+La tabla muestra **6 columnas**:
+
+| Columna | Descripción |
+|---------|-------------|
+| **Fecha / Hora** | Timestamp del evento (formato `dd mes aaaa, hh:mm:ss`) |
+| **Usuario** | Email del usuario que realizó la acción |
+| **Acción** | Badge de color con el tipo de acción (`CREATE_CI`, `UPDATE_VULN_STATUS`, etc.) |
+| **Entidad** | Tipo de objeto afectado (`CI`, `VULNERABILITY`, `Document`, `USER`, `CI_RELATION`, `SYSTEM`) |
+| **Nombre / Detalle** | Nombre legible del objeto: nombre del CI, título del documento, email del usuario, código CVE combinado con nombre de CI, etc. |
+| **ID Afectado** | UUID o identificador interno del objeto afectado |
+
+### Filtros disponibles
+
+La fila de filtros en la cabecera de la tabla permite acotar los resultados:
+
+| Filtro | Tipo | Funcionamiento |
+|--------|------|----------------|
+| **Fecha desde / hasta** | Selector de fecha | Filtra en el servidor — recarga los registros del rango indicado (inclusive). El rango máximo son los 500 eventos más recientes dentro del período. |
+| **Buscar** (usuario, ID…) | Texto libre | Filtra en el cliente sobre los datos cargados (acción, entidad, ID, usuario y nombre/detalle). |
+| **Acción** | Desplegable | Muestra solo eventos del tipo seleccionado. |
+| **Entidad** | Desplegable | Muestra solo eventos de la entidad seleccionada (CI, VULNERABILITY…). |
+
+El contador de filtros activos aparece en la barra de herramientas junto al botón **Limpiar** para eliminar todos los filtros de una vez.
+
+### Exportar a Excel
+
+El botón **Excel** (esquina superior derecha) exporta a `.xlsx` los registros **actualmente visibles** tras aplicar los filtros. Las columnas exportadas son las mismas que las de la tabla: Fecha/Hora, Usuario, Acción, Entidad, Nombre/Detalle e ID Afectado. El archivo se nombra automáticamente `auditoria_AAAA-MM-DD.xlsx`.
+
+> El botón se deshabilita automáticamente si no hay registros que exportar.
 
 > El Registro de Auditoría es **append-only**: los registros no se pueden editar ni borrar desde la interfaz, garantizando la trazabilidad requerida por ISO 27001 A.12.4.
 

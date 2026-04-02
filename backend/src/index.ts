@@ -13,7 +13,7 @@ import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
-import { PrismaClient, Criticality, Environment } from '@prisma/client';
+import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
@@ -1271,17 +1271,65 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
 
 /**
  * GET /api/audit-logs
- * Returns the last 50 audit log entries ordered by date descending.
+ * Returns up to 500 audit log entries ordered by date descending.
+ * Supports optional ?from=ISO&to=ISO date-range filtering.
+ * Resolves entity_name via LEFT JOINs for CI, VULNERABILITY, Document, USER, CI_RELATION, SYSTEM.
  * ADMIN and AUDITOR only.
  */
-app.get('/api/audit-logs', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
+app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request, res: Response) => {
   try {
-    type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date };
+    // ── Validate optional date-range params ──────────────────────────────────
+    const { from, to } = req.query as { from?: string; to?: string };
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (from) {
+      fromDate = new Date(from);
+      if (isNaN(fromDate.getTime())) {
+        res.status(400).json({ error: 'Invalid "from" date parameter' });
+        return;
+      }
+    }
+    if (to) {
+      toDate = new Date(to);
+      if (isNaN(toDate.getTime())) {
+        res.status(400).json({ error: 'Invalid "to" date parameter' });
+        return;
+      }
+    }
+
+    // ── Build dynamic WHERE clause ───────────────────────────────────────────
+    const conditions: Prisma.Sql[] = [];
+    if (fromDate) conditions.push(Prisma.sql`al.created_at >= ${fromDate}::timestamptz`);
+    if (toDate) conditions.push(Prisma.sql`al.created_at <= ${toDate}::timestamptz`);
+    const whereClause = conditions.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+      : Prisma.empty;
+
+    type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date; entity_name: string | null };
     const logs = await prisma.$queryRaw<AuditRow[]>`
-      SELECT id, action, entity, entity_id, user_email, created_at
-      FROM "audit_logs"
-      ORDER BY created_at DESC
-      LIMIT 50
+      SELECT
+        al.id, al.action, al.entity, al.entity_id, al.user_email, al.created_at,
+        CASE al.entity
+          WHEN 'CI' THEN ci.name
+          WHEN 'VULNERABILITY' THEN CONCAT(vuln_ci.name, ' · ', split_part(al.entity_id, ':', 2))
+          WHEN 'Document' THEN doc.title
+          WHEN 'USER' THEN u.email
+          WHEN 'CI_RELATION' THEN CONCAT(src.name, ' → ', tgt.name)
+          WHEN 'SYSTEM' THEN al.entity_id
+          ELSE NULL
+        END AS entity_name
+      FROM audit_logs al
+      LEFT JOIN configuration_items ci ON al.entity = 'CI' AND al.entity_id::uuid = ci.id
+      LEFT JOIN configuration_items vuln_ci ON al.entity = 'VULNERABILITY' AND split_part(al.entity_id, ':', 1)::uuid = vuln_ci.id
+      LEFT JOIN documents doc ON al.entity = 'Document' AND al.entity_id::uuid = doc.id
+      LEFT JOIN users u ON al.entity = 'USER' AND al.entity_id::uuid = u.id
+      LEFT JOIN ci_relations rel ON al.entity = 'CI_RELATION' AND al.entity_id::uuid = rel.id
+      LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
+      LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
+      ${whereClause}
+      ORDER BY al.created_at DESC
+      LIMIT 500
     `;
     res.json({ total: logs.length, data: logs });
   } catch (error) {

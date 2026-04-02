@@ -166,8 +166,9 @@ model Location {
 model Vendor {
   id        String     @id @default(uuid()) @db.Uuid
   name      String
-  
+
   contracts Contract[]
+  licenses  License[]
 
   createdAt DateTime   @default(now()) @map("created_at")
   updatedAt DateTime   @updatedAt @map("updated_at")
@@ -336,6 +337,7 @@ model CI {
   relationsTo     CIRelation[] @relation("TargetCI")
 
   documents       DocumentCI[]
+  licenses        License[]    @relation("LicenseToCI")
 
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
@@ -434,6 +436,7 @@ model Document {
   // Associations
   cis            DocumentCI[]
   contracts      DocumentContract[]
+  licenses       DocumentLicense[]
 
   // Relations between documents
   relationsFrom  DocumentRelation[] @relation("SourceDocument")
@@ -496,4 +499,124 @@ model DocumentNote {
 
   @@index([documentId])
   @@map("document_notes")
+}
+
+// ─── License Repository ───────────────────────────────────────────────────────
+
+model LicenseMetricCategory {
+  code      String          @id
+  name      String
+  sortOrder Int             @default(0) @map("sort_order")
+  metrics   LicenseMetric[]
+
+  @@map("license_metric_categories")
+}
+
+model LicenseMetric {
+  id           String                @id @default(uuid()) @db.Uuid
+  code         String                @unique
+  name         String
+  categoryCode String                @map("category_code")
+  description  String?
+  isSystem     Boolean               @default(false) @map("is_system")
+
+  category     LicenseMetricCategory @relation(fields: [categoryCode], references: [code])
+  licenses     License[]
+
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  @@map("license_metrics")
+}
+
+model LicenseTypeCategory {
+  code      String        @id
+  name      String
+  sortOrder Int           @default(0) @map("sort_order")
+  types     LicenseType[]
+
+  @@map("license_type_categories")
+}
+
+model LicenseType {
+  id           String              @id @default(uuid()) @db.Uuid
+  code         String              @unique
+  name         String
+  categoryCode String              @map("category_code")
+  description  String?
+  isSystem     Boolean             @default(false) @map("is_system")
+
+  category     LicenseTypeCategory @relation(fields: [categoryCode], references: [code])
+  licenses     License[]
+
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  @@map("license_types")
+}
+
+model License {
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String
+  licenseNumber   String         @unique @map("license_number")
+
+  vendorId        String?        @db.Uuid @map("vendor_id")
+  vendor          Vendor?        @relation(fields: [vendorId], references: [id])
+
+  startDate       DateTime       @map("start_date")
+  endDate         DateTime?      @map("end_date")
+
+  licenseTypeId   String?        @db.Uuid @map("license_type_id")
+  licenseType     LicenseType?   @relation(fields: [licenseTypeId], references: [id])
+
+  licenseMetricId String?        @db.Uuid @map("license_metric_id")
+  licenseMetric   LicenseMetric? @relation(fields: [licenseMetricId], references: [id])
+  metricValue     Int?           @map("metric_value")  // quantity (e.g. 50 named users)
+  metricUnit      String?        @map("metric_unit")   // display label override
+
+  cost            Decimal?       @db.Decimal(12, 2)
+  currency        String?        @default("EUR")
+
+  status          String?        @default("ACTIVO") @map("status")
+  notes           String?
+
+  parentLicenseId String?        @db.Uuid @map("parent_license_id")
+  parentLicense   License?       @relation("LicenseAddendums", fields: [parentLicenseId], references: [id])
+  addendums       License[]      @relation("LicenseAddendums")
+
+  cis             CI[]           @relation("LicenseToCI")
+  documents       DocumentLicense[]
+  licenseUsers    LicenseUser[]
+
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  @@map("licenses")
+}
+
+model LicenseUser {
+  id        String   @id @default(uuid()) @db.Uuid
+  licenseId String   @db.Uuid @map("license_id")
+  name      String
+  dni       String?
+  email     String?
+
+  license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([licenseId])
+  @@map("license_users")
+}
+
+model DocumentLicense {
+  id        String  @id @default(uuid()) @db.Uuid
+  documentId String @db.Uuid @map("document_id")
+  licenseId  String @db.Uuid @map("license_id")
+
+  document  Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, licenseId])
+  @@map("document_licenses")
 }

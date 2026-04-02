@@ -3103,6 +3103,509 @@ cron.schedule('0 2 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ─── License Repository API ──────────────────────────────────────────────────
+
+// ── Zod schemas ───────────────────────────────────────────────────────────────
+const LicenseMasterSchema = z.object({
+  code: z.string().min(1),
+  name: z.string().min(1),
+  categoryCode: z.string().min(1),
+  description: z.string().optional(),
+});
+
+const LicenseSchema = z.object({
+  name: z.string().min(1),
+  licenseNumber: z.string().min(1),
+  vendorId: z.string().uuid().optional().nullable(),
+  startDate: z.string(),
+  endDate: z.string().optional().nullable(),
+  licenseTypeId: z.string().uuid().optional().nullable(),
+  licenseMetricId: z.string().uuid().optional().nullable(),
+  metricValue: z.number().int().positive().optional().nullable(),
+  metricUnit: z.string().optional().nullable(),
+  cost: z.number().positive().optional().nullable(),
+  currency: z.string().default('EUR'),
+  status: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  parentLicenseId: z.string().uuid().optional().nullable(),
+});
+
+const LicenseUserSchema = z.object({
+  name: z.string().min(1),
+  dni: z.string().optional().nullable(),
+  email: z.string().email().optional().or(z.literal('')).nullable(),
+});
+
+// ── Group 1: License Metric Categories + Metrics Master ───────────────────────
+
+// GET /api/masters/license-metric-categories — list all with their metrics
+app.get('/api/masters/license-metric-categories', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      code: string; name: string; sortOrder: number;
+      metricId: string | null; metricCode: string | null; metricName: string | null;
+      metricDescription: string | null; metricIsSystem: boolean | null;
+    }[]>`
+      SELECT lmc.code, lmc.name, lmc.sort_order AS "sortOrder",
+             lm.id::text AS "metricId", lm.code AS "metricCode", lm.name AS "metricName",
+             lm.description AS "metricDescription", lm.is_system AS "metricIsSystem"
+      FROM "license_metric_categories" lmc
+      LEFT JOIN "license_metrics" lm ON lm.category_code = lmc.code
+      ORDER BY lmc.sort_order ASC, lm.name ASC`;
+    // Group by category
+    const map = new Map<string, { code: string; name: string; sortOrder: number; metrics: object[] }>();
+    for (const r of rows) {
+      if (!map.has(r.code)) map.set(r.code, { code: r.code, name: r.name, sortOrder: r.sortOrder, metrics: [] });
+      if (r.metricId) {
+        map.get(r.code)!.metrics.push({
+          id: r.metricId, code: r.metricCode, name: r.metricName,
+          description: r.metricDescription, isSystem: r.metricIsSystem,
+        });
+      }
+    }
+    res.json([...map.values()]);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license metric categories' }); }
+});
+
+// GET /api/masters/license-metrics — flat list
+app.get('/api/masters/license-metrics', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; code: string; name: string; categoryCode: string;
+      description: string | null; isSystem: boolean;
+    }[]>`
+      SELECT id::text AS id, code, name, category_code AS "categoryCode",
+             description, is_system AS "isSystem"
+      FROM "license_metrics" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license metrics' }); }
+});
+
+// POST /api/masters/license-metrics — create
+app.post('/api/masters/license-metrics', authenticateToken, requireAdmin, async (req, res) => {
+  const parsed = LicenseMasterSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'code, name and categoryCode are required' }); return; }
+  const { code, name, categoryCode, description } = parsed.data;
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      INSERT INTO "license_metrics"(id, code, name, category_code, description, is_system, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${code.trim().toUpperCase()}, ${name.trim()}, ${categoryCode.trim()}, ${description ?? null}, false, now(), now())
+      RETURNING id::text AS id, code, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: 'Failed to create license metric' }); }
+});
+
+// PATCH /api/masters/license-metrics/:id — update name/description
+app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, description } = req.body as { name?: string; description?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  const id = req.params.id as string;
+  try {
+    // Check if system metric — system ones allow name update only (no description change restriction, but description update is fine too)
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string; isSystem: boolean }[]>`
+      UPDATE "license_metrics"
+      SET name = ${name.trim()},
+          description = CASE WHEN is_system = false THEN ${description ?? null} ELSE description END,
+          updated_at = now()
+      WHERE id = ${id}::uuid
+      RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
+    if (!rows.length) { res.status(404).json({ error: 'License metric not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: 'Failed to update license metric' }); }
+});
+
+// DELETE /api/masters/license-metrics/:id — only if !isSystem
+app.delete('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await prisma.$executeRaw`
+      DELETE FROM "license_metrics" WHERE id = ${req.params.id as string}::uuid AND is_system = false`;
+    if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system metric' }); return; }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete license metric' }); }
+});
+
+// ── Group 2: License Type Categories + Types Master ───────────────────────────
+
+// GET /api/masters/license-type-categories — list all with their types
+app.get('/api/masters/license-type-categories', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      code: string; name: string; sortOrder: number;
+      typeId: string | null; typeCode: string | null; typeName: string | null;
+      typeDescription: string | null; typeIsSystem: boolean | null;
+    }[]>`
+      SELECT ltc.code, ltc.name, ltc.sort_order AS "sortOrder",
+             lt.id::text AS "typeId", lt.code AS "typeCode", lt.name AS "typeName",
+             lt.description AS "typeDescription", lt.is_system AS "typeIsSystem"
+      FROM "license_type_categories" ltc
+      LEFT JOIN "license_types" lt ON lt.category_code = ltc.code
+      ORDER BY ltc.sort_order ASC, lt.name ASC`;
+    const map = new Map<string, { code: string; name: string; sortOrder: number; types: object[] }>();
+    for (const r of rows) {
+      if (!map.has(r.code)) map.set(r.code, { code: r.code, name: r.name, sortOrder: r.sortOrder, types: [] });
+      if (r.typeId) {
+        map.get(r.code)!.types.push({
+          id: r.typeId, code: r.typeCode, name: r.typeName,
+          description: r.typeDescription, isSystem: r.typeIsSystem,
+        });
+      }
+    }
+    res.json([...map.values()]);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license type categories' }); }
+});
+
+// GET /api/masters/license-types — flat list
+app.get('/api/masters/license-types', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; code: string; name: string; categoryCode: string;
+      description: string | null; isSystem: boolean;
+    }[]>`
+      SELECT id::text AS id, code, name, category_code AS "categoryCode",
+             description, is_system AS "isSystem"
+      FROM "license_types" ORDER BY name ASC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license types' }); }
+});
+
+// POST /api/masters/license-types — create
+app.post('/api/masters/license-types', authenticateToken, requireAdmin, async (req, res) => {
+  const parsed = LicenseMasterSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'code, name and categoryCode are required' }); return; }
+  const { code, name, categoryCode, description } = parsed.data;
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
+      INSERT INTO "license_types"(id, code, name, category_code, description, is_system, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${code.trim().toUpperCase()}, ${name.trim()}, ${categoryCode.trim()}, ${description ?? null}, false, now(), now())
+      RETURNING id::text AS id, code, name`;
+    res.status(201).json(rows[0]);
+  } catch (e) { res.status(500).json({ error: 'Failed to create license type' }); }
+});
+
+// PATCH /api/masters/license-types/:id — update
+app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const { name, description } = req.body as { name?: string; description?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  const id = req.params.id as string;
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; code: string; name: string; isSystem: boolean }[]>`
+      UPDATE "license_types"
+      SET name = ${name.trim()},
+          description = CASE WHEN is_system = false THEN ${description ?? null} ELSE description END,
+          updated_at = now()
+      WHERE id = ${id}::uuid
+      RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
+    if (!rows.length) { res.status(404).json({ error: 'License type not found' }); return; }
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: 'Failed to update license type' }); }
+});
+
+// DELETE /api/masters/license-types/:id — only if !isSystem
+app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const result = await prisma.$executeRaw`
+      DELETE FROM "license_types" WHERE id = ${req.params.id as string}::uuid AND is_system = false`;
+    if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete license type' }); }
+});
+
+// ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
+
+// GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
+app.get('/api/licenses', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; name: string; licenseNumber: string;
+      startDate: Date; endDate: Date | null;
+      status: string | null; currency: string | null; cost: string | null;
+      vendorName: string | null; licenseTypeName: string | null;
+      licenseMetricName: string | null;
+      ciCount: bigint; addendumCount: bigint;
+    }[]>`
+      SELECT
+        l.id::text AS id,
+        l.name,
+        l.license_number AS "licenseNumber",
+        l.start_date AS "startDate",
+        l.end_date AS "endDate",
+        l.status,
+        l.currency,
+        l.cost::text AS cost,
+        v.name AS "vendorName",
+        lt.name AS "licenseTypeName",
+        lm.name AS "licenseMetricName",
+        (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
+        (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
+      FROM "licenses" l
+      LEFT JOIN "vendors" v ON v.id = l.vendor_id
+      LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
+      LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
+      ORDER BY l.created_at DESC`;
+    res.json(rows.map((r) => ({
+      ...r,
+      ciCount: Number(r.ciCount),
+      addendumCount: Number(r.addendumCount),
+      cost: r.cost ? parseFloat(r.cost) : null,
+    })));
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch licenses' }); }
+});
+
+// GET /api/licenses/:id — license detail with all relations
+app.get('/api/licenses/:id', authenticateToken, async (req, res) => {
+  const id = req.params.id as string;
+  try {
+    const license = await prisma.license.findUnique({
+      where: { id },
+      include: {
+        vendor: true,
+        licenseType: true,
+        licenseMetric: true,
+        cis: { select: { id: true, name: true, apiSlug: true, environment: true, criticality: true } },
+        licenseUsers: { orderBy: { createdAt: 'asc' } },
+        addendums: { select: { id: true, name: true, licenseNumber: true, status: true, startDate: true, endDate: true } },
+        parentLicense: { select: { id: true, name: true, licenseNumber: true } },
+      },
+    });
+    if (!license) { res.status(404).json({ error: 'License not found' }); return; }
+    // Fetch documents with latestVersionId + mimeType (same pattern as contracts)
+    const docs = await prisma.$queryRaw<{
+      id: string; title: string; documentTypeName: string; documentTypeCode: string;
+      originalName: string; versionNumber: number; uploadedBy: string;
+      createdAt: Date; latestVersionId: string; mimeType: string;
+    }[]>`
+      SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             COALESCE(v.original_name, d.original_name) AS "originalName",
+             COALESCE(v.version_number, d.version_number) AS "versionNumber",
+             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+             d.created_at AS "createdAt",
+             COALESCE(v.id::text, d.id::text) AS "latestVersionId",
+             COALESCE(v.mime_type, d.mime_type) AS "mimeType"
+      FROM "document_licenses" dl
+      JOIN "documents" d ON dl.document_id = d.id
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+      WHERE dl.license_id = ${id}::uuid AND d.root_id IS NULL
+      ORDER BY d.created_at DESC`;
+    res.json({ ...license, documents: docs });
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license' }); }
+});
+
+// POST /api/licenses — create a license
+app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
+  const parsed = LicenseSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid license data', details: parsed.error.flatten() }); return; }
+  const d = parsed.data;
+  try {
+    const license = await prisma.license.create({
+      data: {
+        name: d.name,
+        licenseNumber: d.licenseNumber,
+        vendorId: d.vendorId ?? null,
+        startDate: new Date(d.startDate),
+        endDate: d.endDate ? new Date(d.endDate) : null,
+        licenseTypeId: d.licenseTypeId ?? null,
+        licenseMetricId: d.licenseMetricId ?? null,
+        metricValue: d.metricValue ?? null,
+        metricUnit: d.metricUnit ?? null,
+        cost: d.cost ?? null,
+        currency: d.currency,
+        status: d.status ?? 'ACTIVO',
+        notes: d.notes ?? null,
+        parentLicenseId: d.parentLicenseId ?? null,
+      },
+    });
+    res.status(201).json(license);
+  } catch (e) { res.status(500).json({ error: 'Failed to create license' }); }
+});
+
+// PATCH /api/licenses/:id — update any field
+app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = req.params.id as string;
+  const parsed = LicenseSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid license data' }); return; }
+  const d = parsed.data;
+  try {
+    const license = await prisma.license.update({
+      where: { id },
+      data: {
+        ...(d.name !== undefined && { name: d.name }),
+        ...(d.licenseNumber !== undefined && { licenseNumber: d.licenseNumber }),
+        ...(d.vendorId !== undefined && { vendorId: d.vendorId }),
+        ...(d.startDate !== undefined && { startDate: new Date(d.startDate) }),
+        ...(d.endDate !== undefined && { endDate: d.endDate ? new Date(d.endDate) : null }),
+        ...(d.licenseTypeId !== undefined && { licenseTypeId: d.licenseTypeId }),
+        ...(d.licenseMetricId !== undefined && { licenseMetricId: d.licenseMetricId }),
+        ...(d.metricValue !== undefined && { metricValue: d.metricValue }),
+        ...(d.metricUnit !== undefined && { metricUnit: d.metricUnit }),
+        ...(d.cost !== undefined && { cost: d.cost }),
+        ...(d.currency !== undefined && { currency: d.currency }),
+        ...(d.status !== undefined && { status: d.status }),
+        ...(d.notes !== undefined && { notes: d.notes }),
+        ...(d.parentLicenseId !== undefined && { parentLicenseId: d.parentLicenseId }),
+      },
+    });
+    res.json(license);
+  } catch (e) { res.status(500).json({ error: 'Failed to update license' }); }
+});
+
+// DELETE /api/licenses/:id — delete (cascade handles relations)
+app.delete('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = req.params.id as string;
+  try {
+    await prisma.license.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete license' }); }
+});
+
+// ── Group 4: License ↔ CI associations ────────────────────────────────────────
+
+// GET /api/licenses/:id/cis — list CIs for a license
+app.get('/api/licenses/:id/cis', authenticateToken, async (req, res) => {
+  const licenseId = req.params.id as string;
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; name: string; apiSlug: string; environment: string; criticality: string;
+    }[]>`
+      SELECT ci.id::text AS id, ci.name, ci.api_slug AS "apiSlug",
+             ci.environment::text AS environment, ci.criticality::text AS criticality
+      FROM "CI" ci
+      JOIN "_LicenseToCI" lci ON lci."B" = ci.id
+      WHERE lci."A" = ${licenseId}::uuid`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch CIs for license' }); }
+});
+
+// POST /api/licenses/:id/cis — bulk associate CIs
+app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
+  const { ciIds } = parsed.data;
+  const licenseId = req.params.id as string;
+  try {
+    await prisma.license.update({
+      where: { id: licenseId },
+      data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
+    });
+    res.json({ associated: ciIds.length });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to license' }); }
+});
+
+// DELETE /api/licenses/:id/cis/:ciId — disassociate one CI
+app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+  const licenseId = req.params.id as string;
+  const ciId = req.params.ciId as string;
+  try {
+    await prisma.license.update({
+      where: { id: licenseId },
+      data: { cis: { disconnect: [{ id: ciId }] } },
+    });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to disassociate CI from license' }); }
+});
+
+// ── Group 5: License ↔ Document associations ──────────────────────────────────
+
+// GET /api/licenses/:id/documents — list docs with latestVersionId + mimeType
+app.get('/api/licenses/:id/documents', authenticateToken, async (req, res) => {
+  const licenseId = req.params.id as string;
+  try {
+    const rows = await prisma.$queryRaw<{
+      id: string; title: string; documentTypeName: string; documentTypeCode: string;
+      originalName: string; versionNumber: number; uploadedBy: string;
+      createdAt: Date; latestVersionId: string; mimeType: string;
+    }[]>`
+      SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+             COALESCE(v.original_name, d.original_name) AS "originalName",
+             COALESCE(v.version_number, d.version_number) AS "versionNumber",
+             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+             d.created_at AS "createdAt",
+             COALESCE(v.id::text, d.id::text) AS "latestVersionId",
+             COALESCE(v.mime_type, d.mime_type) AS "mimeType"
+      FROM "document_licenses" dl
+      JOIN "documents" d ON dl.document_id = d.id
+      JOIN "document_types" dt ON d.document_type_id = dt.id
+      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+      WHERE dl.license_id = ${licenseId}::uuid AND d.root_id IS NULL
+      ORDER BY d.created_at DESC`;
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch documents for license' }); }
+});
+
+// POST /api/licenses/:id/documents — bulk associate documents
+app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, async (req, res) => {
+  const schema = z.object({ documentIds: z.array(z.string().uuid()).min(1) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'documentIds must be a non-empty array of UUIDs' }); return; }
+  const { documentIds } = parsed.data;
+  const licenseId = req.params.id as string;
+  try {
+    let associated = 0;
+    for (const documentId of documentIds) {
+      await prisma.$executeRaw`
+        INSERT INTO "document_licenses"(id, document_id, license_id)
+        VALUES(gen_random_uuid(), ${documentId}::uuid, ${licenseId}::uuid)
+        ON CONFLICT DO NOTHING`;
+      associated++;
+    }
+    res.json({ associated });
+  } catch (e) { res.status(500).json({ error: 'Failed to associate documents to license' }); }
+});
+
+// DELETE /api/licenses/:id/documents/:docId — remove from document_licenses
+app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+  const licenseId = req.params.id as string;
+  const docId = req.params.docId as string;
+  try {
+    await prisma.$executeRaw`
+      DELETE FROM "document_licenses" WHERE document_id = ${docId}::uuid AND license_id = ${licenseId}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to remove document association from license' }); }
+});
+
+// ── Group 6: License Users ─────────────────────────────────────────────────────
+
+// GET /api/licenses/:id/users — list LicenseUsers
+app.get('/api/licenses/:id/users', authenticateToken, async (req, res) => {
+  const licenseId = req.params.id as string;
+  try {
+    const users = await prisma.licenseUser.findMany({
+      where: { licenseId },
+      orderBy: { createdAt: 'asc' },
+    });
+    res.json(users);
+  } catch (e) { res.status(500).json({ error: 'Failed to fetch license users' }); }
+});
+
+// POST /api/licenses/:id/users — create a LicenseUser
+app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req, res) => {
+  const parsed = LicenseUserSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid user data', details: parsed.error.flatten() }); return; }
+  const { name, dni, email } = parsed.data;
+  const licenseId = req.params.id as string;
+  try {
+    const user = await prisma.licenseUser.create({
+      data: {
+        licenseId,
+        name,
+        dni: dni ?? null,
+        email: email || null,
+      },
+    });
+    res.status(201).json(user);
+  } catch (e) { res.status(500).json({ error: 'Failed to create license user' }); }
+});
+
+// DELETE /api/licenses/:id/users/:userId — delete a LicenseUser
+app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
+  const userId = req.params.userId as string;
+  try {
+    await prisma.licenseUser.delete({ where: { id: userId } });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: 'Failed to delete license user' }); }
+});
+
 // ─── Server ───────────────────────────────────────────────────────────────────
 
 // ─── Server startup — HTTP or HTTPS ──────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText,
+  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText, Key,
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
@@ -19,8 +19,12 @@ interface CostCenter   { id: string; code: string; name: string }
 interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean; categoryCode: string }
 interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
 interface DocumentTypeItem { id: string; code: string; name: string; isSystem: boolean }
+interface LicenseMetricItem { id: string; code: string; name: string; isSystem: boolean; categoryCode: string; description: string | null }
+interface LicenseMetricCategory { code: string; name: string; sortOrder: number; metrics: LicenseMetricItem[] }
+interface LicenseTypeItem { id: string; code: string; name: string; isSystem: boolean; categoryCode: string; description: string | null }
+interface LicenseTypeCategory { code: string; name: string; sortOrder: number; types: LicenseTypeItem[] }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types";
 
 type EditState =
   | { kind: "simple";  path: string; id: string; name: string }
@@ -91,6 +95,8 @@ export default function MastersPage() {
   const [costCenters,      setCostCenters]      = useState<CostCenter[]>([]);
   const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
   const [docTypes,         setDocTypes]         = useState<DocumentTypeItem[]>([]);
+  const [licenseMetricCats, setLicenseMetricCats] = useState<LicenseMetricCategory[]>([]);
+  const [licenseTypeCats,   setLicenseTypeCats]   = useState<LicenseTypeCategory[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -121,7 +127,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
@@ -130,6 +136,8 @@ export default function MastersPage() {
         apiFetch("/api/masters/cost-centers"),
         apiFetch("/api/masters/ci-type-categories"),
         apiFetch("/api/masters/document-types"),
+        apiFetch("/api/masters/license-metric-categories"),
+        apiFetch("/api/masters/license-type-categories"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -140,6 +148,8 @@ export default function MastersPage() {
       const ccData  = await ccRes.json();
       const ctData  = await ctRes.json();
       const dtData  = await dtRes.json();
+      const lmcData = await lmcRes.json();
+      const ltcData = await ltcRes.json();
       setSupportAreas(    safe(saData) as SupportArea[]);
       setBranches(        safe(brData) as Branch[]);
       setManufacturers(   safe(mfData) as Manufacturer[]);
@@ -148,6 +158,8 @@ export default function MastersPage() {
       setCostCenters(     safe(ccData) as CostCenter[]);
       setCiTypeCategories(safe(ctData) as CITypeCategory[]);
       setDocTypes(        safe(dtData) as DocumentTypeItem[]);
+      setLicenseMetricCats(safe(lmcData) as LicenseMetricCategory[]);
+      setLicenseTypeCats(  safe(ltcData) as LicenseTypeCategory[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -193,6 +205,8 @@ export default function MastersPage() {
     { id: "cost-centers",   label: "Centros de Coste",              icon: <Wallet    className="h-4 w-4" />, count: costCenters.length },
     { id: "ci-types",       label: "Tipos de CI",                   icon: <Tags      className="h-4 w-4" />, count: totalCITypes },
     { id: "doc-types",      label: t('masters.doc_types'),          icon: <FileText  className="h-4 w-4" />, count: docTypes.length },
+    { id: "license-metrics", label: t('masters.license_metrics'),  icon: <Key       className="h-4 w-4" />, count: licenseMetricCats.reduce((s, c) => s + c.metrics.length, 0) },
+    { id: "license-types",   label: t('masters.license_types'),    icon: <Key       className="h-4 w-4" />, count: licenseTypeCats.reduce((s, c) => s + c.types.length, 0) },
   ];
 
   return (
@@ -1044,6 +1058,82 @@ export default function MastersPage() {
             </div>
           </div>
         )}
+        {/* ── License Metrics ── */}
+        {tab === "license-metrics" && (
+          <div className="space-y-6">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Información</p>
+                <p className="text-[11px] text-slate-400 mt-1">Las métricas del sistema son de solo lectura. Puedes consultar sus descripciones expandiendo cada elemento. Las métricas personalizadas se gestionan desde la API.</p>
+              </div>
+            </div>
+            {licenseMetricCats.map((cat) => (
+              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
+                  <Key className="h-4 w-4 text-indigo-500" />
+                  <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.metrics.length}</span>
+                  <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {cat.metrics.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-slate-400">Sin métricas en esta categoría.</p>
+                  ) : cat.metrics.map((m) => (
+                    <div key={m.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
+                      <div className="flex items-start gap-3 min-w-0">
+                        {m.isSystem && <span title="Métrica de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-700">{m.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{m.code}</p>
+                          {m.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── License Types ── */}
+        {tab === "license-types" && (
+          <div className="space-y-6">
+            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Información</p>
+                <p className="text-[11px] text-slate-400 mt-1">Los tipos de licencia del sistema son de solo lectura. Puedes consultar sus descripciones expandiendo cada elemento. Los tipos personalizados se gestionan desde la API.</p>
+              </div>
+            </div>
+            {licenseTypeCats.map((cat) => (
+              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
+                  <FileText className="h-4 w-4 text-indigo-500" />
+                  <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
+                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.types.length}</span>
+                  <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {cat.types.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-slate-400">Sin tipos en esta categoría.</p>
+                  ) : cat.types.map((t) => (
+                    <div key={t.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
+                      <div className="flex items-start gap-3 min-w-0">
+                        {t.isSystem && <span title="Tipo de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-700">{t.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{t.code}</p>
+                          {t.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t.description}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
           </div>
         </main>
       </div>

@@ -1,8 +1,8 @@
 # 📖 CMDB Enterprise Platform — User Manual
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Audience:** CMDB Administrators and read-only users
-**Date:** 2026-03-31
+**Date:** 2026-04-02
 
 ---
 
@@ -19,6 +19,7 @@
 9. [Vulnerability Management](#9-vulnerability-management)
 10. [Document Repository](#10-document-repository)
 11. [Contracts and Addenda](#11-contracts-and-addenda)
+11b. [License Repository](#11b-license-repository)
 12. [Lifecycle Lookup Center (EOL/EOS)](#12-lifecycle-lookup-center-eoless)
 12. [Automated Daily Alerts](#12-automated-daily-alerts)
 13. [Reports Center](#13-reports-center)
@@ -705,6 +706,81 @@ The expanded row of a contract on the Contracts and Addenda page includes advanc
 1. Apply the filters you need in the table
 2. Click **"📥 Export CSV"**
 3. The CSV is downloaded with the **filtered** records (not the entire database)
+
+---
+
+## 11b. License Repository
+
+The License Repository centralises the management of the software licence inventory, associating each licence with its vendor, type, usage metric, cost, covered CIs, attached documents and assigned users.
+
+### Navigating to the module
+
+1. Click **"Licencias"** (key icon) in the left sidebar menu
+2. The table displays all registered licences with the following columns:
+
+| Column | Description |
+|--------|-------------|
+| **Licence** | Name and licence number |
+| **Vendor** | Company that provides the licence |
+| **Type / Metric** | Licence category and measurement metric (e.g. Named User, CPU Socket) |
+| **Status / Expiry** | Current status (Active, Expiring soon, Expired, Draft) and end date |
+| **Cost** | Amount and currency |
+| **CIs** | Number of associated Configuration Items |
+
+### Licence statuses
+
+- **Active** — The licence is current (more than 60 days until expiry, or no end date)
+- **Expiring soon** — Expires within the next 60 days
+- **Expired** — The end date has already passed
+- **Draft** — Licence in the registration process, not yet active in production
+
+### Creating a new licence (ADMIN only)
+
+1. Click **"Nueva Licencia"** (New Licence)
+2. Fill in the form fields:
+   - **Name** — Internal name for the licence (required)
+   - **Licence number** — Vendor-provided identifier or licence key
+   - **Vendor** — Select the vendor from the vendor catalogue
+   - **Licence type** — Choose from the available categories (e.g. Perpetual, Annual subscription, OEM)
+   - **Licence metric** — Unit of measurement for usage (e.g. Named User, Processor Core, Managed Device)
+   - **Metric value / Unit** — Quantity and unit description
+   - **Start date / End date** — Validity period
+   - **Cost / Currency** — Economic amount of the licence
+   - **Status** — Initial status (Draft or Active)
+   - **Notes** — Additional comments
+   - **Parent licence** — For child or sub-licences, select the main licence
+3. Click **"Crear Licencia"** (Create Licence)
+
+### Viewing licence detail and associations
+
+Click on a licence row to expand its detail panel. Three tabs are displayed:
+
+#### Associated CIs
+- Lists the Configuration Items covered by this licence
+- To **add a CI**: click **"Asociar CI"** (Associate CI) and select the CI from the search control
+- To **unlink a CI**: click the remove button next to the CI
+
+#### Attached documents
+- Shows the linked documents (contracts, annexes, certificates, etc.)
+- To **associate an existing document**: click **"Asociar Documento"** (Associate Document) and select it from the document repository
+- To **view the document**: click its name — the embedded viewer opens (PDF, image, text)
+- To **unlink**: click the remove button next to the document
+
+#### Licence users
+Records the end-users assigned to this licence (they do not need to be CMDB system users):
+
+- **Name** — Full name of the user
+- **DNI** — National identity document or other identifier
+- **Email** — User's email address
+
+To **add a user**: fill in all three fields and click **"Añadir Usuario"** (Add User).
+To **remove a user**: click the trash icon next to the user.
+
+> Write operations (create, edit, delete licences; add/remove CIs, documents and users) require the **ADMIN** role. Users with the AUDITOR or VIEWER role may only read.
+
+### Licence Metrics and Types (Master Data)
+
+The metric and type catalogues are managed by administrators from **Settings → Master Data**, in the read-only tabs **"Métricas de Licencia"** (Licence Metrics) and **"Tipos de Licencia"** (Licence Types). These catalogues are pre-loaded by the system with 25 metrics and 14 standard types during the initial seed.
 
 ---
 

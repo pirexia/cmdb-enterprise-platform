@@ -124,7 +124,7 @@ export default function AuditPage() {
         </div>
       </header>
 
-      <div className="px-8 py-8 max-w-7xl mx-auto">
+      <div className="px-8 py-8 w-full">
         <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-4">

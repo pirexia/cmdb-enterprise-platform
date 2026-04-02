@@ -653,7 +653,7 @@ export default function ContractsPage() {
           </div>
         </header>
 
-        <div className="px-8 py-8 max-w-7xl mx-auto space-y-6">
+        <div className="px-8 py-8 w-full space-y-6">
           {!loading && !error && (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[

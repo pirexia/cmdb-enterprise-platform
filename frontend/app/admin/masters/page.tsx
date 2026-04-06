@@ -27,12 +27,14 @@ interface LicenseTypeCategory { code: string; name: string; sortOrder: number; t
 type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types";
 
 type EditState =
-  | { kind: "simple";  path: string; id: string; name: string }
-  | { kind: "branch";  id: string; name: string; code: string; address: string; supportAreaId: string }
-  | { kind: "model";   id: string; name: string; manufacturerId: string }
-  | { kind: "cc";      id: string; code: string; name: string }
-  | { kind: "citype";  id: string; name: string; categoryCode: string }
-  | { kind: "doctype"; id: string; name: string }
+  | { kind: "simple";    path: string; id: string; name: string }
+  | { kind: "branch";    id: string; name: string; code: string; address: string; supportAreaId: string }
+  | { kind: "model";     id: string; name: string; manufacturerId: string }
+  | { kind: "cc";        id: string; code: string; name: string }
+  | { kind: "citype";    id: string; name: string; categoryCode: string }
+  | { kind: "doctype";   id: string; name: string }
+  | { kind: "licmetric"; id: string; name: string; description: string }
+  | { kind: "lictype";   id: string; name: string; description: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -111,6 +113,8 @@ export default function MastersPage() {
   const [newCC,   setNewCC]   = useState({ code: "", name: "" });
   const [newCIType, setNewCIType] = useState({ name: "", categoryCode: "" });
   const [newDocType, setNewDocType] = useState({ code: "", name: "" });
+  const [newLicMetric, setNewLicMetric] = useState<{ catCode: string; code: string; name: string; description: string } | null>(null);
+  const [newLicType,   setNewLicType]   = useState<{ catCode: string; code: string; name: string; description: string } | null>(null);
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -1061,76 +1065,280 @@ export default function MastersPage() {
         {/* ── License Metrics ── */}
         {tab === "license-metrics" && (
           <div className="space-y-6">
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Información</p>
-                <p className="text-[11px] text-slate-400 mt-1">Las métricas del sistema son de solo lectura. Puedes consultar sus descripciones expandiendo cada elemento. Las métricas personalizadas se gestionan desde la API.</p>
-              </div>
-            </div>
-            {licenseMetricCats.map((cat) => (
-              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
-                  <Key className="h-4 w-4 text-indigo-500" />
-                  <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
-                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.metrics.length}</span>
-                  <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {cat.metrics.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-slate-400">Sin métricas en esta categoría.</p>
-                  ) : cat.metrics.map((m) => (
-                    <div key={m.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
-                      <div className="flex items-start gap-3 min-w-0">
-                        {m.isSystem && <span title="Métrica de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-700">{m.name}</p>
-                          <p className="text-xs font-mono text-slate-400">{m.code}</p>
-                          {m.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>}
+            {licenseMetricCats.map((cat) => {
+              const isAddingHere = newLicMetric?.catCode === cat.code;
+              return (
+                <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                  {/* Category header */}
+                  <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
+                    <Key className="h-4 w-4 text-indigo-500" />
+                    <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.metrics.length}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{cat.code}</span>
+                    <button
+                      onClick={() => setNewLicMetric(isAddingHere ? null : { catCode: cat.code, code: "", name: "", description: "" })}
+                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />{isAddingHere ? "Cancelar" : "Nueva métrica"}
+                    </button>
+                  </div>
+
+                  <div className="divide-y divide-slate-50">
+                    {/* Rows */}
+                    {cat.metrics.length === 0 && !isAddingHere && (
+                      <p className="py-6 text-center text-sm text-slate-400">Sin métricas en esta categoría.</p>
+                    )}
+                    {cat.metrics.map((m) => {
+                      const isEditing = editState?.kind === "licmetric" && editState.id === m.id;
+                      if (isEditing && editState?.kind === "licmetric") {
+                        return (
+                          <div key={m.id} className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 space-y-2">
+                            <Input
+                              value={editState.name}
+                              onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                              placeholder="Nombre"
+                              autoFocus
+                            />
+                            <Input
+                              value={editState.description}
+                              onChange={(e) => setEditState({ ...editState, description: e.target.value })}
+                              placeholder="Descripción (opcional)"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await patch(`/api/masters/license-metrics/${m.id}`, { name: editState.name, description: editState.description });
+                                    setEditState(null); load();
+                                  } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                              ><Check className="h-3.5 w-3.5" />Guardar</button>
+                              <button onClick={() => setEditState(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">Cancelar</button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={m.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
+                          <div className="flex items-start gap-3 min-w-0">
+                            {m.isSystem
+                              ? <span title="Métrica de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>
+                              : <span className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            }
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-700">{m.name}</p>
+                              <p className="text-xs font-mono text-slate-400">{m.code}</p>
+                              {m.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>}
+                            </div>
+                          </div>
+                          {!m.isSystem && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                              <button
+                                onClick={() => setEditState({ kind: "licmetric", id: m.id, name: m.name, description: m.description ?? "" })}
+                                className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                              ><Pencil className="h-4 w-4" /></button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`¿Eliminar la métrica "${m.name}"?`)) return;
+                                  const res = await apiFetch(`/api/masters/license-metrics/${m.id}`, { method: "DELETE" });
+                                  if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                  load();
+                                }}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              ><Trash2 className="h-4 w-4" /></button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Inline create form */}
+                    {isAddingHere && newLicMetric && (
+                      <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100 space-y-2">
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Nueva métrica en {cat.name}</p>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Código (ej: NAMED_USER)"
+                            value={newLicMetric.code}
+                            onChange={(e) => setNewLicMetric({ ...newLicMetric, code: e.target.value.toUpperCase() })}
+                            className="w-44"
+                          />
+                          <Input
+                            placeholder="Nombre"
+                            value={newLicMetric.name}
+                            onChange={(e) => setNewLicMetric({ ...newLicMetric, name: e.target.value })}
+                          />
+                        </div>
+                        <Input
+                          placeholder="Descripción (opcional)"
+                          value={newLicMetric.description}
+                          onChange={(e) => setNewLicMetric({ ...newLicMetric, description: e.target.value })}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!newLicMetric.code.trim() || !newLicMetric.name.trim()) { alert("Código y nombre son obligatorios"); return; }
+                              try {
+                                await post("/api/masters/license-metrics", {
+                                  code: newLicMetric.code.trim(),
+                                  name: newLicMetric.name.trim(),
+                                  categoryCode: cat.code,
+                                  description: newLicMetric.description.trim() || undefined,
+                                });
+                                setNewLicMetric(null); load();
+                              } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                          ><Plus className="h-3.5 w-3.5" />Crear</button>
+                          <button onClick={() => setNewLicMetric(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">Cancelar</button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {/* ── License Types ── */}
         {tab === "license-types" && (
           <div className="space-y-6">
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Información</p>
-                <p className="text-[11px] text-slate-400 mt-1">Los tipos de licencia del sistema son de solo lectura. Puedes consultar sus descripciones expandiendo cada elemento. Los tipos personalizados se gestionan desde la API.</p>
-              </div>
-            </div>
-            {licenseTypeCats.map((cat) => (
-              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-                <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
-                  <FileText className="h-4 w-4 text-indigo-500" />
-                  <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
-                  <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.types.length}</span>
-                  <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  {cat.types.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-slate-400">Sin tipos en esta categoría.</p>
-                  ) : cat.types.map((t) => (
-                    <div key={t.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
-                      <div className="flex items-start gap-3 min-w-0">
-                        {t.isSystem && <span title="Tipo de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-700">{t.name}</p>
-                          <p className="text-xs font-mono text-slate-400">{t.code}</p>
-                          {t.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{t.description}</p>}
+            {licenseTypeCats.map((cat) => {
+              const isAddingHere = newLicType?.catCode === cat.code;
+              return (
+                <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                  {/* Category header */}
+                  <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
+                    <FileText className="h-4 w-4 text-indigo-500" />
+                    <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.types.length}</span>
+                    <span className="text-[10px] font-mono text-slate-400">{cat.code}</span>
+                    <button
+                      onClick={() => setNewLicType(isAddingHere ? null : { catCode: cat.code, code: "", name: "", description: "" })}
+                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                    >
+                      <Plus className="h-3.5 w-3.5" />{isAddingHere ? "Cancelar" : "Nuevo tipo"}
+                    </button>
+                  </div>
+
+                  <div className="divide-y divide-slate-50">
+                    {/* Rows */}
+                    {cat.types.length === 0 && !isAddingHere && (
+                      <p className="py-6 text-center text-sm text-slate-400">Sin tipos en esta categoría.</p>
+                    )}
+                    {cat.types.map((tp) => {
+                      const isEditing = editState?.kind === "lictype" && editState.id === tp.id;
+                      if (isEditing && editState?.kind === "lictype") {
+                        return (
+                          <div key={tp.id} className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 space-y-2">
+                            <Input
+                              value={editState.name}
+                              onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                              placeholder="Nombre"
+                              autoFocus
+                            />
+                            <Input
+                              value={editState.description}
+                              onChange={(e) => setEditState({ ...editState, description: e.target.value })}
+                              placeholder="Descripción (opcional)"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await patch(`/api/masters/license-types/${tp.id}`, { name: editState.name, description: editState.description });
+                                    setEditState(null); load();
+                                  } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                              ><Check className="h-3.5 w-3.5" />Guardar</button>
+                              <button onClick={() => setEditState(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">Cancelar</button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={tp.id} className="flex items-start justify-between px-4 py-3 hover:bg-slate-50 transition-colors group">
+                          <div className="flex items-start gap-3 min-w-0">
+                            {tp.isSystem
+                              ? <span title="Tipo de sistema — solo lectura"><Lock className="h-3 w-3 text-slate-300 flex-shrink-0 mt-0.5" /></span>
+                              : <span className="h-3 w-3 flex-shrink-0 mt-0.5" />
+                            }
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-700">{tp.name}</p>
+                              <p className="text-xs font-mono text-slate-400">{tp.code}</p>
+                              {tp.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{tp.description}</p>}
+                            </div>
+                          </div>
+                          {!tp.isSystem && (
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                              <button
+                                onClick={() => setEditState({ kind: "lictype", id: tp.id, name: tp.name, description: tp.description ?? "" })}
+                                className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                              ><Pencil className="h-4 w-4" /></button>
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`¿Eliminar el tipo "${tp.name}"?`)) return;
+                                  const res = await apiFetch(`/api/masters/license-types/${tp.id}`, { method: "DELETE" });
+                                  if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                  load();
+                                }}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              ><Trash2 className="h-4 w-4" /></button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Inline create form */}
+                    {isAddingHere && newLicType && (
+                      <div className="px-4 py-3 bg-emerald-50 border-t border-emerald-100 space-y-2">
+                        <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Nuevo tipo en {cat.name}</p>
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Código (ej: SAAS)"
+                            value={newLicType.code}
+                            onChange={(e) => setNewLicType({ ...newLicType, code: e.target.value.toUpperCase() })}
+                            className="w-44"
+                          />
+                          <Input
+                            placeholder="Nombre"
+                            value={newLicType.name}
+                            onChange={(e) => setNewLicType({ ...newLicType, name: e.target.value })}
+                          />
+                        </div>
+                        <Input
+                          placeholder="Descripción (opcional)"
+                          value={newLicType.description}
+                          onChange={(e) => setNewLicType({ ...newLicType, description: e.target.value })}
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!newLicType.code.trim() || !newLicType.name.trim()) { alert("Código y nombre son obligatorios"); return; }
+                              try {
+                                await post("/api/masters/license-types", {
+                                  code: newLicType.code.trim(),
+                                  name: newLicType.name.trim(),
+                                  categoryCode: cat.code,
+                                  description: newLicType.description.trim() || undefined,
+                                });
+                                setNewLicType(null); load();
+                              } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                            }}
+                            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                          ><Plus className="h-3.5 w-3.5" />Crear</button>
+                          <button onClick={() => setNewLicType(null)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:bg-slate-50 transition-colors">Cancelar</button>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

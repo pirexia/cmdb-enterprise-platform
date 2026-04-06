@@ -3243,18 +3243,15 @@ app.post('/api/masters/license-metrics', authenticateToken, requireAdmin, async 
   } catch (e) { res.status(500).json({ error: 'Failed to create license metric' }); }
 });
 
-// PATCH /api/masters/license-metrics/:id — update name/description
+// PATCH /api/masters/license-metrics/:id — update name/description (system and custom)
 app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, description } = req.body as { name?: string; description?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   const id = req.params.id as string;
   try {
-    // Check if system metric — system ones allow name update only (no description change restriction, but description update is fine too)
     const rows = await prisma.$queryRaw<{ id: string; code: string; name: string; isSystem: boolean }[]>`
       UPDATE "license_metrics"
-      SET name = ${name.trim()},
-          description = CASE WHEN is_system = false THEN ${description ?? null} ELSE description END,
-          updated_at = now()
+      SET name = ${name.trim()}, description = ${description ?? null}, updated_at = now()
       WHERE id = ${id}::uuid
       RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
     if (!rows.length) { res.status(404).json({ error: 'License metric not found' }); return; }
@@ -3262,12 +3259,18 @@ app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, a
   } catch (e) { res.status(500).json({ error: 'Failed to update license metric' }); }
 });
 
-// DELETE /api/masters/license-metrics/:id — only if !isSystem
+// DELETE /api/masters/license-metrics/:id — blocked if any license references it
 app.delete('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = req.params.id as string;
   try {
-    const result = await prisma.$executeRaw`
-      DELETE FROM "license_metrics" WHERE id = ${req.params.id as string}::uuid AND is_system = false`;
-    if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system metric' }); return; }
+    const used = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "licenses" WHERE license_metric_id = ${id}::uuid`;
+    if (Number(used[0]?.count ?? 0) > 0) {
+      res.status(409).json({ error: 'No se puede eliminar: existen licencias que utilizan esta métrica' });
+      return;
+    }
+    const result = await prisma.$executeRaw`DELETE FROM "license_metrics" WHERE id = ${id}::uuid`;
+    if (Number(result) === 0) { res.status(404).json({ error: 'License metric not found' }); return; }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license metric' }); }
 });
@@ -3330,7 +3333,7 @@ app.post('/api/masters/license-types', authenticateToken, requireAdmin, async (r
   } catch (e) { res.status(500).json({ error: 'Failed to create license type' }); }
 });
 
-// PATCH /api/masters/license-types/:id — update
+// PATCH /api/masters/license-types/:id — update name/description (system and custom)
 app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, description } = req.body as { name?: string; description?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
@@ -3338,9 +3341,7 @@ app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, asy
   try {
     const rows = await prisma.$queryRaw<{ id: string; code: string; name: string; isSystem: boolean }[]>`
       UPDATE "license_types"
-      SET name = ${name.trim()},
-          description = CASE WHEN is_system = false THEN ${description ?? null} ELSE description END,
-          updated_at = now()
+      SET name = ${name.trim()}, description = ${description ?? null}, updated_at = now()
       WHERE id = ${id}::uuid
       RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
     if (!rows.length) { res.status(404).json({ error: 'License type not found' }); return; }
@@ -3348,12 +3349,18 @@ app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, asy
   } catch (e) { res.status(500).json({ error: 'Failed to update license type' }); }
 });
 
-// DELETE /api/masters/license-types/:id — only if !isSystem
+// DELETE /api/masters/license-types/:id — blocked if any license references it
 app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+  const id = req.params.id as string;
   try {
-    const result = await prisma.$executeRaw`
-      DELETE FROM "license_types" WHERE id = ${req.params.id as string}::uuid AND is_system = false`;
-    if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    const used = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "licenses" WHERE license_type_id = ${id}::uuid`;
+    if (Number(used[0]?.count ?? 0) > 0) {
+      res.status(409).json({ error: 'No se puede eliminar: existen licencias que utilizan este tipo' });
+      return;
+    }
+    const result = await prisma.$executeRaw`DELETE FROM "license_types" WHERE id = ${id}::uuid`;
+    if (Number(result) === 0) { res.status(404).json({ error: 'License type not found' }); return; }
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license type' }); }
 });

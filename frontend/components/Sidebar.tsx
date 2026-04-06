@@ -14,21 +14,29 @@ import type { Locale } from "@/contexts/LanguageContext";
 
 // ─── Nav item definitions (keys reference locales/[lang].json) ────────────────
 
+type NavLink = { type: "link"; labelKey: string; href: string; icon: React.ElementType; roles?: string[] };
+type NavSeparator = { type: "separator" };
+type NavEntry = NavLink | NavSeparator;
+
+const SEP: NavSeparator = { type: "separator" };
+
 // roles: undefined = all authenticated users; string[] = restricted to those roles
-const NAV_ITEMS: { labelKey: string; href: string; icon: React.ElementType; roles?: string[] }[] = [
-  { labelKey: "sidebar.dashboard",       href: "/",                      icon: LayoutDashboard },
-  { labelKey: "sidebar.inventory",       href: "/inventory",             icon: Monitor         },
-  { labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities",       icon: Shield          },
-  { labelKey: "sidebar.map",             href: "/map",                   icon: Network         },
-  { labelKey: "sidebar.integrations",   href: "/integrations",          icon: Plug,            roles: ["ADMIN"]                  },
-  { labelKey: "sidebar.reports",        href: "/reports",               icon: BarChart        },
-  { labelKey: "sidebar.contracts",      href: "/contracts",             icon: FileText        },
-  { labelKey: "sidebar.documents",      href: "/documents",             icon: FolderOpen      },
-  { labelKey: "sidebar.licenses",       href: "/licenses",              icon: Key             },
-  { labelKey: "sidebar.profile",        href: "/profile",               icon: UserCircle      },
-  { labelKey: "sidebar.masters",        href: "/admin/masters",         icon: Building2,       roles: ["ADMIN"]                  },
-  { labelKey: "sidebar.audit",          href: "/audit",                 icon: ClipboardList,   roles: ["ADMIN", "AUDITOR"]       },
-  { labelKey: "sidebar.settings",       href: "/settings",              icon: Settings,        roles: ["ADMIN"]                  },
+const NAV_ITEMS: NavEntry[] = [
+  { type: "link", labelKey: "sidebar.profile",        href: "/profile",       icon: UserCircle                               },
+  SEP,
+  { type: "link", labelKey: "sidebar.dashboard",      href: "/",              icon: LayoutDashboard                          },
+  { type: "link", labelKey: "sidebar.inventory",      href: "/inventory",     icon: Monitor                                  },
+  { type: "link", labelKey: "sidebar.contracts",      href: "/contracts",     icon: FileText                                 },
+  { type: "link", labelKey: "sidebar.licenses",       href: "/licenses",      icon: Key                                      },
+  { type: "link", labelKey: "sidebar.map",            href: "/map",           icon: Network                                  },
+  { type: "link", labelKey: "sidebar.documents",      href: "/documents",     icon: FolderOpen                               },
+  { type: "link", labelKey: "sidebar.vulnerabilities",href: "/vulnerabilities",icon: Shield                                  },
+  { type: "link", labelKey: "sidebar.reports",        href: "/reports",       icon: BarChart                                 },
+  SEP,
+  { type: "link", labelKey: "sidebar.integrations",   href: "/integrations",  icon: Plug,        roles: ["ADMIN"]            },
+  { type: "link", labelKey: "sidebar.masters",        href: "/admin/masters", icon: Building2,   roles: ["ADMIN"]            },
+  { type: "link", labelKey: "sidebar.audit",          href: "/audit",         icon: ClipboardList, roles: ["ADMIN","AUDITOR"] },
+  { type: "link", labelKey: "sidebar.settings",       href: "/settings",      icon: Settings,    roles: ["ADMIN"]            },
 ];
 
 // ─── Language selector ────────────────────────────────────────────────────────
@@ -87,23 +95,39 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV_ITEMS.filter(({ roles }) => !roles || roles.includes(userRole)).map(({ labelKey, href, icon: Icon }) => {
-          const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              <Icon className="h-5 w-5 flex-shrink-0 text-slate-400" strokeWidth={1.5} />
-              {t(labelKey)}
-            </Link>
+        {(() => {
+          // Filter by role, then strip leading/trailing/consecutive separators
+          const visible = NAV_ITEMS.filter(
+            (item) => item.type === "separator" || !item.roles || item.roles.includes(userRole)
           );
-        })}
+          const clean = visible.filter((item, i, arr) => {
+            if (item.type !== "separator") return true;
+            const prev = arr[i - 1];
+            const next = arr[i + 1];
+            return prev && prev.type !== "separator" && next && next.type !== "separator";
+          });
+          return clean.map((item, i) => {
+            if (item.type === "separator") {
+              return <hr key={`sep-${i}`} className="my-2 border-slate-100" />;
+            }
+            const { labelKey, href, icon: Icon } = item;
+            const isActive = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0 text-slate-400" strokeWidth={1.5} />
+                {t(labelKey)}
+              </Link>
+            );
+          });
+        })()}
       </nav>
 
       {/* User info + logout + language */}

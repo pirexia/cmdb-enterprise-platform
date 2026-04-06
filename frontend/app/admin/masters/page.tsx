@@ -1132,23 +1132,21 @@ export default function MastersPage() {
                               {m.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{m.description}</p>}
                             </div>
                           </div>
-                          {!m.isSystem && (
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                              <button
-                                onClick={() => setEditState({ kind: "licmetric", id: m.id, name: m.name, description: m.description ?? "" })}
-                                className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                              ><Pencil className="h-4 w-4" /></button>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm(`¿Eliminar la métrica "${m.name}"?`)) return;
-                                  const res = await apiFetch(`/api/masters/license-metrics/${m.id}`, { method: "DELETE" });
-                                  if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
-                                  load();
-                                }}
-                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              ><Trash2 className="h-4 w-4" /></button>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                            <button
+                              onClick={() => setEditState({ kind: "licmetric", id: m.id, name: m.name, description: m.description ?? "" })}
+                              className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar la métrica "${m.name}"?`)) return;
+                                const res = await apiFetch(`/api/masters/license-metrics/${m.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </div>
                         </div>
                       );
                     })}
@@ -1272,23 +1270,21 @@ export default function MastersPage() {
                               {tp.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{tp.description}</p>}
                             </div>
                           </div>
-                          {!tp.isSystem && (
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                              <button
-                                onClick={() => setEditState({ kind: "lictype", id: tp.id, name: tp.name, description: tp.description ?? "" })}
-                                className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                              ><Pencil className="h-4 w-4" /></button>
-                              <button
-                                onClick={async () => {
-                                  if (!confirm(`¿Eliminar el tipo "${tp.name}"?`)) return;
-                                  const res = await apiFetch(`/api/masters/license-types/${tp.id}`, { method: "DELETE" });
-                                  if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
-                                  load();
-                                }}
-                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              ><Trash2 className="h-4 w-4" /></button>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
+                            <button
+                              onClick={() => setEditState({ kind: "lictype", id: tp.id, name: tp.name, description: tp.description ?? "" })}
+                              className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar el tipo "${tp.name}"?`)) return;
+                                const res = await apiFetch(`/api/masters/license-types/${tp.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </div>
                         </div>
                       );
                     })}

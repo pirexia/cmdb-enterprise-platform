@@ -712,6 +712,8 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
+> **v1.6.4 — Corrección de word-splitting en `update.sh`:** Todas las referencias a la variable `COMPOSE_CMD` (que puede contener `docker compose` — dos palabras) se reemplazaron por el array `COMPOSE_CMD_ARRAY[@]` y se eliminó el comentario `# shellcheck disable=SC2086`. Esto evita comportamientos inesperados cuando rutas o valores contienen espacios.
+
 4. **Auto-rollback en caso de fallo:** Si el build de Docker falla o el health check no responde en 120 segundos, el script restaura automáticamente el tag de rollback, reconstruye la imagen anterior y reinicia los servicios.
 
 5. **Confirmación de migraciones:** Detecta nuevos archivos de migración Prisma y muestra su lista antes de continuar. En modo interactivo solicita confirmación explícita.

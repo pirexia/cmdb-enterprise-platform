@@ -192,23 +192,37 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
+  let payload: JwtPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
-
-    // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
-    if (payload.mfaSetupRequired) {
-      const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
-      if (!allowedPaths.includes(req.path)) {
-        res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
-        return;
-      }
-    }
-
-    req.user = payload;
-    next();
+    payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
   } catch {
     res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
+    return;
   }
+
+  // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
+  if (payload.mfaSetupRequired) {
+    const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
+    if (!allowedPaths.includes(req.path)) {
+      res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
+      return;
+    }
+  }
+
+  // Verify the user is still active in the database — a deactivated user's
+  // existing JWT must be rejected immediately without waiting for expiry.
+  prisma.$queryRaw<{ active: boolean }[]>`
+    SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
+  `.then((rows) => {
+    if (!rows.length || !rows[0].active) {
+      res.status(403).json({ error: 'Account deactivated. Please contact an administrator.' });
+      return;
+    }
+    req.user = payload;
+    next();
+  }).catch(() => {
+    res.status(500).json({ error: 'Internal server error' });
+  });
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {
@@ -1343,7 +1357,8 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
 /**
  * POST /api/auth/mfa/setup
  * Generates a TOTP secret + QR code Data URL for the authenticated user.
- * The secret is NOT stored yet — client must verify with /mfa/enable first.
+ * The secret is persisted as mfa_pending_secret (NOT mfa_secret) so the
+ * client cannot supply its own secret during /mfa/enable.
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1351,6 +1366,13 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     const secret    = secretObj.base32;
     const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
     const qrDataUrl = await QRCode.toDataURL(otpauth);
+
+    // Store the pending secret server-side so /mfa/enable can retrieve it
+    // without trusting any client-supplied value.
+    await prisma.$executeRaw`
+      UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
+    `;
+
     res.json({ secret, qrDataUrl });
   } catch (error) {
     console.error('[POST /api/auth/mfa/setup] Error:', error);
@@ -1360,23 +1382,37 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
 
 /**
  * POST /api/auth/mfa/enable
- * Verifies the first TOTP code, persists the secret, and returns a new full JWT.
- * Body: { code: string, secret: string, trustDevice?: boolean }
+ * Verifies the first TOTP code against the server-stored pending secret,
+ * persists the secret, and returns a new full JWT.
+ * Body: { code: string, trustDevice?: boolean }
+ * NOTE: 'secret' is intentionally NOT accepted from the client — it is read
+ * from mfa_pending_secret to prevent a bypass via a client-controlled value.
  */
 app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Response) => {
-  const { code, secret, trustDevice } = req.body as { code?: string; secret?: string; trustDevice?: boolean };
-  if (!code || !secret) {
-    res.status(400).json({ error: 'code and secret are required' });
-    return;
-  }
-  const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
-  if (!valid) {
-    res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+  const { code, trustDevice } = req.body as { code?: string; trustDevice?: boolean };
+  if (!code) {
+    res.status(400).json({ error: 'code is required' });
     return;
   }
   try {
+    // Retrieve the server-generated pending secret — never trust the client
+    const rows = await prisma.$queryRaw<{ mfa_pending_secret: string | null }[]>`
+      SELECT mfa_pending_secret FROM "users" WHERE id = ${req.user!.id}::uuid LIMIT 1
+    `;
+    const secret = rows[0]?.mfa_pending_secret ?? null;
+    if (!secret) {
+      res.status(400).json({ error: 'MFA setup not initiated. Please call /api/auth/mfa/setup first.' });
+      return;
+    }
+    const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+    if (!valid) {
+      res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+      return;
+    }
     await prisma.$executeRaw`
-      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true, updated_at = now() WHERE id = ${req.user!.id}::uuid
+      UPDATE "users"
+      SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
+      WHERE id = ${req.user!.id}::uuid
     `;
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
@@ -1546,7 +1582,7 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
     const rows  = await prisma.$queryRaw<{ id: string; name: string }[]>`SELECT id::text, name FROM "manufacturers" ORDER BY name ASC`;
     const count = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "manufacturers"`;
     res.json({ count: Number(count[0]?.c ?? 0), rows });
-  } catch (e) { res.status(500).json({ error: String(e), stack: e instanceof Error ? e.stack : undefined }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────
@@ -2230,10 +2266,12 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       if (!hostname) continue;
 
       // Find CI by case-insensitive name match
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameGB = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameGB + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;
@@ -2312,10 +2350,12 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       const hostname = device.hostname ?? '';
       if (!hostname) continue;
 
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameCS = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameCS + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;
@@ -2656,14 +2696,11 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 });
 
 // GET /api/documents/:id/download — authenticated file download
-// Supports both Authorization header and ?token= query param (for embedded viewers like iframe/img)
+// Requires Authorization: Bearer <token> header (query param not accepted — tokens in URLs leak via logs/referrers)
 // Supports ?inline=true to display in browser instead of triggering download
 app.get('/api/documents/:id/download', async (req, res) => {
-  // Support both Authorization header and ?token= query param (for embedded viewers)
   const authHeader = req.headers['authorization'];
-  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
-  const tokenStr = headerToken ?? queryToken;
+  const tokenStr = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
   if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
 
@@ -2673,7 +2710,7 @@ app.get('/api/documents/:id/download', async (req, res) => {
     res.status(401).json({ error: 'Invalid or expired token' }); return;
   }
 
-  // Also support ?inline=true to display in browser instead of download
+  // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 
   try {

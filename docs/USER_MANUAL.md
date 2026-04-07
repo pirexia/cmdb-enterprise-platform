@@ -426,7 +426,10 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 
 1. Localiza el CVE en el panel.
 2. Usa el selector de estado en la columna "Estado".
-3. El cambio se registra de inmediato y queda reflejado en el Registro de Auditoría.
+3. La interfaz refleja el cambio de forma inmediata. Durante el guardado, la fila muestra un indicador giratorio junto al selector.
+4. Si el guardado se confirma en el servidor, aparece una notificación verde en la esquina de la pantalla.
+5. Si el guardado falla (error de red o servidor), el estado se revierte automáticamente al valor anterior y aparece una notificación roja. No es necesaria ninguna acción manual.
+6. El cambio exitoso queda reflejado en el Registro de Auditoría.
 
 ### Importar vulnerabilidades desde Greenbone OpenVAS
 

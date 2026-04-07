@@ -48,6 +48,7 @@ BACKUP_FILE=""
 ROLLBACK_TAG=""
 RUNTIME=""
 COMPOSE_CMD=""
+COMPOSE_CMD_ARRAY=()
 AUTO_YES=false
 NO_CACHE=false
 FORCE=false
@@ -76,8 +77,10 @@ detect_runtime() {
     # Prefer the Compose V2 plugin; fall back to the legacy standalone binary
     if docker compose version &>/dev/null 2>&1; then
       COMPOSE_CMD="docker compose"
+      COMPOSE_CMD_ARRAY=(docker compose)
     elif command -v docker-compose &>/dev/null; then
       COMPOSE_CMD="docker-compose"
+      COMPOSE_CMD_ARRAY=(docker-compose)
     else
       error "Docker found but neither 'docker compose' plugin nor 'docker-compose' binary is available."
       exit 1
@@ -86,6 +89,7 @@ detect_runtime() {
     RUNTIME="podman"
     if command -v podman-compose &>/dev/null; then
       COMPOSE_CMD="podman-compose"
+      COMPOSE_CMD_ARRAY=(podman-compose)
     else
       error "Podman found but 'podman-compose' is not available. Install it first."
       exit 1
@@ -271,16 +275,15 @@ pull_and_detect() {
 build_images() {
   step "Building new images"
 
-  local build_args=""
-  [ "${NO_CACHE}" = "true" ] && build_args="--no-cache"
+  local -a build_args=()
+  [ "${NO_CACHE}" = "true" ] && build_args+=("--no-cache")
 
   if [ "${DRY_RUN}" = "true" ]; then
-    info "[DRY RUN] Would run: ${COMPOSE_CMD} -f ${COMPOSE_FILE} build ${build_args}"
+    info "[DRY RUN] Would run: ${COMPOSE_CMD} -f ${COMPOSE_FILE} build${build_args[*]:+ ${build_args[*]}}"
     return 0
   fi
 
-  # shellcheck disable=SC2086
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" build ${build_args}
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" build "${build_args[@]}"
   success "Images built successfully."
 }
 
@@ -294,7 +297,7 @@ deploy() {
     return 0
   fi
 
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" up -d
   success "Containers started."
 
   # Health check
@@ -322,7 +325,7 @@ deploy() {
   echo ""
   error "Backend health check timed out after ${max} seconds."
   error "Container logs:"
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" logs --tail=40 backend 2>/dev/null || true
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" logs --tail=40 backend 2>/dev/null || true
   return 1
 }
 
@@ -342,10 +345,10 @@ rollback() {
 
   # Rebuild and restart from the previous state
   # Use --quiet to keep noise low; errors here are secondary
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" build --quiet 2>/dev/null || \
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" build --quiet 2>/dev/null || \
     warn "Rebuild during rollback produced warnings — check container state manually."
 
-  ${COMPOSE_CMD} -f "${COMPOSE_FILE}" up -d 2>/dev/null || \
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" up -d 2>/dev/null || \
     warn "Could not restart containers during rollback — manual intervention required."
 
   error ""

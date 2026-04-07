@@ -704,6 +704,8 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v1.6.4 — Word-splitting fix in `update.sh`:** All references to the `COMPOSE_CMD` variable (which may hold `docker compose` — two words) were replaced with the `COMPOSE_CMD_ARRAY[@]` array and the `# shellcheck disable=SC2086` suppression comment was removed. This prevents unexpected behaviour when paths or values contain spaces.
+
 5. **Migration confirmation:** Detects new Prisma migration files and displays the list before proceeding. In interactive mode it requests explicit confirmation.
 
 #### Update log

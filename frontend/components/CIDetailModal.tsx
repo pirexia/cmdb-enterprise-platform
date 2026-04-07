@@ -528,8 +528,8 @@ function AddDocumentsSubModal({
     setLoading(true);
     apiFetch("/api/documents")
       .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: DocListItem[]) => {
-        setAllDocs(data.filter((d) => !existingDocIds.includes(d.id)));
+      .then((data: { data: DocListItem[] }) => {
+        setAllDocs((data.data ?? []).filter((d) => !existingDocIds.includes(d.id)));
       })
       .catch(() => setAllDocs([]))
       .finally(() => setLoading(false));

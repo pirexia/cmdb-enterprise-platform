@@ -885,7 +885,7 @@ export default function DocumentDetailPage() {
       const d = docData as DocumentDetail;
       setDoc(d);
       setDocTypes(Array.isArray(typesData) ? (typesData as DocumentType[]) : []);
-      setAllDocs(Array.isArray(allDocsData) ? (allDocsData as DocumentListItem[]) : []);
+      setAllDocs(((allDocsData as { data?: DocumentListItem[] }).data) ?? []);
 
       // Determine preview: use latest version if any, else root document itself
       const latestVersion = d.versions.find((v) => v.isLatest);

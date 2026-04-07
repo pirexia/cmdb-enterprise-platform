@@ -596,16 +596,16 @@ model License {
   licenseNumber   String         @unique @map("license_number")
 
   vendorId        String?        @db.Uuid @map("vendor_id")
-  vendor          Vendor?        @relation(fields: [vendorId], references: [id])
+  vendor          Vendor?        @relation(fields: [vendorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   startDate       DateTime       @map("start_date")
   endDate         DateTime?      @map("end_date")
 
   licenseTypeId   String?        @db.Uuid @map("license_type_id")
-  licenseType     LicenseType?   @relation(fields: [licenseTypeId], references: [id])
+  licenseType     LicenseType?   @relation(fields: [licenseTypeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   licenseMetricId String?        @db.Uuid @map("license_metric_id")
-  licenseMetric   LicenseMetric? @relation(fields: [licenseMetricId], references: [id])
+  licenseMetric   LicenseMetric? @relation(fields: [licenseMetricId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   metricValue     Int?           @map("metric_value")  // quantity (e.g. 50 named users)
   metricUnit      String?        @map("metric_unit")   // display label override
 
@@ -616,7 +616,7 @@ model License {
   notes           String?
 
   parentLicenseId String?        @db.Uuid @map("parent_license_id")
-  parentLicense   License?       @relation("LicenseAddendums", fields: [parentLicenseId], references: [id])
+  parentLicense   License?       @relation("LicenseAddendums", fields: [parentLicenseId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   addendums       License[]      @relation("LicenseAddendums")
 
   cis             CI[]           @relation("LicenseToCI")
@@ -630,6 +630,8 @@ model License {
   @@index([licenseTypeId])
   @@index([licenseMetricId])
   @@index([parentLicenseId])
+  @@index([status])
+  @@index([endDate])
   @@map("licenses")
 }
 

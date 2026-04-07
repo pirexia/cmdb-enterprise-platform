@@ -523,8 +523,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const tok      = crypto.randomBytes(32).toString('hex');
       const expiry   = new Date();
       expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
-      const ua  = req.headers['user-agent'] ?? null;
-      const ip  = req.ip ?? null;
+      // Bind token to client IP and User-Agent at creation time (Issue #25)
+      const ua  = req.headers['user-agent'] ?? '';
+      const ip  = req.ip ?? '';
       await prisma.$executeRaw`
         INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
         VALUES (gen_random_uuid(), ${user!.id}::uuid, ${tok}, ${ua}, ${ip}, ${expiry}, now(), now())
@@ -536,13 +537,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     if (user.mfa_enabled && user.mfa_secret) {
       // Check trusted device first
       if (deviceToken) {
+        // Validate token against stored IP and User-Agent binding (Issue #25)
+        const currentUa = req.headers['user-agent'] ?? '';
+        const currentIp = req.ip ?? '';
         const trusted = await prisma.$queryRaw<{ id: string }[]>`
           SELECT id FROM "trusted_devices"
           WHERE token = ${deviceToken}
             AND user_id = ${user.id}::uuid
             AND expires_at > now()
-            AND (user_agent IS NULL OR user_agent = ${req.headers['user-agent'] ?? ''})
-            AND (ip_address IS NULL OR ip_address = ${req.ip ?? ''})
+            AND user_agent = ${currentUa}
+            AND ip_address = ${currentIp}
           LIMIT 1
         `;
         if (trusted.length > 0) {
@@ -1602,7 +1606,7 @@ app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, as
   try {
     const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
     res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Support Areas
@@ -1610,7 +1614,7 @@ app.get('/api/masters/support-areas', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "support_areas" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1618,7 +1622,7 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1627,11 +1631,11 @@ app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, asy
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "support_areas" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Branches
@@ -1641,7 +1645,7 @@ app.get('/api/masters/branches', authenticateToken, async (_req, res) => {
       SELECT b.id::text AS id, b.name, b.branch_code, b.physical_address, b.support_area_id::text AS support_area_id, sa.name AS support_area_name
       FROM "branches" b LEFT JOIN "support_areas" sa ON b.support_area_id = sa.id ORDER BY b.name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, res) => {
   const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
@@ -1651,7 +1655,7 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
       INSERT INTO "branches"(id,name,branch_code,physical_address,support_area_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
@@ -1662,11 +1666,11 @@ app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (r
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Manufacturers
@@ -1683,7 +1687,7 @@ app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1692,11 +1696,11 @@ app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, asy
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "manufacturers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Device Models
@@ -1706,7 +1710,7 @@ app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
       SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name
       FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (req, res) => {
   const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
@@ -1716,7 +1720,7 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
       INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
@@ -1727,11 +1731,11 @@ app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, asy
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Providers
@@ -1739,7 +1743,7 @@ app.get('/api/masters/providers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "providers" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1747,7 +1751,7 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1756,11 +1760,11 @@ app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "providers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Cost Centers
@@ -1768,7 +1772,7 @@ app.get('/api/masters/cost-centers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`SELECT id::text AS id, code, name FROM "cost_centers" ORDER BY code ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (req, res) => {
   const { code, name } = req.body as { code?: string; name?: string };
@@ -1781,7 +1785,8 @@ app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (re
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -1796,12 +1801,13 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── CI Type Categories (read-only, fixed) ─────────────────────────────────────
@@ -1817,7 +1823,7 @@ app.get('/api/masters/ci-type-categories', authenticateToken, async (_req, res) 
       },
     });
     res.json(cats);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── CI Types CRUD ─────────────────────────────────────────────────────────────
@@ -1828,7 +1834,7 @@ app.get('/api/masters/ci-types', authenticateToken, async (_req, res) => {
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     res.json(types);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, res) => {
@@ -1845,7 +1851,8 @@ app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, r
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('Unique')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1860,7 +1867,7 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -2503,7 +2510,7 @@ app.get('/api/masters/document-types', authenticateToken, async (_req, res) => {
       SELECT id::text AS id, code, name, is_system AS "isSystem"
       FROM "document_types" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (req, res) => {
@@ -2515,7 +2522,7 @@ app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (
       VALUES(gen_random_uuid(),${code.trim().toUpperCase()},${name.trim()},false,now(),now())
       RETURNING id::text AS id, code, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -2528,7 +2535,7 @@ app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, as
       RETURNING id::text AS id, code, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or system type' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -2537,7 +2544,7 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, a
       DELETE FROM "document_types" WHERE id=${req.params.id}::uuid AND is_system=false`;
     if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Documents CRUD ────────────────────────────────────────────────────────────
@@ -2578,7 +2585,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
         LIMIT ${limit} OFFSET ${offset}`,
     ]);
     res.json({ total: Number(countRows[0]?.c ?? 0), page, limit, data: rows });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id — document detail with versions, relations, associations
@@ -2644,7 +2651,7 @@ app.get('/api/documents/:id', authenticateToken, async (req, res) => {
     ]);
 
     res.json({ ...doc, versions, relations, cis, contracts, notes });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents — upload new document
@@ -2721,7 +2728,7 @@ app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE','Document',${req.params.id},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id — delete document (and file from disk)
@@ -2739,7 +2746,7 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','Document',${req.params.id},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id/download — authenticated file download
@@ -2789,7 +2796,7 @@ app.get('/api/documents/:id/download', async (req, res) => {
     // Extra defence: prevent browser from sniffing a different MIME type
     res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(filePath).pipe(res as unknown as NodeJS.WritableStream);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/versions — upload new version
@@ -2837,7 +2844,7 @@ app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'VERSION','Document',${newRows[0].id},${req.user!.email},now())`;
 
     res.status(201).json({ id: newRows[0].id, versionNumber: nextVersion });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:rootId/versions/:versionId — delete a specific version
@@ -2875,7 +2882,7 @@ app.delete('/api/documents/:rootId/versions/:versionId', authenticateToken, requ
 
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_VERSION','Document',${req.params.versionId},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/relations — add relation to another document
@@ -2890,7 +2897,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
       VALUES(gen_random_uuid(),${req.params.id}::uuid,${targetDocId}::uuid,${relationType},now())
       ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/relations/:targetId — remove relation
@@ -2898,7 +2905,7 @@ app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireA
   try {
     await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/ci/:ciId — associate document with CI
@@ -2906,7 +2913,7 @@ app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (
   try {
     await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/ci/:ciId — remove CI association
@@ -2914,7 +2921,7 @@ app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/contract/:contractId — associate with contract
@@ -2922,7 +2929,7 @@ app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAd
   try {
     await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/contract/:contractId — remove contract association
@@ -2930,7 +2937,7 @@ app.delete('/api/documents/:id/contract/:contractId', authenticateToken, require
   try {
     await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/cis/:id/documents — get documents for a CI
@@ -2950,7 +2957,7 @@ app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
       WHERE dc.ci_id = ${req.params.id}::uuid AND d.root_id IS NULL
       ORDER BY d.created_at DESC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/contracts/:id/documents — get documents for a contract
@@ -2971,7 +2978,7 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
       WHERE dc.contract_id = ${req.params.id}::uuid AND d.root_id IS NULL
       ORDER BY d.created_at DESC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Bulk Association Endpoints ───────────────────────────────────────────────
@@ -3145,7 +3152,7 @@ app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
       WHERE document_id = ${rootId}::uuid
       ORDER BY created_at ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/notes — add a note (any authenticated user)
@@ -3162,7 +3169,7 @@ app.post('/api/documents/:id/notes', authenticateToken, async (req, res) => {
       VALUES(gen_random_uuid(), ${rootId}::uuid, ${content.trim()}, ${req.user!.email}, now())
       RETURNING id::text AS id`;
     res.status(201).json({ id: rows[0].id });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────

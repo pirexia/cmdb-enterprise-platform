@@ -215,7 +215,7 @@ export default function LoginPage() {
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Email</label>
                   <input
-                    type="email" required autoComplete="email" placeholder="admin@cmdb.local"
+                    type="email" required autoComplete="email" placeholder="usuario@empresa.com"
                     value={email} onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   />
@@ -416,16 +416,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Dev hint */}
-        {step === "credentials" && process.env.NEXT_PUBLIC_APP_ENV === "dev" && (
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white px-5 py-4 text-xs text-slate-500">
-            <p className="font-semibold text-slate-600 mb-2">Cuentas de prueba</p>
-            <div className="space-y-1 font-mono">
-              <p><span className="text-indigo-600">admin@cmdb.local</span> · admin123 <span className="text-red-500 font-sans font-medium">[ADMIN]</span></p>
-              <p><span className="text-indigo-600">auditor@cmdb.local</span> · audit123 <span className="text-slate-500 font-sans">[VIEWER]</span></p>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

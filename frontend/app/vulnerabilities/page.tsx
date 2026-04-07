@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Shield, RefreshCw, AlertTriangle, Search, Filter, Download, FilterX } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 
@@ -60,6 +60,16 @@ function SeverityDot({ severity }: { severity: VulnSeverity }) {
   return <span className={`inline-block h-2.5 w-2.5 rounded-full flex-shrink-0 ${colors[severity]}`} />;
 }
 
+// ─── Toast notification ───────────────────────────────────────────────────────
+
+interface Toast {
+  id:      number;
+  type:    "error" | "success";
+  message: string;
+}
+
+let _toastId = 0;
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VulnerabilitiesPage() {
@@ -68,6 +78,17 @@ export default function VulnerabilitiesPage() {
   const [error, setError]     = useState<string | null>(null);
   const [filters, setFilters] = useState({ search: "", cve: "", severity: "ALL", status: "ALL", source: "" });
   const [updating, setUpdating] = useState<Set<string>>(new Set());
+  const [toasts, setToasts]   = useState<Toast[]>([]);
+
+  const addToast = useCallback((type: Toast["type"], message: string) => {
+    const id = ++_toastId;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
 
   const activeFilterCount = Object.values(filters).filter((v) => v && v !== "ALL").length;
   const setFilter = (key: keyof typeof filters, val: string) =>
@@ -95,14 +116,24 @@ export default function VulnerabilitiesPage() {
 
   useEffect(() => { fetchAll(); }, []);
 
-  const handleStatusChange = async (ciId: string, cve: string, status: VulnStatus) => {
+  const handleStatusChange = async (ciId: string, cve: string, newStatus: VulnStatus) => {
     const key = `${ciId}:${cve}`;
+
+    // Capture previous status for rollback
+    const previousStatus = allRows.find((r) => r.ciId === ciId && r.cve === cve)?.status;
+
+    // Apply optimistic update immediately
+    setAllRows((prev) =>
+      prev.map((r) =>
+        r.ciId === ciId && r.cve === cve ? { ...r, status: newStatus } : r
+      )
+    );
     setUpdating((prev) => new Set(prev).add(key));
 
     try {
       const res = await apiFetch("/api/vulnerabilities", {
         method: "PATCH",
-        body:   JSON.stringify({ ciId, cve, status }),
+        body:   JSON.stringify({ ciId, cve, status: newStatus }),
       });
 
       if (!res.ok) {
@@ -113,14 +144,21 @@ export default function VulnerabilitiesPage() {
         throw new Error(msg);
       }
 
-      // Optimistic update — no need to refetch
-      setAllRows((prev) =>
-        prev.map((r) =>
-          r.ciId === ciId && r.cve === cve ? { ...r, status } : r
-        )
-      );
+      addToast("success", `Estado actualizado a "${STATUS_STYLES[newStatus].label}"`);
     } catch (err) {
       console.error("Failed to update status:", err);
+
+      // Revert the optimistic update to the previous state
+      if (previousStatus !== undefined) {
+        setAllRows((prev) =>
+          prev.map((r) =>
+            r.ciId === ciId && r.cve === cve ? { ...r, status: previousStatus } : r
+          )
+        );
+      }
+
+      const errMsg = err instanceof Error ? err.message : "Error desconocido";
+      addToast("error", `No se pudo actualizar el estado: ${errMsg}`);
     } finally {
       setUpdating((prev) => { const n = new Set(prev); n.delete(key); return n; });
     }
@@ -165,6 +203,36 @@ export default function VulnerabilitiesPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Toast notifications */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 w-80" role="region" aria-label="Notificaciones">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-start gap-3 rounded-xl px-4 py-3 shadow-lg ring-1 transition-all ${
+                toast.type === "error"
+                  ? "bg-red-50 ring-red-200 text-red-800"
+                  : "bg-emerald-50 ring-emerald-200 text-emerald-800"
+              }`}
+              role="alert"
+            >
+              {toast.type === "error"
+                ? <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-red-500" />
+                : <CheckCircle  className="h-4 w-4 flex-shrink-0 mt-0.5 text-emerald-500" />
+              }
+              <p className="text-xs font-medium flex-1">{toast.message}</p>
+              <button
+                onClick={() => dismissToast(toast.id)}
+                className="flex-shrink-0 rounded p-0.5 hover:bg-black/10 transition-colors"
+                aria-label="Cerrar notificación"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <header className="border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
@@ -406,16 +474,24 @@ export default function VulnerabilitiesPage() {
                               <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusStyle.pill}`}>
                                 {statusStyle.label}
                               </span>
-                              <select
-                                value={row.status}
-                                disabled={isUpdating}
-                                onChange={(e) => handleStatusChange(row.ciId, row.cve, e.target.value as VulnStatus)}
-                                className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-indigo-400 focus:outline-none disabled:opacity-50 disabled:cursor-wait"
-                              >
-                                {ALL_STATUSES.map((s) => (
-                                  <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
-                                ))}
-                              </select>
+                              <div className="relative flex items-center">
+                                <select
+                                  value={row.status}
+                                  disabled={isUpdating}
+                                  onChange={(e) => handleStatusChange(row.ciId, row.cve, e.target.value as VulnStatus)}
+                                  className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-indigo-400 focus:outline-none disabled:opacity-50 disabled:cursor-wait"
+                                >
+                                  {ALL_STATUSES.map((s) => (
+                                    <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
+                                  ))}
+                                </select>
+                                {isUpdating && (
+                                  <RefreshCw
+                                    className="absolute -right-5 h-3.5 w-3.5 animate-spin text-indigo-500"
+                                    aria-label="Guardando…"
+                                  />
+                                )}
+                              </div>
                             </div>
                           </td>
 

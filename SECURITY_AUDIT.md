@@ -1,9 +1,9 @@
 # 🔐 Security Audit & ISO 27001 Compliance Report
 
 **Platform:** CMDB Enterprise Platform  
-**Audit Date:** 2026-04-01 (updated)
+**Audit Date:** 2026-04-07 (updated)
 **Auditor:** DevSecOps Team
-**Version:** v1.4.0  
+**Version:** v1.1.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -31,7 +31,7 @@ This document describes the security controls implemented in the CMDB Enterprise
 | A.9.2.3 Management of privileged access | Write operations (`POST`, `PATCH`, `DELETE`, `PUT`) require `ADMIN` role. `AUDITOR` has read-only access + exclusive access to audit logs. `VIEWER` has read-only access to inventory, vulnerabilities, contracts and reports. | ✅ |
 | A.9.2.4 Authentication credentials | Passwords hashed with **bcrypt** (salt rounds ≥ 10). Passwords never returned in API responses. **Password policy** enforced for local users: minimum length by role (ADMIN: 16 chars, VIEWER/AUDITOR: 12 chars, both configurable), complexity requirements (upper, lower, digit, special char), dictionary blocklist (~100 common passwords), and password history (last 20 entries, configurable). LDAP/AD users are excluded from local password policy. | ✅ |
 | A.9.2.5 Review of user access rights | Audit log (`audit_logs` table) records every CREATE_CI, UPDATE_VULN_STATUS, UPDATE_VERIFICATION, and admin action with timestamp and user email. | ✅ |
-| A.9.2.6 Removal/adjustment of access rights | User deletion via admin API immediately revokes access. JWT tokens expire after **8 hours**. | ✅ |
+| A.9.2.6 Removal/adjustment of access rights | User deletion via admin API immediately revokes access. JWT tokens expire after **8 hours**. Deactivated accounts are checked on every authenticated request — existing JWTs are rejected immediately without waiting for expiry (v1.1.0, fixes issue #9). | ✅ |
 
 **Multi-Factor Authentication (MFA) — Enhanced Enforcement:**
 - TOTP-based MFA implemented using `speakeasy` (RFC 6238 compliant).
@@ -40,6 +40,7 @@ This document describes the security controls implemented in the CMDB Enterprise
 - **AUDITOR / VIEWER users (recommended):** On first login without MFA configured, the server records `mfa_prompted_at = now()` and returns the full JWT with `requireAction: 'MFA_SETUP_SUGGESTED'`. The frontend shows a one-time suggestion screen; the user may configure MFA or skip. On subsequent logins, no suggestion is shown.
 - **Trusted devices:** After successful MFA verification, the user can mark the device as trusted. The server generates a 32-byte cryptographically random token (`crypto.randomBytes`), stores it in the `trusted_devices` table with an expiry of `TRUSTED_DEVICE_TTL_DAYS` days (default 30), and returns it to the client (stored in `localStorage`). On future logins, if the client presents a valid, non-expired device token, the MFA step is bypassed. Expired device records are automatically purged by a daily cron job (02:00 AM).
 - **Limited JWT scope enforcement:** The `authenticateToken` middleware rejects requests from `mfaSetupRequired` tokens to any path other than `/api/auth/mfa/setup` and `/api/auth/mfa/enable`, returning `403 MFA_SETUP_REQUIRED`.
+- **Server-side TOTP secret during enrollment (v1.1.0):** `POST /api/auth/mfa/setup` persists the generated secret to `users.mfa_pending_secret`. `POST /api/auth/mfa/enable` reads the secret exclusively from this field — any client-supplied `secret` field is ignored — preventing bypass via a client-controlled TOTP seed. The pending secret is cleared on successful verification (fixes issue #8).
 
 **LDAP / Active Directory Integration:**
 - Optional LDAP authentication via `USE_LDAP=true` environment variable.
@@ -153,6 +154,8 @@ CREATE TABLE "audit_logs" (
 - Secrets management: `.env` files excluded from Git via `.gitignore`. `.env.example` provided with safe placeholder values.
 - Dependency scanning: `npm audit` run in both `backend/` and `frontend/` — **0 vulnerabilities found** (2026-03-15).
 - All sensitive operations require authentication token in `Authorization: Bearer <token>` header.
+- **Document download (v1.1.0):** `GET /api/documents/:id/download` now requires the `Authorization: Bearer` header exclusively. The former `?token=` query parameter has been removed — JWT tokens in URLs leak into server access logs, browser history, and HTTP Referer headers (fixes issue #11).
+- **LIKE wildcard injection (v1.1.0):** Greenbone and CrowdStrike CI-matching queries escape `%`, `_`, and `\` in external hostnames before use in LIKE patterns, preventing wildcard injection that could match unintended configuration items (fixes issue #12).
 
 ### A.18.1 — Compliance with Legal and Contractual Requirements
 
@@ -205,6 +208,7 @@ CREATE TABLE "audit_logs" (
 | 2026-03-31 | 1.2.0 | DevSecOps | MFA mandatory enforcement for admins; trusted device mechanism; limited JWT scope; rate limiting confirmed implemented |
 | 2026-04-01 | 1.3.0 | DevSecOps | Added AUDITOR role (RBAC three-tier); `requireAudit` middleware; AUDITOR has exclusive audit log read access; seed user `auditor@cmdb.local` migrated from VIEWER to AUDITOR |
 | 2026-04-01 | 1.4.0 | DevSecOps | Password policy for local users: role-aware min length (ADMIN 16 / others 12), complexity rules, ~100-entry common-password blocklist, 20-entry history (all configurable via .env); `password_history` table; `CHANGE_PASSWORD` and `RESET_PASSWORD` audit events; frontend real-time strength indicator |
+| 2026-04-07 | 1.1.0 | DevSecOps | 5 critical security fixes: LIKE wildcard injection (#12), JWT in download URL (#11), stack trace exposure (#10), deactivated user JWT bypass (#9), MFA client-secret bypass (#8). New DB migration: `mfa_pending_secret`. |
 
 ---
 

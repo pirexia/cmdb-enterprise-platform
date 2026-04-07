@@ -1,13 +1,14 @@
 # 🔧 CMDB Enterprise Platform — System Administrator Manual
 
-**Version:** 1.1.0
-**Audience:** Systems and Infrastructure Team (RHEL)
-**Date:** 2026-03-31
+**Version:** 1.2.0
+**Audience:** Systems and Infrastructure Team (RHEL) — includes `scripts/install.sh`, `scripts/update.sh`
+**Date:** 2026-04-07
 
 ---
 
 ## Table of Contents
 
+0. [Quick Start (3 commands)](#0-quick-start-3-commands)
 1. [System Requirements](#1-system-requirements)
 2. [Initial Deployment](#2-initial-deployment)
 3. [.env File Configuration](#3-env-file-configuration)
@@ -22,6 +23,28 @@
 11. [Database Maintenance](#11-database-maintenance)
 12. [Security and Hardening](#12-security-and-hardening)
 13. [Periodic Maintenance Tasks](#13-periodic-maintenance-tasks)
+14. [OpenShift / Kubernetes Deployment](#14-openshift--kubernetes-deployment)
+
+---
+
+## 0. Quick Start (3 commands)
+
+For most new installations, three commands are sufficient:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/pirexia/cmdb-enterprise-platform.git /opt/cmdb && cd /opt/cmdb
+
+# 2. Run the guided installer
+#    (detects the OS, verifies prerequisites, launches the configuration wizard, and starts the platform)
+sudo bash scripts/install.sh
+
+# 3. Open the browser
+# Frontend: http://<your-server>:3001
+# Default login: admin@cmdb.local / Admin1234! — CHANGE IMMEDIATELY
+```
+
+> For detailed control over each step, or for environments with special requirements, see [Section 2](#2-initial-deployment).
 
 ---
 
@@ -60,6 +83,11 @@ openssl version
 ---
 
 ## 2. Initial Deployment
+
+> **Recommended: Automated installation**
+> Run `sudo bash scripts/install.sh` — detects the OS, verifies prerequisites, launches the configuration wizard, and starts the platform automatically. The installer logs everything to `/opt/cmdb/logs/install_<timestamp>.log`.
+
+The steps below document the **advanced manual deployment** for environments with specific requirements or where the interactive installer cannot be used.
 
 ### Step 1: Clone the repository
 ```bash
@@ -623,48 +651,120 @@ chmod +x /opt/cmdb/scripts/check-docs-storage.sh
 
 ## 8. Application Updates
 
-### Standard update (zero-downtime)
+### 8.1 Automated update (recommended)
+
+The `scripts/update.sh` script manages the complete update cycle with built-in safety guarantees.
+
 ```bash
 cd /opt/cmdb
-
-# 1. Create a backup before updating
-bash scripts/db-backup.sh
-
-# 2. Fetch changes from the repository
-git pull origin main
-
-# 3. Review the CHANGELOG or commits
-git log --oneline -10
-
-# 4. Rebuild images
-docker compose -f docker-compose.prod.yml build --no-cache
-
-# 5. Replace containers (Docker restarts them one by one)
-docker compose -f docker-compose.prod.yml up -d
-
-# 6. Verify everything is correct
-docker compose -f docker-compose.prod.yml ps
-curl http://localhost:3000/health
+bash scripts/update.sh
 ```
 
-### Rollback if something fails
+#### Available flags
+
+| Flag | Description | Use case |
+|------|-------------|----------|
+| `--dry-run` | Shows the changelog and detects migrations without touching anything | Review before updating in production |
+| `--yes` | Unattended mode — auto-confirms all prompts | Nightly cron, CI/CD |
+| `--no-cache` | Forces a full Docker rebuild without cache | After dependency changes (`package.json`) |
+| `--force` | Skips the downgrade guard | Recovery use only — use with caution |
+
+#### Usage examples
+
+```bash
+# Preview what would happen without executing anything
+bash scripts/update.sh --dry-run
+
+# Update without prompts (cron mode)
+bash scripts/update.sh --yes
+
+# Full rebuild after updating dependencies
+bash scripts/update.sh --no-cache
+
+# Force update ignoring the downgrade guard (recovery)
+bash scripts/update.sh --force --yes
+```
+
+#### Cron for nightly unattended updates
+
+```bash
+# Automatic daily update at 03:00
+0 3 * * * cd /opt/cmdb && bash scripts/update.sh --yes >> /var/log/cmdb-update.log 2>&1
+```
+
+#### Safety guarantees of the updater
+
+The script implements five layers of protection before and during the update:
+
+1. **Downgrade guard:** Compares the remote commit with the installed one. If the remote is older, the update is aborted. Use `--force` only in controlled recovery scenarios.
+
+2. **Mandatory pre-update backup:** Runs `scripts/db-backup.sh` before any change. If the backup fails, the script aborts without touching code or containers.
+
+3. **Tagged rollback point:** Creates a git tag `rollback/<timestamp>` pointing at the current HEAD before running `git pull`. This tag allows restoring the exact code of the previous version.
+
+4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
+
+5. **Migration confirmation:** Detects new Prisma migration files and displays the list before proceeding. In interactive mode it requests explicit confirmation.
+
+#### Update log
+
+Each run saves its full log to:
+```
+logs/update_<timestamp>.log
+```
+
+---
+
+### 8.2 Manual rollback
+
+If the automated updater could not complete the rollback, or if you need to return to a specific version:
+
 ```bash
 cd /opt/cmdb
+
+# List available rollback tags (created by update.sh)
+git tag -l "rollback/*" | sort -r | head -10
 
 # View commit history
 git log --oneline -10
 
-# Revert to the previous commit
+# Restore to the most recent rollback tag
+git checkout rollback/<timestamp>
+
+# Or restore to a specific commit
 git checkout <previous-hash>
 
 # Rebuild with the previous version
 docker compose -f docker-compose.prod.yml build --no-cache
 docker compose -f docker-compose.prod.yml up -d
 
-# Restore the database backup if necessary
-gunzip -c /opt/cmdb/backups/backup_<previous-date>.sql.gz \
-  | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
+# Verify that services are operational
+docker compose -f docker-compose.prod.yml ps
+curl http://localhost:3000/health
 ```
+
+---
+
+### 8.3 Restore the database after a rollback
+
+If the update applied Prisma migrations that need to be reverted, restore the backup automatically created by `update.sh`:
+
+```bash
+# The backup path is printed in the update.sh log. You can also list it:
+ls -lht /opt/cmdb/backups/ | head -5
+
+# Restore (CAUTION: this overwrites current data)
+gunzip -c /opt/cmdb/backups/backup_<timestamp>.sql.gz \
+  | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
+
+# Verify that the restore was successful
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db \
+  -c "SELECT COUNT(*) FROM configuration_items;"
+```
+
+> Prisma does not support automatic rollback of DDL migrations. If the migration was destructive (DROP COLUMN, DROP TABLE), the only way to recover the data is to restore the backup.
+
+---
 
 ### Changing the Public Domain and URL
 
@@ -1305,3 +1405,77 @@ chmod 600 /opt/cmdb-enterprise-platform/.env
 | Quarterly | JWT_SECRET rotation | See section 10 |
 | Annual | SSL certificate renewal | See section 4.3 |
 | Annual | Review active users | Settings tab → Users |
+
+---
+
+## 14. OpenShift / Kubernetes Deployment
+
+> This section covers enterprise environments where a container platform (OpenShift, OKD, Kubernetes) already exists. The installer automatically detects whether the `oc` CLI is authenticated and adjusts its behaviour accordingly.
+
+### 14.1 Automatic detection
+
+The `install.sh` script detects OpenShift if the command `oc whoami` succeeds before the configuration wizard starts. In that case, the installer does not run `docker-compose` and instead generates a correctly configured `.env` file and displays instructions for manual deployment to the cluster.
+
+### 14.2 Convert docker-compose to OpenShift manifests
+
+```bash
+# Install kompose (docker-compose → Kubernetes/OpenShift converter)
+curl -L https://github.com/kubernetes/kompose/releases/latest/download/kompose-linux-amd64 \
+  -o /usr/local/bin/kompose
+chmod +x /usr/local/bin/kompose
+
+# Convert the production compose file to OpenShift manifests
+kompose convert -f docker-compose.prod.yml -o openshift/
+```
+
+The generated manifests will be placed in the `openshift/` directory and will require the adjustments described in the next section.
+
+### 14.3 OpenShift-specific adjustments
+
+- **SecurityContextConstraints:** Platform containers run as a non-root user (`node`, UID 1000). This is compatible with the OpenShift `restricted` SCC without requiring additional privileges.
+- **Routes:** Create a Route for the frontend (port 3001) and another for the backend (port 3000). OpenShift handles TLS termination at the router level.
+- **ConfigMaps and Secrets:** Variables from the `.env` file must be migrated to OpenShift Secrets. Never store credentials in ConfigMaps.
+- **PersistentVolumeClaims:** Replace Docker volumes (`cmdb-postgres-data-prod`, `cmdb-tls-certs`, `document-storage`) with PVCs using the appropriate storage class for the cluster.
+
+### 14.4 OpenShift Secret example
+
+```bash
+# Create a Secret from all variables in the .env file
+oc create secret generic cmdb-env \
+  --from-env-file=.env \
+  --namespace cmdb-prod
+
+# Verify the Secret was created correctly
+oc get secret cmdb-env -n cmdb-prod -o yaml
+```
+
+> The Secret must be referenced in Deployments via `envFrom.secretRef` or `env[].valueFrom.secretKeyRef`. Never inject the `.env` file directly as a volume.
+
+### 14.5 Updating in OpenShift
+
+The `update.sh` script is not directly compatible with OpenShift (it requires `docker-compose`). To update in an OpenShift environment:
+
+```bash
+# 1. Pull the new code
+git pull origin main
+
+# 2. Rebuild the image (using an internal corporate registry)
+podman build -t registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD) ./backend
+podman push registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD)
+
+podman build -t registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD) ./frontend
+podman push registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD)
+
+# 3. Update the image in the Deployment and trigger a rollout
+oc set image deployment/cmdb-backend \
+  backend=registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD) \
+  -n cmdb-prod
+
+oc rollout restart deployment/cmdb-frontend -n cmdb-prod
+
+# 4. Check rollout status
+oc rollout status deployment/cmdb-backend -n cmdb-prod
+oc rollout status deployment/cmdb-frontend -n cmdb-prod
+```
+
+> Prisma migrations in OpenShift must be run manually or as a Kubernetes Job before the rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`

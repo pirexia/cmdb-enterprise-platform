@@ -1,8 +1,8 @@
-# 📖 CMDB Enterprise Platform — Manual de Usuario
+# CMDB Enterprise Platform — Manual de Usuario
 
-**Versión:** 1.3.0
-**Público:** Administradores CMDB y usuarios de consulta
-**Fecha:** 2026-04-02
+**Versión:** 1.4.0
+**Público:** Responsables de departamento, auditores y usuarios que gestionan el CMDB en el día a día
+**Fecha:** 2026-04-07
 
 ---
 
@@ -13,463 +13,454 @@
 3. [Gestión del Perfil y MFA](#3-gestión-del-perfil-y-mfa)
 4. [Matriz de Roles](#4-matriz-de-roles)
 5. [Flujo de Gobernanza: Orden de Registro](#5-flujo-de-gobernanza-orden-de-registro)
-6. [Gestión del Inventario de CIs](#6-gestión-del-inventario-de-cis)
-7. [Importación Masiva por CSV](#7-importación-masiva-por-csv)
-8. [Gestión de Relaciones y Topología](#8-gestión-de-relaciones-y-topología)
-9. [Gestión de Vulnerabilidades](#9-gestión-de-vulnerabilidades)
-10. [Repositorio Documental](#10-repositorio-documental)
-11. [Contratos y Adendas](#11-contratos-y-adendas)
-11b. [Repositorio de Licencias](#11b-repositorio-de-licencias)
-12. [Centro de Consulta de Ciclo de Vida (EOL/EOS)](#12-centro-de-consulta-de-ciclo-de-vida-eoless)
-12. [Alertas Diarias Automáticas](#12-alertas-diarias-automáticas)
-13. [Centro de Reportes](#13-centro-de-reportes)
-14. [Configuración y Gestión de Usuarios](#14-configuración-y-gestión-de-usuarios)
-14b. [Datos Maestros — Gestión de Tipos de CI](#14b-datos-maestros--gestión-de-tipos-de-ci)
-15. [Mapa de Dependencias](#15-mapa-de-dependencias)
-16. [Registro de Auditoría](#16-registro-de-auditoría)
-17. [Gestión de Certificados SSL/TLS](#17-gestión-de-certificados-ssltls)
-18. [Campos de Resiliencia NIS2 / GDPR](#18-campos-de-resiliencia-nis2--gdpr)
+6. [Navegación: el menú lateral](#6-navegación-el-menú-lateral)
+7. [Gestión del Inventario de CIs](#7-gestión-del-inventario-de-cis)
+8. [Importación Masiva por CSV](#8-importación-masiva-por-csv)
+9. [Gestión de Relaciones y Topología](#9-gestión-de-relaciones-y-topología)
+10. [Gestión de Vulnerabilidades](#10-gestión-de-vulnerabilidades)
+11. [Repositorio Documental](#11-repositorio-documental)
+12. [Contratos y Adendas](#12-contratos-y-adendas)
+13. [Repositorio de Licencias](#13-repositorio-de-licencias)
+14. [Centro de Consulta de Ciclo de Vida (EOL/EoS)](#14-centro-de-consulta-de-ciclo-de-vida-eoless)
+15. [Alertas Diarias Automáticas](#15-alertas-diarias-automáticas)
+16. [Centro de Reportes](#16-centro-de-reportes)
+17. [Configuración y Gestión de Usuarios](#17-configuración-y-gestión-de-usuarios)
+18. [Datos Maestros — Tipos de CI](#18-datos-maestros--tipos-de-ci)
+19. [Datos Maestros — Métricas y Tipos de Licencia](#19-datos-maestros--métricas-y-tipos-de-licencia)
+20. [Mapa de Dependencias](#20-mapa-de-dependencias)
+21. [Registro de Auditoría](#21-registro-de-auditoría)
+22. [Campos de Resiliencia NIS2 / GDPR](#22-campos-de-resiliencia-nis2--gdpr)
 
 ---
 
 ## 1. Primer Acceso
 
 ### Acceso a la plataforma
-Abre tu navegador y dirígete a:
+
+Abre tu navegador y dirígete a la URL que te haya proporcionado tu equipo de sistemas. Normalmente será algo como:
+
 ```
 http://cmdb-server:3001
 ```
-(o la URL que te haya proporcionado tu equipo de sistemas)
 
 ### Credenciales por defecto
-Tras la instalación inicial, el sistema crea estos usuarios de ejemplo en el `seed`:
+
+Tras la instalación inicial, el sistema crea estos usuarios de ejemplo:
 
 | Email | Contraseña | Rol |
 |-------|-----------|-----|
 | `admin@cmdb.local` | `Admin1234!` | ADMIN |
 | `auditor@cmdb.local` | `Audit1234!` | AUDITOR |
 
-> ⚠️ **IMPORTANTE:** Cambia las contraseñas inmediatamente tras el primer login.
+> **IMPORTANTE:** Cambia las contraseñas inmediatamente tras el primer inicio de sesión.
 
-### Flujo MFA en el primer login
+### Autenticación de doble factor (MFA) en el primer acceso
 
 #### Usuarios Administrador (ADMIN) — MFA obligatorio
-En el primer acceso, la plataforma **exige** configurar la autenticación de doble factor antes de acceder a la aplicación:
 
-1. Introduce email y contraseña → la pantalla cambia al **asistente de configuración MFA**
-2. Escanea el código QR con tu app de autenticación (Google Authenticator, Aegis, Authy, Microsoft Authenticator…)
-3. También puedes introducir la clave manual (ocúltala con el icono del ojo)
-4. Haz clic en **"Ya lo escaneé → Continuar"**
-5. Introduce el código de 6 dígitos generado por la app para confirmar
-6. Activa opcionalmente **"Confiar en este dispositivo durante N días"** para no pedir el código en este equipo
-7. Haz clic en **"Activar MFA y entrar"** → acceso completo a la aplicación
+La plataforma exige configurar el doble factor antes de acceder a ninguna sección. Esto protege el acceso a datos sensibles.
 
-> 🔒 No existe opción de omitir este paso para administradores. Es obligatorio por política de seguridad.
+1. Introduce tu email y contraseña. La pantalla cambia al asistente de configuración MFA.
+2. Abre tu aplicación de autenticación (Google Authenticator, Microsoft Authenticator, Aegis, Authy…) y escanea el código QR que aparece en pantalla.
+3. Si prefieres introducir la clave manualmente, haz clic en el icono del ojo para mostrarla y cópiala en tu app.
+4. Haz clic en **"Ya lo escaneé — Continuar"**.
+5. Introduce el código de 6 dígitos que genera tu app para confirmar que la vinculación es correcta.
+6. Si vas a usar este ordenador habitualmente, activa **"Confiar en este dispositivo durante N días"**. En futuros accesos desde este equipo no se pedirá el código.
+7. Haz clic en **"Activar MFA y entrar"**. Ya tienes acceso completo.
+
+> Este paso no se puede omitir para administradores. Es obligatorio por política de seguridad.
 
 #### Usuarios Estándar (AUDITOR / VIEWER) — MFA recomendado
-En el primer acceso, la plataforma **sugiere** configurar MFA:
 
-1. Introduce email y contraseña → acceso concedido + pantalla de sugerencia
-2. Puedes elegir **"Configurar MFA ahora"** (sigue el mismo asistente QR) o **"Omitir por ahora"**
-3. La sugerencia solo se muestra **una vez**. En accesos posteriores no vuelve a aparecer.
+1. Introduce tu email y contraseña. Se te concede el acceso inmediatamente.
+2. La plataforma muestra una sugerencia para activar MFA. Puedes elegir **"Configurar MFA ahora"** (sigue el mismo asistente) o **"Omitir por ahora"**.
+3. Esta sugerencia solo aparece una vez. En accesos posteriores no vuelve a mostrarse.
 
-### Inicio de sesión con MFA ya configurado
-Si tu cuenta tiene MFA activado y el dispositivo **no es de confianza**:
-1. Introduce email y contraseña
-2. La pantalla cambia al paso de verificación TOTP
-3. Abre tu app de autenticación y copia el código de 6 dígitos
-4. Activa opcionalmente **"Confiar en este dispositivo durante N días"** para saltar este paso en futuros accesos desde este equipo
-5. Haz clic en **"Verificar código"**
+### Inicio de sesión cuando ya tienes MFA activado
 
-> El código cambia cada 30 segundos — introdúcelo antes de que expire.
+Si tu cuenta tiene MFA activo y el dispositivo no es de confianza:
+
+1. Introduce tu email y contraseña.
+2. La pantalla cambia al paso de verificación. Abre tu app de autenticación y copia el código de 6 dígitos.
+3. Si quieres que este equipo no vuelva a pedir el código, activa **"Confiar en este dispositivo durante N días"**.
+4. Haz clic en **"Verificar código"**.
+
+> El código cambia cada 30 segundos. Introdúcelo antes de que caduque.
 
 ### Dispositivos de confianza
-Cuando marcas un equipo como de confianza, el token del dispositivo se guarda en el navegador. Durante el periodo configurado (`TRUSTED_DEVICE_TTL_DAYS`, por defecto 30 días), el paso MFA se omite automáticamente en ese dispositivo. Al cerrar sesión se borra el token de confianza del navegador.
 
-### Inicio de sesión con LDAP/Active Directory
-Si la organización tiene el conector LDAP/AD activado, verás el mensaje **"Soporta credenciales corporativas"** en la pantalla de login. En ese caso:
+Cuando marcas un equipo como de confianza, la plataforma recuerda ese dispositivo durante el periodo configurado (por defecto, 30 días). Durante ese tiempo, el paso MFA se omite automáticamente en ese equipo. Al cerrar sesión, el token de confianza se elimina del navegador.
 
-1. Introduce tu email corporativo y contraseña de red (las mismas del PC/dominio)
-2. El sistema comprueba primero el directorio corporativo (AD/LDAP)
-3. Si es tu primer login, se crea automáticamente un registro de usuario con rol **VIEWER**
-4. Un administrador puede elevar tu rol en **Configuración → Usuarios**
-5. Si tu cuenta tiene MFA activado, se pedirá el código TOTP en un segundo paso
+### Inicio de sesión con credenciales corporativas (LDAP/Active Directory)
 
-> **Comportamiento fail-safe:** Si el servidor LDAP no está disponible, el sistema cae automáticamente en autenticación local sin demoras. Las cuentas que terminan en `@cmdb.local` o `@cmdb.internal` siempre se autentican de forma local, independientemente de la configuración LDAP.
+Si tu organización tiene la integración con el directorio corporativo activada, verás el mensaje **"Soporta credenciales corporativas"** en la pantalla de inicio de sesión.
 
-> **Origen de cuenta:** En **Configuración → Usuarios**, las cuentas aprovisionadas por LDAP aparecen marcadas como 🏢 LDAP, mientras que las locales aparecen como 🔑 Local.
+1. Introduce tu email y contraseña corporativa (las mismas que usas en el ordenador del trabajo).
+2. El sistema verifica tu identidad contra el directorio de empresa.
+3. Si es tu primer acceso, se crea automáticamente una cuenta con rol **VIEWER**.
+4. Un administrador puede elevar tu rol desde **Configuración → Usuarios**.
+5. Si tu cuenta tiene MFA activado, se pedirá el código en un segundo paso.
+
+> Si el servidor de directorio no está disponible, el sistema recurre automáticamente a la autenticación local sin ninguna demora. Las cuentas con dominio `@cmdb.local` o `@cmdb.internal` siempre se autentican de forma local.
 
 ---
 
 ## 2. Cambio de Idioma (ES / EN)
 
-La plataforma soporta **Español** e **Inglés**. Para cambiar el idioma:
+La plataforma está disponible en **Español** e **Inglés**. Para cambiar el idioma:
 
-1. Mira en la parte inferior del **menú lateral izquierdo**
-2. Verás dos botones: **ES** y **EN**
-3. Haz clic en el idioma deseado
-4. La interfaz cambia **inmediatamente** sin recargar la página
-5. Tu preferencia se **guarda automáticamente** en el navegador
+1. Mira en la parte inferior del menú lateral izquierdo.
+2. Verás dos botones: **ES** y **EN**.
+3. Haz clic en el idioma que prefieras.
+4. La interfaz cambia de inmediato, sin necesidad de recargar la página.
+5. Tu preferencia se guarda automáticamente en el navegador.
 
-> El cambio de idioma solo afecta a la interfaz. Los datos (nombres de CIs, contratos, etc.) se muestran tal como fueron introducidos.
+> El cambio de idioma solo afecta a los textos de la interfaz. Los datos que hayas introducido (nombres de activos, contratos, etc.) se muestran tal como fueron escritos.
 
 ---
 
 ## 3. Gestión del Perfil y MFA
 
 ### Acceder a tu perfil
-- Haz clic en **"Mi Perfil"** en el menú lateral
 
-### Cambiar la contraseña (usuarios locales)
+Haz clic en **"Mi Perfil"** en la parte superior del menú lateral izquierdo.
 
-> Esta función solo está disponible para cuentas **locales**. Los usuarios autenticados vía LDAP/AD deben cambiar su contraseña en el controlador de dominio.
+### Cambiar la contraseña (solo cuentas locales)
 
-1. Ve a **Mi Perfil → Cambiar Contraseña**
-2. Introduce tu contraseña actual
-3. Introduce la nueva contraseña (el indicador de fortaleza muestra en tiempo real si se cumplen los requisitos)
-4. Confirma la nueva contraseña
-5. Haz clic en **"Cambiar contraseña"**
+> Esta opción no está disponible para cuentas corporativas (LDAP/Active Directory). Si usas credenciales de empresa, cambia tu contraseña en el sistema de gestión de tu organización.
 
-#### Política de contraseñas
+1. Ve a **Mi Perfil → Cambiar Contraseña**.
+2. Introduce tu contraseña actual.
+3. Escribe la nueva contraseña. El indicador de fortaleza te muestra en tiempo real si cumple los requisitos.
+4. Confirma la nueva contraseña.
+5. Haz clic en **"Cambiar contraseña"**.
+
+#### Requisitos de contraseña
 
 | Requisito | ADMIN | AUDITOR / VIEWER |
 |-----------|:-----:|:----------------:|
-| Longitud mínima | 16 caracteres* | 12 caracteres* |
-| Letras mayúsculas (A-Z) | ✅ | ✅ |
-| Letras minúsculas (a-z) | ✅ | ✅ |
-| Números (0-9) | ✅ | ✅ |
-| Caracteres especiales (!@#$%…) | ✅ | ✅ |
-| No puede ser contraseña común | ✅ | ✅ |
-| Historial de contraseñas | Últimas 20* | Últimas 20* |
+| Longitud mínima | 16 caracteres | 12 caracteres |
+| Letras mayúsculas | Sí | Sí |
+| Letras minúsculas | Sí | Sí |
+| Números | Sí | Sí |
+| Caracteres especiales | Sí | Sí |
+| No puede ser contraseña común | Sí | Sí |
+| No puede repetir las últimas 20 contraseñas | Sí | Sí |
 
-> \* Los valores marcados con asterisco son configurables en el fichero `.env` del servidor: `PASSWORD_MIN_LENGTH_ADMIN`, `PASSWORD_MIN_LENGTH_VIEWER`, `PASSWORD_HISTORY_COUNT`.
+El indicador de fortaleza usa un código de colores que va de rojo (muy débil) a verde (muy fuerte).
 
-**El indicador de fortaleza** muestra en tiempo real el cumplimiento de cada requisito con un código de colores (rojo → naranja → amarillo → azul → verde).
+### Activar el doble factor (MFA) desde el perfil
 
-### Activar la Autenticación de Doble Factor (MFA) desde el perfil
-Si ya tienes acceso a la aplicación (p. ej. eres VIEWER y omitiste la sugerencia inicial), puedes activar MFA en cualquier momento:
+Si tienes acceso a la aplicación pero aún no has activado MFA, puedes hacerlo en cualquier momento:
 
-1. Ve a **Mi Perfil → Autenticación de Doble Factor**
-2. Haz clic en **"Activar MFA"**
-3. Escanea el código QR con tu app de autenticación (Google Authenticator, Microsoft Authenticator, Aegis, Authy…)
-4. Introduce el código de 6 dígitos generado por la app para confirmar
-5. A partir de ahora, cada login desde un dispositivo no reconocido requerirá el código MFA
+1. Ve a **Mi Perfil → Autenticación de Doble Factor**.
+2. Haz clic en **"Activar MFA"**.
+3. Escanea el código QR con tu app de autenticación.
+4. Introduce el código de 6 dígitos para confirmar la vinculación.
+5. A partir de ese momento, cada nuevo inicio de sesión desde un dispositivo desconocido pedirá el código.
 
-> ⚠️ Si pierdes acceso a tu app de MFA, contacta con un Administrador para que desactive el MFA de tu cuenta.
+> Si pierdes acceso a tu app de MFA, contacta con un administrador para que desactive el MFA de tu cuenta.
 
 ---
 
 ## 4. Matriz de Roles
 
-La plataforma tiene tres roles diferenciados:
+La plataforma tiene tres niveles de acceso:
 
 | Funcionalidad | ADMIN | AUDITOR | VIEWER |
 |---------------|:-----:|:-------:|:------:|
-| Ver Dashboard | ✅ | ✅ | ✅ |
-| Ver Inventario de CIs | ✅ | ✅ | ✅ |
-| **Crear/modificar CIs** | ✅ | ❌ | ❌ |
-| **Importar CSV masivo** | ✅ | ❌ | ❌ |
-| **Crear/eliminar relaciones entre CIs** | ✅ | ❌ | ❌ |
-| Ver Vulnerabilidades | ✅ | ✅ | ✅ |
-| **Cambiar estado de vuln.** | ✅ | ❌ | ❌ |
-| Ver Contratos | ✅ | ✅ | ✅ |
-| **Crear contratos** | ✅ | ❌ | ❌ |
-| Ver Datos Maestros | ✅ | ❌ | ❌ |
-| **Gestionar Datos Maestros** | ✅ | ❌ | ❌ |
-| Ver Integraciones | ✅ | ❌ | ❌ |
-| **Subir informes Greenbone/CrowdStrike** | ✅ | ❌ | ❌ |
-| Ver Reportes | ✅ | ✅ | ✅ |
-| Ver/descargar documentos | ✅ | ✅ | ✅ |
-| **Subir/editar/eliminar documentos** | ✅ | ❌ | ❌ |
-| **Gestionar Tipos de Documento** | ✅ | ❌ | ❌ |
-| **Configuración y Usuarios** | ✅ | ❌ | ❌ |
-| **Ver Auditoría** | ✅ | ✅ | ❌ |
-| **Enviar correo de prueba** | ✅ | ❌ | ❌ |
-| **Cambiar rol de usuarios** | ✅ | ❌ | ❌ |
-| MFA en primer login | Obligatorio | Sugerido | Sugerido |
+| Ver Dashboard | Sí | Sí | Sí |
+| Ver Inventario de CIs | Sí | Sí | Sí |
+| Crear/modificar CIs | Sí | No | No |
+| Importar CSV masivo | Sí | No | No |
+| Crear/eliminar relaciones entre CIs | Sí | No | No |
+| Ver Vulnerabilidades | Sí | Sí | Sí |
+| Cambiar estado de vulnerabilidades | Sí | No | No |
+| Ver Contratos | Sí | Sí | Sí |
+| Crear contratos | Sí | No | No |
+| Ver Datos Maestros | Sí | No | No |
+| Gestionar Datos Maestros | Sí | No | No |
+| Ver Integraciones | Sí | No | No |
+| Subir informes Greenbone/CrowdStrike | Sí | No | No |
+| Ver Reportes | Sí | Sí | Sí |
+| Ver/descargar documentos | Sí | Sí | Sí |
+| Subir/editar/eliminar documentos | Sí | No | No |
+| Gestionar Tipos de Documento | Sí | No | No |
+| Configuración y Usuarios | Sí | No | No |
+| Ver Registro de Auditoría | Sí | Sí | No |
+| Enviar correo de prueba | Sí | No | No |
+| Cambiar rol de usuarios | Sí | No | No |
+| MFA en el primer acceso | Obligatorio | Recomendado | Recomendado |
 
-> **AUDITOR** — rol diseñado para responsables de compliance, equipos de auditoría interna/externa y revisión ISO 27001. Tiene acceso de solo lectura al inventario, vulnerabilidades, contratos y reportes, y acceso exclusivo al **Registro de Auditoría** (trazabilidad de todas las acciones de la plataforma).
->
-> **VIEWER** — acceso de solo lectura a inventario, vulnerabilidades, contratos y reportes. Sin acceso al log de auditoría ni a la configuración.
+**AUDITOR** es el rol diseñado para responsables de cumplimiento normativo, equipos de auditoría interna o externa y revisiones ISO 27001. Tiene acceso de solo lectura al inventario, vulnerabilidades, contratos y reportes, y además acceso exclusivo al Registro de Auditoría, donde puede consultar el historial completo de todas las acciones realizadas en la plataforma.
+
+**VIEWER** es el rol de solo lectura para usuarios que necesitan consultar información sin modificar nada. No tiene acceso al Registro de Auditoría ni a la configuración del sistema.
 
 ---
 
 ## 5. Flujo de Gobernanza: Orden de Registro
 
-Para sacar el máximo partido a la plataforma y evitar registros huérfanos, se recomienda el siguiente **orden de registro**:
+Para aprovechar al máximo la plataforma y evitar activos huérfanos (sin sede, sin fabricante, sin contrato), te recomendamos seguir este orden al empezar a registrar información:
 
 ```
 Paso 1: Datos Maestros (solo ADMIN)
 │
 ├── 1.1 Tipos de CI (opcional — el sistema incluye tipos predefinidos)
-│   → Ve a Datos Maestros → Tipos de CI para añadir, editar o eliminar tipos
-│   → Categorías disponibles: Infraestructura, Dispositivos Usuario, Movilidad/IoT,
-│      Salas de Reunión, Software, Licencias
+│   Ve a Datos Maestros → Tipos de CI para añadir o editar tipos personalizados.
 │
 ├── 1.2 Áreas de Soporte
 │   Ej: "Zona Centro", "Datacenter Madrid", "Soporte LATAM"
 │
-├── 1.3 Sedes / Branches
+├── 1.3 Sedes
 │   Ej: "Sede Madrid (MAD)", "Oficina Barcelona (BCN)"
-│   → Cada sede se asocia a un Área de Soporte
+│   Cada sede se asocia a un Área de Soporte.
 │
 ├── 1.4 Fabricantes
 │   Ej: Dell, HP, Cisco, Microsoft
-│   → Usa "✨ Sugerir Populares" para insertar 30 fabricantes de TI de una vez
+│   Usa "Sugerir Populares" para añadir 30 fabricantes de TI de una sola vez.
 │
 ├── 1.5 Modelos de Dispositivo
 │   Ej: "PowerEdge R740" (Dell), "ProLiant DL380 Gen10" (HP)
-│   → Cada modelo se asocia a un Fabricante
-│   → Usa el Centro de Consulta EOL para verificar fechas de soporte
+│   Cada modelo se asocia a un Fabricante.
 │
 └── 1.6 Proveedores
     Ej: Telefónica, AWS, Microsoft Azure
-    → Se usarán al registrar Contratos
+    Se usarán al registrar contratos.
 
 Paso 2: Contratos (solo ADMIN)
 │
-└── Registrar contratos con proveedores
-    → Incluir fecha de inicio, fin y proveedor
-    → Las Adendas son contratos vinculados al contrato padre
+└── Registra los contratos con tus proveedores.
+    Incluye fecha de inicio, fecha de fin y proveedor.
+    Las Adendas son contratos vinculados a un contrato padre.
 
 Paso 3: Configuration Items / CIs (solo ADMIN)
 │
-└── Registrar cada activo tecnológico
-    → Seleccionar Tipo, Entorno, Criticidad, Sede y Modelo
-    → Vincular a los Contratos correspondientes
-    → Las fechas EoL/EoS se pueden rellenar manualmente o consultar en endoflife.date
+└── Registra cada activo tecnológico.
+    Selecciona Tipo, Entorno, Criticidad, Sede y Modelo.
+    Vincula el activo a sus contratos correspondientes.
 
 Paso 4: Integraciones (solo ADMIN)
 │
-├── Subir informe Greenbone (JSON) → Importa vulnerabilidades CVE a los CIs
-└── Subir informe CrowdStrike (JSON) → Actualiza estado del agente Falcon en los CIs
+├── Sube el informe de Greenbone (JSON) para importar vulnerabilidades CVE.
+└── Sube el informe de CrowdStrike (JSON) para actualizar el estado del agente Falcon.
 ```
 
-> **¿Por qué este orden?** Los CIs dependen de Sedes, Modelos (que dependen de Fabricantes) y Contratos. Si se registran CIs antes que los Maestros, se perderá la vinculación.
+**¿Por qué este orden?** Los activos dependen de sedes, modelos y contratos. Si registras activos antes de tener los maestros configurados, no podrás vincularlos correctamente y la información quedará incompleta.
 
 ---
 
-## 6. Gestión del Inventario de CIs
+## 6. Navegación: el menú lateral
+
+El menú lateral izquierdo es el punto de partida para acceder a todas las secciones de la plataforma. Está organizado en dos grupos separados por una línea divisoria.
+
+### Primer grupo — Uso diario (disponible para todos los roles)
+
+| Sección | Para qué sirve |
+|---------|---------------|
+| **Mi Perfil** | Cambiar contraseña, gestionar MFA y ver datos de tu cuenta |
+| **Dashboard** | Resumen visual del estado general de la plataforma |
+| **Inventario** | Lista de todos los activos tecnológicos registrados |
+| **Contratos** | Gestión de contratos y adendas con proveedores |
+| **Licencias** | Repositorio de licencias de software |
+| **Mapa** | Grafo visual de dependencias entre activos |
+| **Documentos** | Repositorio centralizado de documentación corporativa |
+| **Vulnerabilidades** | Lista de CVEs detectados en los activos |
+| **Reportes** | Generación de informes en PDF y Excel |
+
+### Segundo grupo — Administración (restringido por rol)
+
+| Sección | Roles con acceso | Para qué sirve |
+|---------|:----------------:|---------------|
+| **Conectores** | Solo ADMIN | Importar informes de Greenbone y CrowdStrike |
+| **Datos Maestros** | Solo ADMIN | Configurar los catálogos base de la plataforma |
+| **Auditoría** | ADMIN y AUDITOR | Consultar el registro inmutable de todas las acciones |
+| **Configuración** | Solo ADMIN | Gestionar usuarios, integraciones y ajustes del sistema |
+
+En la parte inferior del menú encontrarás tus datos de usuario, el botón de cierre de sesión y los botones de idioma **ES** / **EN**.
+
+---
+
+## 7. Gestión del Inventario de CIs
+
+El Inventario es el núcleo de la plataforma. Aquí se registran y gestionan todos los activos tecnológicos de la organización, llamados **Configuration Items** o CIs.
 
 ### Ver el inventario
-1. Haz clic en **"Inventario de CIs"** en el menú lateral
-2. La tabla muestra todos los activos con:
-   - Nombre, slug, tipo de CI y badge de soporte (EoL)
-   - Entorno (Production, Staging, Testing, Development)
-   - Criticidad (Mission Critical, High, Medium, Low)
-   - Vulnerabilidades Greenbone (conteo por severidad)
-   - Estado del agente CrowdStrike Falcon
 
-### Buscar activos
-- Usa el campo de búsqueda en la parte superior derecha
-- La búsqueda filtra por nombre en tiempo real
-- Todos los filtros activos se respetan al exportar CSV
+1. Haz clic en **"Inventario"** en el menú lateral.
+2. La tabla muestra todos los activos con su nombre, tipo, entorno, criticidad, estado de soporte (EoL), vulnerabilidades detectadas y estado del agente de seguridad.
 
-### Crear un nuevo CI (solo ADMIN)
-1. Haz clic en **"Nuevo CI"** (botón azul superior derecho)
+### Buscar y filtrar activos
+
+Usa el campo de búsqueda en la parte superior para filtrar por nombre en tiempo real. Cuando exportas a CSV, el fichero descargado solo incluye los registros que coinciden con los filtros activos.
+
+### Crear un nuevo activo (solo ADMIN)
+
+1. Haz clic en el botón azul **"Nuevo CI"** en la esquina superior derecha.
 2. Rellena los campos obligatorios:
-   - **Nombre** (único, descriptivo: `srv-prd-web-01`)
-   - **Slug** (identificador URL: `srv-prd-web-01`)
-   - **Tipo de CI** — selector agrupado por categoría:
-     - *Infraestructura*: Servidor Físico, Servidor Virtual, Base de Datos, Equipamiento de Red, Almacenamiento, Backup, Software Base
-     - *Dispositivos Usuario*: Laptop, Sobremesa, Monitor, Teclado/Ratón, Impresora/Escáner
-     - *Movilidad/IoT*: Smartphone, Tablet, Sensor IoT
-     - *Salas de Reunión*: Proyector/Pantalla, Sistema de Videoconferencia
-     - *Software*: Aplicación Web, Microservicio/API, Software de Escritorio, Contenedor/Docker
-     - *Licencias*: Licencia de Software
-   - **Entorno** (Production, Staging, Testing, Development)
-   - **Criticidad** (Low, Medium, High, Mission Critical)
-3. Opcionales pero recomendados:
-   - Hardware: Fabricante, Modelo, Número de Serie (solo en categorías de hardware)
-   - Software: Versión, Tipo de Licencia (solo en categorías de software)
-   - Fechas EoL / EoS (o dejar en blanco para que se rellenen automáticamente desde endoflife.date)
-4. Haz clic en **"Crear CI"**
+   - **Nombre** — nombre descriptivo y único del activo (por ejemplo, `srv-prd-web-01`)
+   - **Tipo de CI** — elige de la lista agrupada por categoría
+   - **Entorno** — Producción, Pre-producción, Testing o Desarrollo
+   - **Criticidad** — Baja, Media, Alta o Misión Crítica
+3. Rellena también los campos opcionales que correspondan:
+   - Fabricante, modelo y número de serie (para activos de hardware)
+   - Versión (para activos de software)
+   - Fechas de fin de vida y fin de soporte (EoL/EoS)
+4. Haz clic en **"Crear CI"**.
 
 ### El semáforo de soporte
-Cada CI muestra un badge de soporte:
-- 🟢 **Activo** — Más de 6 meses de soporte restante
-- 🟠 **EoL en Xd** — Menos de 6 meses hasta la fecha de fin de soporte
-- 🔴 **Sin soporte** — La fecha de EoL o EoS ya ha pasado
+
+Cada activo muestra una etiqueta de color que indica el estado de soporte del fabricante:
+
+- Verde — El activo tiene más de 6 meses de soporte restante. Todo correcto.
+- Naranja — Quedan menos de 6 meses hasta que finalice el soporte. Planifica la renovación.
+- Rojo — El soporte ya ha finalizado. El activo está fuera de soporte oficial.
 
 ---
 
-## 7. Importación Masiva por CSV
+## 8. Importación Masiva por CSV
 
-La importación masiva permite cargar cientos de CIs desde un archivo Excel/CSV.
+Si necesitas registrar muchos activos a la vez, la importación masiva te permite hacerlo desde un fichero Excel o CSV.
 
 ### Paso 1: Descargar la plantilla
-1. En **Inventario de CIs**, haz clic en **"Plantilla CSV"** (botón "Plantilla CSV")
-2. Se descarga un archivo `plantilla-cis.csv` con los campos y ejemplos
+
+1. En el Inventario, haz clic en el botón **"Plantilla CSV"**.
+2. Se descarga un fichero con los campos y ejemplos ya incluidos.
 
 ### Campos del CSV
 
 | Campo | Obligatorio | Descripción | Ejemplo |
-|-------|-------------|-------------|---------|
-| `name` | ✅ | Nombre del CI | `srv-prd-web-01` |
-| `ciType` | Recomendado | Tipo de CI | `PHYSICAL_SERVER` |
-| `criticality` | ✅ | `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL` | `HIGH` |
-| `environment` | ✅ | `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION` | `PRODUCTION` |
-| `manufacturer` | Opcional | Nombre exacto del fabricante | `Dell` |
-| `serialNumber` | Opcional | Número de serie | `SN-DL-00001` |
-| `model` | Opcional | Modelo del dispositivo | `PowerEdge R740` |
-| `version` | Opcional | Versión de software | `2.1.0` |
-| `licenseType` | Opcional | Tipo de licencia | `subscription` |
-| `status` | Opcional | `active` o `inactive` | `active` |
+|-------|:-----------:|-------------|---------|
+| `name` | Sí | Nombre del activo | `srv-prd-web-01` |
+| `ciType` | Recomendado | Código del tipo de CI | `PHYSICAL_SERVER` |
+| `criticality` | Sí | Nivel de criticidad | `HIGH` |
+| `environment` | Sí | Entorno | `PRODUCTION` |
+| `manufacturer` | No | Nombre del fabricante (exacto) | `Dell` |
+| `serialNumber` | No | Número de serie | `SN-DL-00001` |
+| `model` | No | Modelo del dispositivo | `PowerEdge R740` |
+| `version` | No | Versión de software | `2.1.0` |
+| `licenseType` | No | Tipo de licencia | `subscription` |
+| `status` | No | `active` o `inactive` | `active` |
 
-### Tipos de CI válidos (código `ciType`)
-Usa el código interno del tipo tal como aparece en la base de datos. Los tipos predefinidos incluyen:
-`PHYSICAL_SERVER`, `VIRTUAL_SERVER`, `DATABASE`, `NETWORK_EQUIPMENT`, `STORAGE`, `BACKUP`, `BASE_SOFTWARE`, `LAPTOP`, `DESKTOP`, `PRINTER_SCANNER`, `SMARTPHONE`, `TABLET`, `IOT_SENSOR`, `PROJECTOR_SCREEN`, `VIDEO_CONFERENCING`, `WEB_APP`, `MICROSERVICE`, `DESKTOP_SOFTWARE`, `CONTAINER`, `LICENSE`
+Los valores válidos para `criticality` son: `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL`.
+Los valores válidos para `environment` son: `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION`.
 
-> Para obtener la lista exacta de tipos disponibles en tu instancia, consulta **Datos Maestros → Tipos de CI**.
+Para ver los códigos de tipo de CI disponibles en tu instalación, ve a **Datos Maestros → Tipos de CI**.
 
-### Paso 2: Rellenar y subir el CSV
-1. Rellena el CSV con tus datos (puedes usar Excel)
-2. Guarda como **CSV UTF-8**
-3. En **Inventario → Importar CSV**, selecciona tu archivo
-4. La barra de resultados muestra:
-   - ✅ `X CIs importados correctamente`
-   - ❌ `Y errores` (con descripción del error)
+### Paso 2: Rellenar y subir el fichero
 
-### Gestión de errores comunes
-| Error | Causa | Solución |
-|-------|-------|----------|
-| `Slug already exists` | El nombre ya existe en BD | Cambiar el nombre del CI |
-| `Invalid criticality` | Valor no reconocido | Usar exactamente: `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL` |
-| `Invalid environment` | Valor no reconocido | Usar exactamente: `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION` |
-| `Missing required field` | Campo obligatorio vacío | Rellenar `name`, `criticality` y `environment` |
+1. Rellena el fichero con tus datos. Puedes editarlo con Excel.
+2. Guárdalo como **CSV UTF-8**.
+3. Ve a **Inventario → Importar CSV** y selecciona tu fichero.
+4. La plataforma muestra cuántos activos se importaron correctamente y cuántos tuvieron errores, con una descripción de cada problema.
+
+### Errores frecuentes
+
+| Error | Causa probable | Solución |
+|-------|---------------|----------|
+| `Slug already exists` | Ya existe un activo con ese nombre | Cambia el nombre del activo |
+| `Invalid criticality` | El valor no es reconocido | Usa exactamente uno de los valores válidos |
+| `Invalid environment` | El valor no es reconocido | Usa exactamente uno de los valores válidos |
+| `Missing required field` | Falta un campo obligatorio | Rellena `name`, `criticality` y `environment` |
 
 ---
 
-## 8. Gestión de Relaciones y Topología
+## 9. Gestión de Relaciones y Topología
 
-La plataforma soporta relaciones N:M entre CIs para modelar la topología de infraestructura y analizar el impacto de cambios.
+Las relaciones permiten modelar cómo están conectados los activos entre sí: qué servidor aloja qué máquina virtual, de qué base de datos depende una aplicación, etc. Esta información es clave para analizar el impacto de cualquier cambio o incidencia.
 
-### Tipos de relación soportados
+### Tipos de relación disponibles
 
-| Tipo | Descripción | Ejemplo |
+| Tipo | Significado | Ejemplo |
 |------|-------------|---------|
-| **HOSTS** | El CI origen aloja/contiene al CI destino | Servidor físico → Máquina virtual |
-| **DEPENDS_ON** | El CI origen depende del CI destino | Aplicación web → Base de datos |
-| **CONNECTED_TO** | El CI origen está conectado al CI destino | Servidor → Switch de red |
-| **PROVIDES_SERVICE** | El CI origen provee un servicio al CI destino | Servidor DNS → Clientes |
-| **BACKED_UP_BY** | El CI origen está respaldado por el CI destino | Servidor producción → Sistema de backup |
-
-### Ver relaciones de un CI
-
-En el **Mapa de Dependencias**, selecciona el CI para ver su grafo completo de relaciones entrantes y salientes (ver sección 15).
+| **HOSTS** | El activo origen aloja al activo destino | Servidor físico aloja una máquina virtual |
+| **DEPENDS_ON** | El activo origen depende del activo destino | Aplicación web depende de una base de datos |
+| **CONNECTED_TO** | El activo origen está conectado al activo destino | Servidor conectado a un switch de red |
+| **PROVIDES_SERVICE** | El activo origen provee un servicio al activo destino | Servidor DNS presta servicio a los clientes |
+| **BACKED_UP_BY** | El activo origen está respaldado por el activo destino | Servidor de producción respaldado por sistema de backup |
 
 ### Crear una nueva relación (solo ADMIN)
 
+Puedes crear relaciones desde dos lugares:
+
 **Desde el Inventario:**
-1. En la tabla de CIs, localiza el CI que actuará como **origen**
-2. Haz clic en el icono de **enlace** en la columna de acciones (junto a los botones de editar/borrar)
-3. Se abre el modal **"Nueva Relación"** con el CI origen preseleccionado
-4. Selecciona el **tipo de relación** mediante el desplegable
-5. Busca y selecciona el **CI destino** usando el campo de búsqueda con autocompletado
-6. Haz clic en **"Crear Relación"**
+1. Localiza el activo que actuará como origen.
+2. Haz clic en el icono de enlace en la columna de acciones (junto a los botones de editar y borrar).
+3. En el modal que se abre, selecciona el tipo de relación y busca el activo destino.
+4. Haz clic en **"Crear Relación"**.
 
 **Desde el Mapa de Dependencias:**
-1. Selecciona un CI en el selector del mapa
-2. Haz clic en **"Nueva Relación"** (botón superior derecho del grafo)
-3. Completa los pasos 4-6 del flujo anterior
+1. Selecciona un activo en el selector del mapa.
+2. Haz clic en **"Nueva Relación"** en la esquina superior derecha del grafo.
+3. Completa los mismos pasos anteriores.
 
 ### Eliminar una relación (solo ADMIN)
 
-Las relaciones se pueden eliminar desde dos puntos de la interfaz:
+Desde el Mapa de Dependencias puedes eliminar relaciones de dos formas:
 
-**Desde el Mapa de Dependencias — Vista Grafo:**
-- Haz clic directamente sobre la **arista (flecha)** que une dos CIs
-- Se pide confirmación antes de eliminar
+- En la **vista de grafo**, haz clic directamente sobre la flecha que une los dos activos. Se pedirá confirmación antes de eliminar.
+- En la **vista de tabla**, localiza la relación y haz clic en el icono de papelera de esa fila. Se pedirá confirmación.
 
-**Desde el Mapa de Dependencias — Vista Tabla:**
-- Localiza la relación en la tabla
-- Haz clic en el icono de papelera (🗑️) en la columna **"Acciones"**
-- Se pide confirmación antes de eliminar
-
-> El grafo y la tabla se actualizan automáticamente tras la eliminación.
-
-### Casos de uso prácticos
-
-**Ejemplo 1: Mapear virtualización**
-```
-[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-WEB-01]
-[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-APP-01]
-[PROD-SRV-FISICO-01] --HOSTS--> [PROD-VM-DB-01]
-```
-
-**Ejemplo 2: Dependencias de aplicación**
-```
-[APP-WEB-FRONTEND] --DEPENDS_ON--> [APP-API-BACKEND]
-[APP-API-BACKEND]  --DEPENDS_ON--> [POSTGRESQL-CLUSTER]
-```
-
-**Ejemplo 3: Topología de red**
-```
-[SERVIDOR-01] --CONNECTED_TO--> [SWITCH-CORE-01]
-[SERVIDOR-02] --CONNECTED_TO--> [SWITCH-CORE-01]
-[SWITCH-CORE-01] --CONNECTED_TO--> [ROUTER-PRINCIPAL]
-```
-
-> **Análisis de impacto:** Si el `POSTGRESQL-CLUSTER` tiene una ventana de mantenimiento, puedes ver qué aplicaciones dependen de él y notificar a los propietarios.
+El grafo y la tabla se actualizan automáticamente tras la eliminación.
 
 ---
 
-## 9. Gestión de Vulnerabilidades
+## 10. Gestión de Vulnerabilidades
+
+Este módulo centraliza las vulnerabilidades de seguridad detectadas en tus activos, importadas desde herramientas especializadas como Greenbone OpenVAS o CrowdStrike Falcon.
 
 ### Ver el panel de vulnerabilidades
-1. Haz clic en **"Vulnerabilidades"** en el menú lateral
-2. Se muestra una lista de todos los CIs con CVEs detectados
 
-### Estados del ciclo de vida de una vulnerabilidad
-| Estado | Descripción |
+Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todos los activos con vulnerabilidades detectadas.
+
+### Estados de una vulnerabilidad
+
+| Estado | Significado |
 |--------|-------------|
-| 🆕 **Nuevo** | Vulnerabilidad recién importada, sin asignar |
-| 👤 **Asignado** | Asignado a un técnico para su análisis |
-| ⚙️ **En Curso** | El técnico está trabajando en la resolución |
-| ⏸️ **Parado** | Bloqueado por dependencias externas |
-| ✅ **Resuelto** | Vulnerabilidad resuelta o mitigada |
+| **Nuevo** | Vulnerabilidad recién importada, pendiente de asignar |
+| **Asignado** | Asignado a un técnico para su análisis |
+| **En Curso** | El técnico está trabajando en la resolución |
+| **Parado** | Bloqueado por dependencias externas |
+| **Resuelto** | Vulnerabilidad resuelta o mitigada |
 
 ### Cambiar el estado de una vulnerabilidad (solo ADMIN)
-1. En el panel de vulnerabilidades, localiza el CVE
-2. Usa el selector de estado en la columna "Estado"
-3. El cambio se registra inmediatamente y queda en el Audit Log
 
-### Importar desde Greenbone OpenVAS
-1. Exporta el informe desde Greenbone en formato JSON (ver `docs/mocks/greenbone_sample.json` para formato)
-2. Ve a **Integraciones → Greenbone OpenVAS**
-3. Pega el JSON en el editor o sube el archivo
-4. Haz clic en **"Importar"**
-5. El sistema hace match por nombre de host con los CIs existentes
-6. Las vulnerabilidades nuevas se añaden con estado "Nuevo"
+1. Localiza el CVE en el panel.
+2. Usa el selector de estado en la columna "Estado".
+3. El cambio se registra de inmediato y queda reflejado en el Registro de Auditoría.
+
+### Importar vulnerabilidades desde Greenbone OpenVAS
+
+1. Exporta el informe desde Greenbone en formato JSON.
+2. Ve a **Conectores → Greenbone OpenVAS**.
+3. Pega el JSON en el editor o sube el fichero.
+4. Haz clic en **"Importar"**.
+5. El sistema cruza los nombres de host del informe con los activos existentes y añade las vulnerabilidades nuevas con estado "Nuevo".
 
 ### Importar desde CrowdStrike Falcon
-1. Exporta el informe en formato JSON (ver `docs/mocks/crowdstrike_sample.json`)
-2. Ve a **Integraciones → CrowdStrike Falcon**
-3. Sube el JSON
-4. Actualiza el estado del agente Falcon en los CIs correspondientes
+
+1. Exporta el informe en formato JSON desde CrowdStrike.
+2. Ve a **Conectores → CrowdStrike Falcon**.
+3. Sube el fichero JSON.
+4. La plataforma actualiza el estado del agente Falcon en los activos correspondientes.
 
 ---
 
-## 10. Repositorio Documental
+## 11. Repositorio Documental
 
-El Repositorio Documental es el módulo centralizado para almacenar, versionar y consultar documentación corporativa vinculada a CIs y contratos. Cumple con los requisitos de trazabilidad documental de ISO 27001 y NIS2.
+El Repositorio Documental es el lugar centralizado para almacenar, versionar y consultar toda la documentación corporativa vinculada a activos y contratos. Cumple con los requisitos de trazabilidad documental de ISO 27001 y NIS2.
 
 ### Acceder al repositorio
-Haz clic en **"Repositorio Documental"** en el menú lateral. El módulo es accesible para todos los usuarios autenticados.
+
+Haz clic en **"Documentos"** en el menú lateral. Todos los usuarios autenticados pueden ver y descargar documentos.
 
 ### Ver y descargar documentos
 
-1. En la lista principal, se muestran todos los documentos registrados con: nombre, tipo, versión vigente, tamaño y fecha de subida
-2. Haz clic sobre cualquier documento para abrir su **vista de detalle**
-3. En la vista de detalle se muestra:
-   - Metadatos: nombre, descripción, tipo, etiquetas y usuario que lo subió
-   - CIs y contratos asociados a ese documento
-   - Historial de versiones (con la versión más reciente visible por defecto)
-4. Haz clic en **"⬇️ Descargar"** para obtener el archivo. La descarga requiere autenticación activa
+1. La lista principal muestra todos los documentos con su nombre, tipo, versión vigente, tamaño y fecha de subida.
+2. Haz clic sobre cualquier documento para abrir su vista de detalle.
+3. En la vista de detalle encontrarás los metadatos del documento, los activos y contratos asociados, y el historial de versiones.
+4. Haz clic en **"Descargar"** para obtener el fichero.
 
-### Formatos de archivo admitidos
-
-El sistema valida tanto la extensión como los bytes de cabecera del archivo (magic bytes) para garantizar la integridad:
+### Formatos de fichero admitidos
 
 | Categoría | Extensiones permitidas |
 |-----------|----------------------|
@@ -477,693 +468,561 @@ El sistema valida tanto la extensión como los bytes de cabecera del archivo (ma
 | Texto plano | TXT, CSV |
 | Imágenes | PNG, JPG |
 
-> El tamaño máximo por archivo es de **50 MB**.
+El tamaño máximo por fichero es de **50 MB**.
 
 ### Subir un nuevo documento (solo ADMIN)
 
-1. Haz clic en **"+ Nuevo Documento"**
-2. Selecciona el archivo desde tu equipo
-3. Rellena los metadatos:
-   - **Nombre** — nombre descriptivo del documento
-   - **Tipo de Documento** — selecciona de la lista de tipos configurados (ver sección de Datos Maestros)
-   - **Descripción** — resumen opcional del contenido
-4. Opcionalmente, asocia el documento a uno o varios **CIs** y/o **Contratos**
-5. Haz clic en **"Subir"**
-
-> El sistema almacena el archivo con un nombre de fichero generado automáticamente (UUID) para evitar colisiones y ocultar el nombre original en el sistema de ficheros.
+1. Haz clic en **"+ Nuevo Documento"**.
+2. Selecciona el fichero desde tu equipo.
+3. Rellena el nombre, el tipo de documento y una descripción opcional.
+4. Si lo deseas, asocia el documento a uno o varios activos y/o contratos.
+5. Haz clic en **"Subir"**.
 
 ### Editar metadatos de un documento (solo ADMIN)
 
-1. Abre la vista de detalle del documento
-2. Haz clic en **"✏️ Editar"**
-3. Modifica los campos deseados (nombre, descripción, tipo, asociaciones)
-4. Haz clic en **"Guardar"**
+1. Abre la vista de detalle del documento.
+2. Haz clic en **"Editar"**.
+3. Modifica los campos que necesites (nombre, descripción, tipo, asociaciones).
+4. Haz clic en **"Guardar"**.
 
-> La edición de metadatos no crea una nueva versión. Solo la subida de un nuevo archivo genera una entrada en el historial de versiones.
+> Editar los metadatos no crea una nueva versión. Solo la subida de un nuevo fichero genera una entrada en el historial de versiones.
 
 ### Eliminar un documento (solo ADMIN)
 
-1. Abre la vista de detalle del documento
-2. Haz clic en **"🗑️ Eliminar"**
-3. Confirma la acción en el diálogo
-4. Se eliminan el registro y todas sus versiones almacenadas
+1. Abre la vista de detalle del documento.
+2. Haz clic en **"Eliminar"**.
+3. Confirma la acción en el diálogo de confirmación.
+4. Se eliminan el registro y todas sus versiones almacenadas.
 
 > Esta acción es irreversible.
 
 ### Control de versiones
 
-Cada documento mantiene un historial completo de versiones. La versión más reciente se muestra por defecto.
+Cada documento mantiene un historial completo de versiones.
 
-**Para subir una nueva versión:**
-1. Abre la vista de detalle del documento
-2. Haz clic en **"📤 Nueva Versión"**
-3. Selecciona el nuevo archivo y confirma
-4. La nueva versión pasa a ser la vigente; las anteriores quedan accesibles en el historial
+Para subir una nueva versión:
+1. Abre la vista de detalle del documento.
+2. Haz clic en **"Nueva Versión"**.
+3. Selecciona el nuevo fichero y confirma.
+4. La nueva versión pasa a ser la vigente; las anteriores siguen accesibles en el historial.
 
-**Para consultar versiones anteriores:**
-- En la vista de detalle, despliega la sección **"Historial de Versiones"**
-- Cada entrada muestra: número de versión, fecha de subida, usuario y tamaño del archivo
-- Se puede descargar cualquier versión anterior individualmente
-
-### Relaciones entre documentos
-
-Los documentos pueden estar relacionados entre sí mediante vínculos tipados:
-
-| Tipo de relación | Significado |
-|-----------------|-------------|
-| **AMENDMENT_OF** | El documento es una enmienda de otro (ej. adenda de un contrato) |
-| **RELATED_TO** | Documentos relacionados temáticamente |
-| **SUPERSEDES** | El documento reemplaza a otro (versión mayor, nueva edición) |
-
-Para crear una relación:
-1. En la vista de detalle, ve a la sección **"Documentos relacionados"**
-2. Haz clic en **"+ Añadir relación"**
-3. Selecciona el tipo de relación y busca el documento destino
-4. Confirma
-
-### Tipos de Documento (Datos Maestros)
-
-Los tipos de documento son configurables desde **Datos Maestros → Tipos de Documento** (solo ADMIN). Los tipos predefinidos son:
-
-| Código | Descripción |
-|--------|-------------|
-| CONTRATO | Contratos con proveedores y terceros |
-| ADENDA | Modificaciones y anexos contractuales |
-| DOC. TÉCNICO | Especificaciones técnicas, diagramas, manuales |
-| OFERTA | Propuestas comerciales y presupuestos |
-| LICENCIA | Documentación de licencias de software |
-
-### Asociación con CIs y Contratos
-
-Los documentos pueden vincularse a:
-- **CIs** — el documento aparece en la pestaña "Documentos" de la vista de detalle del CI
-- **Contratos** — el documento aparece en la vista de detalle del contrato
-
-Esta vinculación permite localizar rápidamente toda la documentación relativa a un activo o acuerdo contractual desde su propio registro.
-
-### Vista previa del documento
-
-En la vista de detalle de un documento, la sección **"Vista previa"** muestra el contenido del archivo directamente en el navegador sin necesidad de descargarlo. La vista previa muestra siempre la versión más reciente del documento.
-
-El comportamiento varía según el tipo de archivo:
-
-| Tipo de archivo | Comportamiento |
-|-----------------|----------------|
-| PDF | Visor PDF embebido (iframe) |
-| Imágenes (PNG, JPG, JPEG) | Imagen mostrada en línea |
-| Texto / CSV | Vista de texto con formato |
-| Otros formatos | Mensaje "Vista previa no disponible" |
-
-> La vista previa no sustituye a la descarga. Para obtener el archivo original, utiliza el botón **"Descargar"**.
+Para consultar versiones anteriores, despliega la sección **"Historial de Versiones"** en la vista de detalle. Puedes descargar cualquier versión individual desde esa sección.
 
 ### Notas del documento
 
-En la vista de detalle de un documento existe la sección **"Notas"**, accesible para todos los usuarios autenticados. Las notas permiten registrar comentarios libres asociados al documento raíz, visibles desde cualquier vista de versión.
-
-**Características:**
-- Cualquier usuario autenticado puede añadir notas de texto libre
-- Las notas son de **solo adición** (append-only): no se pueden editar ni eliminar desde la interfaz
-- Cada nota muestra el email del autor y la marca de tiempo de creación
-- Las notas están vinculadas al documento raíz y son visibles en todas las vistas de versión
-
-**Caso de uso típico:** el equipo jurídico añade una nota sobre el estado legal del documento; a continuación, el equipo técnico añade una nota con observaciones técnicas. Ambas notas quedan registradas de forma inmutable.
+La sección **"Notas"** en la vista de detalle permite añadir comentarios libres al documento. Cualquier usuario autenticado puede añadir notas, pero nadie puede editarlas ni eliminarlas desde la interfaz — garantizando así la trazabilidad del hilo de comunicación.
 
 Para añadir una nota:
-1. Abre la vista de detalle del documento
-2. Desplázate hasta la sección **"Notas"**
-3. Escribe el texto en el campo de entrada
-4. Haz clic en **"Añadir nota"**
+1. Abre la vista de detalle del documento.
+2. Desplázate hasta la sección **"Notas"**.
+3. Escribe el texto y haz clic en **"Añadir nota"**.
 
-### Eliminar una versión (solo ADMIN)
+### Asociar documentos con activos y contratos
 
-Los usuarios con rol ADMIN pueden eliminar versiones individuales del historial sin necesidad de eliminar el documento completo.
+Los documentos pueden vincularse a activos y contratos para que aparezcan en sus respectivas vistas de detalle. Puedes gestionar estas vinculaciones desde la vista del documento o desde la pestaña **"Documentos"** de cada activo o contrato.
 
-1. Abre la vista de detalle del documento
-2. Despliega la sección **"Historial de Versiones"**
-3. Pasa el cursor sobre la versión que deseas eliminar; aparecerá el icono de papelera
-4. Haz clic en el icono de papelera y confirma la acción
+Para vincular desde el documento:
+1. Abre la vista de detalle del documento.
+2. En la sección **"CIs asociados"**, haz clic en **"Añadir CIs"** y selecciona los activos.
+3. En la sección **"Contratos asociados"**, haz clic en **"Añadir Contratos"** y selecciona los contratos.
 
-**Comportamiento automático:**
-- Si la versión eliminada era la versión más reciente (vigente), la versión inmediatamente anterior es promovida automáticamente como nueva versión vigente
-- No es posible eliminar el documento raíz a través de este botón. Para eliminar el documento completo con todas sus versiones, utiliza el botón **"Eliminar"** de la cabecera de la vista de detalle
+Las vinculaciones son bidireccionales: el documento aparece automáticamente en la pestaña correspondiente del activo y del contrato.
 
-> Esta acción es irreversible.
+### Filtros y ordenación en la lista de documentos
 
-### Filtros compuestos y columnas ordenables en la lista de documentos
+Puedes filtrar la lista de documentos por:
+- **Título** — búsqueda por texto libre en el nombre
+- **Tipo de documento** — selector desplegable
+- **Subido por** — búsqueda por el email del usuario que subió el documento
 
-La página principal del Repositorio Documental ofrece herramientas de búsqueda y ordenación avanzadas.
-
-**Filtros disponibles (independientes entre sí):**
-
-| Filtro | Tipo | Descripción |
-|--------|------|-------------|
-| Título | Texto libre | Busca por nombre del documento |
-| Tipo de documento | Desplegable | Filtra por tipo configurado en Datos Maestros |
-| Subido por | Texto libre | Busca por email o nombre del usuario que subió el documento |
-
-Los tres filtros pueden combinarse libremente. Cuando algún filtro está activo, aparece el botón **"Limpiar filtros"** y se muestra el número de resultados encontrados.
-
-**Columnas ordenables:**
-
-Todas las columnas de la tabla son ordenables. Haz clic sobre el encabezado de una columna para ordenar por ese campo; haz clic de nuevo para alternar entre orden ascendente y descendente. Las 7 columnas de datos admiten ordenación.
-
-### Asociar CIs y Contratos desde el documento
-
-Desde la vista de detalle de un documento es posible gestionar sus asociaciones con CIs y contratos directamente, sin necesidad de editar el documento completo.
-
-**Añadir CIs al documento:**
-1. Abre la vista de detalle del documento
-2. En la sección **"CIs asociados"**, haz clic en **"Añadir CIs"**
-3. Se abre un panel con un campo de búsqueda; escribe para filtrar la lista de CIs disponibles
-4. Selecciona uno o varios CIs mediante las casillas de verificación
-5. Confirma la selección; los CIs quedan vinculados de inmediato al documento
-
-**Añadir Contratos al documento:**
-1. En la sección **"Contratos asociados"**, haz clic en **"Añadir Contratos"**
-2. Selecciona uno o varios contratos en el panel de búsqueda
-3. Confirma la selección
-
-> Las asociaciones creadas desde el documento son bidireccionales: el documento aparece automáticamente en la pestaña "Documentos" del CI y en la vista del contrato correspondiente.
-
-### Asociar documentos y contratos desde el CI
-
-La vista de detalle de un CI incluye pestañas dedicadas para gestionar sus documentos y contratos asociados.
-
-**Pestaña "Documentos" del CI:**
-- Lista todos los documentos vinculados al CI con nombre, tipo y versión vigente
-- Haz clic en **"Asociar documento"** para abrir un panel de búsqueda y selección múltiple
-- Para desvincular un documento, haz clic en el icono de desvinculación junto a la fila correspondiente
-- La operación de desvinculación no elimina el documento; únicamente rompe la asociación con ese CI
-
-**Pestaña "Contratos" del CI:**
-- Lista todos los contratos vinculados al CI
-- Haz clic en **"Asociar contrato"** para abrir un panel de selección múltiple
-- Para desvincular un contrato, haz clic en el icono de desvinculación
-
-> Solo los usuarios con rol ADMIN pueden crear o eliminar asociaciones.
-
-### Vista de Contratos: visor y asociaciones
-
-La fila expandida de un contrato en la página de Contratos y Adendas incorpora funcionalidades avanzadas de visualización y gestión documental.
-
-**Visor de documentos embebido:**
-- Los documentos PDF asociados al contrato se muestran en un visor embebido (iframe) sin necesidad de descargarlos
-- Las imágenes (PNG, JPG) se muestran en línea
-- Los archivos de texto y CSV se muestran en formato legible
-- Para otros formatos, aparece el botón **"Descargar"**
-
-**Asociar CIs al contrato:**
-1. En la fila expandida del contrato, abre el panel **"CIs asociados"**
-2. Haz clic en **"Añadir CIs"** para abrir el selector múltiple con búsqueda
-3. Selecciona los CIs que cubre el contrato y confirma
-4. Para desvincular un CI del contrato, haz clic en el icono de desvinculación junto a la fila del CI
-
-**Asociar documentos al contrato:**
-1. En la fila expandida del contrato, abre el panel **"Documentos asociados"**
-2. Haz clic en **"Asociar documento"** para buscar y seleccionar documentos existentes en el repositorio
-3. Los documentos seleccionados quedan vinculados al contrato y aparecen en el visor
+Los tres filtros son independientes entre sí y se pueden combinar libremente. Cuando algún filtro está activo, aparece el botón **"Limpiar filtros"**. Todas las columnas de la tabla son ordenables: haz clic en el encabezado para ordenar, y de nuevo para invertir el orden.
 
 ---
 
-## 11. Contratos y Adendas
+## 12. Contratos y Adendas
+
+Este módulo centraliza los contratos con proveedores externos y permite vincularlos con los activos que cubren.
 
 ### Ver contratos
-1. Haz clic en **"Contratos y Adendas"** en el menú lateral
-2. La tabla muestra: número de contrato, proveedor, fechas, CIs asociados y estado
 
-### Estados de contratos
-- 🟢 **Vigente** — Más de 60 días hasta el vencimiento
-- 🟠 **Por vencer** — Menos de 60 días hasta el vencimiento
-- 🔴 **Vencido** — La fecha de fin ya ha pasado
+Haz clic en **"Contratos"** en el menú lateral. La tabla muestra el número de contrato, el proveedor, las fechas, los activos asociados y el estado.
+
+### Estados de los contratos
+
+- Verde — El contrato tiene más de 60 días hasta el vencimiento. Todo correcto.
+- Naranja — El contrato vence en menos de 60 días. Conviene gestionar la renovación.
+- Rojo — El contrato ya ha vencido.
 
 ### Crear un contrato (solo ADMIN)
-1. Haz clic en **"Nuevo Contrato"**
-2. Rellena: Número de contrato, Proveedor, Fecha de inicio, Fecha de fin
-3. Asocia los CIs cubiertos por el contrato
-4. Para crear una **Adenda**, en el campo "Contrato padre" selecciona el contrato principal
+
+1. Haz clic en **"Nuevo Contrato"**.
+2. Rellena el número de contrato, el proveedor, la fecha de inicio y la fecha de fin.
+3. Asocia los activos cubiertos por el contrato.
+4. Para crear una **Adenda** (una modificación o anexo vinculado a un contrato principal), selecciona el contrato padre en el campo **"Contrato padre"**.
 
 ### Exportar contratos a CSV
-1. Aplica los filtros que necesites en la tabla
-2. Haz clic en **"📥 Exportar CSV"**
-3. Se descarga el CSV con los registros **filtrados** (no toda la base de datos)
+
+1. Aplica los filtros que necesites en la tabla.
+2. Haz clic en **"Exportar CSV"**.
+3. Se descarga un fichero con solo los registros que coinciden con los filtros activos.
 
 ---
 
-## 11b. Repositorio de Licencias
+## 13. Repositorio de Licencias
 
-El Repositorio de Licencias centraliza la gestión del inventario de licencias de software, asociando cada licencia con su proveedor, tipo, métrica de uso, coste, CIs cubiertos, documentos adjuntos y usuarios asignados.
+El Repositorio de Licencias centraliza el inventario de licencias de software de la organización. Asocia cada licencia con su proveedor, tipo, métrica de uso, coste, activos cubiertos, documentos adjuntos y usuarios asignados.
 
 ### Acceder al módulo
 
-1. Haz clic en **"Licencias"** (icono de llave) en el menú lateral izquierdo
-2. La tabla muestra todas las licencias registradas, con las columnas:
+Haz clic en **"Licencias"** en el menú lateral.
+
+La tabla muestra todas las licencias registradas con las siguientes columnas:
 
 | Columna | Descripción |
 |---------|-------------|
 | **Licencia** | Nombre y número de licencia |
-| **Proveedor** | Empresa proveedora de la licencia |
-| **Tipo / Métrica** | Categoría de licencia y métrica de medición (p. ej. Usuario nominal, CPU Socket) |
-| **Estado / Vencimiento** | Estado actual (Activa, Por vencer, Vencida, Borrador) y fecha de fin |
+| **Proveedor** | Empresa que provee la licencia |
+| **Tipo / Métrica** | Categoría de licencia y unidad de medida (p. ej. Usuario nominal, Zócalo de CPU) |
+| **Estado / Vencimiento** | Estado actual y fecha de fin |
 | **Coste** | Importe y moneda |
-| **CIs** | Número de Configuration Items asociados |
+| **CIs** | Número de activos asociados |
 
-### Estados de licencias
+### Estados de las licencias
 
-- **Activa** — La licencia está vigente (más de 60 días hasta el vencimiento o sin fecha de fin)
-- **Por vencer** — Vence en los próximos 60 días
-- **Vencida** — La fecha de fin ya ha pasado
-- **Borrador** — Licencia en proceso de registro, no activa en producción
+- **Activa** — La licencia está vigente (más de 60 días hasta el vencimiento, o sin fecha de fin).
+- **Por vencer** — Vence en los próximos 60 días.
+- **Vencida** — La fecha de fin ya ha pasado.
+- **Borrador** — Licencia en proceso de registro, aún no activa en producción.
 
 ### Crear una nueva licencia (solo ADMIN)
 
-1. Haz clic en **"Nueva Licencia"**
+1. Haz clic en **"Nueva Licencia"**.
 2. Rellena los campos del formulario:
-   - **Nombre** — Denominación interna de la licencia (obligatorio)
-   - **Número de licencia** — Identificador o clave de licencia del proveedor
-   - **Proveedor** — Selecciona el proveedor del catálogo de vendedores
-   - **Tipo de licencia** — Elige entre las categorías disponibles (p. ej. Perpetua, Suscripción anual, OEM)
-   - **Métrica de licencia** — Unidad de medida del uso (p. ej. Usuario nominal, Núcleo de procesador, Dispositivo gestionado)
-   - **Valor de métrica / Unidad** — Cantidad y descripción de la unidad
-   - **Fecha de inicio / Fecha de fin** — Periodo de vigencia
-   - **Coste / Moneda** — Importe económico de la licencia
-   - **Estado** — Estado inicial (Borrador o Activa)
-   - **Notas** — Comentarios adicionales
-   - **Licencia padre** — Para licencias hijo o sublicencias, selecciona la licencia principal
-3. Haz clic en **"Crear Licencia"**
+   - **Nombre** — denominación interna de la licencia (obligatorio)
+   - **Número de licencia** — clave o identificador proporcionado por el fabricante
+   - **Proveedor** — selecciona del catálogo de proveedores
+   - **Tipo de licencia** — elige entre las categorías disponibles (p. ej. Perpetua, Suscripción anual, OEM)
+   - **Métrica de licencia** — unidad de medida del uso (p. ej. Usuario nominal, Núcleo de procesador, Dispositivo gestionado)
+   - **Valor de métrica / Unidad** — cantidad y descripción de la unidad
+   - **Fecha de inicio / Fecha de fin** — periodo de vigencia
+   - **Coste / Moneda** — importe económico de la licencia
+   - **Estado** — estado inicial (Borrador o Activa)
+   - **Notas** — comentarios adicionales
+   - **Licencia padre** — si es una sublicencia, selecciona la licencia principal
+3. Haz clic en **"Crear Licencia"**.
 
-### Ver detalle y asociaciones de una licencia
+### Ver el detalle y las asociaciones de una licencia
 
-Haz clic en la fila de una licencia para desplegar su detalle. Se muestran tres pestañas:
+Haz clic en la fila de una licencia para desplegar su panel de detalle, que tiene tres pestañas:
 
-#### CIs asociados
-- Lista los Configuration Items cubiertos por esta licencia
-- Para **añadir un CI**: haz clic en **"Asociar CI"** y selecciona el CI del buscador
-- Para **desvincular un CI**: haz clic en el botón de eliminar junto al CI
+**CIs asociados**
+- Lista los activos cubiertos por esta licencia.
+- Para añadir un activo, haz clic en **"Asociar CI"** y búscalo en el selector.
+- Para desvincularlo, haz clic en el botón de eliminar junto al activo.
 
-#### Documentos adjuntos
-- Muestra los documentos vinculados (contratos, anexos, certificados…)
-- Para **asociar un documento existente**: haz clic en **"Asociar Documento"** y selecciónalo del repositorio documental
-- Para **ver el documento**: haz clic en el nombre — se abre el visor embebido (PDF, imagen, texto)
-- Para **desvincular**: haz clic en el botón de eliminar junto al documento
+**Documentos adjuntos**
+- Muestra los documentos vinculados (contratos, certificados, etc.).
+- Para asociar un documento existente del repositorio, haz clic en **"Asociar Documento"**.
+- Para ver el documento, haz clic en su nombre y se abrirá el visor integrado.
+- Para desvincularlo, haz clic en el botón de eliminar junto al documento.
 
-#### Usuarios de licencia
-Registra los usuarios finales asignados a esta licencia (no tienen por qué ser usuarios del sistema CMDB):
+**Usuarios de licencia**
+Registra los usuarios finales asignados a esta licencia. No tienen que ser usuarios del sistema CMDB.
 
-- **Nombre** — Nombre completo del usuario
-- **DNI** — Documento nacional de identidad u otro identificador
-- **Email** — Correo electrónico del usuario
+- Para añadir un usuario, rellena el nombre, el identificador y el email, y haz clic en **"Añadir Usuario"**.
+- Para eliminarlo, haz clic en el icono de papelera junto al usuario.
 
-Para **añadir un usuario**: rellena los tres campos y haz clic en **"Añadir Usuario"**.
-Para **eliminar un usuario**: haz clic en el icono de papelera junto al usuario.
-
-> Las operaciones de escritura (crear, editar, eliminar licencias; añadir/quitar CIs, documentos y usuarios) requieren el rol **ADMIN**. Los usuarios con rol AUDITOR o VIEWER solo pueden consultar.
-
-### Métricas y Tipos de Licencia (Datos Maestros)
-
-Los catálogos de métricas y tipos de licencia son gestionados por los administradores desde **Configuración → Datos Maestros**, en las pestañas de solo lectura **"Métricas de Licencia"** y **"Tipos de Licencia"**. Estos catálogos son precargados por el sistema con 25 métricas y 14 tipos estándar en el seed inicial.
+> Solo los usuarios con rol ADMIN pueden crear, editar o eliminar licencias, y gestionar sus asociaciones. Los usuarios con rol AUDITOR o VIEWER solo pueden consultar.
 
 ---
 
-## 10. Centro de Consulta de Ciclo de Vida (EOL/EoS)
+## 14. Centro de Consulta de Ciclo de Vida (EOL/EoS)
 
-El Centro de Consulta permite verificar las fechas de fin de soporte de hardware y software desde múltiples fuentes.
+Este centro permite verificar las fechas de fin de soporte y fin de vida de hardware y software consultando fuentes externas especializadas.
 
-### Acceder al Centro de Consulta
-1. Ve a **Datos Maestros → Modelos**
-2. Haz clic sobre cualquier fila de modelo (o en el botón **🌐 Consultar**)
-3. Se abre el **"Centro de Consulta de Ciclo de Vida"**
+### Acceder al centro de consulta
 
-### Tres fuentes de consulta
+1. Ve a **Datos Maestros → Modelos**.
+2. Haz clic sobre cualquier fila de modelo para desplegar el panel de consulta.
 
-#### 🖥️ endoflife.date (Software / OS / Firmware)
-- Base de datos comunitaria con datos de EOL para Windows, Linux, MySQL, etc.
-- Haz clic en **"🔍 Buscar en endoflife.date"** para abrir en nueva pestaña
-- O usa **"📥 Importar versiones"** para traer las versiones directamente como modelos
+### Tres fuentes de referencia
 
-#### 🏢 Park Place Technologies (Hardware Enterprise)
-- Especializado en hardware enterprise: Dell, HP, Cisco, IBM, NetApp
-- Haz clic en **"🔍 Buscar en Park Place"** para buscar directamente el modelo
+**endoflife.date — Software, sistemas operativos y firmware**
+Base de datos comunitaria con fechas EOL para Windows, Linux, MySQL, Java, y muchos más. Haz clic en **"Buscar en endoflife.date"** para abrir la página del producto en una nueva pestaña. También puedes hacer clic en **"Importar versiones"** para traer directamente las versiones disponibles como modelos en la plataforma.
 
-#### 📦 Cloud-Shelf (Hardware General)
-- Buscador general de hardware con información de ciclo de vida y disponibilidad
-- Haz clic en **"🔍 Buscar en Cloud-Shelf"**
+**Park Place Technologies — Hardware enterprise**
+Especializado en servidores, almacenamiento y equipamiento de red de marcas como Dell, HP, Cisco, IBM y NetApp. Haz clic en **"Buscar en Park Place"** para abrir el buscador de fin de vida oficial de ese fabricante.
 
-### Sugerir Fechas Estándar
-Cuando las fuentes externas no tienen datos claros:
-1. En el formulario **Nuevo Modelo**, selecciona el **Tipo** (Software / Hardware)
-2. Haz clic en **"✨ Sugerir Fechas Estándar"**
-3. El sistema calcula fechas estándar:
-   - **Software**: EoL = hoy + 2 años
-   - **Hardware**: EoL = hoy + 5 años (garantía + soporte extendido)
-4. Usa estas fechas como referencia orientativa
+**Cloud-Shelf — Hardware general**
+Buscador general con información de ciclo de vida y disponibilidad de hardware multimarca. Haz clic en **"Buscar en Cloud-Shelf"**.
+
+### Sugerir fechas estándar
+
+Cuando las fuentes externas no tienen datos claros para un modelo:
+1. En el formulario **Nuevo Modelo**, selecciona el tipo: Software o Hardware.
+2. Haz clic en **"Sugerir Fechas Estándar"**.
+3. La plataforma calcula una fecha orientativa: para software, EoL = hoy + 2 años; para hardware, EoL = hoy + 5 años.
+4. Usa estas fechas como punto de partida y ajústalas cuando tengas información oficial.
 
 ### Sincronizar EOL con endoflife.date
-Tras confirmar las fechas con las fuentes externas:
-1. En la lista de modelos, haz clic en **"🔄 EOL"** del modelo correspondiente
-2. El sistema consulta endoflife.date automáticamente
-3. Actualiza los campos `eolDate` y `eosDate` de todos los CIs que usen ese modelo
+
+Una vez confirmadas las fechas con las fuentes externas:
+1. En la lista de modelos, haz clic en el botón **"EOL"** junto al modelo.
+2. La plataforma consulta endoflife.date automáticamente y actualiza las fechas de todos los activos que usan ese modelo.
 
 ---
 
-## 12. Alertas Diarias Automáticas
+## 15. Alertas Diarias Automáticas
 
-El motor de alertas envía automáticamente un informe diario por email con los activos que requieren atención.
+La plataforma envía automáticamente un informe diario por email con los activos que requieren atención.
 
-### ¿Cuándo se envía?
-- **Por defecto**: Todos los días a las **08:30 AM** (hora de Madrid)
-- El administrador de sistemas puede cambiar el horario con la variable `ALERT_CRON_SCHEDULE`
+### ¿Cuándo llega el email?
 
-### ¿Qué incluye el informe?
-El email contiene tres secciones (si hay elementos que reportar):
+Por defecto, el informe se envía todos los días a las **08:30** (hora de Madrid). Tu administrador de sistemas puede cambiar este horario si es necesario.
 
-1. **🗓️ Fin de Soporte / Fin de Vida** — CIs cuya fecha EoL o EoS vence en los próximos 30 días
-2. **📄 Contratos Próximos a Vencer** — Contratos que vencen en los próximos 30 días
-3. **🛡️ Vulnerabilidades Críticas/Altas Pendientes** — CIs con CVEs CRITICAL o HIGH sin resolver
+### ¿Qué contiene el informe?
+
+El email incluye hasta tres secciones, según lo que haya que reportar:
+
+1. **Fin de Soporte / Fin de Vida** — Activos cuya fecha de EoL o EoS vence en los próximos 30 días.
+2. **Contratos próximos a vencer** — Contratos que vencen en los próximos 30 días.
+3. **Vulnerabilidades críticas y altas pendientes** — Activos con CVEs de severidad CRÍTICA o ALTA sin resolver.
 
 ### Código de colores del informe
+
 | Color | Significado |
 |-------|-------------|
-| ⛔ Rojo (VENCIDO) | Ya venció (0 días restantes o menos) |
-| 🔴 Naranja-rojo (CRÍTICO) | Vence en menos de 7 días |
-| 🟠 Naranja (PRÓXIMO) | Vence en 8-30 días |
+| Rojo intenso | Ya venció — acción inmediata requerida |
+| Rojo-naranja | Vence en menos de 7 días |
+| Naranja | Vence en 8 a 30 días |
 
-### ¿Qué hacer si no recibes los emails?
-1. Contacta con el Administrador de Sistemas para verificar la config SMTP
-2. El admin puede probar el envío desde **Configuración → Integraciones → "📧 Enviar Correo de Prueba"**
-3. Revisar la carpeta de spam
+### No recibes el informe
 
----
-
-## 13. Centro de Reportes
-
-El Centro de Reportes permite generar y descargar informes en PDF y Excel.
-
-### Acceder
-Haz clic en **"📊 Reportes"** en el menú lateral.
-
-### Tipos de informes disponibles
-
-#### 📋 Informe EoL/EoS
-- Lista todos los CIs con fecha de fin de vida próxima o vencida
-- Semáforo visual: 🔴 Vencido, 🟠 < 6 meses, 🟢 OK
-- Descarga en PDF o Excel
-
-#### 📑 Informe de Contratos
-- Consolida contratos y adendas con estado actual
-- Destaca contratos que vencen en los próximos 60 días
-- Incluye: Proveedor, Nº contrato, fechas, CIs asociados
-
-#### 🔐 Informe Ejecutivo de Seguridad (PDF)
-- Resumen gráfico de CIs por estado
-- Top 5 servidores con mayor número de vulnerabilidades críticas
-- Cobertura del agente CrowdStrike Falcon
-
-### Exportar a CSV desde las tablas
-En las páginas de Inventario, Vulnerabilidades y Contratos:
-1. Aplica los filtros que necesites
-2. Haz clic en el botón **"📥 Exportar CSV"**
-3. El CSV exportado **respeta los filtros activos**
+Si no recibes el informe diario, comprueba primero la carpeta de spam. Si el problema persiste, contacta con tu administrador para que verifique la configuración del servidor de correo y envíe un correo de prueba desde **Configuración → Integraciones**.
 
 ---
 
-## 14. Configuración y Gestión de Usuarios
+## 16. Centro de Reportes
 
-> Solo disponible para usuarios con rol **ADMIN**
+El Centro de Reportes permite generar y descargar informes ejecutivos e informes detallados sobre el estado de los activos, contratos y vulnerabilidades.
 
 ### Acceder
+
+Haz clic en **"Reportes"** en el menú lateral.
+
+### Informes disponibles
+
+**Informe EoL/EoS**
+Lista todos los activos con fecha de fin de vida próxima o ya vencida. Incluye un semáforo visual (rojo, naranja, verde) y se puede descargar en PDF o Excel.
+
+**Informe de Contratos**
+Consolida todos los contratos y adendas con su estado actual. Destaca los contratos que vencen en los próximos 60 días e incluye el proveedor, número de contrato, fechas y activos asociados.
+
+**Informe Ejecutivo de Seguridad**
+Resumen gráfico del estado general de los activos, con los cinco servidores con mayor número de vulnerabilidades críticas y la cobertura del agente de seguridad CrowdStrike Falcon.
+
+### Exportar datos desde las tablas
+
+En las páginas de Inventario, Vulnerabilidades y Contratos, puedes exportar los datos directamente a CSV. Aplica los filtros que necesites y haz clic en **"Exportar CSV"**. El fichero exportado incluye solo los registros que coinciden con los filtros activos.
+
+---
+
+## 17. Configuración y Gestión de Usuarios
+
+> Esta sección solo está disponible para usuarios con rol **ADMIN**.
+
+### Acceder
+
 Haz clic en **"Configuración"** en el menú lateral.
 
-### Pestaña: 👥 Gestión de Usuarios
+### Pestaña: Gestión de Usuarios
 
-Muestra todos los usuarios del sistema con:
-- Nombre de usuario y email
-- Origen (🏢 LDAP / 🔑 Local)
-- Estado de MFA (Activo / Inactivo)
-- Rol actual (ADMIN / AUDITOR / VIEWER)
-- Toggle de Activo/Inactivo
+Muestra todos los usuarios del sistema con su nombre, email, origen (corporativo o local), estado de MFA, rol y si la cuenta está activa.
 
-#### Cambiar el rol de un usuario
-1. En la columna "Rol", usa el selector desplegable
-2. Selecciona **ADMIN**, **AUDITOR** o **VIEWER**
-3. El cambio se aplica inmediatamente y se registra en el Audit Log
+**Cambiar el rol de un usuario**
+1. En la columna "Rol", despliega el selector.
+2. Selecciona **ADMIN**, **AUDITOR** o **VIEWER**.
+3. El cambio se aplica de inmediato y queda registrado en el Registro de Auditoría.
 
-#### Desactivar/Activar una cuenta
-1. Usa el toggle en la columna "Activo"
-2. Confirma la acción en el diálogo
-3. Una cuenta **desactivada** no puede iniciar sesión
-4. No puedes desactivar tu propia cuenta (medida de seguridad)
+**Activar o desactivar una cuenta**
+1. Usa el interruptor en la columna "Activo".
+2. Confirma la acción en el diálogo.
+3. Una cuenta desactivada no puede iniciar sesión.
+4. No puedes desactivar tu propia cuenta (medida de seguridad).
 
-#### Resetear la contraseña de un usuario (solo ADMIN, solo cuentas locales)
-El reset de contraseña se realiza mediante la API (`POST /api/users/:id/reset-password`). La nueva contraseña debe cumplir la misma política de seguridad que el cambio propio. La acción queda registrada en el Audit Log como `RESET_PASSWORD`. Los usuarios LDAP/AD no pueden ser afectados por esta operación.
+**Restablecer la contraseña de un usuario**
+Esta operación solo está disponible para cuentas locales y debe realizarse por tu administrador de sistemas. Las cuentas corporativas (LDAP/Active Directory) no se ven afectadas.
 
-### Pestaña: 🔌 Integraciones y Sistema
-- **Backend API**: Estado del servidor (Operativo / No responde)
-- **LDAP / Active Directory**: Estado de la integración
-- **SMTP / Alertas**: Estado del motor de email
-  - Botón **"📧 Enviar Correo de Prueba"**: Envía un email de prueba inmediatamente
+### Pestaña: Integraciones y Sistema
+
+Muestra el estado de los servicios del sistema: el servidor de la plataforma, la integración con el directorio corporativo y el motor de correo electrónico. Desde aquí, el administrador puede enviar un correo de prueba para verificar que las alertas funcionan correctamente.
 
 ---
 
-## 14b. Datos Maestros — Gestión de Tipos de CI
+## 18. Datos Maestros — Tipos de CI
 
-> Solo disponible para usuarios con rol **ADMIN**
+> Esta sección solo está disponible para usuarios con rol **ADMIN**.
 
 ### Acceder
-Haz clic en **"Datos Maestros"** en el menú lateral → selecciona **"Tipos de CI"** en la barra de navegación lateral izquierda.
 
-### Estructura de la pantalla
-La vista muestra las categorías de CI como secciones colapsables. Dentro de cada categoría aparecen los tipos disponibles con opciones de edición y borrado.
+Haz clic en **"Datos Maestros"** en el menú lateral. En la barra de navegación izquierda, selecciona **"Tipos de CI"**.
 
-### Añadir un nuevo tipo de CI
-1. Haz clic en **"+ Tipo"** junto a la categoría deseada
-2. Introduce el nombre del tipo (ej. `Firewall`)
-3. Haz clic en **"Crear"**
-4. El nuevo tipo aparece inmediatamente disponible en el selector de CI del inventario
+### ¿Para qué sirven los tipos de CI?
 
-### Editar un tipo de CI
-1. Haz clic en el icono de lápiz (✏️) junto al tipo
-2. Edita el nombre
-3. Haz clic en **"Guardar"**
+Los tipos de CI son las categorías que se asignan a cada activo al crearlo, por ejemplo "Servidor Físico", "Laptop" o "Aplicación Web". La plataforma incluye un catálogo predefinido, pero puedes añadir tipos personalizados para adaptarlos a las necesidades de tu organización.
 
-### Eliminar un tipo de CI
-1. Haz clic en el icono de papelera (🗑️) junto al tipo
-2. Confirma la eliminación en el diálogo
-3. Si existen CIs con ese tipo asignado, la eliminación se bloquea y se muestra el número de CIs afectados. Reasigna o elimina esos CIs primero.
+### Añadir un nuevo tipo
 
-> Los tipos del sistema son tipos predefinidos. Pueden eliminarse siempre que no tengan CIs asignados.
+1. Haz clic en **"+ Tipo"** junto a la categoría en la que quieres añadirlo.
+2. Introduce el nombre del nuevo tipo (por ejemplo, `Firewall`).
+3. Haz clic en **"Crear"**.
+4. El nuevo tipo estará disponible de inmediato en el selector de tipo al crear o editar activos.
+
+### Editar un tipo existente
+
+1. Pasa el cursor sobre la fila del tipo que quieres editar.
+2. Haz clic en el icono de lápiz que aparece al fondo derecho de la fila.
+3. Modifica el nombre y haz clic en el icono de check para guardar.
+
+### Eliminar un tipo
+
+1. Pasa el cursor sobre la fila del tipo.
+2. Haz clic en el icono de papelera.
+3. Confirma la eliminación.
+
+Si existen activos con ese tipo asignado, la eliminación se bloquea y se muestra cuántos activos están afectados. Deberás reasignarlos o eliminarlos antes de poder borrar el tipo.
 
 ### Categorías disponibles
 
-| Categoría | Descripción |
-|-----------|-------------|
+| Categoría | Qué incluye |
+|-----------|------------|
 | **Infraestructura** | Servidores, bases de datos, red, almacenamiento, backup |
-| **Dispositivos Usuario** | Equipos de trabajo individuales |
-| **Movilidad/IoT** | Dispositivos móviles y sensores conectados |
-| **Salas de Reunión** | Hardware audiovisual de salas |
-| **Software** | Aplicaciones, microservicios, contenedores |
+| **Dispositivos Usuario** | Equipos de trabajo individuales (laptops, sobremesas, impresoras) |
+| **Movilidad/IoT** | Teléfonos, tabletas, sensores conectados |
+| **Salas de Reunión** | Proyectores, pantallas, sistemas de videoconferencia |
+| **Software** | Aplicaciones web, microservicios, contenedores |
 | **Licencias** | Licencias de software |
 
 ---
 
-## 15. Mapa de Dependencias
+## 19. Datos Maestros — Métricas y Tipos de Licencia
 
-El Mapa de Dependencias permite explorar las relaciones entre CIs en dos modos: **grafo visual interactivo** y **tabla exportable**. Soporta travesía multi-nivel para visualizar dependencias transitivas a varios saltos del CI seleccionado.
+> Esta sección solo está disponible para usuarios con rol **ADMIN**.
 
 ### Acceder
-Haz clic en **"Mapa de Dependencias"** en el menú lateral.
+
+Haz clic en **"Datos Maestros"** en el menú lateral. En la barra de navegación izquierda, selecciona **"Métricas de Licencia"** o **"Tipos de Licencia"** según lo que quieras gestionar.
+
+### ¿Qué son las métricas de licencia?
+
+Una **métrica de licencia** es la unidad de medida que define cómo se cuenta el uso de una licencia. Por ejemplo:
+
+- **Usuario nominal** — la licencia se cuenta por persona nombrada.
+- **Zócalo de CPU** — la licencia se cuenta por procesador físico del servidor.
+- **Dispositivo gestionado** — la licencia se cuenta por equipo registrado.
+
+La plataforma incluye 25 métricas estándar en el catálogo inicial. Puedes añadir las que necesite tu organización.
+
+### ¿Qué son los tipos de licencia?
+
+Un **tipo de licencia** es la categoría comercial o modelo de distribución de la licencia. Por ejemplo:
+
+- **SaaS** — servicio en la nube con suscripción.
+- **Perpetua** — licencia de compra única, sin vencimiento.
+- **OEM** — licencia incluida con el hardware.
+- **Suscripción anual** — licencia renovable anualmente.
+
+La plataforma incluye 14 tipos estándar. Puedes crear los que necesites.
+
+### Crear una nueva métrica o tipo
+
+Las métricas y los tipos se organizan en categorías. Para añadir un nuevo elemento:
+
+1. Localiza la categoría en la que quieres añadirlo.
+2. Haz clic en el botón **"Nueva métrica"** (o **"Nuevo tipo"**) que aparece en la cabecera de esa categoría.
+3. Rellena los campos del formulario que aparece al final de la lista:
+   - **Código** — identificador interno en mayúsculas (por ejemplo, `NAMED_USER`). Se rellena automáticamente en mayúsculas.
+   - **Nombre** — el nombre que verán los usuarios al crear una licencia.
+   - **Descripción** — texto opcional que explica cuándo se usa esta métrica o tipo.
+4. Haz clic en **"Crear"** para guardarlo.
+
+### Editar una métrica o tipo existente
+
+1. Pasa el cursor sobre la fila que quieres editar. Aparecen los botones de acción al lado derecho.
+2. Haz clic en el icono de lápiz.
+3. Modifica el nombre y/o la descripción.
+4. Haz clic en **"Guardar"** para confirmar.
+
+> El código no se puede cambiar una vez creado, ya que es el identificador interno que usan las licencias para referenciarlo.
+
+### Eliminar una métrica o tipo
+
+1. Pasa el cursor sobre la fila que quieres eliminar.
+2. Haz clic en el icono de papelera.
+3. Confirma la eliminación en el diálogo.
+
+Si alguna licencia activa utiliza esa métrica o ese tipo, la eliminación se bloqueará y se mostrará un mensaje de error. Primero deberás cambiar la métrica o el tipo en esas licencias antes de poder eliminar el elemento del catálogo.
+
+### El icono de candado
+
+Algunos elementos del catálogo muestran un icono de candado pequeño junto a su nombre. Esto indica que el elemento fue creado por la plataforma durante la instalación inicial (elemento de sistema). Aunque lo veas marcado, puedes editarlo o eliminarlo de la misma forma que los elementos personalizados, siempre que no esté en uso en ninguna licencia activa.
 
 ---
 
-### Paso 1 — Seleccionar CI y profundidad
+## 20. Mapa de Dependencias
 
-Al entrar se muestra el formulario de configuración con dos controles:
+El Mapa de Dependencias muestra visualmente cómo están conectados los activos entre sí. Es especialmente útil para analizar el impacto de un mantenimiento o una incidencia: de un vistazo puedes ver qué otros sistemas dependen del activo afectado.
 
-**Buscador de CI:** escribe parte del nombre o del slug para filtrar y selecciona el CI que quieres explorar.
+### Acceder
 
-**Profundidad de dependencia:** determina cuántos saltos se recorren desde el CI seleccionado.
+Haz clic en **"Mapa"** en el menú lateral.
+
+### Paso 1 — Seleccionar un activo y la profundidad
+
+Al entrar, verás un formulario con dos opciones:
+
+**Buscador de activo:** escribe parte del nombre del activo que quieres explorar y selecciónalo de la lista.
+
+**Profundidad de dependencia:** determina cuántos saltos se recorren desde el activo seleccionado.
 
 | Opción | Descripción |
 |--------|-------------|
-| **1 nivel** | Solo relaciones directas del CI (salientes e entrantes) |
-| **2 niveles** | Relaciones directas + relaciones de los CIs vecinos |
-| **3 niveles** | Hasta 3 saltos desde el CI raíz |
+| 1 nivel | Solo las relaciones directas del activo |
+| 2 niveles | Relaciones directas más las relaciones de los activos vecinos |
+| 3 niveles | Hasta 3 saltos desde el activo raíz |
 
-> A mayor profundidad, más CIs y relaciones aparecen. Para CIs muy conectados, empezar con 1 nivel y ampliar progresivamente.
+Para activos muy conectados, empieza con 1 nivel y amplía progresivamente.
 
 Haz clic en **"Ver dependencias de…"** para cargar el grafo.
 
----
+### Paso 2 — Vista de Grafo
 
-### Paso 2 — Explorar: Vista de Grafo
+El activo seleccionado aparece en el centro del grafo, marcado con un borde de color y la etiqueta "origen". Los demás activos se distribuyen en columnas:
 
-El grafo sitúa el CI seleccionado como nodo central (borde indigo + badge "origen") y dispone los demás CIs en columnas según su dirección y distancia:
+- A la izquierda: activos que apuntan hacia el activo raíz (entradas).
+- A la derecha: activos a los que apunta el activo raíz (salidas).
+- Con profundidad mayor de 1, se añaden columnas adicionales para cada nivel.
 
-- **Columnas a la izquierda**: CIs que apuntan *hacia* el CI raíz (entrantes)
-- **Columna central**: CI raíz
-- **Columnas a la derecha**: CIs a los que apunta el CI raíz (salientes)
-- Con profundidad > 1 se añaden columnas adicionales para cada nivel
+Cada flecha lleva una etiqueta con el tipo de relación, codificada por color (índigo para HOSTS, naranja para DEPENDS_ON, verde azulado para CONNECTED_TO, etc.).
 
-Cada arista lleva una etiqueta con el tipo de relación, codificada por color:
+Puedes arrastrar el grafo para desplazarte y usar la rueda del ratón para hacer zoom.
 
-| Color | Tipo de relación |
-|-------|-----------------|
-| Indigo | HOSTS |
-| Naranja | DEPENDS_ON |
-| Teal | CONNECTED_TO |
-| Esmeralda | PROVIDES_SERVICE |
-| Púrpura | BACKED_UP_BY |
+### Paso 2 — Vista de Tabla
 
-**Controles del canvas:**
-- **Arrastrar**: desplaza el grafo
-- **Rueda del ratón**: zoom in/out
-- Los controles de zoom también están disponibles en la esquina inferior derecha
+Haz clic en el botón **"Tabla"** en la cabecera del mapa para ver las mismas relaciones en formato tabular. Las columnas muestran la dirección de la relación, el activo de origen, el tipo de relación, el activo de destino y el nivel de profundidad.
 
----
-
-### Paso 2 — Explorar: Vista de Tabla
-
-Haz clic en el botón **"Tabla"** (cabecera del mapa) para cambiar a la vista tabular. Muestra todas las relaciones encontradas en el nivel de profundidad seleccionado:
-
-| Columna | Descripción |
-|---------|-------------|
-| **Dir.** | `↗ Sal.` (saliente desde el CI raíz) / `↙ Ent.` (entrante hacia el CI raíz) |
-| **CI Origen** | Nombre y slug del CI de origen |
-| **Tipo de Relación** | Badge con el tipo, coloreado por categoría |
-| **CI Destino** | Nombre y slug del CI de destino |
-| **Nivel** | Profundidad del salto (solo visible cuando la profundidad > 1) |
-
-Las filas están ordenadas por nivel (ascendente) y luego por tipo de relación.
-
-#### Exportar a Excel
-
-En la vista de tabla, haz clic en **"Exportar Excel"** para descargar un archivo `.xlsx` con todas las relaciones visibles. El fichero se llama `dependencias-<slug-del-ci>.xlsx` e incluye las mismas columnas que la tabla, con anchos de columna ajustados automáticamente.
-
----
+Haz clic en **"Exportar Excel"** para descargar un fichero `.xlsx` con todas las relaciones visibles.
 
 ### Controles de la cabecera
 
 | Control | Función |
 |---------|---------|
-| **← Cambiar CI** | Vuelve al formulario de selección |
-| Badge de niveles | Muestra la profundidad activa |
-| **Grafo / Tabla** | Alterna entre los dos modos de visualización |
+| Cambiar activo | Vuelve al formulario de selección |
+| Grafo / Tabla | Alterna entre los dos modos de visualización |
 | Botón de refresco | Recarga las relaciones sin cambiar la selección |
-| **Nueva Relación** | Abre el modal para crear una relación (solo ADMIN) |
-| Clic en arista (Vista Grafo) | Elimina la relación seleccionada con confirmación (solo ADMIN) |
-| Icono 🗑️ por fila (Vista Tabla) | Elimina la relación de esa fila con confirmación (solo ADMIN) |
-
-### Crear relaciones desde el mapa (solo ADMIN)
-
-1. Con un CI seleccionado, haz clic en **"Nueva Relación"** (cabecera superior derecha)
-2. El CI actual aparece preseleccionado como origen
-3. Elige el tipo de relación y el CI destino
-4. Haz clic en **"Crear Relación"** — el grafo se actualiza automáticamente
-
-### Estado vacío
-Si el CI no tiene ninguna relación registrada, el mapa muestra un mensaje con un botón directo a **"Crear primera relación"**.
+| Nueva Relación | Abre el formulario para crear una relación (solo ADMIN) |
 
 ---
 
-## 16. Registro de Auditoría
+## 21. Registro de Auditoría
 
-> Solo disponible para usuarios con rol **ADMIN** y **AUDITOR**
+> Solo disponible para usuarios con rol **ADMIN** y **AUDITOR**.
+
+El Registro de Auditoría es el historial inmutable de todas las acciones realizadas en la plataforma: quién hizo qué, cuándo y sobre qué activo o elemento. Es esencial para cumplir con los requisitos de trazabilidad de ISO 27001 y para el trabajo de auditoría interna y externa.
 
 ### Acceder
+
 Haz clic en **"Auditoría"** en el menú lateral.
 
-### ¿Qué se registra?
-El sistema registra automáticamente todas las acciones administrativas:
+### ¿Qué queda registrado?
 
-| Acción registrada | Descripción |
-|-------------------|-------------|
-| `CREATE_CI` | Creación de un nuevo CI |
-| `CREATE_RELATION` | Creación de una relación entre dos CIs |
-| `UPDATE_VULN_STATUS` | Cambio de estado de una vulnerabilidad |
-| `UPDATE_VERIFICATION` | Actualización de fechas EOL/EOS verificadas |
-| `SET_ROLE` | Cambio de rol de usuario |
-| `ACTIVATE_USER` | Activación de cuenta de usuario |
-| `DEACTIVATE_USER` | Desactivación de cuenta de usuario |
-| `UPDATE` | Actualización de un documento u otro objeto |
-| `DELETE` | Eliminación de un objeto |
+La plataforma registra automáticamente las acciones más relevantes:
 
-### Información registrada por entrada
-La tabla muestra **6 columnas**:
+| Tipo de acción | Cuándo ocurre |
+|----------------|---------------|
+| **CI Creado** | Se registra un nuevo activo |
+| **Relación creada** | Se crea una relación entre dos activos |
+| **Vulnerabilidad actualizada** | Se cambia el estado de una vulnerabilidad |
+| **Verificación EOL** | Se actualizan las fechas de fin de vida verificadas |
+| **Cambio de rol** | Se cambia el rol de un usuario |
+| **Cuenta activada** | Se activa una cuenta de usuario |
+| **Cuenta desactivada** | Se desactiva una cuenta de usuario |
+| **Actualización** | Se edita un documento u otro objeto |
+| **Eliminación** | Se borra un objeto del sistema |
 
-| Columna | Descripción |
-|---------|-------------|
-| **Fecha / Hora** | Timestamp del evento (formato `dd mes aaaa, hh:mm:ss`) |
+### Las columnas de la tabla
+
+La tabla muestra 6 columnas para cada registro:
+
+| Columna | Qué contiene |
+|---------|--------------|
+| **Fecha / Hora** | Día y hora exacta del evento |
 | **Usuario** | Email del usuario que realizó la acción |
-| **Acción** | Badge de color con el tipo de acción (`CREATE_CI`, `UPDATE_VULN_STATUS`, etc.) |
-| **Entidad** | Tipo de objeto afectado (`CI`, `VULNERABILITY`, `Document`, `USER`, `CI_RELATION`, `SYSTEM`) |
-| **Nombre / Detalle** | Nombre legible del objeto: nombre del CI, título del documento, email del usuario, código CVE combinado con nombre de CI, etc. |
-| **ID Afectado** | UUID o identificador interno del objeto afectado |
+| **Acción** | Etiqueta de color que identifica el tipo de acción |
+| **Entidad** | El tipo de objeto afectado (activo, vulnerabilidad, documento, usuario…) |
+| **Nombre / Detalle** | El nombre legible del objeto afectado: nombre del activo, título del documento, email del usuario, código del CVE junto al nombre del activo, etc. |
+| **ID Afectado** | El identificador interno del objeto, útil para consultas técnicas |
 
-### Filtros disponibles
+### Filtrar los registros
 
-La fila de filtros en la cabecera de la tabla permite acotar los resultados:
+La fila de filtros en la cabecera de la tabla te permite acotar los resultados de cuatro formas:
 
-| Filtro | Tipo | Funcionamiento |
-|--------|------|----------------|
-| **Fecha desde / hasta** | Selector de fecha | Filtra en el servidor — recarga los registros del rango indicado (inclusive). El rango máximo son los 500 eventos más recientes dentro del período. |
-| **Buscar** (usuario, ID…) | Texto libre | Filtra en el cliente sobre los datos cargados (acción, entidad, ID, usuario y nombre/detalle). |
-| **Acción** | Desplegable | Muestra solo eventos del tipo seleccionado. |
-| **Entidad** | Desplegable | Muestra solo eventos de la entidad seleccionada (CI, VULNERABILITY…). |
+1. **Rango de fechas** — dos campos de fecha (desde / hasta) que consultan el servidor y cargan solo los eventos del periodo indicado. El sistema muestra un máximo de 500 eventos por consulta.
+2. **Búsqueda libre** — un campo de texto que filtra en tiempo real los eventos ya cargados. Busca en todas las columnas: acción, entidad, usuario, nombre/detalle e identificador.
+3. **Acción** — un selector desplegable para ver solo un tipo de acción específico.
+4. **Entidad** — un selector desplegable para ver solo los eventos que afectan a un tipo de objeto concreto.
 
-El contador de filtros activos aparece en la barra de herramientas junto al botón **Limpiar** para eliminar todos los filtros de una vez.
+El contador de filtros activos aparece junto al botón **"Limpiar"**, que elimina todos los filtros de una sola vez.
 
 ### Exportar a Excel
 
-El botón **Excel** (esquina superior derecha) exporta a `.xlsx` los registros **actualmente visibles** tras aplicar los filtros. Las columnas exportadas son las mismas que las de la tabla: Fecha/Hora, Usuario, Acción, Entidad, Nombre/Detalle e ID Afectado. El archivo se nombra automáticamente `auditoria_AAAA-MM-DD.xlsx`.
+Haz clic en el botón verde **"Excel"** en la esquina superior derecha para descargar un fichero `.xlsx` con los registros actualmente visibles (respetando todos los filtros activos). El fichero se llamará `auditoria_AAAA-MM-DD.xlsx` y contendrá las mismas seis columnas que la tabla.
 
-> El botón se deshabilita automáticamente si no hay registros que exportar.
+El botón se desactiva automáticamente cuando no hay registros para exportar.
 
-> El Registro de Auditoría es **append-only**: los registros no se pueden editar ni borrar desde la interfaz, garantizando la trazabilidad requerida por ISO 27001 A.12.4.
+> Los registros de auditoría son de solo adición: no se pueden editar ni eliminar desde la interfaz. Esto garantiza la integridad del historial y cumple con el control A.12.4 de ISO 27001.
 
 ---
 
-## 18. Campos de Resiliencia NIS2 / GDPR
+## 22. Campos de Resiliencia NIS2 / GDPR
 
-> Disponible en los formularios **Añadir CI** y **Editar CI** para usuarios con rol **ADMIN**
+> Disponible en los formularios de creación y edición de activos para usuarios con rol **ADMIN**.
 
-La plataforma incluye un bloque de campos de cumplimiento normativo alineados con la **Directiva NIS2** (Network and Information Security), el estándar **ISO 22301** (continuidad de negocio) y el **Reglamento GDPR**.
+La plataforma incluye un bloque de campos de cumplimiento normativo alineados con la Directiva NIS2, la norma ISO 22301 de continuidad de negocio y el Reglamento General de Protección de Datos (GDPR).
 
 ### Campos disponibles
 
-| Campo | Tipo | Descripción |
-|-------|------|-------------|
-| **Impacto de Negocio (NIS2)** | Enum | Clasifica el impacto del CI en caso de fallo: `Bajo`, `Medio`, `Alto`, `Crítico` |
-| **Clasificación de Datos (GDPR)** | Enum | Nivel de sensibilidad de los datos: `Público`, `Interno`, `Confidencial`, `Restringido` |
-| **Prioridad de Recuperación** | Número (1-5) | Orden de restauración en un plan de contingencia (1 = primero en recuperarse) |
-| **RTO (minutos)** | Número | Recovery Time Objective — tiempo máximo tolerable de interrupción |
-| **RPO (minutos)** | Número | Recovery Point Objective — pérdida máxima tolerable de datos en tiempo |
-| **Punto Único de Fallo (SPOF)** | Booleano | Marca el CI como Single Point of Failure según ISO 22301 |
-| **Contiene Datos Personales (PII)** | Booleano | Indica si el CI procesa o almacena datos personales sujetos a GDPR |
+| Campo | Tipo | Para qué sirve |
+|-------|------|----------------|
+| **Impacto de Negocio (NIS2)** | Bajo / Medio / Alto / Crítico | Clasifica el impacto del activo si falla |
+| **Clasificación de Datos (GDPR)** | Público / Interno / Confidencial / Restringido | Indica el nivel de sensibilidad de los datos que maneja |
+| **Prioridad de Recuperación** | Número del 1 al 5 | Define el orden de restauración en un plan de contingencia (1 = primero) |
+| **RTO (minutos)** | Número | Tiempo máximo tolerable de interrupción del servicio |
+| **RPO (minutos)** | Tiempo máximo tolerable de pérdida de datos |
+| **Punto Único de Fallo (SPOF)** | Sí / No | Marca el activo como punto único de fallo según ISO 22301 |
+| **Contiene Datos Personales (PII)** | Sí / No | Indica si el activo procesa o almacena datos personales sujetos a GDPR |
 
 ### Indicadores visuales en el Inventario
 
-Los CIs con flags activos muestran etiquetas en la columna de nombre:
+Los activos con alguno de estos flags activos muestran etiquetas de colores en la columna de nombre:
 
 | Etiqueta | Color | Significado |
 |----------|-------|-------------|
-| `SPOF` | Rojo | El CI es un punto único de fallo |
-| `PII` | Morado | El CI maneja datos personales (GDPR) |
-| `NIS2 Crítico` | Naranja | El CI tiene impacto de negocio CRÍTICO |
+| `SPOF` | Rojo | El activo es un punto único de fallo |
+| `PII` | Morado | El activo maneja datos personales (GDPR) |
+| `NIS2 Crítico` | Naranja | El activo tiene impacto de negocio crítico |
 
 ### Indicadores visuales en el Mapa de Dependencias
 
-Los nodos SPOF aparecen resaltados con **borde rojo** y la etiqueta `SPOF` en el grafo de dependencias, facilitando la identificación visual de riesgos en la topología.
+Los activos marcados como SPOF aparecen con un borde rojo y la etiqueta `SPOF` en el grafo de dependencias, facilitando la identificación visual de riesgos en la topología de la infraestructura.
 
-### Casos de uso por normativa
+### Para qué sirve cada normativa
 
 **NIS2 (Directiva de Seguridad de Redes y Sistemas de Información):**
-- Clasifica los CIs por impacto de negocio para priorizar la protección de activos críticos
-- Facilita la notificación obligatoria de incidentes (art. 23 NIS2) al identificar sistemas afectados
+Clasifica los activos por impacto de negocio para priorizar su protección. Facilita la notificación obligatoria de incidentes al identificar qué sistemas están afectados.
 
 **ISO 22301 (Continuidad de Negocio):**
-- Los campos RTO/RPO alimentan directamente el Plan de Recuperación ante Desastres (DRP)
-- La marca SPOF permite identificar cuellos de botella en la topología que requieren redundancia
-- La prioridad de recuperación define el orden de restauración en el BCP
+Los campos RTO y RPO alimentan directamente el Plan de Recuperación ante Desastres. La marca SPOF ayuda a identificar cuellos de botella en la topología que requieren redundancia. La prioridad de recuperación define el orden de restauración en el Plan de Continuidad de Negocio.
 
 **GDPR (Reglamento General de Protección de Datos):**
-- La clasificación de datos permite inventariar tratamientos de datos personales (art. 30 GDPR)
-- El flag PII facilita el cumplimiento del Registro de Actividades de Tratamiento
+La clasificación de datos permite inventariar los tratamientos de datos personales, cumpliendo con el artículo 30 del RGPD. El flag PII facilita el mantenimiento del Registro de Actividades de Tratamiento.

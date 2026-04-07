@@ -2660,14 +2660,11 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 });
 
 // GET /api/documents/:id/download — authenticated file download
-// Supports both Authorization header and ?token= query param (for embedded viewers like iframe/img)
+// Requires Authorization: Bearer <token> header (query param not accepted — tokens in URLs leak via logs/referrers)
 // Supports ?inline=true to display in browser instead of triggering download
 app.get('/api/documents/:id/download', async (req, res) => {
-  // Support both Authorization header and ?token= query param (for embedded viewers)
   const authHeader = req.headers['authorization'];
-  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
-  const tokenStr = headerToken ?? queryToken;
+  const tokenStr = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
   if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
 
@@ -2677,7 +2674,7 @@ app.get('/api/documents/:id/download', async (req, res) => {
     res.status(401).json({ error: 'Invalid or expired token' }); return;
   }
 
-  // Also support ?inline=true to display in browser instead of download
+  // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 
   try {

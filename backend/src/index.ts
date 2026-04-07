@@ -2715,6 +2715,18 @@ app.get('/api/documents/:id/download', async (req, res) => {
   // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 
+  // Allowlist of MIME types safe to render inline in a browser context.
+  // Everything else is forced to attachment/octet-stream to prevent stored XSS
+  // (e.g. SVG files can execute embedded JavaScript when served inline as image/svg+xml).
+  const SAFE_INLINE_MIME_TYPES = new Set([
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'text/plain',
+  ]);
+
   try {
     const rows = await prisma.$queryRaw<{ file_name: string; original_name: string; mime_type: string }[]>`
       SELECT file_name, original_name, mime_type FROM "documents" WHERE id=${req.params.id}::uuid`;
@@ -2722,9 +2734,15 @@ app.get('/api/documents/:id/download', async (req, res) => {
     const { file_name, original_name, mime_type } = rows[0];
     const filePath = path.join(DOCUMENTS_DIR, file_name);
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
-    res.setHeader('Content-Type', mime_type);
-    const disposition = inline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    const serveInline = inline && SAFE_INLINE_MIME_TYPES.has(mime_type);
+    const contentType = serveInline ? mime_type : 'application/octet-stream';
+    const disposition = serveInline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', disposition);
+    // Extra defence: prevent browser from sniffing a different MIME type
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(filePath).pipe(res as unknown as NodeJS.WritableStream);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });

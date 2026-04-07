@@ -2230,10 +2230,12 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       if (!hostname) continue;
 
       // Find CI by case-insensitive name match
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameGB = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameGB + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;
@@ -2312,10 +2314,12 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       const hostname = device.hostname ?? '';
       if (!hostname) continue;
 
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameCS = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameCS + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;

@@ -3,7 +3,7 @@
 **Platform:** CMDB Enterprise Platform  
 **Audit Date:** 2026-04-07 (updated)
 **Auditor:** DevSecOps Team
-**Version:** v1.2.0  
+**Version:** v1.3.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -223,6 +223,7 @@ CREATE TABLE "audit_logs" (
 | 2026-04-01 | 1.4.0 | DevSecOps | Password policy for local users: role-aware min length (ADMIN 16 / others 12), complexity rules, ~100-entry common-password blocklist, 20-entry history (all configurable via .env); `password_history` table; `CHANGE_PASSWORD` and `RESET_PASSWORD` audit events; frontend real-time strength indicator |
 | 2026-04-07 | 1.1.0 | DevSecOps | 5 critical security fixes: LIKE wildcard injection (#12), JWT in download URL (#11), stack trace exposure (#10), deactivated user JWT bypass (#9), MFA client-secret bypass (#8). New DB migration: `mfa_pending_secret`. |
 | 2026-04-07 | 1.2.0 | DevSecOps | 6 HIGH security fixes: LDAP injection (#18), command injection in install.sh (#17), Greenbone vuln data loss on re-import (#16), stored XSS via SVG inline view (#15), DoS via unbounded list endpoints — pagination added (#14), bcrypt cost factor raised 10→12 (#13). |
+| 2026-04-07 | 1.3.0 | DevSecOps | Frontend hotfix v1.6.3: adapted 4 callsites to paginated API response shape (`{ total, page, limit, data }`) introduced in v1.6.2. Affected: `licenses/page.tsx`, `documents/page.tsx`, `documents/[id]/page.tsx`, `CIDetailModal.tsx` (closes #34). |
 
 ---
 

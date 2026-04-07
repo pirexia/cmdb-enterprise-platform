@@ -52,12 +52,13 @@ model CIType {
   sortOrder    Int             @default(0) @map("sort_order")
   isSystem     Boolean         @default(false) @map("is_system")
 
-  category     CITypeCategory  @relation(fields: [categoryCode], references: [code])
+  category     CITypeCategory  @relation(fields: [categoryCode], references: [code], onDelete: Restrict, onUpdate: Cascade)
   cis          CI[]
 
   createdAt    DateTime        @default(now()) @map("created_at")
   updatedAt    DateTime        @updatedAt @map("updated_at")
 
+  @@index([categoryCode])
   @@map("ci_types")
 }
 
@@ -120,6 +121,7 @@ model TrustedDevice {
   createdAt   DateTime @default(now()) @map("created_at")
   lastSeenAt  DateTime @default(now()) @map("last_seen_at")
 
+  @@index([userId])
   @@map("trusted_devices")
 }
 
@@ -153,14 +155,15 @@ model Location {
   type              LocationType
   parentLocationId  String?    @db.Uuid @map("parent_location_id")
   
-  parentLocation    Location?  @relation("LocationHierarchy", fields: [parentLocationId], references: [id])
+  parentLocation    Location?  @relation("LocationHierarchy", fields: [parentLocationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   childLocations    Location[] @relation("LocationHierarchy")
-  
+
   cis               CI[]
 
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
+  @@index([parentLocationId])
   @@map("locations")
 }
 
@@ -185,8 +188,8 @@ model Contract {
   vendorId          String     @db.Uuid @map("vendor_id")
   parentContractId  String?    @db.Uuid @map("parent_contract_id")
   
-  vendor            Vendor     @relation(fields: [vendorId], references: [id])
-  parentContract    Contract?  @relation("ContractAddendums", fields: [parentContractId], references: [id])
+  vendor            Vendor     @relation(fields: [vendorId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  parentContract    Contract?  @relation("ContractAddendums", fields: [parentContractId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   addendums         Contract[] @relation("ContractAddendums")
 
   cis               CI[]       @relation("ContractToCI")
@@ -196,6 +199,8 @@ model Contract {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
+  @@index([vendorId])
+  @@index([parentContractId])
   @@map("contracts")
 }
 
@@ -219,12 +224,13 @@ model Branch {
   physicalAddress String?     @map("physical_address")
   supportAreaId   String      @db.Uuid @map("support_area_id")
 
-  supportArea     SupportArea @relation(fields: [supportAreaId], references: [id])
+  supportArea     SupportArea @relation(fields: [supportAreaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cis             CI[]
 
   createdAt       DateTime    @default(now()) @map("created_at")
   updatedAt       DateTime    @updatedAt @map("updated_at")
 
+  @@index([supportAreaId])
   @@map("branches")
 }
 
@@ -244,12 +250,13 @@ model DeviceModel {
   name           String
   manufacturerId String       @db.Uuid @map("manufacturer_id")
 
-  manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id])
+  manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cis            CI[]
 
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
 
+  @@index([manufacturerId])
   @@map("device_models")
 }
 
@@ -274,7 +281,7 @@ model CI {
   eolDate            DateTime? @map("eol_date")
   eosDate            DateTime? @map("eos_date")
   ciTypeId           String?   @db.Uuid @map("ci_type_id")
-  ciTypeDef          CIType?   @relation(fields: [ciTypeId], references: [id])
+  ciTypeDef          CIType?   @relation(fields: [ciTypeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   lastCheckDate      DateTime? @map("last_check_date")
   verificationSource String?   @map("verification_source")
 
@@ -307,14 +314,14 @@ model CI {
   branchId        String?      @db.Uuid @map("branch_id")
   ciModelId       String?      @db.Uuid @map("ci_model_id")
 
-  businessOwner   User?        @relation("BusinessOwner", fields: [businessOwnerId], references: [id])
-  technicalLead   User?        @relation("TechnicalLead", fields: [technicalLeadId], references: [id])
-  location        Location?    @relation(fields: [locationId], references: [id])
-  costCenter      CostCenter?  @relation(fields: [costCenterId], references: [id])
-  parentCI        CI?          @relation("CIHierarchy", fields: [parentCIId], references: [id])
+  businessOwner   User?        @relation("BusinessOwner", fields: [businessOwnerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  technicalLead   User?        @relation("TechnicalLead", fields: [technicalLeadId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  location        Location?    @relation(fields: [locationId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  costCenter      CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  parentCI        CI?          @relation("CIHierarchy", fields: [parentCIId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   childCIs        CI[]         @relation("CIHierarchy")
-  branch          Branch?      @relation(fields: [branchId], references: [id])
-  ciModel         DeviceModel? @relation(fields: [ciModelId], references: [id])
+  branch          Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  ciModel         DeviceModel? @relation(fields: [ciModelId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   hardware        HardwareCI?
   software        SoftwareCI?
@@ -343,6 +350,18 @@ model CI {
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
+  @@index([ciTypeId])
+  @@index([businessOwnerId])
+  @@index([technicalLeadId])
+  @@index([locationId])
+  @@index([costCenterId])
+  @@index([branchId])
+  @@index([ciModelId])
+  @@index([parentCIId])
+  @@index([status])
+  @@index([criticality])
+  @@index([environment])
+  @@index([createdAt])
   @@map("configuration_items")
 }
 
@@ -354,13 +373,15 @@ model CIRelation {
   targetCiId   String       @db.Uuid @map("target_ci_id")
   relationType RelationType @map("relation_type")
 
-  sourceCI     CI           @relation("SourceCI", fields: [sourceCiId], references: [id], onDelete: Cascade)
-  targetCI     CI           @relation("TargetCI", fields: [targetCiId], references: [id], onDelete: Cascade)
+  sourceCI     CI           @relation("SourceCI", fields: [sourceCiId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  targetCI     CI           @relation("TargetCI", fields: [targetCiId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   createdAt    DateTime     @default(now()) @map("created_at")
   createdBy    String?      @map("created_by")
 
   @@unique([sourceCiId, targetCiId, relationType])
+  @@index([sourceCiId])
+  @@index([targetCiId])
   @@map("ci_relations")
 }
 
@@ -370,7 +391,7 @@ model HardwareCI {
   model        String
   manufacturer String
   
-  ci           CI     @relation(fields: [ciId], references: [id])
+  ci           CI     @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("hardware_cis")
 }
@@ -380,7 +401,7 @@ model SoftwareCI {
   version     String
   licenseType String @map("license_type")
   
-  ci          CI     @relation(fields: [ciId], references: [id])
+  ci          CI     @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("software_cis")
 }
@@ -393,6 +414,9 @@ model AuditLog {
   userEmail String   @map("user_email")
   createdAt DateTime @default(now()) @map("created_at")
 
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@index([userEmail])
   @@map("audit_logs")
 }
 
@@ -416,11 +440,11 @@ model Document {
   description    String?
 
   documentTypeId String   @db.Uuid @map("document_type_id")
-  documentType   DocumentType @relation(fields: [documentTypeId], references: [id])
+  documentType   DocumentType @relation(fields: [documentTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   // Versioning: rootId null = root document; non-null = a version of rootId
   rootId         String?  @db.Uuid @map("root_id")
-  root           Document?  @relation("DocumentVersions", fields: [rootId], references: [id])
+  root           Document?  @relation("DocumentVersions", fields: [rootId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   versions       Document[] @relation("DocumentVersions")
   versionNumber  Int      @default(1) @map("version_number")
   isLatest       Boolean  @default(true) @map("is_latest")
@@ -447,6 +471,8 @@ model Document {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
+  @@index([documentTypeId])
+  @@index([rootId])
   @@map("documents")
 }
 
@@ -456,12 +482,14 @@ model DocumentRelation {
   targetDocId    String   @db.Uuid @map("target_doc_id")
   relationType   String   @map("relation_type")  // AMENDMENT_OF, RELATED_TO, SUPERSEDES
 
-  sourceDoc      Document @relation("SourceDocument", fields: [sourceDocId], references: [id], onDelete: Cascade)
-  targetDoc      Document @relation("TargetDocument", fields: [targetDocId], references: [id], onDelete: Cascade)
+  sourceDoc      Document @relation("SourceDocument", fields: [sourceDocId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  targetDoc      Document @relation("TargetDocument", fields: [targetDocId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   createdAt      DateTime @default(now()) @map("created_at")
 
   @@unique([sourceDocId, targetDocId])
+  @@index([sourceDocId])
+  @@index([targetDocId])
   @@map("document_relations")
 }
 
@@ -470,10 +498,12 @@ model DocumentCI {
   documentId String   @db.Uuid @map("document_id")
   ciId       String   @db.Uuid @map("ci_id")
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  ci         CI       @relation(fields: [ciId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ci         CI       @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([documentId, ciId])
+  @@index([documentId])
+  @@index([ciId])
   @@map("document_cis")
 }
 
@@ -482,10 +512,12 @@ model DocumentContract {
   documentId String   @db.Uuid @map("document_id")
   contractId String   @db.Uuid @map("contract_id")
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([documentId, contractId])
+  @@index([documentId])
+  @@index([contractId])
   @@map("document_contracts")
 }
 
@@ -496,7 +528,7 @@ model DocumentNote {
   createdBy  String   @map("created_by")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@index([documentId])
   @@map("document_notes")
@@ -521,12 +553,13 @@ model LicenseMetric {
   description  String?
   isSystem     Boolean               @default(false) @map("is_system")
 
-  category     LicenseMetricCategory @relation(fields: [categoryCode], references: [code])
+  category     LicenseMetricCategory @relation(fields: [categoryCode], references: [code], onDelete: Restrict, onUpdate: Cascade)
   licenses     License[]
 
   createdAt    DateTime              @default(now()) @map("created_at")
   updatedAt    DateTime              @updatedAt @map("updated_at")
 
+  @@index([categoryCode])
   @@map("license_metrics")
 }
 
@@ -547,12 +580,13 @@ model LicenseType {
   description  String?
   isSystem     Boolean             @default(false) @map("is_system")
 
-  category     LicenseTypeCategory @relation(fields: [categoryCode], references: [code])
+  category     LicenseTypeCategory @relation(fields: [categoryCode], references: [code], onDelete: Restrict, onUpdate: Cascade)
   licenses     License[]
 
   createdAt    DateTime            @default(now()) @map("created_at")
   updatedAt    DateTime            @updatedAt @map("updated_at")
 
+  @@index([categoryCode])
   @@map("license_types")
 }
 
@@ -592,6 +626,10 @@ model License {
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
 
+  @@index([vendorId])
+  @@index([licenseTypeId])
+  @@index([licenseMetricId])
+  @@index([parentLicenseId])
   @@map("licenses")
 }
 
@@ -602,7 +640,7 @@ model LicenseUser {
   dni       String?
   email     String?
 
-  license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -619,5 +657,6 @@ model DocumentLicense {
   license   License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, licenseId])
+  @@index([licenseId])
   @@map("document_licenses")
 }

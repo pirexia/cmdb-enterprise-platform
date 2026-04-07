@@ -196,7 +196,7 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
 
   let payload: JwtPayload;
   try {
-    payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
+    payload = jwt.verify(token, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
   } catch {
     res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
     return;
@@ -514,7 +514,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     // ── Helper: build and sign full JWT ──────────────────────────────────────
     const signFullToken = () => {
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
-      return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h' });
+      return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     };
     const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
 
@@ -571,7 +571,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     if (user.role === 'ADMIN') {
       // Admin: mandatory MFA setup — issue short-lived limited token
       const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
-      const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m' });
+      const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m', algorithm: 'HS256' as const });
       res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
       return;
     }
@@ -1424,7 +1424,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
     `;
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
-    const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h' });
+    const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
 
     let newDeviceToken: string | undefined;
     if (trustDevice) {
@@ -2748,7 +2748,7 @@ app.get('/api/documents/:id/download', async (req, res) => {
   if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
 
   try {
-    jwt.verify(tokenStr, JWT_SECRET_VALUE) as JwtPayload;
+    jwt.verify(tokenStr, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' }); return;
   }

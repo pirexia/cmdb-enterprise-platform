@@ -265,7 +265,7 @@ export default function DocumentsPage() {
       ]);
       const docsData: unknown = await docsRes.json();
       const typesData: unknown = await typesRes.json();
-      setDocuments(Array.isArray(docsData) ? (docsData as DocumentListItem[]) : []);
+      setDocuments(((docsData as { data?: DocumentListItem[] }).data) ?? []);
       setDocTypes(Array.isArray(typesData) ? (typesData as DocumentType[]) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.unknown_error"));
@@ -277,7 +277,7 @@ export default function DocumentsPage() {
       const [cisRes, contractsRes] = await Promise.all([apiFetch("/api/cis"), apiFetch("/api/contracts")]);
       const cisData: unknown = await cisRes.json();
       const contractsData: unknown = await contractsRes.json();
-      setCIs(Array.isArray(cisData) ? (cisData as CIOption[]) : []);
+      setCIs(((cisData as { data?: CIOption[] }).data) ?? []);
       setContracts(Array.isArray(contractsData) ? (contractsData as ContractOption[]) : []);
     } catch { /* non-blocking */ }
   }, []);

@@ -56,6 +56,8 @@ const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? 
 const PASSWORD_MIN_LENGTH_ADMIN  = parseInt(process.env.PASSWORD_MIN_LENGTH_ADMIN  ?? '16', 10);
 const PASSWORD_MIN_LENGTH_VIEWER = parseInt(process.env.PASSWORD_MIN_LENGTH_VIEWER ?? '12', 10);
 const PASSWORD_HISTORY_COUNT     = parseInt(process.env.PASSWORD_HISTORY_COUNT     ?? '20', 10);
+// bcrypt work factor — NIST SP 800-63B / OWASP recommends ≥12 (≥2^12 iterations)
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -464,7 +466,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         `;
         if (rows.length === 0) {
           const username  = email.split('@')[0];
-          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
           await prisma.$executeRaw`
             INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
             VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
@@ -718,7 +720,7 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     }
 
     // Apply change
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`
@@ -761,7 +763,7 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
       return;
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`

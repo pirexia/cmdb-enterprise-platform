@@ -192,23 +192,37 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
+  let payload: JwtPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
-
-    // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
-    if (payload.mfaSetupRequired) {
-      const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
-      if (!allowedPaths.includes(req.path)) {
-        res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
-        return;
-      }
-    }
-
-    req.user = payload;
-    next();
+    payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
   } catch {
     res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
+    return;
   }
+
+  // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
+  if (payload.mfaSetupRequired) {
+    const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
+    if (!allowedPaths.includes(req.path)) {
+      res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
+      return;
+    }
+  }
+
+  // Verify the user is still active in the database — a deactivated user's
+  // existing JWT must be rejected immediately without waiting for expiry.
+  prisma.$queryRaw<{ active: boolean }[]>`
+    SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
+  `.then((rows) => {
+    if (!rows.length || !rows[0].active) {
+      res.status(403).json({ error: 'Account deactivated. Please contact an administrator.' });
+      return;
+    }
+    req.user = payload;
+    next();
+  }).catch(() => {
+    res.status(500).json({ error: 'Internal server error' });
+  });
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {

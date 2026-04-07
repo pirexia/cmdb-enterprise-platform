@@ -1357,7 +1357,8 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
 /**
  * POST /api/auth/mfa/setup
  * Generates a TOTP secret + QR code Data URL for the authenticated user.
- * The secret is NOT stored yet — client must verify with /mfa/enable first.
+ * The secret is persisted as mfa_pending_secret (NOT mfa_secret) so the
+ * client cannot supply its own secret during /mfa/enable.
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1365,6 +1366,13 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     const secret    = secretObj.base32;
     const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
     const qrDataUrl = await QRCode.toDataURL(otpauth);
+
+    // Store the pending secret server-side so /mfa/enable can retrieve it
+    // without trusting any client-supplied value.
+    await prisma.$executeRaw`
+      UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
+    `;
+
     res.json({ secret, qrDataUrl });
   } catch (error) {
     console.error('[POST /api/auth/mfa/setup] Error:', error);
@@ -1374,23 +1382,37 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
 
 /**
  * POST /api/auth/mfa/enable
- * Verifies the first TOTP code, persists the secret, and returns a new full JWT.
- * Body: { code: string, secret: string, trustDevice?: boolean }
+ * Verifies the first TOTP code against the server-stored pending secret,
+ * persists the secret, and returns a new full JWT.
+ * Body: { code: string, trustDevice?: boolean }
+ * NOTE: 'secret' is intentionally NOT accepted from the client — it is read
+ * from mfa_pending_secret to prevent a bypass via a client-controlled value.
  */
 app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Response) => {
-  const { code, secret, trustDevice } = req.body as { code?: string; secret?: string; trustDevice?: boolean };
-  if (!code || !secret) {
-    res.status(400).json({ error: 'code and secret are required' });
-    return;
-  }
-  const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
-  if (!valid) {
-    res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+  const { code, trustDevice } = req.body as { code?: string; trustDevice?: boolean };
+  if (!code) {
+    res.status(400).json({ error: 'code is required' });
     return;
   }
   try {
+    // Retrieve the server-generated pending secret — never trust the client
+    const rows = await prisma.$queryRaw<{ mfa_pending_secret: string | null }[]>`
+      SELECT mfa_pending_secret FROM "users" WHERE id = ${req.user!.id}::uuid LIMIT 1
+    `;
+    const secret = rows[0]?.mfa_pending_secret ?? null;
+    if (!secret) {
+      res.status(400).json({ error: 'MFA setup not initiated. Please call /api/auth/mfa/setup first.' });
+      return;
+    }
+    const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+    if (!valid) {
+      res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+      return;
+    }
     await prisma.$executeRaw`
-      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true, updated_at = now() WHERE id = ${req.user!.id}::uuid
+      UPDATE "users"
+      SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
+      WHERE id = ${req.user!.id}::uuid
     `;
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };

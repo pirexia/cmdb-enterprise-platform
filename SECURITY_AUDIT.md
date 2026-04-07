@@ -3,7 +3,7 @@
 **Platform:** CMDB Enterprise Platform  
 **Audit Date:** 2026-04-07 (updated)
 **Auditor:** DevSecOps Team
-**Version:** v1.1.0  
+**Version:** v1.2.0  
 **Status:** ✅ Active Controls Implemented
 
 ---
@@ -186,6 +186,19 @@ CREATE TABLE "audit_logs" (
 
 ---
 
+## HIGH-Severity Fixes — v1.2.0 (2026-04-07)
+
+| Issue | Control | Implementation |
+|-------|---------|----------------|
+| #18 LDAP injection | `escapeLdap()` per RFC 4514/4515 | All usernames are escaped before DN construction and search-filter use in `ldap.ts` |
+| #17 Command injection (install.sh) | Replace `eval` with `printf -v` | User input is never passed through the shell parser during prompt variable assignment |
+| #16 Greenbone data loss | Merge-on-import instead of replace | Existing vuln lifecycle status is preserved; only new CVEs appended with status NUEVO |
+| #15 Stored XSS via SVG | MIME-type allowlist on inline view | Only PDF, PNG, JPEG, GIF, WEBP, text/plain served inline; all others forced to `application/octet-stream` + `attachment` |
+| #14 DoS via unbounded lists | Pagination on `/api/cis`, `/api/documents`, `/api/licenses` | Default 200 records/page, hard cap 500; query params `?page=&limit=`; parallel COUNT for totals |
+| #13 Weak bcrypt | Cost factor raised 10 → 12 | Configurable via `BCRYPT_ROUNDS` env var; applied to all hash operations |
+
+---
+
 ## Pending / Recommended Actions
 
 | Priority | Action | Responsible |
@@ -209,6 +222,7 @@ CREATE TABLE "audit_logs" (
 | 2026-04-01 | 1.3.0 | DevSecOps | Added AUDITOR role (RBAC three-tier); `requireAudit` middleware; AUDITOR has exclusive audit log read access; seed user `auditor@cmdb.local` migrated from VIEWER to AUDITOR |
 | 2026-04-01 | 1.4.0 | DevSecOps | Password policy for local users: role-aware min length (ADMIN 16 / others 12), complexity rules, ~100-entry common-password blocklist, 20-entry history (all configurable via .env); `password_history` table; `CHANGE_PASSWORD` and `RESET_PASSWORD` audit events; frontend real-time strength indicator |
 | 2026-04-07 | 1.1.0 | DevSecOps | 5 critical security fixes: LIKE wildcard injection (#12), JWT in download URL (#11), stack trace exposure (#10), deactivated user JWT bypass (#9), MFA client-secret bypass (#8). New DB migration: `mfa_pending_secret`. |
+| 2026-04-07 | 1.2.0 | DevSecOps | 6 HIGH security fixes: LDAP injection (#18), command injection in install.sh (#17), Greenbone vuln data loss on re-import (#16), stored XSS via SVG inline view (#15), DoS via unbounded list endpoints — pagination added (#14), bcrypt cost factor raised 10→12 (#13). |
 
 ---
 

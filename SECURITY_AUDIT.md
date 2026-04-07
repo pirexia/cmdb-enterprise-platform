@@ -199,6 +199,18 @@ CREATE TABLE "audit_logs" (
 
 ---
 
+## MEDIUM/LOW-Severity Fixes — v1.6.4 (2026-04-07)
+
+| Issue | Severity | Control | Implementation |
+|-------|----------|---------|----------------|
+| #27 JWT algorithm unspecified | MEDIUM | A.10.1.1 | Confirmed: all `jwt.sign()` calls use `{ algorithm: 'HS256' as const }` and all `jwt.verify()` calls use `{ algorithms: ['HS256'] }` allowlist — rejects `alg:none` tokens at library level |
+| #25 Device token IP/UA bypass | MEDIUM | A.9.4.2 | `trusted_devices` now stores non-null IP and UA strings at creation; validation query uses strict equality (`ip_address = $ip AND user_agent = $ua`) — removed the `IS NULL OR` bypass that allowed stolen tokens to match from any origin |
+| #22 SQL errors leaked in API | MEDIUM | A.12.2 | 50+ `catch` blocks replaced: raw `String(e)` / `e.message` no longer returned to clients; all 500 responses return `{ error: 'Internal server error' }`; full error logged server-side via `console.error` |
+| #24 Hardcoded credential hint | LOW | A.9.4.3 | Removed `placeholder="admin@cmdb.local"` from login email field — internal admin username and domain were exposed to unauthenticated visitors |
+| #20 JWT expiry not checked client-side | LOW | A.9.4.2 | `AuthContext.tsx`: `isJwtExpired()` decodes the `exp` claim (pure base64, no library) with 30 s clock-skew buffer; expired tokens discarded on mount + periodic 60 s check + `visibilitychange` listener; `apiFetch` validates expiry before every request |
+
+---
+
 ## Pending / Recommended Actions
 
 | Priority | Action | Responsible |
@@ -224,6 +236,7 @@ CREATE TABLE "audit_logs" (
 | 2026-04-07 | 1.1.0 | DevSecOps | 5 critical security fixes: LIKE wildcard injection (#12), JWT in download URL (#11), stack trace exposure (#10), deactivated user JWT bypass (#9), MFA client-secret bypass (#8). New DB migration: `mfa_pending_secret`. |
 | 2026-04-07 | 1.2.0 | DevSecOps | 6 HIGH security fixes: LDAP injection (#18), command injection in install.sh (#17), Greenbone vuln data loss on re-import (#16), stored XSS via SVG inline view (#15), DoS via unbounded list endpoints — pagination added (#14), bcrypt cost factor raised 10→12 (#13). |
 | 2026-04-07 | 1.3.0 | DevSecOps | Frontend hotfix v1.6.3: adapted 4 callsites to paginated API response shape (`{ total, page, limit, data }`) introduced in v1.6.2. Affected: `licenses/page.tsx`, `documents/page.tsx`, `documents/[id]/page.tsx`, `CIDetailModal.tsx` (closes #34). |
+| 2026-04-07 | 1.4.0 | DevSecOps | 5 MEDIUM/LOW security fixes: JWT algorithm confirmed HS256 (#27), trusted device IP/UA strict binding (#25), SQL/internal error masking in 50+ API catch blocks (#22), hardcoded credential hint removed from login (#24), client-side JWT expiry validation with periodic check (#20). |
 
 ---
 

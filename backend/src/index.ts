@@ -1285,8 +1285,8 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
       results.push({ name, status: 'created', id: ci.id });
       successCount++;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      results.push({ name, status: 'error', error: msg });
+      console.error(`[bulk-import] CI "${name}":`, err);
+      results.push({ name, status: 'error', error: 'Failed to create CI' });
       errorCount++;
     }
   }
@@ -1439,8 +1439,9 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       newDeviceToken = crypto.randomBytes(32).toString('hex');
       const expiry = new Date();
       expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
-      const ua = req.headers['user-agent'] ?? null;
-      const ip = req.ip ?? null;
+      // Bind token to client IP and User-Agent at creation time (Issue #25)
+      const ua = req.headers['user-agent'] ?? '';
+      const ip = req.ip ?? '';
       await prisma.$executeRaw`
         INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
         VALUES (gen_random_uuid(), ${req.user!.id}::uuid, ${newDeviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
@@ -1679,7 +1680,7 @@ app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "manufacturers" ORDER BY name ASC`;
     log.info(`[GET /api/masters/manufacturers] rows=${rows.length}`);
     res.json(rows);
-  } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1884,8 +1885,8 @@ app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (
     await prisma.cIType.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2712,7 +2713,8 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
   } catch (e) {
     // Clean up uploaded file on DB error
     try { fs.unlinkSync(filePath); } catch {}
-    res.status(500).json({ error: String(e) });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

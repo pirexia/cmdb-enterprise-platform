@@ -538,7 +538,10 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       if (deviceToken) {
         const trusted = await prisma.$queryRaw<{ id: string }[]>`
           SELECT id FROM "trusted_devices"
-          WHERE token = ${deviceToken} AND user_id = ${user.id}::uuid AND expires_at > now()
+          WHERE token = ${deviceToken}
+            AND user_id = ${user.id}::uuid
+            AND expires_at > now()
+            AND (user_agent IS NULL OR user_agent = ${req.headers['user-agent'] ?? ''})
           LIMIT 1
         `;
         if (trusted.length > 0) {

@@ -40,7 +40,7 @@ prompt() {
   local var_name="$1" prompt_text="$2" default="$3"
   local input
   read -rp "$(echo -e "${CYAN}?${NC} ${prompt_text} [${default}]: ")" input
-  eval "$var_name=\"\${input:-$default}\""
+  printf -v "$var_name" '%s' "${input:-$default}"
 }
 
 # ── Helper: yes/no prompt (default no) ───────────────────────────────────────

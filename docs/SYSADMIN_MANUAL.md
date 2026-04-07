@@ -1,13 +1,14 @@
 # 🔧 CMDB Enterprise Platform — Manual del Administrador de Sistemas
 
-**Versión:** 1.1.0
-**Público:** Equipo de Sistemas e Infraestructura (RHEL)
-**Fecha:** 2026-03-31
+**Versión:** 1.2.0
+**Público:** Equipo de Sistemas e Infraestructura (RHEL) — incluye `scripts/install.sh`, `scripts/update.sh`
+**Fecha:** 2026-04-07
 
 ---
 
 ## Índice
 
+0. [Inicio Rápido (3 comandos)](#0-inicio-rápido-3-comandos)
 1. [Requisitos del Sistema](#1-requisitos-del-sistema)
 2. [Despliegue Inicial](#2-despliegue-inicial)
 3. [Configuración del archivo .env](#3-configuración-del-archivo-env)
@@ -22,6 +23,28 @@
 11. [Mantenimiento de Base de Datos](#11-mantenimiento-de-base-de-datos)
 12. [Seguridad y Hardening](#12-seguridad-y-hardening)
 13. [Tareas de Mantenimiento Periódico](#13-tareas-de-mantenimiento-periódico)
+14. [Despliegue en OpenShift / Kubernetes](#14-despliegue-en-openshift--kubernetes)
+
+---
+
+## 0. Inicio Rápido (3 comandos)
+
+Para la mayoría de las instalaciones nuevas, tres comandos son suficientes:
+
+```bash
+# 1. Clonar el repositorio
+git clone https://github.com/pirexia/cmdb-enterprise-platform.git /opt/cmdb && cd /opt/cmdb
+
+# 2. Ejecutar el instalador guiado
+#    (detecta el SO, verifica requisitos, lanza el asistente de configuración y arranca la plataforma)
+sudo bash scripts/install.sh
+
+# 3. Abrir el navegador
+# Frontend: http://<tu-servidor>:3001
+# Login por defecto: admin@cmdb.local / Admin1234! — CAMBIAR INMEDIATAMENTE
+```
+
+> Para control detallado sobre cada paso, o para entornos con requisitos especiales, consulta la [Sección 2](#2-despliegue-inicial).
 
 ---
 
@@ -60,6 +83,11 @@ openssl version
 ---
 
 ## 2. Despliegue Inicial
+
+> **Recomendado: Instalación automatizada**
+> Ejecuta `sudo bash scripts/install.sh` — detecta el SO, verifica requisitos, lanza el asistente de configuración y arranca la plataforma automáticamente. El instalador registra todo en `/opt/cmdb/logs/install_<timestamp>.log`.
+
+Los pasos siguientes documentan el **despliegue manual avanzado** para entornos con requisitos específicos o donde no se pueda usar el instalador interactivo.
 
 ### Paso 1: Clonar el repositorio
 ```bash
@@ -633,48 +661,120 @@ chmod +x /opt/cmdb/scripts/check-docs-storage.sh
 
 ## 8. Actualización de la Aplicación
 
-### Actualización estándar (zero-downtime)
+### 8.1 Actualización automatizada (recomendada)
+
+El script `scripts/update.sh` gestiona el ciclo completo de actualización con garantías de seguridad integradas.
+
 ```bash
 cd /opt/cmdb
-
-# 1. Crear backup antes de actualizar
-bash scripts/db-backup.sh
-
-# 2. Obtener cambios del repositorio
-git pull origin main
-
-# 3. Revisar el CHANGELOG o commits
-git log --oneline -10
-
-# 4. Reconstruir imágenes
-docker compose -f docker-compose.prod.yml build --no-cache
-
-# 5. Reemplazar contenedores (Docker reinicia uno a uno)
-docker compose -f docker-compose.prod.yml up -d
-
-# 6. Verificar que todo está correcto
-docker compose -f docker-compose.prod.yml ps
-curl http://localhost:3000/health
+bash scripts/update.sh
 ```
 
-### Rollback si algo falla
+#### Flags disponibles
+
+| Flag | Descripción | Caso de uso |
+|------|-------------|-------------|
+| `--dry-run` | Muestra el changelog y detecta migraciones sin tocar nada | Revisar antes de actualizar en producción |
+| `--yes` | Modo desatendido — confirma todos los prompts automáticamente | Cron nocturno, CI/CD |
+| `--no-cache` | Fuerza rebuild completo de Docker sin caché | Tras cambios de dependencias (`package.json`) |
+| `--force` | Omite la protección contra downgrade | Solo para recuperación — usar con precaución |
+
+#### Ejemplos de uso
+
+```bash
+# Revisar qué pasaría sin ejecutar nada
+bash scripts/update.sh --dry-run
+
+# Actualizar sin preguntas (modo cron)
+bash scripts/update.sh --yes
+
+# Rebuild completo tras actualizar dependencias
+bash scripts/update.sh --no-cache
+
+# Forzar actualización ignorando el guard de downgrade (recuperación)
+bash scripts/update.sh --force --yes
+```
+
+#### Cron para actualizaciones nocturnas desatendidas
+
+```bash
+# Actualización automática diaria a las 03:00
+0 3 * * * cd /opt/cmdb && bash scripts/update.sh --yes >> /var/log/cmdb-update.log 2>&1
+```
+
+#### Garantías de seguridad del actualizador
+
+El script implementa cinco capas de protección antes y durante la actualización:
+
+1. **Protección contra downgrade:** Compara el commit remoto con el instalado. Si el remoto es más antiguo, aborta. Usar `--force` solo en escenarios de recuperación controlada.
+
+2. **Backup obligatorio previo:** Ejecuta `scripts/db-backup.sh` antes de cualquier cambio. Si el backup falla, el script aborta sin tocar el código ni los contenedores.
+
+3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
+
+4. **Auto-rollback en caso de fallo:** Si el build de Docker falla o el health check no responde en 120 segundos, el script restaura automáticamente el tag de rollback, reconstruye la imagen anterior y reinicia los servicios.
+
+5. **Confirmación de migraciones:** Detecta nuevos archivos de migración Prisma y muestra su lista antes de continuar. En modo interactivo solicita confirmación explícita.
+
+#### Log de la actualización
+
+Cada ejecución guarda su log completo en:
+```
+logs/update_<timestamp>.log
+```
+
+---
+
+### 8.2 Rollback manual
+
+Si la actualización automatizada no pudo completar el rollback, o si necesitas volver a una versión específica:
+
 ```bash
 cd /opt/cmdb
+
+# Ver tags de rollback disponibles (creados por update.sh)
+git tag -l "rollback/*" | sort -r | head -10
 
 # Ver historial de commits
 git log --oneline -10
 
-# Volver al commit anterior
+# Restaurar al tag de rollback más reciente
+git checkout rollback/<timestamp>
+
+# O restaurar a un commit específico
 git checkout <hash-anterior>
 
 # Reconstruir con la versión anterior
 docker compose -f docker-compose.prod.yml build --no-cache
 docker compose -f docker-compose.prod.yml up -d
 
-# Restaurar backup de BD si fue necesario
-gunzip -c /opt/cmdb/backups/backup_<fecha-anterior>.sql.gz \
-  | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
+# Verificar que los servicios están operativos
+docker compose -f docker-compose.prod.yml ps
+curl http://localhost:3000/health
 ```
+
+---
+
+### 8.3 Restaurar base de datos tras rollback
+
+Si la actualización aplicó migraciones de base de datos que necesitas revertir, restaura el backup creado automáticamente por `update.sh`:
+
+```bash
+# El path del backup se imprime en el log de update.sh. También puedes listarlo:
+ls -lht /opt/cmdb/backups/ | head -5
+
+# Restaurar (PRECAUCIÓN: sobreescribe los datos actuales)
+gunzip -c /opt/cmdb/backups/backup_<timestamp>.sql.gz \
+  | docker exec -i cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db
+
+# Verificar que la restauración fue correcta
+docker exec cmdb-postgres-prod psql -U cmdb_admin -d cmdb_db \
+  -c "SELECT COUNT(*) FROM configuration_items;"
+```
+
+> Prisma no soporta rollback automático de migraciones DDL. Si la migración fue destructiva (DROP COLUMN, DROP TABLE), la única forma de recuperar los datos es restaurar el backup.
+
+---
 
 ### Cambio de Dominio Público y URL
 
@@ -1315,3 +1415,77 @@ chmod 600 /opt/cmdb-enterprise-platform/.env
 | Trimestral | Rotación de JWT_SECRET | Ver sección 10 |
 | Anual | Renovación certificado SSL | Ver sección 4.3 |
 | Anual | Revisión de usuarios activos | Pestaña Configuración → Usuarios |
+
+---
+
+## 14. Despliegue en OpenShift / Kubernetes
+
+> Esta sección cubre entornos empresariales donde ya existe una plataforma de contenedores (OpenShift, OKD, Kubernetes). El instalador detecta automáticamente si el CLI `oc` está autenticado y ajusta su comportamiento.
+
+### 14.1 Detección automática
+
+El `install.sh` detecta OpenShift si el comando `oc whoami` tiene éxito antes de iniciar el asistente de configuración. En ese caso, el instalador no ejecuta `docker-compose` y en su lugar genera el archivo `.env` correctamente configurado y muestra instrucciones para el despliegue manual en el clúster.
+
+### 14.2 Convertir docker-compose a manifiestos OpenShift
+
+```bash
+# Instalar kompose (conversor docker-compose → Kubernetes/OpenShift)
+curl -L https://github.com/kubernetes/kompose/releases/latest/download/kompose-linux-amd64 \
+  -o /usr/local/bin/kompose
+chmod +x /usr/local/bin/kompose
+
+# Convertir el archivo de producción a manifiestos OpenShift
+kompose convert -f docker-compose.prod.yml -o openshift/
+```
+
+Los manifiestos generados se guardarán en el directorio `openshift/` y requerirán ajustes específicos detallados en la sección siguiente.
+
+### 14.3 Ajustes específicos para OpenShift
+
+- **SecurityContextConstraints:** Los contenedores de la plataforma corren como usuario no root (`node`, UID 1000). Esto es compatible con el SCC `restricted` de OpenShift sin necesidad de privilegios adicionales.
+- **Routes:** Crear una Route para el frontend (puerto 3001) y otra para el backend (puerto 3000). OpenShift gestiona el TLS terminación en el router.
+- **ConfigMaps y Secrets:** Las variables del archivo `.env` deben migrarse a Secrets de OpenShift. No almacenar credenciales en ConfigMaps.
+- **PersistentVolumeClaims:** Reemplazar los volúmenes Docker (`cmdb-postgres-data-prod`, `cmdb-tls-certs`, `document-storage`) por PVCs con la clase de almacenamiento adecuada del clúster.
+
+### 14.4 Ejemplo de Secret para OpenShift
+
+```bash
+# Crear un Secret con todas las variables del .env
+oc create secret generic cmdb-env \
+  --from-env-file=.env \
+  --namespace cmdb-prod
+
+# Verificar que el Secret se creó correctamente
+oc get secret cmdb-env -n cmdb-prod -o yaml
+```
+
+> El Secret debe referenciar las variables en los Deployments mediante `envFrom.secretRef` o `env[].valueFrom.secretKeyRef`. Nunca inyectar el archivo `.env` directamente como volumen.
+
+### 14.5 Actualización en OpenShift
+
+El script `update.sh` no es compatible directamente con OpenShift (requiere `docker-compose`). Para actualizar en un entorno OpenShift:
+
+```bash
+# 1. Obtener el nuevo código
+git pull origin main
+
+# 2. Rebuild de la imagen (si usas un registry interno corporativo)
+podman build -t registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD) ./backend
+podman push registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD)
+
+podman build -t registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD) ./frontend
+podman push registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD)
+
+# 3. Actualizar la imagen en el Deployment y hacer rollout
+oc set image deployment/cmdb-backend \
+  backend=registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD) \
+  -n cmdb-prod
+
+oc rollout restart deployment/cmdb-frontend -n cmdb-prod
+
+# 4. Verificar el estado del rollout
+oc rollout status deployment/cmdb-backend -n cmdb-prod
+oc rollout status deployment/cmdb-frontend -n cmdb-prod
+```
+
+> Las migraciones de Prisma en OpenShift deben ejecutarse manualmente o como un Job de Kubernetes antes del rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`

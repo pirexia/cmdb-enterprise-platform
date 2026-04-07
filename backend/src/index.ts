@@ -542,6 +542,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
             AND user_id = ${user.id}::uuid
             AND expires_at > now()
             AND (user_agent IS NULL OR user_agent = ${req.headers['user-agent'] ?? ''})
+            AND (ip_address IS NULL OR ip_address = ${req.ip ?? ''})
           LIMIT 1
         `;
         if (trusted.length > 0) {
@@ -1164,7 +1165,7 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
       }
     }
     log.info(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
-    res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors, errorLog });
+    res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors });
     return;
   }
 
@@ -3188,7 +3189,7 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
     });
   } catch (error) {
     console.error('[POST /api/admin/test-email] Error:', error);
-    res.status(500).json({ error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

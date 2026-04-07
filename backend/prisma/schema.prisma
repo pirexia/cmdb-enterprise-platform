@@ -373,8 +373,8 @@ model CIRelation {
   targetCiId   String       @db.Uuid @map("target_ci_id")
   relationType RelationType @map("relation_type")
 
-  sourceCI     CI           @relation("SourceCI", fields: [sourceCiId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  targetCI     CI           @relation("TargetCI", fields: [targetCiId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  sourceCI     CI           @relation("SourceCI", fields: [sourceCiId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  targetCI     CI           @relation("TargetCI", fields: [targetCiId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   createdAt    DateTime     @default(now()) @map("created_at")
   createdBy    String?      @map("created_by")

@@ -2291,26 +2291,51 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
 
       const ci = rows[0];
 
-      // Normalise vulnerabilities to our standard format (with lifecycle status)
+      // Read existing vulnerabilities so we can MERGE instead of replace.
+      // This preserves lifecycle status (RESUELTO, EN_PROGRESO, etc.) set by analysts
+      // and retains vulns from other sources (CrowdStrike) that Greenbone doesn't report.
+      type ExistingVulnRow = { vulnerabilities: unknown };
+      const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
+        SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
+      `;
+      const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
+      // Index existing vulns by CVE for O(1) lookup
+      const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
+
+      // Normalise incoming vulnerabilities to our standard format
       const importedAt = new Date().toISOString();
-      const vulns = (result.vulnerabilities ?? []).map((v) => ({
+      const incoming = (result.vulnerabilities ?? []).map((v) => ({
         cve:         v.cve,
         severity:    v.severity?.toUpperCase() as VulnSeverity,
         description: v.description ?? v.name ?? '',
-        source:      'greenbone',
+        source:      'greenbone' as const,
         cvss_score:  v.cvss_score ?? null,
         status:      'NUEVO' as VulnStatus,
         importedAt,
       }));
 
+      // Merge: update existing entries (preserve status), add new ones
+      const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
+      const merged: Vulnerability[] = [
+        // Existing vulns: refresh fields from Greenbone if re-reported; keep status
+        ...existingVulns.map((existing) => {
+          const fresh = incomingByCve.get(existing.cve);
+          if (!fresh) return existing; // not in this report — keep as-is
+          return { ...fresh, status: existing.status }; // update metadata, preserve status
+        }),
+        // New vulns not previously known
+        ...incoming.filter((v) => !existingByCve.has(v.cve)),
+      ];
+
       await prisma.$executeRaw`
         UPDATE "configuration_items"
-        SET "vulnerabilities" = ${JSON.stringify(vulns)}::jsonb
+        SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
         WHERE "id" = ${ci.id}::uuid
       `;
 
-      processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
-      log.info(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+      const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
+      processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
+      log.info(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
     }
 
     res.json({

@@ -426,7 +426,10 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 
 1. Locate the CVE in the panel.
 2. Use the status selector in the "Status" column.
-3. The change is recorded immediately and appears in the Audit Log.
+3. The interface reflects the change immediately. While saving, a spinning indicator appears next to the selector.
+4. If the server confirms the save, a green notification appears in the corner of the screen.
+5. If saving fails (network or server error), the status automatically reverts to the previous value and a red notification is shown. No manual action is required.
+6. A successful change is recorded in the Audit Log.
 
 ### Importing vulnerabilities from Greenbone OpenVAS
 

@@ -795,13 +795,19 @@ app.get('/api/vendors', authenticateToken, async (_req: Request, res: Response) 
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 
-app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
+const CI_MAX_PAGE_SIZE = 500;
+app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, CI_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const skip     = (page - 1) * limit;
   try {
-    const cis = await prisma.cI.findMany({
-      include: CI_INCLUDE,
-      orderBy: { createdAt: 'asc' },
-    });
-    res.json({ total: cis.length, data: cis.map(flattenCI) });
+    const [total, cis] = await Promise.all([
+      prisma.cI.count(),
+      prisma.cI.findMany({ include: CI_INCLUDE, orderBy: { createdAt: 'asc' }, skip, take: limit }),
+    ]);
+    res.json({ total, page, limit, data: cis.map(flattenCI) });
   } catch (error) {
     console.error('[GET /api/cis] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2508,31 +2514,41 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, a
 // ── Documents CRUD ────────────────────────────────────────────────────────────
 
 // GET /api/documents — list root documents with latest version info
-app.get('/api/documents', authenticateToken, async (_req, res) => {
+const DOCS_MAX_PAGE_SIZE = 500;
+app.get('/api/documents', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, DOCS_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; title: string; description: string | null;
-      documentTypeId: string; documentTypeName: string; documentTypeCode: string;
-      versionNumber: number; originalName: string; mimeType: string;
-      fileSize: number; uploadedBy: string; createdAt: Date;
-      latestVersionId: string;
-    }[]>`
-      SELECT d.id::text AS id, d.title, d.description,
-             d.document_type_id::text AS "documentTypeId",
-             dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
-             COALESCE(v.version_number, d.version_number) AS "versionNumber",
-             COALESCE(v.original_name, d.original_name) AS "originalName",
-             COALESCE(v.mime_type, d.mime_type) AS "mimeType",
-             COALESCE(v.file_size, d.file_size) AS "fileSize",
-             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
-             d.created_at AS "createdAt",
-             COALESCE(v.id::text, d.id::text) AS "latestVersionId"
-      FROM "documents" d
-      JOIN "document_types" dt ON d.document_type_id = dt.id
-      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE d.root_id IS NULL
-      ORDER BY d.created_at DESC`;
-    res.json(rows);
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "documents" WHERE root_id IS NULL`,
+      prisma.$queryRaw<{
+        id: string; title: string; description: string | null;
+        documentTypeId: string; documentTypeName: string; documentTypeCode: string;
+        versionNumber: number; originalName: string; mimeType: string;
+        fileSize: number; uploadedBy: string; createdAt: Date;
+        latestVersionId: string;
+      }[]>`
+        SELECT d.id::text AS id, d.title, d.description,
+               d.document_type_id::text AS "documentTypeId",
+               dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+               COALESCE(v.version_number, d.version_number) AS "versionNumber",
+               COALESCE(v.original_name, d.original_name) AS "originalName",
+               COALESCE(v.mime_type, d.mime_type) AS "mimeType",
+               COALESCE(v.file_size, d.file_size) AS "fileSize",
+               COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+               d.created_at AS "createdAt",
+               COALESCE(v.id::text, d.id::text) AS "latestVersionId"
+        FROM "documents" d
+        JOIN "document_types" dt ON d.document_type_id = dt.id
+        LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+        WHERE d.root_id IS NULL
+        ORDER BY d.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({ total: Number(countRows[0]?.c ?? 0), page, limit, data: rows });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
@@ -3425,41 +3441,39 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, as
 // ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
 
 // GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
-app.get('/api/licenses', authenticateToken, async (_req, res) => {
+const LICENSES_MAX_PAGE_SIZE = 500;
+app.get('/api/licenses', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, LICENSES_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; name: string; licenseNumber: string;
-      startDate: Date; endDate: Date | null;
-      status: string | null; currency: string | null; cost: string | null;
-      vendorName: string | null; licenseTypeName: string | null;
-      licenseMetricName: string | null;
-      ciCount: bigint; addendumCount: bigint;
-    }[]>`
-      SELECT
-        l.id::text AS id,
-        l.name,
-        l.license_number AS "licenseNumber",
-        l.start_date AS "startDate",
-        l.end_date AS "endDate",
-        l.status,
-        l.currency,
-        l.cost::text AS cost,
-        v.name AS "vendorName",
-        lt.name AS "licenseTypeName",
-        lm.name AS "licenseMetricName",
-        (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
-        (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
-      FROM "licenses" l
-      LEFT JOIN "vendors" v ON v.id = l.vendor_id
-      LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
-      LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
-      ORDER BY l.created_at DESC`;
-    res.json(rows.map((r) => ({
-      ...r,
-      ciCount: Number(r.ciCount),
-      addendumCount: Number(r.addendumCount),
-      cost: r.cost ? parseFloat(r.cost) : null,
-    })));
+    type LicenseRow = { id: string; name: string; licenseNumber: string; startDate: Date; endDate: Date | null; status: string | null; currency: string | null; cost: string | null; vendorName: string | null; licenseTypeName: string | null; licenseMetricName: string | null; ciCount: bigint; addendumCount: bigint; };
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "licenses" WHERE parent_license_id IS NULL`,
+      prisma.$queryRaw<LicenseRow[]>`
+        SELECT
+          l.id::text AS id, l.name,
+          l.license_number AS "licenseNumber",
+          l.start_date AS "startDate", l.end_date AS "endDate",
+          l.status, l.currency, l.cost::text AS cost,
+          v.name AS "vendorName",
+          lt.name AS "licenseTypeName",
+          lm.name AS "licenseMetricName",
+          (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
+          (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
+        FROM "licenses" l
+        LEFT JOIN "vendors" v ON v.id = l.vendor_id
+        LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
+        LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
+        ORDER BY l.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({
+      total: Number(countRows[0]?.c ?? 0), page, limit,
+      data: rows.map((r) => ({ ...r, ciCount: Number(r.ciCount), addendumCount: Number(r.addendumCount), cost: r.cost ? parseFloat(r.cost) : null })),
+    });
   } catch (e) { res.status(500).json({ error: 'Failed to fetch licenses' }); }
 });
 

@@ -56,6 +56,8 @@ const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? 
 const PASSWORD_MIN_LENGTH_ADMIN  = parseInt(process.env.PASSWORD_MIN_LENGTH_ADMIN  ?? '16', 10);
 const PASSWORD_MIN_LENGTH_VIEWER = parseInt(process.env.PASSWORD_MIN_LENGTH_VIEWER ?? '12', 10);
 const PASSWORD_HISTORY_COUNT     = parseInt(process.env.PASSWORD_HISTORY_COUNT     ?? '20', 10);
+// bcrypt work factor — NIST SP 800-63B / OWASP recommends ≥12 (≥2^12 iterations)
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -464,7 +466,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         `;
         if (rows.length === 0) {
           const username  = email.split('@')[0];
-          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
           await prisma.$executeRaw`
             INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
             VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
@@ -718,7 +720,7 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     }
 
     // Apply change
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`
@@ -761,7 +763,7 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
       return;
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`
@@ -793,13 +795,19 @@ app.get('/api/vendors', authenticateToken, async (_req: Request, res: Response) 
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 
-app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
+const CI_MAX_PAGE_SIZE = 500;
+app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, CI_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const skip     = (page - 1) * limit;
   try {
-    const cis = await prisma.cI.findMany({
-      include: CI_INCLUDE,
-      orderBy: { createdAt: 'asc' },
-    });
-    res.json({ total: cis.length, data: cis.map(flattenCI) });
+    const [total, cis] = await Promise.all([
+      prisma.cI.count(),
+      prisma.cI.findMany({ include: CI_INCLUDE, orderBy: { createdAt: 'asc' }, skip, take: limit }),
+    ]);
+    res.json({ total, page, limit, data: cis.map(flattenCI) });
   } catch (error) {
     console.error('[GET /api/cis] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2283,26 +2291,51 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
 
       const ci = rows[0];
 
-      // Normalise vulnerabilities to our standard format (with lifecycle status)
+      // Read existing vulnerabilities so we can MERGE instead of replace.
+      // This preserves lifecycle status (RESUELTO, EN_PROGRESO, etc.) set by analysts
+      // and retains vulns from other sources (CrowdStrike) that Greenbone doesn't report.
+      type ExistingVulnRow = { vulnerabilities: unknown };
+      const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
+        SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
+      `;
+      const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
+      // Index existing vulns by CVE for O(1) lookup
+      const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
+
+      // Normalise incoming vulnerabilities to our standard format
       const importedAt = new Date().toISOString();
-      const vulns = (result.vulnerabilities ?? []).map((v) => ({
+      const incoming = (result.vulnerabilities ?? []).map((v) => ({
         cve:         v.cve,
         severity:    v.severity?.toUpperCase() as VulnSeverity,
         description: v.description ?? v.name ?? '',
-        source:      'greenbone',
+        source:      'greenbone' as const,
         cvss_score:  v.cvss_score ?? null,
         status:      'NUEVO' as VulnStatus,
         importedAt,
       }));
 
+      // Merge: update existing entries (preserve status), add new ones
+      const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
+      const merged: Vulnerability[] = [
+        // Existing vulns: refresh fields from Greenbone if re-reported; keep status
+        ...existingVulns.map((existing) => {
+          const fresh = incomingByCve.get(existing.cve);
+          if (!fresh) return existing; // not in this report — keep as-is
+          return { ...fresh, status: existing.status }; // update metadata, preserve status
+        }),
+        // New vulns not previously known
+        ...incoming.filter((v) => !existingByCve.has(v.cve)),
+      ];
+
       await prisma.$executeRaw`
         UPDATE "configuration_items"
-        SET "vulnerabilities" = ${JSON.stringify(vulns)}::jsonb
+        SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
         WHERE "id" = ${ci.id}::uuid
       `;
 
-      processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
-      log.info(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+      const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
+      processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
+      log.info(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
     }
 
     res.json({
@@ -2506,31 +2539,41 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, a
 // ── Documents CRUD ────────────────────────────────────────────────────────────
 
 // GET /api/documents — list root documents with latest version info
-app.get('/api/documents', authenticateToken, async (_req, res) => {
+const DOCS_MAX_PAGE_SIZE = 500;
+app.get('/api/documents', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, DOCS_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; title: string; description: string | null;
-      documentTypeId: string; documentTypeName: string; documentTypeCode: string;
-      versionNumber: number; originalName: string; mimeType: string;
-      fileSize: number; uploadedBy: string; createdAt: Date;
-      latestVersionId: string;
-    }[]>`
-      SELECT d.id::text AS id, d.title, d.description,
-             d.document_type_id::text AS "documentTypeId",
-             dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
-             COALESCE(v.version_number, d.version_number) AS "versionNumber",
-             COALESCE(v.original_name, d.original_name) AS "originalName",
-             COALESCE(v.mime_type, d.mime_type) AS "mimeType",
-             COALESCE(v.file_size, d.file_size) AS "fileSize",
-             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
-             d.created_at AS "createdAt",
-             COALESCE(v.id::text, d.id::text) AS "latestVersionId"
-      FROM "documents" d
-      JOIN "document_types" dt ON d.document_type_id = dt.id
-      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE d.root_id IS NULL
-      ORDER BY d.created_at DESC`;
-    res.json(rows);
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "documents" WHERE root_id IS NULL`,
+      prisma.$queryRaw<{
+        id: string; title: string; description: string | null;
+        documentTypeId: string; documentTypeName: string; documentTypeCode: string;
+        versionNumber: number; originalName: string; mimeType: string;
+        fileSize: number; uploadedBy: string; createdAt: Date;
+        latestVersionId: string;
+      }[]>`
+        SELECT d.id::text AS id, d.title, d.description,
+               d.document_type_id::text AS "documentTypeId",
+               dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+               COALESCE(v.version_number, d.version_number) AS "versionNumber",
+               COALESCE(v.original_name, d.original_name) AS "originalName",
+               COALESCE(v.mime_type, d.mime_type) AS "mimeType",
+               COALESCE(v.file_size, d.file_size) AS "fileSize",
+               COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+               d.created_at AS "createdAt",
+               COALESCE(v.id::text, d.id::text) AS "latestVersionId"
+        FROM "documents" d
+        JOIN "document_types" dt ON d.document_type_id = dt.id
+        LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+        WHERE d.root_id IS NULL
+        ORDER BY d.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({ total: Number(countRows[0]?.c ?? 0), page, limit, data: rows });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
@@ -2713,6 +2756,18 @@ app.get('/api/documents/:id/download', async (req, res) => {
   // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 
+  // Allowlist of MIME types safe to render inline in a browser context.
+  // Everything else is forced to attachment/octet-stream to prevent stored XSS
+  // (e.g. SVG files can execute embedded JavaScript when served inline as image/svg+xml).
+  const SAFE_INLINE_MIME_TYPES = new Set([
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+    'text/plain',
+  ]);
+
   try {
     const rows = await prisma.$queryRaw<{ file_name: string; original_name: string; mime_type: string }[]>`
       SELECT file_name, original_name, mime_type FROM "documents" WHERE id=${req.params.id}::uuid`;
@@ -2720,9 +2775,15 @@ app.get('/api/documents/:id/download', async (req, res) => {
     const { file_name, original_name, mime_type } = rows[0];
     const filePath = path.join(DOCUMENTS_DIR, file_name);
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
-    res.setHeader('Content-Type', mime_type);
-    const disposition = inline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    const serveInline = inline && SAFE_INLINE_MIME_TYPES.has(mime_type);
+    const contentType = serveInline ? mime_type : 'application/octet-stream';
+    const disposition = serveInline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', disposition);
+    // Extra defence: prevent browser from sniffing a different MIME type
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(filePath).pipe(res as unknown as NodeJS.WritableStream);
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
@@ -3405,41 +3466,39 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, as
 // ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
 
 // GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
-app.get('/api/licenses', authenticateToken, async (_req, res) => {
+const LICENSES_MAX_PAGE_SIZE = 500;
+app.get('/api/licenses', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, LICENSES_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; name: string; licenseNumber: string;
-      startDate: Date; endDate: Date | null;
-      status: string | null; currency: string | null; cost: string | null;
-      vendorName: string | null; licenseTypeName: string | null;
-      licenseMetricName: string | null;
-      ciCount: bigint; addendumCount: bigint;
-    }[]>`
-      SELECT
-        l.id::text AS id,
-        l.name,
-        l.license_number AS "licenseNumber",
-        l.start_date AS "startDate",
-        l.end_date AS "endDate",
-        l.status,
-        l.currency,
-        l.cost::text AS cost,
-        v.name AS "vendorName",
-        lt.name AS "licenseTypeName",
-        lm.name AS "licenseMetricName",
-        (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
-        (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
-      FROM "licenses" l
-      LEFT JOIN "vendors" v ON v.id = l.vendor_id
-      LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
-      LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
-      ORDER BY l.created_at DESC`;
-    res.json(rows.map((r) => ({
-      ...r,
-      ciCount: Number(r.ciCount),
-      addendumCount: Number(r.addendumCount),
-      cost: r.cost ? parseFloat(r.cost) : null,
-    })));
+    type LicenseRow = { id: string; name: string; licenseNumber: string; startDate: Date; endDate: Date | null; status: string | null; currency: string | null; cost: string | null; vendorName: string | null; licenseTypeName: string | null; licenseMetricName: string | null; ciCount: bigint; addendumCount: bigint; };
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "licenses" WHERE parent_license_id IS NULL`,
+      prisma.$queryRaw<LicenseRow[]>`
+        SELECT
+          l.id::text AS id, l.name,
+          l.license_number AS "licenseNumber",
+          l.start_date AS "startDate", l.end_date AS "endDate",
+          l.status, l.currency, l.cost::text AS cost,
+          v.name AS "vendorName",
+          lt.name AS "licenseTypeName",
+          lm.name AS "licenseMetricName",
+          (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
+          (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
+        FROM "licenses" l
+        LEFT JOIN "vendors" v ON v.id = l.vendor_id
+        LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
+        LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
+        ORDER BY l.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({
+      total: Number(countRows[0]?.c ?? 0), page, limit,
+      data: rows.map((r) => ({ ...r, ciCount: Number(r.ciCount), addendumCount: Number(r.addendumCount), cost: r.cost ? parseFloat(r.cost) : null })),
+    });
   } catch (e) { res.status(500).json({ error: 'Failed to fetch licenses' }); }
 });
 

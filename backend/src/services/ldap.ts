@@ -50,6 +50,26 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   return Promise.race([promise, timer]);
 }
 
+/** Escapes special characters for LDAP DN and filter contexts (RFC 4514 / 4515). */
+function escapeLdap(value: string): string {
+  // Escape backslash first, then other special chars
+  return value
+    .replace(/\\/g, '\\5c')
+    .replace(/\*/g,  '\\2a')
+    .replace(/\(/g,  '\\28')
+    .replace(/\)/g,  '\\29')
+    .replace(/\0/g,  '\\00')
+    .replace(/\//g,  '\\2f')
+    .replace(/\+/g,  '\\2b')
+    .replace(/</g,   '\\3c')
+    .replace(/>/g,   '\\3e')
+    .replace(/;/g,   '\\3b')
+    .replace(/"/g,   '\\22')
+    .replace(/,/g,   '\\2c')
+    .replace(/=/g,   '\\3d')
+    .replace(/#/g,   '\\23');
+}
+
 /**
  * Attempts to authenticate the user against the LDAP/AD server.
  * Resolves silently on success; throws a descriptive Error on failure.
@@ -80,7 +100,7 @@ export async function authenticateLDAP(username: string, password: string): Prom
           adminPassword:     env.bindPassword(),
           userSearchBase:    env.searchBase(),
           usernameAttribute: username.includes('@') ? 'mail' : 'uid',
-          username:          username,
+          username:          escapeLdap(username),
           userPassword:      password,
         }),
         LDAP_TIMEOUT_MS,
@@ -90,8 +110,8 @@ export async function authenticateLDAP(username: string, password: string): Prom
       // ── Strategy 2: Direct user bind (fallback) ────────────────────────────
       // AD accepts email UPN directly; OpenLDAP needs uid=<user>,<base> format.
       const userDn = username.includes('@')
-        ? username
-        : `uid=${username},${env.searchBase()}`;
+        ? escapeLdap(username)
+        : `uid=${escapeLdap(username)},${env.searchBase()}`;
 
       await withTimeout(
         authenticate({ ldapOpts, userDn, userPassword: password }),

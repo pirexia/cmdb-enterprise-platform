@@ -1546,7 +1546,7 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
     const rows  = await prisma.$queryRaw<{ id: string; name: string }[]>`SELECT id::text, name FROM "manufacturers" ORDER BY name ASC`;
     const count = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "manufacturers"`;
     res.json({ count: Number(count[0]?.c ?? 0), rows });
-  } catch (e) { res.status(500).json({ error: String(e), stack: e instanceof Error ? e.stack : undefined }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────

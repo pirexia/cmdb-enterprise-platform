@@ -210,7 +210,7 @@ export default function IntegrationsPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Conectores de Seguridad</h1>
           <p className="text-sm text-slate-500 mt-0.5">

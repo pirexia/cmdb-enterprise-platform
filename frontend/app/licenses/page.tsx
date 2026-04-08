@@ -683,7 +683,7 @@ export default function LicensesPage() {
     <>
       {showModal && <AddLicenseModal onClose={() => setShowModal(false)} onCreated={fetchLicenses} />}
       <div className="min-h-screen bg-slate-50">
-        <header className="border-b border-slate-200 bg-white px-8 py-5">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Licencias de Software</h1>

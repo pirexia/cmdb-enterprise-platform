@@ -346,13 +346,18 @@ async function recordPasswordHistory(userId: string, hash: string): Promise<void
   `;
   // Prune old entries beyond the configured limit
   await prisma.$executeRaw`
-    DELETE FROM "password_history"
-    WHERE user_id = ${userId}::uuid
-    AND id NOT IN (
-      SELECT id FROM "password_history"
-      WHERE user_id = ${userId}::uuid
-      ORDER BY created_at DESC
-      LIMIT ${PASSWORD_HISTORY_COUNT}
+    DELETE FROM "password_history" ph
+    WHERE ph.user_id = ${userId}::uuid
+    AND NOT EXISTS (
+      SELECT 1
+      FROM (
+        SELECT id
+        FROM "password_history"
+        WHERE user_id = ${userId}::uuid
+        ORDER BY created_at DESC
+        LIMIT ${PASSWORD_HISTORY_COUNT}
+      ) recent
+      WHERE recent.id = ph.id
     )
   `;
 }
@@ -1239,57 +1244,59 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
   let successCount = 0;
   let errorCount   = 0;
 
-  for (const row of rows) {
-    const name = (row.name ?? '').trim();
-    if (!name) {
-      results.push({ name: '(vacío)', status: 'error', error: 'Missing required field: name' });
-      errorCount++; continue;
-    }
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const name = (row.name ?? '').trim();
+        if (!name) {
+          throw new Error(`Missing required field: name (row: ${JSON.stringify(row)})`);
+        }
 
-    const ciTypeCode = (row.ciType ?? 'OTHER').trim().toUpperCase();
-    const ciTypeId   = ciTypeCodeToId.get(ciTypeCode) ?? ciTypeCodeToId.get('OTHER') ?? null;
-    const crit    = (row.criticality ?? '').trim().toUpperCase();
-    const env     = (row.environment  ?? '').trim().toUpperCase();
-    const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
-    const environment = (validEnvironments.includes(env)   ? env  : 'PRODUCTION') as Environment;
+        const ciTypeCode = (row.ciType ?? 'OTHER').trim().toUpperCase();
+        const ciTypeId   = ciTypeCodeToId.get(ciTypeCode) ?? ciTypeCodeToId.get('OTHER') ?? null;
+        const crit    = (row.criticality ?? '').trim().toUpperCase();
+        const env     = (row.environment  ?? '').trim().toUpperCase();
+        const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
+        const environment = (validEnvironments.includes(env)   ? env  : 'PRODUCTION') as Environment;
 
-    // Unique slug: name-slug + random suffix
-    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
-    const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+        // Unique slug: name-slug + random suffix
+        const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+        const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
 
-    const needsHw = hwTypes.includes(ciTypeCode);
-    const needsSw = swTypes.includes(ciTypeCode);
+        const needsHw = hwTypes.includes(ciTypeCode);
+        const needsSw = swTypes.includes(ciTypeCode);
 
-    try {
-      const ci = await prisma.cI.create({
-        data: {
-          name, apiSlug, criticality, environment, ciTypeId,
-          ...(needsHw && {
-            hardware: {
-              create: {
-                serialNumber: (row.serialNumber ?? `AUTO-${Date.now()}`).trim() || `AUTO-${Date.now()}`,
-                model:        (row.model        ?? 'Unknown').trim() || 'Unknown',
-                manufacturer: (row.manufacturer ?? 'Unknown').trim() || 'Unknown',
+        const ci = await tx.cI.create({
+          data: {
+            name, apiSlug, criticality, environment, ciTypeId,
+            ...(needsHw && {
+              hardware: {
+                create: {
+                  serialNumber: (row.serialNumber ?? `AUTO-${Date.now()}`).trim() || `AUTO-${Date.now()}`,
+                  model:        (row.model        ?? 'Unknown').trim() || 'Unknown',
+                  manufacturer: (row.manufacturer ?? 'Unknown').trim() || 'Unknown',
+                },
               },
-            },
-          }),
-          ...(needsSw && {
-            software: {
-              create: {
-                version:     (row.version     ?? '1.0').trim() || '1.0',
-                licenseType: (row.licenseType ?? '').trim(),
+            }),
+            ...(needsSw && {
+              software: {
+                create: {
+                  version:     (row.version     ?? '1.0').trim() || '1.0',
+                  licenseType: (row.licenseType ?? '').trim(),
+                },
               },
-            },
-          }),
-        } as Parameters<typeof prisma.cI.create>[0]['data'],
-      });
-      results.push({ name, status: 'created', id: ci.id });
-      successCount++;
-    } catch (err) {
-      console.error(`[bulk-import] CI "${name}":`, err);
-      results.push({ name, status: 'error', error: 'Failed to create CI' });
-      errorCount++;
-    }
+            }),
+          } as Parameters<typeof prisma.cI.create>[0]['data'],
+        });
+        results.push({ name, status: 'created', id: ci.id });
+        successCount++;
+      }
+    });
+  } catch (err) {
+    console.error('[bulk-import] Transaction failed:', err);
+    const message = err instanceof Error ? err.message : 'Failed to import CIs';
+    res.status(400).json({ error: message });
+    return;
   }
 
   res.status(207).json({
@@ -2105,22 +2112,18 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
-    // Check if both CIs exist
-    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
-    `;
-    
-    if (Number(ciCheck[0]?.count) !== 2) {
-      res.status(404).json({ error: 'One or both CIs not found' });
-      return;
-    }
-
-    // Create relation
+    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
       RETURNING id::text
     `;
+
+    if (!relation.length) {
+      res.status(404).json({ error: 'One or both CIs not found.' });
+      return;
+    }
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
@@ -2164,20 +2167,18 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
   }
 
   try {
-    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
-    `;
-
-    if (Number(ciCheck[0]?.count) !== 2) {
-      res.status(404).json({ error: 'One or both CIs not found' });
-      return;
-    }
-
+    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
       RETURNING id::text
     `;
+
+    if (!relation.length) {
+      res.status(404).json({ error: 'One or both CIs not found.' });
+      return;
+    }
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
@@ -2779,7 +2780,6 @@ app.get('/api/documents/:id/download', async (req, res) => {
     'image/jpeg',
     'image/gif',
     'image/webp',
-    'text/plain',
   ]);
 
   try {

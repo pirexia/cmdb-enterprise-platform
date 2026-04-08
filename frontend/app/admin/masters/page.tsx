@@ -217,7 +217,7 @@ export default function MastersPage() {
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
 
       {/* ── Header ── */}
-      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-900">{t('masters.title')}</h1>

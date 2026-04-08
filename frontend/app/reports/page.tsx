@@ -522,7 +522,7 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BarChart3 className="h-6 w-6 text-indigo-500" />

@@ -328,7 +328,7 @@ export default function DocumentsPage() {
     <>
       <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
         {/* Header */}
-        <header className="flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
+        <header className="sticky top-0 z-10 flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <FolderOpen className="h-6 w-6 text-indigo-600" />

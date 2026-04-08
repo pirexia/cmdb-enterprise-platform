@@ -663,7 +663,7 @@ export default function MapPage() {
       )}
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-3">
+      <header className="sticky top-0 z-10 flex-shrink-0 border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Back */}
           <button

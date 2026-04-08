@@ -185,7 +185,7 @@ const ContractCreateSchema = z.object({
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
-function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -213,18 +213,19 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
 
   // Verify the user is still active in the database — a deactivated user's
   // existing JWT must be rejected immediately without waiting for expiry.
-  prisma.$queryRaw<{ active: boolean }[]>`
-    SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
-  `.then((rows) => {
+  try {
+    const rows = await prisma.$queryRaw<{ active: boolean }[]>`
+      SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
+    `;
     if (!rows.length || !rows[0].active) {
       res.status(403).json({ error: 'Account deactivated. Please contact an administrator.' });
       return;
     }
     req.user = payload;
     next();
-  }).catch(() => {
+  } catch {
     res.status(500).json({ error: 'Internal server error' });
-  });
+  }
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction): void {

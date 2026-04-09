@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
+import type { Locale } from "@/contexts/LanguageContext";
 import {
   Server, Loader2, AlertTriangle, Eye, EyeOff,
   ShieldCheck, ShieldAlert, QrCode, CheckCircle2,
@@ -22,6 +24,7 @@ type LoginStep =
 
 export default function LoginPage() {
   const { login, applySession } = useAuth();
+  const { locale, setLocale } = useLanguage();
   const router = useRouter();
 
   const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
@@ -193,6 +196,19 @@ export default function LoginPage() {
             {step === "credentials" && (
               <p className="text-xs text-white/50 mt-1">Soporta credenciales corporativas</p>
             )}
+          </div>
+
+          {/* Language selector */}
+          <div className="flex justify-end px-4 pt-2 pb-0">
+            <select
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 cursor-pointer"
+            >
+              {(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
           </div>
 
           {/* Body */}

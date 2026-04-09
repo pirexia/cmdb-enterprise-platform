@@ -9,7 +9,7 @@ import {
   ClipboardList, UserCircle, FolderOpen, Key,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLanguage } from "@/contexts/LanguageContext";
+import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
 import type { Locale } from "@/contexts/LanguageContext";
 
 // ─── Nav item definitions (keys reference locales/[lang].json) ────────────────
@@ -44,21 +44,15 @@ const NAV_ITEMS: NavEntry[] = [
 function LangSelector() {
   const { locale, setLocale } = useLanguage();
   return (
-    <div className="flex items-center gap-1">
-      {(["es", "en"] as Locale[]).map((l) => (
-        <button
-          key={l}
-          onClick={() => setLocale(l)}
-          className={`rounded px-2 py-0.5 text-[11px] font-bold uppercase transition-colors ${
-            locale === l
-              ? "bg-indigo-600 text-white"
-              : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-          }`}
-        >
-          {l}
-        </button>
+    <select
+      value={locale}
+      onChange={(e) => setLocale(e.target.value as Locale)}
+      className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-600 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 cursor-pointer"
+    >
+      {(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (
+        <option key={code} value={code}>{name}</option>
       ))}
-    </div>
+    </select>
   );
 }
 

@@ -8,6 +8,8 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import type { AuthUser } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
+import type { Locale } from "@/contexts/LanguageContext";
 
 // ─── Password strength helpers ────────────────────────────────────────────────
 
@@ -62,6 +64,8 @@ function StrengthBar({ rules }: { rules: StrengthRule[] }) {
 
 export default function ProfilePage() {
   const { user, applySession } = useAuth();
+  const { locale, setLocale, t } = useLanguage();
+  const [langSaved, setLangSaved] = useState(false);
 
   // ── MFA state ──
   const [qrDataUrl,  setQrDataUrl]  = useState<string | null>(null);
@@ -89,6 +93,13 @@ export default function ProfilePage() {
   const rules = usePasswordStrength(newPwd, user?.role ?? "VIEWER");
   const allRulesPassed = rules.every((r) => r.ok);
   const passwordsMatch = newPwd === confirmPwd && confirmPwd.length > 0;
+
+  // ── Language handler ──
+  const handleLanguageChange = (l: Locale) => {
+    setLocale(l);
+    setLangSaved(true);
+    setTimeout(() => setLangSaved(false), 2000);
+  };
 
   // ── MFA handlers ──
   const handleSetup = async () => {
@@ -414,6 +425,34 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* ── Language Preference ──────────────────────────────────────── */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50">
+              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802" />
+              </svg>
+            </div>
+            <h2 className="text-sm font-semibold text-slate-700">{t("profile.language_section")}</h2>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {t("profile.language_label")}
+            </label>
+            <select
+              value={locale}
+              onChange={(e) => handleLanguageChange(e.target.value as Locale)}
+              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            >
+              {(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (
+                <option key={code} value={code}>{name}</option>
+              ))}
+            </select>
+            {langSaved && (
+              <p className="text-xs text-emerald-600">{t("profile.language_saved")}</p>
+            )}
+          </div>
+        </section>
       </div>
     </div>
   );

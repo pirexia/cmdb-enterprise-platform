@@ -479,6 +479,9 @@
     "change_password":   "Change password",
     "current_password":  "Current password",
     "new_password":      "New password",
-    "save":              "Save changes"
+    "save":              "Save changes",
+    "language_section": "Language Preference",
+    "language_label":   "Interface language",
+    "language_saved":   "Language saved"
   }
 }

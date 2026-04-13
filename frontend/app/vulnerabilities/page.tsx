@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,12 +44,12 @@ const SEVERITY_STYLES: Record<VulnSeverity, string> = {
   LOW:      "bg-slate-100 text-slate-600 ring-slate-200",
 };
 
-const STATUS_STYLES: Record<VulnStatus, { pill: string; label: string }> = {
-  NUEVO:    { pill: "bg-blue-100 text-blue-700",    label: "Nuevo" },
-  ASIGNADO: { pill: "bg-purple-100 text-purple-700", label: "Asignado" },
-  EN_CURSO: { pill: "bg-yellow-100 text-yellow-700", label: "En Curso" },
-  PARADO:   { pill: "bg-orange-100 text-orange-700", label: "Parado" },
-  RESUELTO: { pill: "bg-emerald-100 text-emerald-700", label: "Resuelto" },
+const STATUS_PILL: Record<VulnStatus, string> = {
+  NUEVO:    "bg-blue-100 text-blue-700",
+  ASIGNADO: "bg-purple-100 text-purple-700",
+  EN_CURSO: "bg-yellow-100 text-yellow-700",
+  PARADO:   "bg-orange-100 text-orange-700",
+  RESUELTO: "bg-emerald-100 text-emerald-700",
 };
 
 const ALL_STATUSES: VulnStatus[] = ["NUEVO", "ASIGNADO", "EN_CURSO", "PARADO", "RESUELTO"];
@@ -73,6 +74,8 @@ let _toastId = 0;
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function VulnerabilitiesPage() {
+  const { t } = useLanguage();
+
   const [allRows, setAllRows] = useState<VulnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
@@ -110,7 +113,7 @@ export default function VulnerabilitiesPage() {
         }
       }
       setAllRows(rows);
-    } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
+    } catch (err) { setError(err instanceof Error ? err.message : t("common.unknown_error")); }
     finally { setLoading(false); }
   };
 
@@ -144,7 +147,7 @@ export default function VulnerabilitiesPage() {
         throw new Error(msg);
       }
 
-      addToast("success", `Estado actualizado a "${STATUS_STYLES[newStatus].label}"`);
+      addToast("success", `${t("vulnerabilities.status_updated")} "${t(`vulnerabilities.status.${newStatus}`)}"`);
     } catch (err) {
       console.error("Failed to update status:", err);
 
@@ -157,8 +160,8 @@ export default function VulnerabilitiesPage() {
         );
       }
 
-      const errMsg = err instanceof Error ? err.message : "Error desconocido";
-      addToast("error", `No se pudo actualizar el estado: ${errMsg}`);
+      const errMsg = err instanceof Error ? err.message : t("common.unknown_error");
+      addToast("error", `${t("vulnerabilities.update_failed")} ${errMsg}`);
     } finally {
       setUpdating((prev) => { const n = new Set(prev); n.delete(key); return n; });
     }
@@ -179,13 +182,23 @@ export default function VulnerabilitiesPage() {
   const handleExportCSV = () => {
     exportToCSV(
       `vulnerabilidades-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["CI", "Slug", "CVE", "Severidad", "CVSS Score", "Descripción", "Fuente", "Estado", "Importado"],
+      [
+        t("vulnerabilities.col_ci_affected"),
+        "Slug",
+        t("vulnerabilities.columns.cve"),
+        t("vulnerabilities.columns.severity"),
+        t("vulnerabilities.columns.score"),
+        t("vulnerabilities.columns.description"),
+        t("vulnerabilities.columns.source"),
+        t("vulnerabilities.columns.status"),
+        t("vulnerabilities.col_imported"),
+      ],
       filtered.map((row) => [
         row.ciName, row.ciSlug, row.cve, row.severity,
         row.cvss_score ?? "",
         row.description,
         row.source ?? "manual",
-        STATUS_STYLES[row.status]?.label ?? row.status,
+        t(`vulnerabilities.status.${row.status}`),
         row.importedAt ? new Date(row.importedAt).toLocaleDateString("es-ES") : "",
       ])
     );
@@ -205,7 +218,7 @@ export default function VulnerabilitiesPage() {
     <div className="min-h-screen bg-slate-50">
       {/* Toast notifications */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 w-80" role="region" aria-label="Notificaciones">
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 w-80" role="region" aria-label={t("vulnerabilities.notifications_region")}>
           {toasts.map((toast) => (
             <div
               key={toast.id}
@@ -224,7 +237,7 @@ export default function VulnerabilitiesPage() {
               <button
                 onClick={() => dismissToast(toast.id)}
                 className="flex-shrink-0 rounded p-0.5 hover:bg-black/10 transition-colors"
-                aria-label="Cerrar notificación"
+                aria-label={t("vulnerabilities.close_notification")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -239,14 +252,16 @@ export default function VulnerabilitiesPage() {
           <div className="flex items-center gap-3">
             <Shield className="h-5 w-5 text-indigo-500" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Gestión de Vulnerabilidades</h1>
+              <h1 className="text-xl font-bold text-slate-900">{t("vulnerabilities.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                {loading ? "Cargando…" : `${allRows.length} hallazgos en total · ${counts.open} abiertos`}
+                {loading
+                  ? t("vulnerabilities.loading_records")
+                  : t("vulnerabilities.header_subtitle", { total: allRows.length, open: counts.open })}
               </p>
             </div>
           </div>
           <button onClick={fetchAll} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" />Actualizar
+            <RefreshCw className="h-3.5 w-3.5" />{t("actions.refresh")}
           </button>
         </div>
       </header>
@@ -260,8 +275,8 @@ export default function VulnerabilitiesPage() {
               { label: "HIGH",     value: counts.high,     color: "bg-orange-50 text-orange-700 ring-orange-200" },
               { label: "MEDIUM",   value: counts.medium,   color: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
               { label: "LOW",      value: counts.low,      color: "bg-slate-50 text-slate-600 ring-slate-200" },
-              { label: "Abiertos", value: counts.open,     color: "bg-indigo-50 text-indigo-700 ring-indigo-200" },
-              { label: "Resueltos",value: counts.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+              { label: t("vulnerabilities.open_label"),     value: counts.open,     color: "bg-indigo-50 text-indigo-700 ring-indigo-200" },
+              { label: t("vulnerabilities.resolved_label"), value: counts.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
             ].map(({ label, value, color }) => (
               <div key={label} className={`rounded-xl px-4 py-3 ring-1 ring-inset ${color}`}>
                 <p className="text-2xl font-bold">{value}</p>
@@ -279,13 +294,16 @@ export default function VulnerabilitiesPage() {
             {activeFilterCount > 0 && (
               <>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-                  <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
+                  <Search className="h-3 w-3" />
+                  {activeFilterCount > 1
+                    ? t("vulnerabilities.active_filter_plural", { count: activeFilterCount })
+                    : t("vulnerabilities.active_filter", { count: activeFilterCount })}
                 </span>
                 <button
                   onClick={clearFilters}
                   className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
                 >
-                  <FilterX className="h-3.5 w-3.5" />Limpiar filtros
+                  <FilterX className="h-3.5 w-3.5" />{t("vulnerabilities.clear_filters")}
                 </button>
               </>
             )}
@@ -296,23 +314,23 @@ export default function VulnerabilitiesPage() {
               disabled={loading || filtered.length === 0}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 ml-auto order-last sm:order-none sm:ml-0"
             >
-              <Download className="h-3.5 w-3.5" />Exportar CSV ({filtered.length})
+              <Download className="h-3.5 w-3.5" />{t("vulnerabilities.export_csv_count", { count: filtered.length })}
             </button>
           </div>
 
           {loading && (
             <div className="flex items-center justify-center py-20 text-slate-400">
               <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-              <span className="text-sm">Cargando vulnerabilidades…</span>
+              <span className="text-sm">{t("vulnerabilities.loading_records")}</span>
             </div>
           )}
 
           {error && !loading && (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-red-500">
               <AlertTriangle className="h-8 w-8" />
-              <p className="text-sm font-medium">Error al cargar los datos</p>
+              <p className="text-sm font-medium">{t("vulnerabilities.load_error")}</p>
               <p className="text-xs text-slate-400">{error}</p>
-              <button onClick={fetchAll} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">Reintentar</button>
+              <button onClick={fetchAll} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t("vulnerabilities.retry")}</button>
             </div>
           )}
 
@@ -322,13 +340,13 @@ export default function VulnerabilitiesPage() {
                 <thead>
                   {/* Sort header row */}
                   <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">CI Afectado</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">CVE</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Severidad</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 max-w-xs">Descripción</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Fuente</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Estado</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Importado</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.col_ci_affected")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.cve")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.severity")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 max-w-xs">{t("vulnerabilities.columns.description")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.source")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.status")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.col_imported")}</th>
                   </tr>
                   {/* Inline filter row */}
                   <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
@@ -338,7 +356,7 @@ export default function VulnerabilitiesPage() {
                         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Buscar CI…"
+                          placeholder={t("vulnerabilities.search_ci_placeholder")}
                           value={filters.search}
                           onChange={(e) => setFilter("search", e.target.value)}
                           className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
@@ -351,7 +369,7 @@ export default function VulnerabilitiesPage() {
                         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="CVE…"
+                          placeholder={t("vulnerabilities.cve_placeholder")}
                           value={filters.cve}
                           onChange={(e) => setFilter("cve", e.target.value)}
                           className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
@@ -369,7 +387,7 @@ export default function VulnerabilitiesPage() {
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
-                        <option value="ALL">Todas</option>
+                        <option value="ALL">{t("vulnerabilities.all_severities")}</option>
                         <option value="CRITICAL">CRITICAL</option>
                         <option value="HIGH">HIGH</option>
                         <option value="MEDIUM">MEDIUM</option>
@@ -389,7 +407,7 @@ export default function VulnerabilitiesPage() {
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
-                        <option value="">Todas</option>
+                        <option value="">{t("vulnerabilities.all_sources")}</option>
                         <option value="manual">Manual</option>
                         <option value="greenbone">Greenbone</option>
                       </select>
@@ -405,12 +423,10 @@ export default function VulnerabilitiesPage() {
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
-                        <option value="ALL">Todos</option>
-                        <option value="NUEVO">Nuevo</option>
-                        <option value="ASIGNADO">Asignado</option>
-                        <option value="EN_CURSO">En Curso</option>
-                        <option value="PARADO">Parado</option>
-                        <option value="RESUELTO">Resuelto</option>
+                        <option value="ALL">{t("vulnerabilities.all_statuses")}</option>
+                        {ALL_STATUSES.map((s) => (
+                          <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
+                        ))}
                       </select>
                     </td>
                     {/* Date — no filter */}
@@ -422,15 +438,15 @@ export default function VulnerabilitiesPage() {
                     <tr>
                       <td colSpan={7} className="py-16 text-center text-slate-400 text-sm">
                         {allRows.length === 0
-                          ? "No hay vulnerabilidades. Importa un reporte desde los Conectores de Seguridad."
-                          : "No hay hallazgos que coincidan con los filtros."}
+                          ? t("vulnerabilities.no_vulns")
+                          : t("vulnerabilities.no_vulns_filtered")}
                       </td>
                     </tr>
                   ) : (
                     filtered.map((row, i) => {
                       const key = `${row.ciId}:${row.cve}`;
                       const isUpdating = updating.has(key);
-                      const statusStyle = STATUS_STYLES[row.status] ?? STATUS_STYLES["NUEVO"];
+                      const pillClass = STATUS_PILL[row.status] ?? STATUS_PILL["NUEVO"];
 
                       return (
                         <tr key={`${row.ciId}-${row.cve}-${i}`} className="hover:bg-indigo-50/30 transition-colors">
@@ -471,8 +487,8 @@ export default function VulnerabilitiesPage() {
                           {/* Status dropdown */}
                           <td className="px-6 py-3">
                             <div className="flex items-center gap-2">
-                              <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusStyle.pill}`}>
-                                {statusStyle.label}
+                              <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${pillClass}`}>
+                                {t(`vulnerabilities.status.${row.status}`)}
                               </span>
                               <div className="relative flex items-center">
                                 <select
@@ -482,13 +498,13 @@ export default function VulnerabilitiesPage() {
                                   className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-indigo-400 focus:outline-none disabled:opacity-50 disabled:cursor-wait"
                                 >
                                   {ALL_STATUSES.map((s) => (
-                                    <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
+                                    <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
                                   ))}
                                 </select>
                                 {isUpdating && (
                                   <RefreshCw
                                     className="absolute -right-5 h-3.5 w-3.5 animate-spin text-indigo-500"
-                                    aria-label="Guardando…"
+                                    aria-label={t("common.saving")}
                                   />
                                 )}
                               </div>
@@ -512,7 +528,7 @@ export default function VulnerabilitiesPage() {
 
           {!loading && !error && (
             <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-              Mostrando {filtered.length} de {allRows.length} vulnerabilidades
+              {t("vulnerabilities.footer_showing", { filtered: filtered.length, total: allRows.length })}
             </div>
           )}
         </div>

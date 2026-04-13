@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClipboardList, Download, FilterX, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
 import * as XLSX from "xlsx";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,10 +28,11 @@ function formatDateTime(iso: string): string {
 }
 
 function ActionBadge({ action }: { action: string }) {
+  const { t } = useLanguage();
   if (action.startsWith("CREATE_CI")) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
-        <Server className="h-3 w-3" />CI Creado
+        <Server className="h-3 w-3" />{t("audit.ci_created")}
       </span>
     );
   }
@@ -82,6 +84,8 @@ export default function AuditPage() {
     dateTo: "",
   });
 
+  const { t } = useLanguage();
+
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
@@ -102,11 +106,11 @@ export default function AuditPage() {
       const json: { total: number; data: AuditLog[] } = await res.json();
       setLogs(json.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Fetch on mount and whenever the date range changes
   useEffect(() => {
@@ -132,18 +136,23 @@ export default function AuditPage() {
 
   const exportExcel = () => {
     const rows = filtered.map((l) => ({
-      "Fecha/Hora":      formatDateTime(l.created_at),
-      "Usuario":         l.user_email,
-      "Acción":          l.action,
-      "Entidad":         l.entity,
-      "Nombre/Detalle":  l.entity_name ?? "",
-      "ID Afectado":     l.entity_id,
+      [t("audit.columns.date")]:    formatDateTime(l.created_at),
+      [t("common.email")]:          l.user_email,
+      [t("audit.columns.action")]:  l.action,
+      [t("audit.columns.entity")]:  l.entity,
+      [t("common.name")]:           l.entity_name ?? "",
+      "ID Afectado":                l.entity_id,
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Auditoría");
     XLSX.writeFile(wb, `auditoria_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
+
+  const filterBadgeLabel =
+    activeFilterCount > 1
+      ? t("audit.active_filters_plural", { count: activeFilterCount })
+      : t("audit.active_filters", { count: activeFilterCount });
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -153,9 +162,11 @@ export default function AuditPage() {
           <div className="flex items-center gap-3">
             <Shield className="h-5 w-5 text-indigo-500" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Log de Auditoría</h1>
+              <h1 className="text-xl font-bold text-slate-900">{t("audit.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                {loading ? "Cargando…" : `Últimos ${logs.length} eventos · visible para ADMIN y AUDITOR`}
+                {loading
+                  ? t("common.loading")
+                  : `${logs.length} ${t("audit.event_registry")}`}
               </p>
             </div>
           </div>
@@ -165,13 +176,13 @@ export default function AuditPage() {
               disabled={filtered.length === 0}
               className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Download className="h-3.5 w-3.5" />Excel
+              <Download className="h-3.5 w-3.5" />{t("audit.excel_label")}
             </button>
             <button
               onClick={() => fetchLogs(filters)}
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
             >
-              <RefreshCw className="h-3.5 w-3.5" />Actualizar
+              <RefreshCw className="h-3.5 w-3.5" />{t("actions.refresh")}
             </button>
           </div>
         </div>
@@ -182,17 +193,17 @@ export default function AuditPage() {
           {/* Toolbar */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
             <ClipboardList className="h-4 w-4 text-slate-400 flex-shrink-0" />
-            <h2 className="text-sm font-semibold text-slate-700 flex-1">Registro de eventos</h2>
+            <h2 className="text-sm font-semibold text-slate-700 flex-1">{t("audit.event_registry")}</h2>
             {activeFilterCount > 0 && (
               <>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
-                  <FilterX className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount !== 1 ? "s" : ""}
+                  <FilterX className="h-3 w-3" />{filterBadgeLabel}
                 </span>
                 <button
                   onClick={clearFilters}
                   className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors"
                 >
-                  <FilterX className="h-3.5 w-3.5" />Limpiar
+                  <FilterX className="h-3.5 w-3.5" />{t("audit.clear_filters")}
                 </button>
               </>
             )}
@@ -202,7 +213,7 @@ export default function AuditPage() {
           {loading && (
             <div className="flex items-center justify-center py-20 text-slate-400">
               <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
-              <span className="text-sm">Cargando registros…</span>
+              <span className="text-sm">{t("audit.loading_records")}</span>
             </div>
           )}
 
@@ -210,13 +221,13 @@ export default function AuditPage() {
           {error && !loading && (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-red-500">
               <AlertTriangle className="h-8 w-8" />
-              <p className="text-sm font-medium">Error al cargar los logs</p>
+              <p className="text-sm font-medium">{t("audit.load_error")}</p>
               <p className="text-xs text-slate-400">{error}</p>
               <button
                 onClick={() => fetchLogs(filters)}
                 className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
               >
-                Reintentar
+                {t("audit.retry")}
               </button>
             </div>
           )}
@@ -227,11 +238,11 @@ export default function AuditPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Fecha / Hora</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Usuario</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Acción</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Entidad</th>
-                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Nombre / Detalle</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("audit.columns.date")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("common.email")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("audit.columns.action")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("audit.columns.entity")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("common.name")}</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Afectado</th>
                   </tr>
                   {/* Filter row — 6 cells matching 6 columns */}
@@ -260,7 +271,7 @@ export default function AuditPage() {
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input
                           type="text"
-                          placeholder="Buscar usuario, ID…"
+                          placeholder={t("audit.search_placeholder")}
                           value={filters.search}
                           onChange={(e) => setFilter("search", e.target.value)}
                           className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100"
@@ -274,7 +285,7 @@ export default function AuditPage() {
                         onChange={(e) => setFilter("action", e.target.value)}
                         className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.action ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
                       >
-                        <option value="">Todas las acciones</option>
+                        <option value="">{t("audit.all_actions")}</option>
                         <option value="CREATE_CI">CREATE_CI</option>
                         <option value="UPDATE_VULN_STATUS">UPDATE_VULN_STATUS</option>
                         <option value="DELETE">DELETE</option>
@@ -288,7 +299,7 @@ export default function AuditPage() {
                         onChange={(e) => setFilter("entity", e.target.value)}
                         className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.entity ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
                       >
-                        <option value="">Todas las entidades</option>
+                        <option value="">{t("audit.all_entities")}</option>
                         <option value="CI">CI</option>
                         <option value="VULNERABILITY">VULNERABILITY</option>
                       </select>
@@ -304,8 +315,8 @@ export default function AuditPage() {
                     <tr>
                       <td colSpan={6} className="py-16 text-center text-slate-400 text-sm">
                         {logs.length === 0
-                          ? "No hay eventos de auditoría registrados aún."
-                          : "No hay resultados para la búsqueda."}
+                          ? t("audit.no_events")
+                          : t("audit.no_filtered")}
                       </td>
                     </tr>
                   ) : (
@@ -352,7 +363,12 @@ export default function AuditPage() {
           {/* Footer */}
           {!loading && !error && (
             <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-              Mostrando {filtered.length} de {logs.length} eventos{activeFilterCount > 0 ? ` · ${activeFilterCount} filtro${activeFilterCount !== 1 ? "s" : ""} activo${activeFilterCount !== 1 ? "s" : ""}` : ""} · máximo 500 más recientes
+              {t("audit.footer_showing", { filtered: filtered.length, total: logs.length })}
+              {activeFilterCount > 0
+                ? ` · ${activeFilterCount > 1
+                    ? t("audit.active_filters_plural", { count: activeFilterCount })
+                    : t("audit.active_filters", { count: activeFilterCount })}`
+                : ""}
             </div>
           )}
         </div>

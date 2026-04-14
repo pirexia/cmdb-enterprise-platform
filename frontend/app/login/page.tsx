@@ -11,6 +11,18 @@ import {
   ShieldCheck, ShieldAlert, QrCode, CheckCircle2,
 } from "lucide-react";
 
+// Microsoft logo SVG (inline — no external dep)
+function MicrosoftLogo() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+      <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+    </svg>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type LoginStep =
@@ -30,6 +42,10 @@ export default function LoginPage() {
   const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
   const themeColor  = process.env.NEXT_PUBLIC_THEME_COLOR  || "#4f46e5";
   const ttlDays     = process.env.NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS || "30";
+
+  // ── SSO status ────────────────────────────────────────────────────────────
+  const [ssoEnabled,   setSsoEnabled]   = useState(false);
+  const [ssoLoading,   setSsoLoading]   = useState(false);
 
   // ── State ──
   const [step,        setStep]        = useState<LoginStep>("credentials");
@@ -51,6 +67,30 @@ export default function LoginPage() {
   const [setupCode,       setSetupCode]       = useState("");
   const [setupTrustDevice,setSetupTrustDevice]= useState(false);
   const [showSecret,      setShowSecret]      = useState(false);
+
+  // ── Load SSO status + handle error from URL ────────────────────────────────
+  useEffect(() => {
+    // Check if SSO is enabled on this instance
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/auth/sso/status`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { enabled: boolean } | null) => { if (data?.enabled) setSsoEnabled(true); })
+      .catch(() => {/* SSO disabled or unreachable — ignore */});
+
+    // Read SSO error from URL (backend redirects with ?error=sso_*)
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get("error");
+    if (urlError === "sso_failed") {
+      setError(t("login.sso_error"));
+    } else if (urlError === "sso_not_provisioned") {
+      setError(t("login.sso_not_provisioned"));
+    } else if (urlError === "sso_account_disabled") {
+      setError(t("login.sso_disabled"));
+    }
+    if (urlError) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Load QR when entering setup screen ────────────────────────────────────
   useEffect(() => {
@@ -257,6 +297,31 @@ export default function LoginPage() {
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.verifying") : t("login.submit")}
                 </button>
+
+                {/* ── Microsoft SSO button ────────────────────────────────── */}
+                {ssoEnabled && (
+                  <>
+                    <div className="relative flex items-center gap-3 py-1">
+                      <div className="flex-1 border-t border-slate-200" />
+                      <span className="text-xs text-slate-400 uppercase tracking-wide">{t("login.sso_divider")}</span>
+                      <div className="flex-1 border-t border-slate-200" />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={ssoLoading}
+                      onClick={() => {
+                        setSsoLoading(true);
+                        window.location.href = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/auth/sso/microsoft`;
+                      }}
+                      className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    >
+                      {ssoLoading
+                        ? <><Loader2 className="h-4 w-4 animate-spin" />{t("login.sso_loading")}</>
+                        : <><MicrosoftLogo />{t("login.sso_button")}</>
+                      }
+                    </button>
+                  </>
+                )}
               </form>
             )}
 

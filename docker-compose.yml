@@ -62,6 +62,15 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS}
       HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
       DOCUMENTS_DIR: /app/documents
+      # Microsoft 365 SSO (optional — leave USE_MICROSOFT_SSO=false to disable)
+      USE_MICROSOFT_SSO:    ${USE_MICROSOFT_SSO:-false}
+      AZURE_TENANT_ID:      ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID:      ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET:  ${AZURE_CLIENT_SECRET:-}
+      AZURE_REDIRECT_URI:   ${AZURE_REDIRECT_URI:-}
+      AZURE_ALLOWED_DOMAIN: ${AZURE_ALLOWED_DOMAIN:-}
+      FRONTEND_URL:         ${FRONTEND_URL:-http://localhost:3001}
+      AZURE_AUTO_PROVISION: ${AZURE_AUTO_PROVISION:-false}
     volumes:
       - ./backend/certs:/app/certs:Z
       - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z

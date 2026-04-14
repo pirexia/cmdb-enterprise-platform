@@ -589,7 +589,13 @@
     "setup_subtitle_user": "Configurar autenticación MFA",
     "mfa_verify_header": "Verificación en dos pasos (MFA)",
     "verify_totp_header": "Verifica tu aplicación TOTP",
-    "app_configured": "Aplicación configurada. Introduce el código para confirmar."
+    "app_configured": "Aplicación configurada. Introduce el código para confirmar.",
+    "sso_button": "Iniciar sesión con Microsoft",
+    "sso_divider": "o",
+    "sso_loading": "Redirigiendo a Microsoft…",
+    "sso_error": "El inicio de sesión SSO ha fallado. Usa tus credenciales o contacta con tu administrador.",
+    "sso_not_provisioned": "Tu cuenta de Microsoft no está registrada en esta plataforma. Contacta con tu administrador.",
+    "sso_disabled": "Tu cuenta está deshabilitada. Contacta con tu administrador."
   },
   "add_ci_modal": {
     "title": "Nuevo CI",

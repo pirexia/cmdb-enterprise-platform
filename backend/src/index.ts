@@ -17,6 +17,11 @@ import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
+import {
+  SSO_ENABLED, ALLOWED_DOMAIN, AUTO_PROVISION, FRONTEND_URL,
+  buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
+  generateCodeVerifier, generateCodeChallenge,
+} from './services/microsoftSso';
 import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import multer from 'multer';
@@ -129,6 +134,28 @@ const loginLimiter = rateLimit({
   message: { error: 'Demasiados intentos de acceso. Inténtelo de nuevo en 15 minutos.' },
   skipSuccessfulRequests: true, // only count failed attempts
 });
+
+// SSO callback limiter: 20 requests per 15 minutes per IP
+const ssoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many SSO attempts. Try again in 15 minutes.' },
+});
+
+// In-memory SSO state store: state → { nonce, codeVerifier, exp }
+// TTL: 10 minutes. Cleaned up on each new initiation request.
+interface SsoStateEntry { nonce: string; codeVerifier: string; exp: number }
+const ssoStateStore = new Map<string, SsoStateEntry>();
+const SSO_STATE_TTL_MS = 10 * 60 * 1000;
+
+function purgeSsoState(): void {
+  const now = Date.now();
+  for (const [key, val] of ssoStateStore.entries()) {
+    if (val.exp < now) ssoStateStore.delete(key);
+  }
+}
 
 // General API limiter: 300 requests per minute per IP
 const apiLimiter = rateLimit({
@@ -431,6 +458,191 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/auth/sso/status
+ * Returns whether Microsoft SSO is configured and which domain is expected.
+ * Public — no authentication required. Used by the frontend login page.
+ */
+app.get('/api/auth/sso/status', (_req: Request, res: Response) => {
+  res.json({ enabled: SSO_ENABLED, domain: ALLOWED_DOMAIN || undefined });
+});
+
+/**
+ * GET /api/auth/sso/microsoft
+ * Initiates the Microsoft SSO OAuth2 Authorization Code + PKCE flow.
+ * Generates and stores state (CSRF) + nonce (replay protection) server-side,
+ * then redirects the browser to the Azure AD single-tenant authorization URL.
+ */
+app.get('/api/auth/sso/microsoft', ssoLimiter, (req: Request, res: Response) => {
+  if (!SSO_ENABLED) {
+    res.status(404).json({ error: 'Microsoft SSO is not enabled' });
+    return;
+  }
+
+  purgeSsoState();
+
+  const state        = crypto.randomUUID();
+  const nonce        = crypto.randomBytes(16).toString('hex');
+  const codeVerifier = generateCodeVerifier();
+  const challenge    = generateCodeChallenge(codeVerifier);
+
+  ssoStateStore.set(state, { nonce, codeVerifier, exp: Date.now() + SSO_STATE_TTL_MS });
+
+  const authUrl = buildAuthorizationUrl(state, nonce, challenge);
+  res.redirect(302, authUrl);
+});
+
+/**
+ * GET /api/auth/sso/microsoft/callback
+ * Handles the Azure AD OAuth2 callback. Validates state, exchanges code for
+ * tokens, validates the ID token fully, finds/creates the user, creates a
+ * trusted device entry (SSO = trusted, no TOTP ever needed), issues a JWT,
+ * and redirects to the frontend.
+ */
+app.get('/api/auth/sso/microsoft/callback', ssoLimiter, async (req: Request, res: Response) => {
+  const REDIRECT_ERROR = `${FRONTEND_URL}/login?error=sso_failed`;
+
+  if (!SSO_ENABLED) {
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  const { code, state, error: oauthError } = req.query as Record<string, string | undefined>;
+
+  // Azure AD returned an error (e.g., user cancelled, access denied)
+  if (oauthError) {
+    log.warn(`[SSO callback] Azure AD error: ${oauthError}`);
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  if (!code || !state) {
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  // CSRF: validate state
+  const stateEntry = ssoStateStore.get(state);
+  if (!stateEntry || stateEntry.exp < Date.now()) {
+    log.warn('[SSO callback] Invalid or expired state parameter');
+    ssoStateStore.delete(state);
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+  ssoStateStore.delete(state); // one-time use
+
+  try {
+    // Exchange code for tokens (PKCE)
+    const tokens = await exchangeCodeForTokens(code, stateEntry.codeVerifier);
+
+    // Validate ID token (signature, iss, aud, tid, nonce, domain)
+    const claims = await validateIdToken(tokens.id_token, stateEntry.nonce);
+
+    const msOid   = claims.oid;
+    const email   = claims.email!;
+    const name    = claims.name ?? email.split('@')[0];
+    const username = email.split('@')[0];
+
+    // ── Find or provision user ────────────────────────────────────────────────
+    type UserRow = {
+      id: string; username: string; email: string; role: string;
+      active: boolean; sso_external_id: string | null;
+    };
+
+    // 1. Lookup by Azure OID (sso_external_id = oid, sso_provider = 'microsoft')
+    let rows = await prisma.$queryRaw<UserRow[]>`
+      SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+      FROM "users"
+      WHERE sso_external_id = ${msOid} AND sso_provider = 'microsoft'
+      LIMIT 1
+    `;
+
+    // 2. If not found by OID, try by email and link the account
+    if (rows.length === 0) {
+      rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+        FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+      if (rows.length > 0) {
+        // Link existing account to Microsoft SSO
+        await prisma.$executeRaw`
+          UPDATE "users"
+          SET sso_external_id = ${msOid}, sso_provider = 'microsoft', updated_at = now()
+          WHERE id = ${rows[0].id}::uuid
+        `;
+        log.info(`[SSO] Linked existing user ${email} to Microsoft OID ${msOid}`);
+      }
+    }
+
+    // 3. Auto-provision new user if allowed
+    if (rows.length === 0) {
+      if (!AUTO_PROVISION) {
+        log.warn(`[SSO] User ${email} not found and auto-provision is disabled`);
+        res.redirect(302, `${FRONTEND_URL}/login?error=sso_not_provisioned`);
+        return;
+      }
+      await prisma.$executeRaw`
+        INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${username}, ${email}, NULL, 'VIEWER', ${msOid}, 'microsoft', now(), now())
+      `;
+      rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+        FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+      log.info(`[SSO] Auto-provisioned new Microsoft SSO user: ${email} (name: ${name})`);
+    }
+
+    const user = rows[0];
+
+    if (!user.active) {
+      log.warn(`[SSO] Disabled account attempted SSO login: ${email}`);
+      res.redirect(302, `${FRONTEND_URL}/login?error=sso_account_disabled`);
+      return;
+    }
+
+    // ── Create trusted device (SSO auth = trusted, MFA never required) ────────
+    const deviceToken = crypto.randomBytes(32).toString('hex');
+    const expiry      = new Date();
+    expiry.setDate(expiry.getDate() + (parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10) || 30));
+    const ua = req.headers['user-agent'] ?? '';
+    const ip = req.ip ?? '';
+    await prisma.$executeRaw`
+      INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+      VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
+      ON CONFLICT DO NOTHING
+    `;
+
+    // ── Issue JWT ──────────────────────────────────────────────────────────────
+    const payload: JwtPayload = {
+      id: user.id, username: user.username, email: user.email, role: user.role as UserRole,
+    };
+    const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
+
+    // Audit log
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+      VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
+    `;
+
+    log.info(`[SSO] Successful login: ${email}`);
+
+    // ── Redirect to frontend with token and device token ──────────────────────
+    // The frontend reads these, stores in localStorage, and clears the URL.
+    const redirectUrl = new URL(`${FRONTEND_URL}/auth/sso-callback`);
+    redirectUrl.searchParams.set('token', token);
+    redirectUrl.searchParams.set('deviceToken', deviceToken);
+    redirectUrl.searchParams.set('user', JSON.stringify({
+      id: user.id, username: user.username, email: user.email,
+      role: user.role, mfa_enabled: false,
+    }));
+    res.redirect(302, redirectUrl.toString());
+
+  } catch (err) {
+    log.warn('[SSO callback] Error during SSO flow:', err);
+    res.redirect(302, REDIRECT_ERROR);
+  }
+});
+
+/**
  * POST /api/auth/login
  * Returns a signed JWT on valid credentials.
  * Handles MFA verification, trusted devices, and first-login MFA prompts.
@@ -692,16 +904,20 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     return;
   }
   try {
-    type UserRow = { id: string; password: string | null; sso_external_id: string | null; role: string };
+    type UserRow = { id: string; password: string | null; sso_external_id: string | null; sso_provider: string | null; role: string };
     const rows = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, password, sso_external_id, role FROM "users" WHERE id = ${req.user!.id}::uuid
+      SELECT id, password, sso_external_id, sso_provider, role FROM "users" WHERE id = ${req.user!.id}::uuid
     `;
     const user = rows[0];
     if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
-    // LDAP/AD users cannot change password here
+    // SSO users cannot change password here
     if (user.sso_external_id) {
-      res.status(403).json({ error: 'LDAP_USER', message: 'Los usuarios LDAP/AD deben cambiar su contraseña a través del controlador de dominio.' });
+      if (user.sso_provider === 'microsoft') {
+        res.status(403).json({ error: 'SSO_USER', message: 'Los usuarios de Microsoft SSO deben cambiar su contraseña en el portal de Microsoft 365.' });
+      } else {
+        res.status(403).json({ error: 'LDAP_USER', message: 'Los usuarios LDAP/AD deben cambiar su contraseña a través del controlador de dominio.' });
+      }
       return;
     }
     if (!user.password) { res.status(400).json({ error: 'No hay contraseña local configurada.' }); return; }
@@ -759,15 +975,19 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
   const { newPassword } = req.body as { newPassword?: string };
   if (!newPassword) { res.status(400).json({ error: 'newPassword is required.' }); return; }
   try {
-    type UserRow = { id: string; sso_external_id: string | null; role: string; email: string };
+    type UserRow = { id: string; sso_external_id: string | null; sso_provider: string | null; role: string; email: string };
     const rows = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, sso_external_id, role, email FROM "users" WHERE id = ${id}::uuid
+      SELECT id, sso_external_id, sso_provider, role, email FROM "users" WHERE id = ${id}::uuid
     `;
     const user = rows[0];
     if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
     if (user.sso_external_id) {
-      res.status(403).json({ error: 'LDAP_USER', message: 'No se puede resetear la contraseña de usuarios LDAP/AD.' });
+      if (user.sso_provider === 'microsoft') {
+        res.status(403).json({ error: 'SSO_USER', message: 'No se puede resetear la contraseña de usuarios de Microsoft SSO.' });
+      } else {
+        res.status(403).json({ error: 'LDAP_USER', message: 'No se puede resetear la contraseña de usuarios LDAP/AD.' });
+      }
       return;
     }
 

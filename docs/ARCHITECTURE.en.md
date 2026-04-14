@@ -530,9 +530,11 @@ The reference catalogues (metrics and types) are managed through the `/api/maste
 
 | Control | Implementation |
 |---------|---------------|
-| Authentication | JWT HS256 (8h) + bcrypt cost-10 |
+| Authentication | JWT HS256 (8h, algorithm explicit in both sign and verify) + bcrypt cost-12 |
 | MFA | TOTP RFC 6238 (speakeasy). Admin: mandatory on first login (limited token `mfaSetupRequired`). VIEWER: suggested (once-only, tracked via `mfa_prompted_at`). |
-| Trusted Devices | 32-byte hex token in `trusted_devices` DB + localStorage. Configurable TTL (`TRUSTED_DEVICE_TTL_DAYS`). Daily cleanup cron (02:00). |
+| Trusted Devices | 32-byte hex token in `trusted_devices` DB + localStorage. Bound to client IP and User-Agent at creation; validation enforces strict equality (no NULL bypass). Configurable TTL (`TRUSTED_DEVICE_TTL_DAYS`). Daily cleanup cron (02:00). |
+| JWT Expiry (frontend) | `AuthContext` decodes the `exp` claim (pure base64, no library) and discards expired tokens on mount, every 60 s, and on `visibilitychange`. `apiFetch` validates before every request. |
+| Internal Errors | Express `catch` blocks always return `{ error: 'Internal server error' }` — raw SQL messages and stack traces are never sent to clients. |
 | LDAP/AD | Optional via ldap-authentication; admin-bind+search (recommended) or direct-bind; 5s fail-safe timeout; shadow user with `sso_external_id` |
 | RBAC | ADMIN / VIEWER with `requireAdmin` middleware |
 | HTTP Headers | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |
@@ -586,6 +588,8 @@ Flat columns in `configuration_items` were chosen because:
 | Custom i18n context | next-intl, react-i18next | No App Router complications, minimal bundle, full control |
 | Alpine base images | Ubuntu, Debian | Minimal image (~50MB), smaller attack surface |
 | non-root USER node | root (default) | Hardening requirement: principle of least privilege |
+| `@@index` on all FKs | No explicit indexes (Prisma default) | FK columns without indexes cause sequential scans on JOINs and filters. Indexes added on: `ci_types(categoryCode)`, `trusted_devices(userId)`, `locations(parentLocationId)`, `contracts(vendorId, parentContractId)`, `branches(supportAreaId)`, `device_models(manufacturerId)`, `licenses(status, endDate, licenseTypeId, licenseMetricId, vendorId)`, `document_licenses(documentId)`, and other relational tables. |
+| Explicit `onDelete`/`onUpdate` on all relations | Leave unspecified (implicit behaviour) | Implicit referential actions are ambiguous across Prisma/PostgreSQL versions. Policy: `Cascade` for child/junction records, `SetNull` for optional FKs on CIs, `Restrict` for master-data references. |
 
 ---
 

@@ -8,6 +8,7 @@ import {
   FileText, CalendarX2, BarChart3,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ function StatCard({ label, value, icon, color, loading, href }: {
   label: string; value: number; icon: React.ReactNode;
   color: string; loading: boolean; href?: string;
 }) {
+  const { t } = useLanguage();
   const inner = (
     <div className={`flex items-center gap-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 transition-all ${href ? "hover:shadow-md hover:ring-indigo-200 cursor-pointer" : ""}`}>
       <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${color}`}>{icon}</div>
@@ -48,7 +50,7 @@ function StatCard({ label, value, icon, color, loading, href }: {
         {loading
           ? <div className="mt-1 h-8 w-16 animate-pulse rounded-md bg-slate-200" />
           : <p className="text-3xl font-bold text-slate-800">{value}</p>}
-        {href && !loading && <p className="text-xs text-indigo-500 mt-0.5 font-medium">Ver detalles →</p>}
+        {href && !loading && <p className="text-xs text-indigo-500 mt-0.5 font-medium">{t("dashboard.view_details")}</p>}
       </div>
     </div>
   );
@@ -74,6 +76,8 @@ function MiniBar({ label, value, total, color }: { label: string; value: number;
 // ─── Security Widget ──────────────────────────────────────────────────────────
 
 function SecurityWidget({ cis, loading }: { cis: CI[]; loading: boolean }) {
+  const { t } = useLanguage();
+
   if (loading) {
     return (
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-3">
@@ -97,9 +101,9 @@ function SecurityWidget({ cis, loading }: { cis: CI[]; loading: boolean }) {
     <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-700">
         <ShieldAlert className="h-4 w-4 text-slate-400" />
-        Estado de Seguridad Global
+        {t("dashboard.security_title")}
         <Link href="/vulnerabilities" className="ml-auto text-xs font-medium text-indigo-500 hover:text-indigo-700">
-          Ver vulnerabilidades →
+          {t("dashboard.view_vulnerabilities")}
         </Link>
       </h2>
 
@@ -108,22 +112,22 @@ function SecurityWidget({ cis, loading }: { cis: CI[]; loading: boolean }) {
         <Link href="/vulnerabilities" className="rounded-xl bg-emerald-50 p-3 text-center ring-1 ring-emerald-100 hover:ring-emerald-300 transition-all">
           <ShieldCheck className="mx-auto h-5 w-5 text-emerald-600 mb-1" />
           <p className="text-lg font-bold text-emerald-700">{clean}</p>
-          <p className="text-[11px] text-emerald-600">Limpios</p>
+          <p className="text-[11px] text-emerald-600">{t("dashboard.clean_label")}</p>
         </Link>
         <Link href="/vulnerabilities" className="rounded-xl bg-red-50 p-3 text-center ring-1 ring-red-100 hover:ring-red-300 transition-all">
           <ShieldAlert className="mx-auto h-5 w-5 text-red-600 mb-1" />
           <p className="text-lg font-bold text-red-700">{compromised}</p>
-          <p className="text-[11px] text-red-600">Comprometidos</p>
+          <p className="text-[11px] text-red-600">{t("dashboard.compromised_label")}</p>
         </Link>
         <div className="rounded-xl bg-slate-50 p-3 text-center ring-1 ring-slate-200">
           <ShieldOff className="mx-auto h-5 w-5 text-slate-400 mb-1" />
           <p className="text-lg font-bold text-slate-600">{notScanned}</p>
-          <p className="text-[11px] text-slate-500">No escaneados</p>
+          <p className="text-[11px] text-slate-500">{t("dashboard.not_scanned")}</p>
         </div>
         <Link href="/reports" className="rounded-xl bg-indigo-50 p-3 text-center ring-1 ring-indigo-100 hover:ring-indigo-300 transition-all">
           <Server className="mx-auto h-5 w-5 text-indigo-600 mb-1" />
           <p className="text-lg font-bold text-indigo-700">{scanned.length}</p>
-          <p className="text-[11px] text-indigo-600">Ver informe</p>
+          <p className="text-[11px] text-indigo-600">{t("dashboard.view_report")}</p>
         </Link>
       </div>
 
@@ -132,15 +136,14 @@ function SecurityWidget({ cis, loading }: { cis: CI[]; loading: boolean }) {
         <MiniBar label="CRITICAL"   value={critical} total={cis.length} color="bg-red-600" />
         <MiniBar label="HIGH"       value={high}     total={cis.length} color="bg-orange-500" />
         <MiniBar label="MEDIUM/LOW" value={medium}   total={cis.length} color="bg-yellow-400" />
-        <MiniBar label="Limpios"    value={clean}    total={cis.length} color="bg-emerald-500" />
+        <MiniBar label={t("dashboard.clean_label")} value={clean} total={cis.length} color="bg-emerald-500" />
       </div>
 
       {compromised > 0 && (
         <Link href="/vulnerabilities" className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-xs text-red-700 hover:bg-red-100 transition-colors">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>
-            <strong>{compromised}</strong> activo{compromised !== 1 ? "s" : ""} con vulnerabilidades detectadas.
-            Haz clic para gestionar.
+            <strong>{compromised}</strong> {t("dashboard.compromised_cta")}
           </span>
         </Link>
       )}
@@ -151,6 +154,8 @@ function SecurityWidget({ cis, loading }: { cis: CI[]; loading: boolean }) {
 // ─── Contracts Widget ─────────────────────────────────────────────────────────
 
 function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loading: boolean }) {
+  const { t } = useLanguage();
+
   if (loading) {
     return (
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 space-y-3">
@@ -171,9 +176,9 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
     <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
       <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-700">
         <FileText className="h-4 w-4 text-slate-400" />
-        Contratos y Adendas
+        {t("dashboard.contracts_section")}
         <Link href="/contracts" className="ml-auto text-xs font-medium text-indigo-500 hover:text-indigo-700">
-          Gestionar contratos →
+          {t("dashboard.manage_contracts")}
         </Link>
       </h2>
 
@@ -181,17 +186,17 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
         <Link href="/contracts" className="rounded-xl bg-indigo-50 p-3 text-center ring-1 ring-indigo-100 hover:ring-indigo-300 transition-all">
           <FileText className="mx-auto h-5 w-5 text-indigo-600 mb-1" />
           <p className="text-lg font-bold text-indigo-700">{contracts.length}</p>
-          <p className="text-[11px] text-indigo-600">Total contratos</p>
+          <p className="text-[11px] text-indigo-600">{t("dashboard.total_contracts_label")}</p>
         </Link>
         <Link href="/contracts" className="rounded-xl bg-violet-50 p-3 text-center ring-1 ring-violet-100 hover:ring-violet-300 transition-all">
           <BarChart3 className="mx-auto h-5 w-5 text-violet-600 mb-1" />
           <p className="text-lg font-bold text-violet-700">{addendums}</p>
-          <p className="text-[11px] text-violet-600">Adendas</p>
+          <p className="text-[11px] text-violet-600">{t("dashboard.addendum_label")}</p>
         </Link>
         <Link href="/contracts" className="rounded-xl bg-emerald-50 p-3 text-center ring-1 ring-emerald-100 hover:ring-emerald-300 transition-all">
           <ShieldCheck className="mx-auto h-5 w-5 text-emerald-600 mb-1" />
           <p className="text-lg font-bold text-emerald-700">{active}</p>
-          <p className="text-[11px] text-emerald-600">Activos</p>
+          <p className="text-[11px] text-emerald-600">{t("dashboard.active_label")}</p>
         </Link>
         <Link href="/contracts" className={`rounded-xl p-3 text-center ring-1 transition-all ${expiring > 0 || expired > 0 ? "bg-orange-50 ring-orange-100 hover:ring-orange-300" : "bg-slate-50 ring-slate-100"}`}>
           <CalendarX2 className={`mx-auto h-5 w-5 mb-1 ${expiring > 0 || expired > 0 ? "text-orange-500" : "text-slate-400"}`} />
@@ -199,7 +204,7 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
             {expired > 0 ? expired : expiring}
           </p>
           <p className={`text-[11px] ${expired > 0 ? "text-red-600" : expiring > 0 ? "text-orange-600" : "text-slate-500"}`}>
-            {expired > 0 ? "Vencidos" : "Vencen <60d"}
+            {expired > 0 ? t("dashboard.expired_label") : t("dashboard.expiring_60d")}
           </p>
         </Link>
       </div>
@@ -210,7 +215,7 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
           <span>
             {expired > 0 && <><strong>{expired}</strong> contrato{expired !== 1 ? "s" : ""} vencido{expired !== 1 ? "s" : ""}. </>}
             {expiring > 0 && <><strong>{expiring}</strong> vence{expiring === 1 ? "" : "n"} en los próximos 60 días. </>}
-            Haz clic para renovar.
+            {t("dashboard.contracts_renew_cta")}
           </span>
         </Link>
       )}
@@ -225,6 +230,7 @@ export default function DashboardPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+  const { t } = useLanguage();
 
   const fetchAll = async () => {
     setLoading(true); setError(null);
@@ -265,14 +271,14 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Dashboard</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Resumen general de la plataforma</p>
+            <h1 className="text-xl font-bold text-slate-900">{t("dashboard.title")}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{t("dashboard.subtitle")}</p>
           </div>
           <button onClick={fetchAll} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" />Actualizar
+            <RefreshCw className="h-3.5 w-3.5" />{t("dashboard.refresh")}
           </button>
         </div>
       </header>
@@ -281,7 +287,7 @@ export default function DashboardPage() {
         {error && (
           <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            No se pudo conectar con el backend: {error}
+            {t("dashboard.backend_error")} {error}
           </div>
         )}
 
@@ -290,19 +296,18 @@ export default function DashboardPage() {
           <Link href="/reports" className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700 hover:bg-orange-100 transition-colors">
             <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-500" />
             <span>
-              <strong>{eolUrgent}</strong> activo{eolUrgent !== 1 ? "s" : ""} próximo{eolUrgent !== 1 ? "s" : ""} a EoL/EoS (&lt;90 días).
-              Haz clic para ver el informe de obsolescencia.
+              <strong>{eolUrgent}</strong> {t("dashboard.eol_approaching")}
             </span>
           </Link>
         )}
 
         {/* Summary Cards */}
         <section>
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">Totales</h2>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">{t("dashboard.totals_section")}</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="Total CIs" value={total}    loading={loading} color="bg-indigo-50"  href="/inventory" icon={<Server  className="h-6 w-6 text-indigo-600" />} />
-            <StatCard label="Hardware"  value={hardware} loading={loading} color="bg-emerald-50" href="/inventory" icon={<Cpu     className="h-6 w-6 text-emerald-600" />} />
-            <StatCard label="Software"  value={software} loading={loading} color="bg-violet-50"  href="/inventory" icon={<Package className="h-6 w-6 text-violet-600" />} />
+            <StatCard label={t("dashboard.total_cis")} value={total}    loading={loading} color="bg-indigo-50"  href="/inventory" icon={<Server  className="h-6 w-6 text-indigo-600" />} />
+            <StatCard label={t("dashboard.hardware_label")}  value={hardware} loading={loading} color="bg-emerald-50" href="/inventory" icon={<Cpu     className="h-6 w-6 text-emerald-600" />} />
+            <StatCard label={t("dashboard.software_label")}  value={software} loading={loading} color="bg-violet-50"  href="/inventory" icon={<Package className="h-6 w-6 text-violet-600" />} />
           </div>
         </section>
 
@@ -311,7 +316,7 @@ export default function DashboardPage() {
           <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-700">
               <Globe className="h-4 w-4 text-slate-400" />
-              CIs por Entorno
+              {t("dashboard.by_environment")}
             </h2>
             <div className="space-y-3">
               <MiniBar label="Production"  value={byEnv("PRODUCTION")}  total={total} color="bg-red-400" />
@@ -325,7 +330,7 @@ export default function DashboardPage() {
           <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="mb-5 flex items-center gap-2 text-sm font-semibold text-slate-700">
               <AlertTriangle className="h-4 w-4 text-slate-400" />
-              CIs por Criticidad
+              {t("dashboard.by_criticality")}
             </h2>
             <div className="space-y-3">
               <MiniBar label="Mission Critical" value={byCrit("MISSION_CRITICAL")} total={total} color="bg-red-600" />
@@ -347,11 +352,11 @@ export default function DashboardPage() {
           <div className="flex items-start gap-3">
             <Wrench className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-500" />
             <div>
-              <p className="text-sm font-semibold text-indigo-800">Para empezar</p>
+              <p className="text-sm font-semibold text-indigo-800">{t("dashboard.getting_started_title")}</p>
               <p className="mt-1 text-sm text-indigo-600">
-                Ve a <Link href="/inventory" className="font-bold underline">Inventario de CIs</Link> para ver y escanear activos.
-                Usa <Link href="/map" className="font-bold underline">Mapa de Dependencias</Link> para visualizar relaciones.
-                Genera informes ejecutivos desde <Link href="/reports" className="font-bold underline">Reportes</Link>.
+                Ve a <Link href="/inventory" className="font-bold underline">{t("dashboard.inventory_link")}</Link> para ver y escanear activos.
+                Usa <Link href="/map" className="font-bold underline">{t("dashboard.map_link")}</Link> para visualizar relaciones.
+                Genera informes ejecutivos desde <Link href="/reports" className="font-bold underline">{t("dashboard.reports_link")}</Link>.
               </p>
             </div>
           </div>

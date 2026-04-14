@@ -704,6 +704,8 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v1.6.4 — Word-splitting fix in `update.sh`:** All references to the `COMPOSE_CMD` variable (which may hold `docker compose` — two words) were replaced with the `COMPOSE_CMD_ARRAY[@]` array and the `# shellcheck disable=SC2086` suppression comment was removed. This prevents unexpected behaviour when paths or values contain spaces.
+
 5. **Migration confirmation:** Detects new Prisma migration files and displays the list before proceeding. In interactive mode it requests explicit confirmation.
 
 #### Update log
@@ -1479,3 +1481,214 @@ oc rollout status deployment/cmdb-frontend -n cmdb-prod
 ```
 
 > Prisma migrations in OpenShift must be run manually or as a Kubernetes Job before the rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`
+
+---
+
+## 15. Microsoft 365 SSO Configuration (Azure AD / Entra ID)
+
+Single Sign-On (SSO) with Microsoft 365 lets users authenticate to the platform using their corporate Azure Active Directory (Entra ID) credentials via OAuth 2.0 Authorization Code + PKCE. This eliminates additional password management and delegates authentication — including corporate MFA and Conditional Access policies — to Microsoft. For users, the process is a single click on the login screen.
+
+> This feature is optional. Local (bcrypt) authentication and LDAP integration continue to work regardless of whether SSO is enabled.
+
+---
+
+### Step 1: Register the Application in Azure AD
+
+1. Go to [portal.azure.com](https://portal.azure.com) using a tenant administrator account.
+2. Navigate to **Azure Active Directory → App registrations → + New registration**.
+3. Fill in the form:
+   - **Name:** `CMDB Enterprise Platform` (or any name your organization prefers)
+   - **Supported account types:** select **"Accounts in this organizational directory only (Single tenant)"** — this is critical to prevent external accounts.
+   - **Redirect URI:** select platform **Web** and enter:
+     ```
+     https://YOUR_DOMAIN/api/auth/sso/microsoft/callback
+     ```
+     Replace `YOUR_DOMAIN` with your actual installation domain (e.g., `app.company.com`).
+4. Click **Register**.
+5. On the app registration overview page, note:
+   - **Application (client) ID** → value for `AZURE_CLIENT_ID`
+   - **Directory (tenant) ID** → value for `AZURE_TENANT_ID`
+
+---
+
+### Step 2: Create a Client Secret
+
+1. Inside the app registration, go to **Certificates & secrets → Client secrets → + New client secret**.
+2. Fill in the fields:
+   - **Description:** `CMDB SSO`
+   - **Expires:** `24 months` (recommended; note the expiry date for renewal planning)
+3. Click **Add**.
+4. **Copy the secret value immediately** — Azure only shows it once. This value is `AZURE_CLIENT_SECRET`.
+
+> The secret value looks like `~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`. If you navigate away before copying it, you must create a new one.
+
+---
+
+### Step 3: API Permissions
+
+The required permissions are standard delegated Microsoft Graph permissions. Admin consent is not required for any of them.
+
+1. Go to **API permissions → + Add a permission → Microsoft Graph → Delegated permissions**.
+2. Select the following permissions:
+
+   | Permission | Purpose |
+   |------------|---------|
+   | `openid` | Issue an id_token on authentication completion |
+   | `profile` | Access the user's first and last name |
+   | `email` | Access the user's primary email address |
+   | `User.Read` | Read the authenticated user's basic profile |
+
+3. Click **Add permissions**.
+4. No need to click "Grant admin consent" for these four permissions.
+
+---
+
+### Step 4: Configure Environment Variables
+
+Edit the `backend/.env` file and add (or uncomment) the following variables:
+
+```env
+# ── Microsoft 365 SSO / Azure AD (Optional) ───────────────────────────
+USE_MICROSOFT_SSO=true
+# true enables the "Sign in with Microsoft" button on the login screen.
+# false (default) disables the SSO flow entirely.
+
+AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# Directory (tenant) ID copied from Step 1.
+
+AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# Application (client) ID copied from Step 1.
+
+AZURE_CLIENT_SECRET=your-client-secret-value
+# Client secret value created in Step 2.
+
+AZURE_REDIRECT_URI=https://app.company.com/api/auth/sso/microsoft/callback
+# Must match exactly the URI registered in Azure AD (Step 1).
+# Include the https:// scheme and no trailing slash.
+
+AZURE_ALLOWED_DOMAIN=company.com
+# Only users whose email belongs to this domain can use SSO.
+# If the token email does not end in @company.com, authentication is rejected
+# even if the user successfully signed into Microsoft.
+# Leave empty to skip domain restriction (not recommended in production).
+
+FRONTEND_URL=https://app.company.com
+# Root URL of the frontend. Used to build the final redirect URL after the
+# OAuth flow completes. Must include the scheme and no trailing slash.
+
+AZURE_AUTO_PROVISION=true
+# true (recommended): if the Microsoft user does not exist in the local DB,
+#   they are automatically created with VIEWER role and active status.
+# false: the user must already exist in the platform (created manually or
+#   via LDAP sync). If not found, login is rejected even with valid Microsoft auth.
+```
+
+---
+
+### Step 5: Apply the Database Migration
+
+SSO requires the `users` table to have the `sso_provider` and `sso_external_id` columns. Apply the corresponding migration inside the backend container:
+
+```bash
+sg docker -c "docker exec cmdb-backend npx prisma migrate deploy"
+```
+
+Verify the migration applied correctly:
+
+```bash
+sg docker -c "docker exec cmdb-postgres psql -U cmdb_db_user -d cmdb_db -c '\d users'" | grep sso
+```
+
+You should see the `sso_provider` and `sso_external_id` columns in the output.
+
+---
+
+### Step 6: Restart the Backend
+
+After updating `.env`, rebuild and restart the backend container for the changes to take effect:
+
+```bash
+sg docker -c "docker compose up -d --build backend"
+```
+
+Check that the backend starts without errors:
+
+```bash
+sg docker -c "docker logs cmdb-backend --tail 30"
+```
+
+---
+
+### Expected Behavior
+
+Once configured correctly:
+
+- **Login screen:** the "Sign in with Microsoft" button appears below the standard credentials form.
+- **Authentication flow:**
+  1. User clicks the button → backend redirects to Microsoft's authentication page.
+  2. Microsoft authenticates the user (with corporate policies: MFA, Conditional Access, etc.).
+  3. Microsoft redirects to the callback endpoint with an authorization code.
+  4. Backend validates the `id_token`, verifies the email belongs to the allowed domain, and creates or retrieves the user in the database.
+  5. The device is automatically registered as a **trusted device** — no TOTP from the platform is ever requested.
+  6. The frontend receives the JWT and the user accesses the application directly.
+- **Provisioning:** if `AZURE_AUTO_PROVISION=true` and the user does not exist, they are created with `VIEWER` role. An administrator can change the role from **Settings → Users**.
+- **LDAP account linking:** users already in the platform (via local login or LDAP sync) with the same email as their Microsoft account are automatically linked on their first SSO login.
+
+---
+
+### Coexistence with LDAP
+
+Microsoft SSO and LDAP authentication are completely independent auth paths and can coexist:
+
+| Configuration | Effect |
+|---------------|--------|
+| `USE_LDAP=false` · `USE_MICROSOFT_SSO=false` | Local (bcrypt) authentication only |
+| `USE_LDAP=true` · `USE_MICROSOFT_SSO=false` | Local + LDAP authentication |
+| `USE_LDAP=false` · `USE_MICROSOFT_SSO=true` | Local + Microsoft SSO |
+| `USE_LDAP=true` · `USE_MICROSOFT_SSO=true` | Local + LDAP + Microsoft SSO |
+
+When both are active, the traditional form continues using LDAP and the Microsoft button uses the OAuth flow. A user can use either path as long as their email matches the account registered in the platform.
+
+Accounts with the domain `@cmdb.local` or `@cmdb.internal` always authenticate locally, regardless of LDAP or SSO configuration.
+
+---
+
+### Client Secret Renewal
+
+Azure AD client secrets have an expiry date. If the secret expires, the SSO flow stops working and users will see an error when attempting Microsoft authentication (local/LDAP authentication is unaffected).
+
+**Renewal procedure:**
+
+1. Go to the Azure portal → app registration → **Certificates & secrets**.
+2. Create a **new** secret before the current one expires (keep both active in parallel during the transition).
+3. Copy the new secret value.
+4. Update `AZURE_CLIENT_SECRET` in `backend/.env`.
+5. Restart the backend:
+   ```bash
+   sg docker -c "docker compose up -d --build backend"
+   ```
+6. Verify SSO still works by performing a test login.
+7. Once confirmed, delete the old secret in the Azure portal.
+
+> It is recommended to add a calendar reminder for the systems team 30 days before the secret expiry date.
+
+---
+
+### SSO Status Check (Public Endpoint)
+
+The `GET /api/auth/sso/status` endpoint returns the SSO configuration status without requiring authentication. Useful for diagnostics from a browser or with `curl`:
+
+```bash
+curl -sk https://app.company.com/api/auth/sso/status | python3 -m json.tool
+```
+
+Expected response when SSO is active:
+
+```json
+{
+  "enabled": true,
+  "domain": "company.com"
+}
+```
+
+If `enabled` is `false`, verify that `USE_MICROSOFT_SSO=true` is in `.env` and that the backend was restarted after the change.

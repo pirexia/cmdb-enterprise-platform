@@ -105,15 +105,17 @@ If your organisation has the corporate directory integration enabled, you will s
 
 ---
 
-## 2. Language Change (ES / EN)
+## 2. Language Change
 
-The platform is available in **Spanish** and **English**. To change the language:
+The platform is available in **6 languages**: Spanish (ES), English (EN), German (DE), Portuguese (PT), French (FR), and Italian (IT). To change the language:
 
 1. Look at the bottom of the left sidebar.
-2. You will see two buttons: **ES** and **EN**.
+2. You will see the language buttons: **ES**, **EN**, **DE**, **PT**, **FR**, **IT**.
 3. Click the language you prefer.
 4. The interface switches immediately, with no need to reload the page.
 5. Your preference is saved automatically in the browser.
+
+Translation is complete across the entire interface: pages, modals (add/edit CI, contracts, licenses, relations, CI detail) and error messages.
 
 > The language change only affects the interface text. Data you have entered (asset names, contracts, etc.) is displayed exactly as it was written.
 
@@ -276,7 +278,7 @@ The left sidebar is the starting point for all sections of the platform. It is o
 | **Audit** | ADMIN and AUDITOR | Browse the immutable log of all actions |
 | **Settings** | ADMIN only | Manage users, integrations, and system settings |
 
-At the bottom of the sidebar you will find your user details, the sign-out button, and the **ES** / **EN** language buttons.
+At the bottom of the sidebar you will find your user details, the sign-out button, and the **ES** / **EN** / **DE** / **PT** / **FR** / **IT** language buttons.
 
 ---
 

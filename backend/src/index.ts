@@ -157,6 +157,27 @@ function purgeSsoState(): void {
   }
 }
 
+// One-time token store: avoids passing JWT in redirect URL query params.
+// Backend stores credentials under a random code (2-min TTL); frontend
+// exchanges the code for the real tokens via GET /api/auth/sso/exchange.
+interface SsoTokenEntry {
+  token: string;
+  deviceToken: string;
+  user: { id: string; username: string; email: string; role: string; mfa_enabled: boolean };
+  exp: number;
+}
+const ssoTokenStore = new Map<string, SsoTokenEntry>();
+const SSO_TOKEN_TTL_MS = 2 * 60 * 1000; // 2 minutes — enough for one browser round-trip
+
+function purgeSsoTokens(): void {
+  const now = Date.now();
+  for (const [key, val] of ssoTokenStore.entries()) {
+    if (val.exp < now) ssoTokenStore.delete(key);
+  }
+}
+// Purge expired token codes every 5 minutes
+setInterval(purgeSsoTokens, 5 * 60 * 1000);
+
 // General API limiter: 300 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -625,21 +646,49 @@ app.get('/api/auth/sso/microsoft/callback', ssoLimiter, async (req: Request, res
 
     log.info(`[SSO] Successful login: ${email}`);
 
-    // ── Redirect to frontend with token and device token ──────────────────────
-    // The frontend reads these, stores in localStorage, and clears the URL.
+    // ── Redirect to frontend with a one-time exchange code ───────────────────
+    // Tokens are NOT passed in the URL (would leak via logs, Referer headers,
+    // browser history). Instead we store them server-side under a random code
+    // with a 2-minute TTL. The frontend exchanges the code via
+    // GET /api/auth/sso/exchange?code=<code> to retrieve the real tokens.
+    purgeSsoTokens();
+    const exchangeCode = crypto.randomUUID();
+    ssoTokenStore.set(exchangeCode, {
+      token,
+      deviceToken,
+      user: { id: user.id, username: user.username, email: user.email, role: user.role, mfa_enabled: false },
+      exp: Date.now() + SSO_TOKEN_TTL_MS,
+    });
     const redirectUrl = new URL(`${FRONTEND_URL}/auth/sso-callback`);
-    redirectUrl.searchParams.set('token', token);
-    redirectUrl.searchParams.set('deviceToken', deviceToken);
-    redirectUrl.searchParams.set('user', JSON.stringify({
-      id: user.id, username: user.username, email: user.email,
-      role: user.role, mfa_enabled: false,
-    }));
+    redirectUrl.searchParams.set('code', exchangeCode);
     res.redirect(302, redirectUrl.toString());
 
   } catch (err) {
     log.warn('[SSO callback] Error during SSO flow:', err);
     res.redirect(302, REDIRECT_ERROR);
   }
+});
+
+/**
+ * GET /api/auth/sso/exchange
+ * One-time token exchange: the frontend sends the short-lived `code` received
+ * in the SSO callback redirect and gets back the real JWT, deviceToken, and
+ * user object. The code is deleted immediately (single-use).
+ */
+app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response) => {
+  const code = typeof req.query.code === 'string' ? req.query.code.trim() : null;
+  if (!code) {
+    res.status(400).json({ error: 'Missing exchange code' });
+    return;
+  }
+  const entry = ssoTokenStore.get(code);
+  if (!entry || entry.exp < Date.now()) {
+    ssoTokenStore.delete(code);
+    res.status(401).json({ error: 'Exchange code is invalid or has expired' });
+    return;
+  }
+  ssoTokenStore.delete(code); // one-time use — delete immediately
+  res.json({ token: entry.token, deviceToken: entry.deviceToken, user: entry.user });
 });
 
 /**
@@ -2974,20 +3023,9 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 });
 
 // GET /api/documents/:id/download — authenticated file download
-// Requires Authorization: Bearer <token> header (query param not accepted — tokens in URLs leak via logs/referrers)
+// Uses authenticateToken middleware (checks JWT + deactivated-user status in DB)
 // Supports ?inline=true to display in browser instead of triggering download
-app.get('/api/documents/:id/download', async (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const tokenStr = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-  if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
-
-  try {
-    jwt.verify(tokenStr, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
-  } catch {
-    res.status(401).json({ error: 'Invalid or expired token' }); return;
-  }
-
+app.get('/api/documents/:id/download', authenticateToken, async (req: Request, res: Response) => {
   // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 

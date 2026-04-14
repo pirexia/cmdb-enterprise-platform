@@ -3,15 +3,18 @@
 /**
  * SSO Callback Page — /auth/sso-callback
  *
- * Receives the JWT and device token from the backend after a successful
- * Microsoft SSO flow. Stores credentials in localStorage (same as regular
- * login), clears the token from the URL (security), and navigates to the
- * dashboard. On failure, redirects to /login with an error flag.
+ * Receives a one-time exchange `code` from the backend after a successful
+ * Microsoft SSO flow. Calls GET /api/auth/sso/exchange?code=<code> to
+ * retrieve the real JWT and user object (tokens are never passed in the URL).
+ * Stores credentials in localStorage (same keys as regular login) and
+ * navigates to the dashboard. On failure, redirects to /login with an error.
  */
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export default function SsoCallbackPage() {
   const router = useRouter();
@@ -19,31 +22,39 @@ export default function SsoCallbackPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token       = params.get("token");
-    const deviceToken = params.get("deviceToken");
-    const userStr     = params.get("user");
+    const code = params.get("code");
 
-    // Clear sensitive data from the URL immediately
+    // Clear the code from the URL immediately — it's single-use and short-lived
     window.history.replaceState({}, document.title, window.location.pathname);
 
-    if (!token || !userStr) {
-      setError("no_token");
+    if (!code) {
+      setError("no_code");
       router.replace("/login?error=sso_failed");
       return;
     }
 
-    try {
-      const user = JSON.parse(decodeURIComponent(userStr));
-      localStorage.setItem("cmdb_token", token);
-      localStorage.setItem("cmdb_user", JSON.stringify(user));
-      if (deviceToken) {
-        localStorage.setItem("cmdb_device_token", deviceToken);
-      }
-      // Navigate to dashboard
-      router.replace("/");
-    } catch {
-      router.replace("/login?error=sso_failed");
-    }
+    // Exchange the one-time code for real credentials
+    fetch(`${API_BASE}/api/auth/sso/exchange?code=${encodeURIComponent(code)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Exchange failed");
+        return res.json() as Promise<{
+          token: string;
+          deviceToken: string;
+          user: { id: string; username: string; email: string; role: string; mfa_enabled: boolean };
+        }>;
+      })
+      .then(({ token, deviceToken, user }) => {
+        localStorage.setItem("cmdb_token", token);
+        localStorage.setItem("cmdb_user", JSON.stringify(user));
+        if (deviceToken) {
+          localStorage.setItem("cmdb_device_token", deviceToken);
+        }
+        router.replace("/");
+      })
+      .catch(() => {
+        setError("exchange_failed");
+        router.replace("/login?error=sso_failed");
+      });
   }, [router]);
 
   if (error) return null;

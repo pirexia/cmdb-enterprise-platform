@@ -167,6 +167,15 @@ export async function runAlertScan(): Promise<AlertScanResult> {
 
 // ─── HTML template ────────────────────────────────────────────────────────────
 
+function htmlEscape(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatDate(d: Date | null): string {
   if (!d) return '—';
   return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -232,7 +241,7 @@ export function buildAlertHtml(result: AlertScanResult): string {
       <tbody>
         ${eolAlerts.map((a, i) => `
         <tr style="${i % 2 === 0 ? 'background:#ffffff;' : 'background:#f8fafc;'}">
-          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${a.name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${htmlEscape(a.name)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">${formatDate(a.eolDate)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">${formatDate(a.eosDate)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;">${severityBadge(a.severity)}</td>
@@ -257,8 +266,8 @@ export function buildAlertHtml(result: AlertScanResult): string {
       <tbody>
         ${contractAlerts.map((c, i) => `
         <tr style="${i % 2 === 0 ? 'background:#ffffff;' : 'background:#f8fafc;'}">
-          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${c.contractNumber}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">${c.vendorName}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${htmlEscape(c.contractNumber)}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">${htmlEscape(c.vendorName)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:#475569;">${formatDate(c.endDate)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;color:${c.daysLeft <= 0 ? '#dc2626' : c.daysLeft <= 7 ? '#ea580c' : '#d97706'};font-weight:700;">
             ${c.daysLeft <= 0 ? 'VENCIDO' : c.daysLeft + 'd'}
@@ -283,7 +292,7 @@ export function buildAlertHtml(result: AlertScanResult): string {
       <tbody>
         ${vulnAlerts.map((v, i) => `
         <tr style="${i % 2 === 0 ? 'background:#ffffff;' : 'background:#f8fafc;'}">
-          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${v.name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${htmlEscape(v.name)}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f1f5f9;text-align:center;">
             ${v.criticalCount > 0 ? `<span style="background:#dc2626;color:#fff;padding:2px 10px;border-radius:12px;font-weight:700;">${v.criticalCount}</span>` : '<span style="color:#94a3b8;">—</span>'}
           </td>

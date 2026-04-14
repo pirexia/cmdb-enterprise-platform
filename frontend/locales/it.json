@@ -544,7 +544,13 @@
     "setup_subtitle_user": "Configura l'autenticazione MFA",
     "mfa_verify_header": "Verifica in due passaggi (MFA)",
     "verify_totp_header": "Verifica la tua app TOTP",
-    "app_configured": "App configurata. Inserisci il codice per confermare."
+    "app_configured": "App configurata. Inserisci il codice per confermare.",
+    "sso_button": "Accedi con Microsoft",
+    "sso_divider": "oppure",
+    "sso_loading": "Reindirizzamento a Microsoft…",
+    "sso_error": "Accesso SSO non riuscito. Usa le tue credenziali o contatta l'amministratore.",
+    "sso_not_provisioned": "Il tuo account Microsoft non è registrato in questa piattaforma. Contatta il tuo amministratore.",
+    "sso_disabled": "Il tuo account è disabilitato. Contatta il tuo amministratore."
   },
   "add_ci_modal": {
     "title": "Nuovo CI",

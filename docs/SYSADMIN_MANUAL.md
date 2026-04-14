@@ -1490,4 +1490,225 @@ oc rollout status deployment/cmdb-backend -n cmdb-prod
 oc rollout status deployment/cmdb-frontend -n cmdb-prod
 ```
 
+---
+
+## 15. Configuración de SSO con Microsoft 365 (Azure AD)
+
+El Single Sign-On (SSO) con Microsoft 365 permite a los usuarios autenticarse en la plataforma usando sus credenciales corporativas de Azure Active Directory (Entra ID) mediante el protocolo OAuth 2.0 Authorization Code + PKCE. Esto elimina la necesidad de gestionar contraseñas adicionales y delega la autenticación (incluido el MFA corporativo y las políticas de Acceso Condicional) a Microsoft. Para el usuario, el proceso es un solo clic en la pantalla de login.
+
+> Esta funcionalidad es opcional. La autenticación local (bcrypt) y la integración LDAP siguen funcionando con independencia de si SSO está activo.
+
+---
+
+### Paso 1: Registrar la aplicación en Azure AD
+
+1. Accede a [portal.azure.com](https://portal.azure.com) con una cuenta de administrador del tenant.
+2. Navega a **Azure Active Directory → Registros de aplicaciones → + Nueva aplicación**.
+3. Rellena el formulario:
+   - **Nombre:** `CMDB Enterprise Platform` (o el nombre que prefiera tu organización)
+   - **Tipos de cuenta admitidos:** selecciona **"Solo las cuentas de este directorio organizativo (inquilino único)"** — esto es importante para no aceptar cuentas externas.
+   - **URI de redireccionamiento:** selecciona la plataforma **Web** e introduce:
+     ```
+     https://TU_DOMINIO/api/auth/sso/microsoft/callback
+     ```
+     Reemplaza `TU_DOMINIO` por el dominio real de tu instalación (por ejemplo, `app.empresa.com`).
+4. Haz clic en **Registrar**.
+5. En la página de información general del registro, anota:
+   - **ID de aplicación (cliente)** → valor de `AZURE_CLIENT_ID`
+   - **ID de directorio (inquilino)** → valor de `AZURE_TENANT_ID`
+
+---
+
+### Paso 2: Crear un secreto de cliente
+
+1. Dentro del registro de aplicación, ve a **Certificados y secretos → Secretos de cliente → + Nuevo secreto**.
+2. Rellena los campos:
+   - **Descripción:** `CMDB SSO`
+   - **Expiración:** `24 meses` (recomendado; anota la fecha de caducidad para planificar la renovación)
+3. Haz clic en **Agregar**.
+4. **Copia el valor del secreto inmediatamente** — Azure solo lo muestra una vez. Este valor es `AZURE_CLIENT_SECRET`.
+
+> El valor del secreto tiene el formato `~xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`. Si navegas fuera de la página antes de copiarlo, deberás crear uno nuevo.
+
+---
+
+### Paso 3: Permisos de API
+
+Los permisos necesarios son permisos delegados estándar de Microsoft Graph. No es necesario el consentimiento del administrador para ninguno de ellos.
+
+1. Ve a **Permisos de API → + Agregar un permiso → Microsoft Graph → Permisos delegados**.
+2. Selecciona los siguientes permisos:
+
+   | Permiso | Propósito |
+   |---------|-----------|
+   | `openid` | Emitir un id_token al completar la autenticación |
+   | `profile` | Acceder al nombre de pila y apellidos del usuario |
+   | `email` | Acceder a la dirección de email principal del usuario |
+   | `User.Read` | Leer el perfil básico del usuario autenticado |
+
+3. Haz clic en **Agregar permisos**.
+4. No es necesario pulsar "Conceder consentimiento del administrador" para estos cuatro permisos.
+
+---
+
+### Paso 4: Configurar las variables de entorno
+
+Edita el fichero `backend/.env` y añade (o descomenta) las siguientes variables:
+
+```env
+# ── SSO Microsoft 365 / Azure AD (Opcional) ───────────────────────────
+USE_MICROSOFT_SSO=true
+# true activa el botón "Iniciar sesión con Microsoft" en el login.
+# false (valor por defecto) deshabilita el flujo SSO por completo.
+
+AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# ID de directorio (inquilino) copiado del paso 1.
+
+AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# ID de aplicación (cliente) copiado del paso 1.
+
+AZURE_CLIENT_SECRET=your-client-secret-value
+# Valor del secreto de cliente creado en el paso 2.
+
+AZURE_REDIRECT_URI=https://app.empresa.com/api/auth/sso/microsoft/callback
+# Debe coincidir exactamente con el URI registrado en Azure AD (paso 1).
+# Incluye el esquema https:// y sin barra final.
+
+AZURE_ALLOWED_DOMAIN=empresa.com
+# Solo los usuarios cuyo email pertenezca a este dominio podrán usar SSO.
+# Si el email del token no termina en @empresa.com, la autenticación se rechaza
+# aunque el usuario haya iniciado sesión correctamente en Microsoft.
+# Deja vacío para no restringir por dominio (no recomendado en producción).
+
+FRONTEND_URL=https://app.empresa.com
+# URL raíz del frontend. Se usa para construir la URL de redirección final
+# tras completar el flujo OAuth. Debe incluir el esquema y sin barra final.
+
+AZURE_AUTO_PROVISION=true
+# true (recomendado): si el usuario de Microsoft no existe en la BD local,
+#   se crea automáticamente con rol VIEWER y estado activo.
+# false: el usuario debe existir previamente en la plataforma
+#   (creado manualmente o mediante sincronización LDAP). Si no existe, se
+#   rechaza el login aunque la autenticación Microsoft sea válida.
+```
+
+---
+
+### Paso 5: Aplicar la migración de base de datos
+
+El SSO requiere que la tabla `users` tenga los campos `sso_provider` y `sso_external_id`. Aplica la migración correspondiente dentro del contenedor del backend:
+
+```bash
+sg docker -c "docker exec cmdb-backend npx prisma migrate deploy"
+```
+
+Verifica que la migración se haya aplicado correctamente:
+
+```bash
+sg docker -c "docker exec cmdb-postgres psql -U cmdb_db_user -d cmdb_db -c '\d users'" | grep sso
+```
+
+Deberías ver las columnas `sso_provider` y `sso_external_id` en la salida.
+
+---
+
+### Paso 6: Reiniciar el backend
+
+Después de actualizar el `.env`, reconstruye e inicia el contenedor del backend para que los cambios surtan efecto:
+
+```bash
+sg docker -c "docker compose up -d --build backend"
+```
+
+Comprueba que el backend arranca sin errores:
+
+```bash
+sg docker -c "docker logs cmdb-backend --tail 30"
+```
+
+Deberías ver en los logs una línea similar a:
+```
+[SSO] Microsoft SSO habilitado — tenant: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+```
+
+---
+
+### Comportamiento esperado
+
+Una vez configurado correctamente:
+
+- **Pantalla de login:** aparece el botón "Iniciar sesión con Microsoft" debajo del formulario de credenciales habitual.
+- **Flujo de autenticación:**
+  1. El usuario hace clic en el botón → el backend redirige a la página de autenticación de Microsoft.
+  2. Microsoft autentica al usuario (con las políticas corporativas: MFA, Acceso Condicional, etc.).
+  3. Microsoft redirige al endpoint de callback con un código de autorización.
+  4. El backend valida el `id_token`, verifica que el email pertenezca al dominio permitido, y crea o recupera el usuario en la BD.
+  5. El dispositivo queda registrado como **dispositivo de confianza** automáticamente — no se solicita TOTP propio de la plataforma.
+  6. El frontend recibe el JWT y el usuario accede directamente a la aplicación.
+- **Aprovisionamiento:** si `AZURE_AUTO_PROVISION=true` y el usuario no existe, se crea con rol `VIEWER`. Un administrador puede cambiar el rol desde **Configuración → Usuarios**.
+- **Vinculación de cuentas LDAP:** los usuarios que ya existen en la plataforma (ya sea por login local o por sincronización LDAP) y tienen el mismo email que su cuenta Microsoft quedan vinculados automáticamente al hacer SSO por primera vez.
+
+---
+
+### Coexistencia con LDAP
+
+SSO con Microsoft y la autenticación LDAP son rutas de autenticación completamente independientes y pueden coexistir:
+
+| Variable | Efecto |
+|----------|--------|
+| `USE_LDAP=false` · `USE_MICROSOFT_SSO=false` | Solo autenticación local (bcrypt) |
+| `USE_LDAP=true` · `USE_MICROSOFT_SSO=false` | Autenticación local + LDAP |
+| `USE_LDAP=false` · `USE_MICROSOFT_SSO=true` | Autenticación local + SSO Microsoft |
+| `USE_LDAP=true` · `USE_MICROSOFT_SSO=true` | Autenticación local + LDAP + SSO Microsoft |
+
+Cuando ambos están activos, el formulario tradicional sigue usando LDAP y el botón de Microsoft usa el flujo OAuth. Un mismo usuario puede usar cualquiera de los dos caminos siempre que el email coincida con la cuenta registrada en la plataforma.
+
+Las cuentas con dominio `@cmdb.local` o `@cmdb.internal` siempre se autentican localmente, con independencia de la configuración de LDAP o SSO.
+
+---
+
+### Renovación del secreto de cliente
+
+Los secretos de Azure AD tienen una fecha de caducidad. Si el secreto expira, el flujo SSO deja de funcionar y los usuarios verán un error al intentar autenticarse con Microsoft (la autenticación local/LDAP no se ve afectada).
+
+**Procedimiento de renovación:**
+
+1. Accede al portal de Azure → registro de la aplicación → **Certificados y secretos**.
+2. Crea un **nuevo** secreto antes de que caduque el actual (mantén los dos activos en paralelo durante la transición).
+3. Copia el nuevo valor del secreto.
+4. Actualiza `AZURE_CLIENT_SECRET` en `backend/.env`.
+5. Reinicia el backend:
+   ```bash
+   sg docker -c "docker compose up -d --build backend"
+   ```
+6. Verifica que el SSO sigue funcionando haciendo un login de prueba.
+7. Una vez confirmado, elimina el secreto antiguo en el portal de Azure.
+
+> Se recomienda crear una alerta en el calendario del equipo de sistemas 30 días antes de la fecha de caducidad del secreto.
+
+---
+
+### Verificación del estado SSO (endpoint público)
+
+El endpoint `GET /api/auth/sso/status` devuelve el estado de la configuración SSO sin requerir autenticación. Es útil para diagnóstico desde el navegador o con `curl`:
+
+```bash
+curl -sk https://app.empresa.com/api/auth/sso/status | python3 -m json.tool
+```
+
+Respuesta esperada cuando SSO está activo:
+
+```json
+{
+  "microsoft": {
+    "enabled": true,
+    "tenantId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "clientId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+    "allowedDomain": "empresa.com"
+  }
+}
+```
+
+Si `enabled` es `false`, verifica que `USE_MICROSOFT_SSO=true` está en el `.env` y que el backend se reinició después del cambio.
+
 > Las migraciones de Prisma en OpenShift deben ejecutarse manualmente o como un Job de Kubernetes antes del rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`

@@ -105,15 +105,17 @@ Si tu organización tiene la integración con el directorio corporativo activada
 
 ---
 
-## 2. Cambio de Idioma (ES / EN)
+## 2. Cambio de Idioma
 
-La plataforma está disponible en **Español** e **Inglés**. Para cambiar el idioma:
+La plataforma está disponible en **6 idiomas**: Español (ES), Inglés (EN), Alemán (DE), Portugués (PT), Francés (FR) e Italiano (IT). Para cambiar el idioma:
 
 1. Mira en la parte inferior del menú lateral izquierdo.
-2. Verás dos botones: **ES** y **EN**.
+2. Verás los botones de idioma: **ES**, **EN**, **DE**, **PT**, **FR**, **IT**.
 3. Haz clic en el idioma que prefieras.
 4. La interfaz cambia de inmediato, sin necesidad de recargar la página.
 5. Tu preferencia se guarda automáticamente en el navegador.
+
+La traducción es completa en toda la interfaz: páginas, modales (añadir/editar CI, contratos, licencias, relaciones, detalle de CI) y mensajes de error.
 
 > El cambio de idioma solo afecta a los textos de la interfaz. Los datos que hayas introducido (nombres de activos, contratos, etc.) se muestran tal como fueron escritos.
 
@@ -276,7 +278,7 @@ El menú lateral izquierdo es el punto de partida para acceder a todas las secci
 | **Auditoría** | ADMIN y AUDITOR | Consultar el registro inmutable de todas las acciones |
 | **Configuración** | Solo ADMIN | Gestionar usuarios, integraciones y ajustes del sistema |
 
-En la parte inferior del menú encontrarás tus datos de usuario, el botón de cierre de sesión y los botones de idioma **ES** / **EN**.
+En la parte inferior del menú encontrarás tus datos de usuario, el botón de cierre de sesión y los botones de idioma **ES** / **EN** / **DE** / **PT** / **FR** / **IT**.
 
 ---
 
@@ -426,7 +428,10 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 
 1. Localiza el CVE en el panel.
 2. Usa el selector de estado en la columna "Estado".
-3. El cambio se registra de inmediato y queda reflejado en el Registro de Auditoría.
+3. La interfaz refleja el cambio de forma inmediata. Durante el guardado, la fila muestra un indicador giratorio junto al selector.
+4. Si el guardado se confirma en el servidor, aparece una notificación verde en la esquina de la pantalla.
+5. Si el guardado falla (error de red o servidor), el estado se revierte automáticamente al valor anterior y aparece una notificación roja. No es necesaria ninguna acción manual.
+6. El cambio exitoso queda reflejado en el Registro de Auditoría.
 
 ### Importar vulnerabilidades desde Greenbone OpenVAS
 

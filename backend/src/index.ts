@@ -17,6 +17,11 @@ import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
+import {
+  SSO_ENABLED, ALLOWED_DOMAIN, AUTO_PROVISION, FRONTEND_URL,
+  buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
+  generateCodeVerifier, generateCodeChallenge,
+} from './services/microsoftSso';
 import * as speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import multer from 'multer';
@@ -56,6 +61,8 @@ const TRUSTED_DEVICE_TTL_DAYS = parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? 
 const PASSWORD_MIN_LENGTH_ADMIN  = parseInt(process.env.PASSWORD_MIN_LENGTH_ADMIN  ?? '16', 10);
 const PASSWORD_MIN_LENGTH_VIEWER = parseInt(process.env.PASSWORD_MIN_LENGTH_VIEWER ?? '12', 10);
 const PASSWORD_HISTORY_COUNT     = parseInt(process.env.PASSWORD_HISTORY_COUNT     ?? '20', 10);
+// bcrypt work factor — NIST SP 800-63B / OWASP recommends ≥12 (≥2^12 iterations)
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10);
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +135,28 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true, // only count failed attempts
 });
 
+// SSO callback limiter: 20 requests per 15 minutes per IP
+const ssoLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many SSO attempts. Try again in 15 minutes.' },
+});
+
+// In-memory SSO state store: state → { nonce, codeVerifier, exp }
+// TTL: 10 minutes. Cleaned up on each new initiation request.
+interface SsoStateEntry { nonce: string; codeVerifier: string; exp: number }
+const ssoStateStore = new Map<string, SsoStateEntry>();
+const SSO_STATE_TTL_MS = 10 * 60 * 1000;
+
+function purgeSsoState(): void {
+  const now = Date.now();
+  for (const [key, val] of ssoStateStore.entries()) {
+    if (val.exp < now) ssoStateStore.delete(key);
+  }
+}
+
 // General API limiter: 300 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -183,7 +212,7 @@ const ContractCreateSchema = z.object({
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
-function authenticateToken(req: Request, res: Response, next: NextFunction): void {
+async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers['authorization'];
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
@@ -192,22 +221,37 @@ function authenticateToken(req: Request, res: Response, next: NextFunction): voi
     return;
   }
 
+  let payload: JwtPayload;
   try {
-    const payload = jwt.verify(token, JWT_SECRET_VALUE) as JwtPayload;
+    payload = jwt.verify(token, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
+  } catch {
+    res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
+    return;
+  }
 
-    // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
-    if (payload.mfaSetupRequired) {
-      const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
-      if (!allowedPaths.includes(req.path)) {
-        res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
-        return;
-      }
+  // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
+  if (payload.mfaSetupRequired) {
+    const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
+    if (!allowedPaths.includes(req.path)) {
+      res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
+      return;
     }
+  }
 
+  // Verify the user is still active in the database — a deactivated user's
+  // existing JWT must be rejected immediately without waiting for expiry.
+  try {
+    const rows = await prisma.$queryRaw<{ active: boolean }[]>`
+      SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
+    `;
+    if (!rows.length || !rows[0].active) {
+      res.status(403).json({ error: 'Account deactivated. Please contact an administrator.' });
+      return;
+    }
     req.user = payload;
     next();
   } catch {
-    res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
+    res.status(500).json({ error: 'Internal server error' });
   }
 }
 
@@ -329,13 +373,18 @@ async function recordPasswordHistory(userId: string, hash: string): Promise<void
   `;
   // Prune old entries beyond the configured limit
   await prisma.$executeRaw`
-    DELETE FROM "password_history"
-    WHERE user_id = ${userId}::uuid
-    AND id NOT IN (
-      SELECT id FROM "password_history"
-      WHERE user_id = ${userId}::uuid
-      ORDER BY created_at DESC
-      LIMIT ${PASSWORD_HISTORY_COUNT}
+    DELETE FROM "password_history" ph
+    WHERE ph.user_id = ${userId}::uuid
+    AND NOT EXISTS (
+      SELECT 1
+      FROM (
+        SELECT id
+        FROM "password_history"
+        WHERE user_id = ${userId}::uuid
+        ORDER BY created_at DESC
+        LIMIT ${PASSWORD_HISTORY_COUNT}
+      ) recent
+      WHERE recent.id = ph.id
     )
   `;
 }
@@ -409,6 +458,191 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/auth/sso/status
+ * Returns whether Microsoft SSO is configured and which domain is expected.
+ * Public — no authentication required. Used by the frontend login page.
+ */
+app.get('/api/auth/sso/status', (_req: Request, res: Response) => {
+  res.json({ enabled: SSO_ENABLED, domain: ALLOWED_DOMAIN || undefined });
+});
+
+/**
+ * GET /api/auth/sso/microsoft
+ * Initiates the Microsoft SSO OAuth2 Authorization Code + PKCE flow.
+ * Generates and stores state (CSRF) + nonce (replay protection) server-side,
+ * then redirects the browser to the Azure AD single-tenant authorization URL.
+ */
+app.get('/api/auth/sso/microsoft', ssoLimiter, (req: Request, res: Response) => {
+  if (!SSO_ENABLED) {
+    res.status(404).json({ error: 'Microsoft SSO is not enabled' });
+    return;
+  }
+
+  purgeSsoState();
+
+  const state        = crypto.randomUUID();
+  const nonce        = crypto.randomBytes(16).toString('hex');
+  const codeVerifier = generateCodeVerifier();
+  const challenge    = generateCodeChallenge(codeVerifier);
+
+  ssoStateStore.set(state, { nonce, codeVerifier, exp: Date.now() + SSO_STATE_TTL_MS });
+
+  const authUrl = buildAuthorizationUrl(state, nonce, challenge);
+  res.redirect(302, authUrl);
+});
+
+/**
+ * GET /api/auth/sso/microsoft/callback
+ * Handles the Azure AD OAuth2 callback. Validates state, exchanges code for
+ * tokens, validates the ID token fully, finds/creates the user, creates a
+ * trusted device entry (SSO = trusted, no TOTP ever needed), issues a JWT,
+ * and redirects to the frontend.
+ */
+app.get('/api/auth/sso/microsoft/callback', ssoLimiter, async (req: Request, res: Response) => {
+  const REDIRECT_ERROR = `${FRONTEND_URL}/login?error=sso_failed`;
+
+  if (!SSO_ENABLED) {
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  const { code, state, error: oauthError } = req.query as Record<string, string | undefined>;
+
+  // Azure AD returned an error (e.g., user cancelled, access denied)
+  if (oauthError) {
+    log.warn(`[SSO callback] Azure AD error: ${oauthError}`);
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  if (!code || !state) {
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+
+  // CSRF: validate state
+  const stateEntry = ssoStateStore.get(state);
+  if (!stateEntry || stateEntry.exp < Date.now()) {
+    log.warn('[SSO callback] Invalid or expired state parameter');
+    ssoStateStore.delete(state);
+    res.redirect(302, REDIRECT_ERROR);
+    return;
+  }
+  ssoStateStore.delete(state); // one-time use
+
+  try {
+    // Exchange code for tokens (PKCE)
+    const tokens = await exchangeCodeForTokens(code, stateEntry.codeVerifier);
+
+    // Validate ID token (signature, iss, aud, tid, nonce, domain)
+    const claims = await validateIdToken(tokens.id_token, stateEntry.nonce);
+
+    const msOid   = claims.oid;
+    const email   = claims.email!;
+    const name    = claims.name ?? email.split('@')[0];
+    const username = email.split('@')[0];
+
+    // ── Find or provision user ────────────────────────────────────────────────
+    type UserRow = {
+      id: string; username: string; email: string; role: string;
+      active: boolean; sso_external_id: string | null;
+    };
+
+    // 1. Lookup by Azure OID (sso_external_id = oid, sso_provider = 'microsoft')
+    let rows = await prisma.$queryRaw<UserRow[]>`
+      SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+      FROM "users"
+      WHERE sso_external_id = ${msOid} AND sso_provider = 'microsoft'
+      LIMIT 1
+    `;
+
+    // 2. If not found by OID, try by email and link the account
+    if (rows.length === 0) {
+      rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+        FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+      if (rows.length > 0) {
+        // Link existing account to Microsoft SSO
+        await prisma.$executeRaw`
+          UPDATE "users"
+          SET sso_external_id = ${msOid}, sso_provider = 'microsoft', updated_at = now()
+          WHERE id = ${rows[0].id}::uuid
+        `;
+        log.info(`[SSO] Linked existing user ${email} to Microsoft OID ${msOid}`);
+      }
+    }
+
+    // 3. Auto-provision new user if allowed
+    if (rows.length === 0) {
+      if (!AUTO_PROVISION) {
+        log.warn(`[SSO] User ${email} not found and auto-provision is disabled`);
+        res.redirect(302, `${FRONTEND_URL}/login?error=sso_not_provisioned`);
+        return;
+      }
+      await prisma.$executeRaw`
+        INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${username}, ${email}, NULL, 'VIEWER', ${msOid}, 'microsoft', now(), now())
+      `;
+      rows = await prisma.$queryRaw<UserRow[]>`
+        SELECT id, username, email, role, COALESCE(active, true) AS active, sso_external_id
+        FROM "users" WHERE email = ${email} LIMIT 1
+      `;
+      log.info(`[SSO] Auto-provisioned new Microsoft SSO user: ${email} (name: ${name})`);
+    }
+
+    const user = rows[0];
+
+    if (!user.active) {
+      log.warn(`[SSO] Disabled account attempted SSO login: ${email}`);
+      res.redirect(302, `${FRONTEND_URL}/login?error=sso_account_disabled`);
+      return;
+    }
+
+    // ── Create trusted device (SSO auth = trusted, MFA never required) ────────
+    const deviceToken = crypto.randomBytes(32).toString('hex');
+    const expiry      = new Date();
+    expiry.setDate(expiry.getDate() + (parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10) || 30));
+    const ua = req.headers['user-agent'] ?? '';
+    const ip = req.ip ?? '';
+    await prisma.$executeRaw`
+      INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+      VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
+      ON CONFLICT DO NOTHING
+    `;
+
+    // ── Issue JWT ──────────────────────────────────────────────────────────────
+    const payload: JwtPayload = {
+      id: user.id, username: user.username, email: user.email, role: user.role as UserRole,
+    };
+    const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
+
+    // Audit log
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+      VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
+    `;
+
+    log.info(`[SSO] Successful login: ${email}`);
+
+    // ── Redirect to frontend with token and device token ──────────────────────
+    // The frontend reads these, stores in localStorage, and clears the URL.
+    const redirectUrl = new URL(`${FRONTEND_URL}/auth/sso-callback`);
+    redirectUrl.searchParams.set('token', token);
+    redirectUrl.searchParams.set('deviceToken', deviceToken);
+    redirectUrl.searchParams.set('user', JSON.stringify({
+      id: user.id, username: user.username, email: user.email,
+      role: user.role, mfa_enabled: false,
+    }));
+    res.redirect(302, redirectUrl.toString());
+
+  } catch (err) {
+    log.warn('[SSO callback] Error during SSO flow:', err);
+    res.redirect(302, REDIRECT_ERROR);
+  }
+});
+
+/**
  * POST /api/auth/login
  * Returns a signed JWT on valid credentials.
  * Handles MFA verification, trusted devices, and first-login MFA prompts.
@@ -450,7 +684,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         `;
         if (rows.length === 0) {
           const username  = email.split('@')[0];
-          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, 10);
+          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
           await prisma.$executeRaw`
             INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
             VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
@@ -498,7 +732,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     // ── Helper: build and sign full JWT ──────────────────────────────────────
     const signFullToken = () => {
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
-      return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h' });
+      return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     };
     const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
 
@@ -507,8 +741,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const tok      = crypto.randomBytes(32).toString('hex');
       const expiry   = new Date();
       expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
-      const ua  = req.headers['user-agent'] ?? null;
-      const ip  = req.ip ?? null;
+      // Bind token to client IP and User-Agent at creation time (Issue #25)
+      const ua  = req.headers['user-agent'] ?? '';
+      const ip  = req.ip ?? '';
       await prisma.$executeRaw`
         INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
         VALUES (gen_random_uuid(), ${user!.id}::uuid, ${tok}, ${ua}, ${ip}, ${expiry}, now(), now())
@@ -520,9 +755,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     if (user.mfa_enabled && user.mfa_secret) {
       // Check trusted device first
       if (deviceToken) {
+        // Validate token against stored IP and User-Agent binding (Issue #25)
+        const currentUa = req.headers['user-agent'] ?? '';
+        const currentIp = req.ip ?? '';
         const trusted = await prisma.$queryRaw<{ id: string }[]>`
           SELECT id FROM "trusted_devices"
-          WHERE token = ${deviceToken} AND user_id = ${user.id}::uuid AND expires_at > now()
+          WHERE token = ${deviceToken}
+            AND user_id = ${user.id}::uuid
+            AND expires_at > now()
+            AND user_agent = ${currentUa}
+            AND ip_address = ${currentIp}
           LIMIT 1
         `;
         if (trusted.length > 0) {
@@ -555,7 +797,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     if (user.role === 'ADMIN') {
       // Admin: mandatory MFA setup — issue short-lived limited token
       const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
-      const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m' });
+      const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m', algorithm: 'HS256' as const });
       res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
       return;
     }
@@ -662,16 +904,20 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     return;
   }
   try {
-    type UserRow = { id: string; password: string | null; sso_external_id: string | null; role: string };
+    type UserRow = { id: string; password: string | null; sso_external_id: string | null; sso_provider: string | null; role: string };
     const rows = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, password, sso_external_id, role FROM "users" WHERE id = ${req.user!.id}::uuid
+      SELECT id, password, sso_external_id, sso_provider, role FROM "users" WHERE id = ${req.user!.id}::uuid
     `;
     const user = rows[0];
     if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
-    // LDAP/AD users cannot change password here
+    // SSO users cannot change password here
     if (user.sso_external_id) {
-      res.status(403).json({ error: 'LDAP_USER', message: 'Los usuarios LDAP/AD deben cambiar su contraseña a través del controlador de dominio.' });
+      if (user.sso_provider === 'microsoft') {
+        res.status(403).json({ error: 'SSO_USER', message: 'Los usuarios de Microsoft SSO deben cambiar su contraseña en el portal de Microsoft 365.' });
+      } else {
+        res.status(403).json({ error: 'LDAP_USER', message: 'Los usuarios LDAP/AD deben cambiar su contraseña a través del controlador de dominio.' });
+      }
       return;
     }
     if (!user.password) { res.status(400).json({ error: 'No hay contraseña local configurada.' }); return; }
@@ -704,7 +950,7 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     }
 
     // Apply change
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`
@@ -729,15 +975,19 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
   const { newPassword } = req.body as { newPassword?: string };
   if (!newPassword) { res.status(400).json({ error: 'newPassword is required.' }); return; }
   try {
-    type UserRow = { id: string; sso_external_id: string | null; role: string; email: string };
+    type UserRow = { id: string; sso_external_id: string | null; sso_provider: string | null; role: string; email: string };
     const rows = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, sso_external_id, role, email FROM "users" WHERE id = ${id}::uuid
+      SELECT id, sso_external_id, sso_provider, role, email FROM "users" WHERE id = ${id}::uuid
     `;
     const user = rows[0];
     if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
 
     if (user.sso_external_id) {
-      res.status(403).json({ error: 'LDAP_USER', message: 'No se puede resetear la contraseña de usuarios LDAP/AD.' });
+      if (user.sso_provider === 'microsoft') {
+        res.status(403).json({ error: 'SSO_USER', message: 'No se puede resetear la contraseña de usuarios de Microsoft SSO.' });
+      } else {
+        res.status(403).json({ error: 'LDAP_USER', message: 'No se puede resetear la contraseña de usuarios LDAP/AD.' });
+      }
       return;
     }
 
@@ -747,7 +997,7 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
       return;
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
     await recordPasswordHistory(user.id, newHash);
     await prisma.$executeRaw`
@@ -779,13 +1029,19 @@ app.get('/api/vendors', authenticateToken, async (_req: Request, res: Response) 
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 
-app.get('/api/cis', authenticateToken, async (_req: Request, res: Response) => {
+const CI_MAX_PAGE_SIZE = 500;
+app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, CI_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const skip     = (page - 1) * limit;
   try {
-    const cis = await prisma.cI.findMany({
-      include: CI_INCLUDE,
-      orderBy: { createdAt: 'asc' },
-    });
-    res.json({ total: cis.length, data: cis.map(flattenCI) });
+    const [total, cis] = await Promise.all([
+      prisma.cI.count(),
+      prisma.cI.findMany({ include: CI_INCLUDE, orderBy: { createdAt: 'asc' }, skip, take: limit }),
+    ]);
+    res.json({ total, page, limit, data: cis.map(flattenCI) });
   } catch (error) {
     console.error('[GET /api/cis] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1139,7 +1395,7 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
       }
     }
     log.info(`[sync-manufacturers] created=${created}, skipped=${skipped}, errors=${errors}`);
-    res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors, errorLog });
+    res.json({ message: `${created} insertados, ${skipped} ya existían, ${errors} errores`, created, skipped, errors });
     return;
   }
 
@@ -1208,57 +1464,59 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
   let successCount = 0;
   let errorCount   = 0;
 
-  for (const row of rows) {
-    const name = (row.name ?? '').trim();
-    if (!name) {
-      results.push({ name: '(vacío)', status: 'error', error: 'Missing required field: name' });
-      errorCount++; continue;
-    }
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const row of rows) {
+        const name = (row.name ?? '').trim();
+        if (!name) {
+          throw new Error(`Missing required field: name (row: ${JSON.stringify(row)})`);
+        }
 
-    const ciTypeCode = (row.ciType ?? 'OTHER').trim().toUpperCase();
-    const ciTypeId   = ciTypeCodeToId.get(ciTypeCode) ?? ciTypeCodeToId.get('OTHER') ?? null;
-    const crit    = (row.criticality ?? '').trim().toUpperCase();
-    const env     = (row.environment  ?? '').trim().toUpperCase();
-    const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
-    const environment = (validEnvironments.includes(env)   ? env  : 'PRODUCTION') as Environment;
+        const ciTypeCode = (row.ciType ?? 'OTHER').trim().toUpperCase();
+        const ciTypeId   = ciTypeCodeToId.get(ciTypeCode) ?? ciTypeCodeToId.get('OTHER') ?? null;
+        const crit    = (row.criticality ?? '').trim().toUpperCase();
+        const env     = (row.environment  ?? '').trim().toUpperCase();
+        const criticality = (validCriticalities.includes(crit) ? crit : 'MEDIUM') as Criticality;
+        const environment = (validEnvironments.includes(env)   ? env  : 'PRODUCTION') as Environment;
 
-    // Unique slug: name-slug + random suffix
-    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
-    const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+        // Unique slug: name-slug + random suffix
+        const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+        const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
 
-    const needsHw = hwTypes.includes(ciTypeCode);
-    const needsSw = swTypes.includes(ciTypeCode);
+        const needsHw = hwTypes.includes(ciTypeCode);
+        const needsSw = swTypes.includes(ciTypeCode);
 
-    try {
-      const ci = await prisma.cI.create({
-        data: {
-          name, apiSlug, criticality, environment, ciTypeId,
-          ...(needsHw && {
-            hardware: {
-              create: {
-                serialNumber: (row.serialNumber ?? `AUTO-${Date.now()}`).trim() || `AUTO-${Date.now()}`,
-                model:        (row.model        ?? 'Unknown').trim() || 'Unknown',
-                manufacturer: (row.manufacturer ?? 'Unknown').trim() || 'Unknown',
+        const ci = await tx.cI.create({
+          data: {
+            name, apiSlug, criticality, environment, ciTypeId,
+            ...(needsHw && {
+              hardware: {
+                create: {
+                  serialNumber: (row.serialNumber ?? `AUTO-${Date.now()}`).trim() || `AUTO-${Date.now()}`,
+                  model:        (row.model        ?? 'Unknown').trim() || 'Unknown',
+                  manufacturer: (row.manufacturer ?? 'Unknown').trim() || 'Unknown',
+                },
               },
-            },
-          }),
-          ...(needsSw && {
-            software: {
-              create: {
-                version:     (row.version     ?? '1.0').trim() || '1.0',
-                licenseType: (row.licenseType ?? '').trim(),
+            }),
+            ...(needsSw && {
+              software: {
+                create: {
+                  version:     (row.version     ?? '1.0').trim() || '1.0',
+                  licenseType: (row.licenseType ?? '').trim(),
+                },
               },
-            },
-          }),
-        } as Parameters<typeof prisma.cI.create>[0]['data'],
-      });
-      results.push({ name, status: 'created', id: ci.id });
-      successCount++;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      results.push({ name, status: 'error', error: msg });
-      errorCount++;
-    }
+            }),
+          } as Parameters<typeof prisma.cI.create>[0]['data'],
+        });
+        results.push({ name, status: 'created', id: ci.id });
+        successCount++;
+      }
+    });
+  } catch (err) {
+    console.error('[bulk-import] Transaction failed:', err);
+    const message = err instanceof Error ? err.message : 'Failed to import CIs';
+    res.status(400).json({ error: message });
+    return;
   }
 
   res.status(207).json({
@@ -1343,7 +1601,8 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
 /**
  * POST /api/auth/mfa/setup
  * Generates a TOTP secret + QR code Data URL for the authenticated user.
- * The secret is NOT stored yet — client must verify with /mfa/enable first.
+ * The secret is persisted as mfa_pending_secret (NOT mfa_secret) so the
+ * client cannot supply its own secret during /mfa/enable.
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1351,6 +1610,13 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     const secret    = secretObj.base32;
     const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
     const qrDataUrl = await QRCode.toDataURL(otpauth);
+
+    // Store the pending secret server-side so /mfa/enable can retrieve it
+    // without trusting any client-supplied value.
+    await prisma.$executeRaw`
+      UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
+    `;
+
     res.json({ secret, qrDataUrl });
   } catch (error) {
     console.error('[POST /api/auth/mfa/setup] Error:', error);
@@ -1360,35 +1626,50 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
 
 /**
  * POST /api/auth/mfa/enable
- * Verifies the first TOTP code, persists the secret, and returns a new full JWT.
- * Body: { code: string, secret: string, trustDevice?: boolean }
+ * Verifies the first TOTP code against the server-stored pending secret,
+ * persists the secret, and returns a new full JWT.
+ * Body: { code: string, trustDevice?: boolean }
+ * NOTE: 'secret' is intentionally NOT accepted from the client — it is read
+ * from mfa_pending_secret to prevent a bypass via a client-controlled value.
  */
 app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Response) => {
-  const { code, secret, trustDevice } = req.body as { code?: string; secret?: string; trustDevice?: boolean };
-  if (!code || !secret) {
-    res.status(400).json({ error: 'code and secret are required' });
-    return;
-  }
-  const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
-  if (!valid) {
-    res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+  const { code, trustDevice } = req.body as { code?: string; trustDevice?: boolean };
+  if (!code) {
+    res.status(400).json({ error: 'code is required' });
     return;
   }
   try {
+    // Retrieve the server-generated pending secret — never trust the client
+    const rows = await prisma.$queryRaw<{ mfa_pending_secret: string | null }[]>`
+      SELECT mfa_pending_secret FROM "users" WHERE id = ${req.user!.id}::uuid LIMIT 1
+    `;
+    const secret = rows[0]?.mfa_pending_secret ?? null;
+    if (!secret) {
+      res.status(400).json({ error: 'MFA setup not initiated. Please call /api/auth/mfa/setup first.' });
+      return;
+    }
+    const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+    if (!valid) {
+      res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
+      return;
+    }
     await prisma.$executeRaw`
-      UPDATE "users" SET mfa_secret = ${secret}, mfa_enabled = true, updated_at = now() WHERE id = ${req.user!.id}::uuid
+      UPDATE "users"
+      SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
+      WHERE id = ${req.user!.id}::uuid
     `;
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
-    const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h' });
+    const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
 
     let newDeviceToken: string | undefined;
     if (trustDevice) {
       newDeviceToken = crypto.randomBytes(32).toString('hex');
       const expiry = new Date();
       expiry.setDate(expiry.getDate() + TRUSTED_DEVICE_TTL_DAYS);
-      const ua = req.headers['user-agent'] ?? null;
-      const ip = req.ip ?? null;
+      // Bind token to client IP and User-Agent at creation time (Issue #25)
+      const ua = req.headers['user-agent'] ?? '';
+      const ip = req.ip ?? '';
       await prisma.$executeRaw`
         INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
         VALUES (gen_random_uuid(), ${req.user!.id}::uuid, ${newDeviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
@@ -1546,7 +1827,7 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
     const rows  = await prisma.$queryRaw<{ id: string; name: string }[]>`SELECT id::text, name FROM "manufacturers" ORDER BY name ASC`;
     const count = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "manufacturers"`;
     res.json({ count: Number(count[0]?.c ?? 0), rows });
-  } catch (e) { res.status(500).json({ error: String(e), stack: e instanceof Error ? e.stack : undefined }); }
+  } catch (e) { res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────
@@ -1554,7 +1835,7 @@ app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, as
   try {
     const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
     res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Support Areas
@@ -1562,7 +1843,7 @@ app.get('/api/masters/support-areas', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "support_areas" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1570,7 +1851,7 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1579,11 +1860,11 @@ app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, asy
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "support_areas" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Branches
@@ -1593,7 +1874,7 @@ app.get('/api/masters/branches', authenticateToken, async (_req, res) => {
       SELECT b.id::text AS id, b.name, b.branch_code, b.physical_address, b.support_area_id::text AS support_area_id, sa.name AS support_area_name
       FROM "branches" b LEFT JOIN "support_areas" sa ON b.support_area_id = sa.id ORDER BY b.name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, res) => {
   const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
@@ -1603,7 +1884,7 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
       INSERT INTO "branches"(id,name,branch_code,physical_address,support_area_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
@@ -1614,11 +1895,11 @@ app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (r
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Manufacturers
@@ -1627,7 +1908,7 @@ app.get('/api/masters/manufacturers', authenticateToken, async (_req, res) => {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "manufacturers" ORDER BY name ASC`;
     log.info(`[GET /api/masters/manufacturers] rows=${rows.length}`);
     res.json(rows);
-  } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error('[GET /api/masters/manufacturers]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1635,7 +1916,7 @@ app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (r
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1644,11 +1925,11 @@ app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, asy
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "manufacturers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Device Models
@@ -1658,7 +1939,7 @@ app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
       SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name
       FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (req, res) => {
   const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
@@ -1668,7 +1949,7 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
       INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
@@ -1679,11 +1960,11 @@ app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, asy
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Providers
@@ -1691,7 +1972,7 @@ app.get('/api/masters/providers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`SELECT id::text AS id, name FROM "providers" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1699,7 +1980,7 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   const { name } = req.body as { name?: string };
@@ -1708,11 +1989,11 @@ app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "providers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Cost Centers
@@ -1720,7 +2001,7 @@ app.get('/api/masters/cost-centers', authenticateToken, async (_req, res) => {
   try {
     const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`SELECT id::text AS id, code, name FROM "cost_centers" ORDER BY code ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (req, res) => {
   const { code, name } = req.body as { code?: string; name?: string };
@@ -1733,7 +2014,8 @@ app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (re
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -1748,12 +2030,13 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('duplicate')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
   try { await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { res.status(500).json({ error: String(e) }); }
+  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── CI Type Categories (read-only, fixed) ─────────────────────────────────────
@@ -1769,7 +2052,7 @@ app.get('/api/masters/ci-type-categories', authenticateToken, async (_req, res) 
       },
     });
     res.json(cats);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── CI Types CRUD ─────────────────────────────────────────────────────────────
@@ -1780,7 +2063,7 @@ app.get('/api/masters/ci-types', authenticateToken, async (_req, res) => {
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     res.json(types);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, res) => {
@@ -1797,7 +2080,8 @@ app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, r
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('unique') || msg.includes('Unique')) { res.status(409).json({ error: 'El código ya existe' }); return; }
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -1812,7 +2096,7 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     res.json(row);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -1829,8 +2113,8 @@ app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (
     await prisma.cIType.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: msg });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2048,22 +2332,18 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
-    // Check if both CIs exist
-    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
-    `;
-    
-    if (Number(ciCheck[0]?.count) !== 2) {
-      res.status(404).json({ error: 'One or both CIs not found' });
-      return;
-    }
-
-    // Create relation
+    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
       RETURNING id::text
     `;
+
+    if (!relation.length) {
+      res.status(404).json({ error: 'One or both CIs not found.' });
+      return;
+    }
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
@@ -2107,20 +2387,18 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
   }
 
   try {
-    const ciCheck = await prisma.$queryRaw<{ count: bigint }[]>`
-      SELECT COUNT(*) AS count FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)
-    `;
-
-    if (Number(ciCheck[0]?.count) !== 2) {
-      res.status(404).json({ error: 'One or both CIs not found' });
-      return;
-    }
-
+    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      VALUES (gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now())
+      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
       RETURNING id::text
     `;
+
+    if (!relation.length) {
+      res.status(404).json({ error: 'One or both CIs not found.' });
+      return;
+    }
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
@@ -2230,10 +2508,12 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       if (!hostname) continue;
 
       // Find CI by case-insensitive name match
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameGB = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameGB + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;
@@ -2245,26 +2525,51 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
 
       const ci = rows[0];
 
-      // Normalise vulnerabilities to our standard format (with lifecycle status)
+      // Read existing vulnerabilities so we can MERGE instead of replace.
+      // This preserves lifecycle status (RESUELTO, EN_PROGRESO, etc.) set by analysts
+      // and retains vulns from other sources (CrowdStrike) that Greenbone doesn't report.
+      type ExistingVulnRow = { vulnerabilities: unknown };
+      const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
+        SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
+      `;
+      const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
+      // Index existing vulns by CVE for O(1) lookup
+      const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
+
+      // Normalise incoming vulnerabilities to our standard format
       const importedAt = new Date().toISOString();
-      const vulns = (result.vulnerabilities ?? []).map((v) => ({
+      const incoming = (result.vulnerabilities ?? []).map((v) => ({
         cve:         v.cve,
         severity:    v.severity?.toUpperCase() as VulnSeverity,
         description: v.description ?? v.name ?? '',
-        source:      'greenbone',
+        source:      'greenbone' as const,
         cvss_score:  v.cvss_score ?? null,
         status:      'NUEVO' as VulnStatus,
         importedAt,
       }));
 
+      // Merge: update existing entries (preserve status), add new ones
+      const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
+      const merged: Vulnerability[] = [
+        // Existing vulns: refresh fields from Greenbone if re-reported; keep status
+        ...existingVulns.map((existing) => {
+          const fresh = incomingByCve.get(existing.cve);
+          if (!fresh) return existing; // not in this report — keep as-is
+          return { ...fresh, status: existing.status }; // update metadata, preserve status
+        }),
+        // New vulns not previously known
+        ...incoming.filter((v) => !existingByCve.has(v.cve)),
+      ];
+
       await prisma.$executeRaw`
         UPDATE "configuration_items"
-        SET "vulnerabilities" = ${JSON.stringify(vulns)}::jsonb
+        SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
         WHERE "id" = ${ci.id}::uuid
       `;
 
-      processed.push({ ci: ci.name, matched: true, vulnCount: vulns.length });
-      log.info(`  ✓ ${ci.name} → ${vulns.length} vulnerability/ies`);
+      const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
+      processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
+      log.info(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
     }
 
     res.json({
@@ -2312,10 +2617,12 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       const hostname = device.hostname ?? '';
       if (!hostname) continue;
 
+      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
+      const escapedHostnameCS = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       type CIRow = { id: string; name: string };
       const rows = await prisma.$queryRaw<CIRow[]>`
         SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + hostname + '%'})
+        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameCS + '%'}) ESCAPE '\\'
         ORDER BY LENGTH(name) ASC
         LIMIT 1
       `;
@@ -2426,7 +2733,7 @@ app.get('/api/masters/document-types', authenticateToken, async (_req, res) => {
       SELECT id::text AS id, code, name, is_system AS "isSystem"
       FROM "document_types" ORDER BY name ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (req, res) => {
@@ -2438,7 +2745,7 @@ app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (
       VALUES(gen_random_uuid(),${code.trim().toUpperCase()},${name.trim()},false,now(),now())
       RETURNING id::text AS id, code, name`;
     res.status(201).json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -2451,7 +2758,7 @@ app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, as
       RETURNING id::text AS id, code, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or system type' }); return; }
     res.json(rows[0]);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
@@ -2460,38 +2767,48 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, a
       DELETE FROM "document_types" WHERE id=${req.params.id}::uuid AND is_system=false`;
     if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ── Documents CRUD ────────────────────────────────────────────────────────────
 
 // GET /api/documents — list root documents with latest version info
-app.get('/api/documents', authenticateToken, async (_req, res) => {
+const DOCS_MAX_PAGE_SIZE = 500;
+app.get('/api/documents', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, DOCS_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; title: string; description: string | null;
-      documentTypeId: string; documentTypeName: string; documentTypeCode: string;
-      versionNumber: number; originalName: string; mimeType: string;
-      fileSize: number; uploadedBy: string; createdAt: Date;
-      latestVersionId: string;
-    }[]>`
-      SELECT d.id::text AS id, d.title, d.description,
-             d.document_type_id::text AS "documentTypeId",
-             dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
-             COALESCE(v.version_number, d.version_number) AS "versionNumber",
-             COALESCE(v.original_name, d.original_name) AS "originalName",
-             COALESCE(v.mime_type, d.mime_type) AS "mimeType",
-             COALESCE(v.file_size, d.file_size) AS "fileSize",
-             COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
-             d.created_at AS "createdAt",
-             COALESCE(v.id::text, d.id::text) AS "latestVersionId"
-      FROM "documents" d
-      JOIN "document_types" dt ON d.document_type_id = dt.id
-      LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE d.root_id IS NULL
-      ORDER BY d.created_at DESC`;
-    res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "documents" WHERE root_id IS NULL`,
+      prisma.$queryRaw<{
+        id: string; title: string; description: string | null;
+        documentTypeId: string; documentTypeName: string; documentTypeCode: string;
+        versionNumber: number; originalName: string; mimeType: string;
+        fileSize: number; uploadedBy: string; createdAt: Date;
+        latestVersionId: string;
+      }[]>`
+        SELECT d.id::text AS id, d.title, d.description,
+               d.document_type_id::text AS "documentTypeId",
+               dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
+               COALESCE(v.version_number, d.version_number) AS "versionNumber",
+               COALESCE(v.original_name, d.original_name) AS "originalName",
+               COALESCE(v.mime_type, d.mime_type) AS "mimeType",
+               COALESCE(v.file_size, d.file_size) AS "fileSize",
+               COALESCE(v.uploaded_by, d.uploaded_by) AS "uploadedBy",
+               d.created_at AS "createdAt",
+               COALESCE(v.id::text, d.id::text) AS "latestVersionId"
+        FROM "documents" d
+        JOIN "document_types" dt ON d.document_type_id = dt.id
+        LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
+        WHERE d.root_id IS NULL
+        ORDER BY d.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({ total: Number(countRows[0]?.c ?? 0), page, limit, data: rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id — document detail with versions, relations, associations
@@ -2557,7 +2874,7 @@ app.get('/api/documents/:id', authenticateToken, async (req, res) => {
     ]);
 
     res.json({ ...doc, versions, relations, cis, contracts, notes });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents — upload new document
@@ -2618,7 +2935,8 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
   } catch (e) {
     // Clean up uploaded file on DB error
     try { fs.unlinkSync(filePath); } catch {}
-    res.status(500).json({ error: String(e) });
+    console.error(e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -2634,7 +2952,7 @@ app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE','Document',${req.params.id},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id — delete document (and file from disk)
@@ -2652,29 +2970,37 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','Document',${req.params.id},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id/download — authenticated file download
-// Supports both Authorization header and ?token= query param (for embedded viewers like iframe/img)
+// Requires Authorization: Bearer <token> header (query param not accepted — tokens in URLs leak via logs/referrers)
 // Supports ?inline=true to display in browser instead of triggering download
 app.get('/api/documents/:id/download', async (req, res) => {
-  // Support both Authorization header and ?token= query param (for embedded viewers)
   const authHeader = req.headers['authorization'];
-  const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
-  const tokenStr = headerToken ?? queryToken;
+  const tokenStr = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
   if (!tokenStr) { res.status(401).json({ error: 'Authentication required' }); return; }
 
   try {
-    jwt.verify(tokenStr, JWT_SECRET_VALUE) as JwtPayload;
+    jwt.verify(tokenStr, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' }); return;
   }
 
-  // Also support ?inline=true to display in browser instead of download
+  // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
+
+  // Allowlist of MIME types safe to render inline in a browser context.
+  // Everything else is forced to attachment/octet-stream to prevent stored XSS
+  // (e.g. SVG files can execute embedded JavaScript when served inline as image/svg+xml).
+  const SAFE_INLINE_MIME_TYPES = new Set([
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+  ]);
 
   try {
     const rows = await prisma.$queryRaw<{ file_name: string; original_name: string; mime_type: string }[]>`
@@ -2683,11 +3009,17 @@ app.get('/api/documents/:id/download', async (req, res) => {
     const { file_name, original_name, mime_type } = rows[0];
     const filePath = path.join(DOCUMENTS_DIR, file_name);
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found on disk' }); return; }
-    res.setHeader('Content-Type', mime_type);
-    const disposition = inline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    const serveInline = inline && SAFE_INLINE_MIME_TYPES.has(mime_type);
+    const contentType = serveInline ? mime_type : 'application/octet-stream';
+    const disposition = serveInline ? 'inline' : `attachment; filename="${encodeURIComponent(original_name)}"`;
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', disposition);
+    // Extra defence: prevent browser from sniffing a different MIME type
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     fs.createReadStream(filePath).pipe(res as unknown as NodeJS.WritableStream);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/versions — upload new version
@@ -2735,7 +3067,7 @@ app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'VERSION','Document',${newRows[0].id},${req.user!.email},now())`;
 
     res.status(201).json({ id: newRows[0].id, versionNumber: nextVersion });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:rootId/versions/:versionId — delete a specific version
@@ -2773,7 +3105,7 @@ app.delete('/api/documents/:rootId/versions/:versionId', authenticateToken, requ
 
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_VERSION','Document',${req.params.versionId},${req.user!.email},now())`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/relations — add relation to another document
@@ -2788,7 +3120,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
       VALUES(gen_random_uuid(),${req.params.id}::uuid,${targetDocId}::uuid,${relationType},now())
       ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/relations/:targetId — remove relation
@@ -2796,7 +3128,7 @@ app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireA
   try {
     await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/ci/:ciId — associate document with CI
@@ -2804,7 +3136,7 @@ app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (
   try {
     await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/ci/:ciId — remove CI association
@@ -2812,7 +3144,7 @@ app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/contract/:contractId — associate with contract
@@ -2820,7 +3152,7 @@ app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAd
   try {
     await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
     res.status(201).json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // DELETE /api/documents/:id/contract/:contractId — remove contract association
@@ -2828,7 +3160,7 @@ app.delete('/api/documents/:id/contract/:contractId', authenticateToken, require
   try {
     await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/cis/:id/documents — get documents for a CI
@@ -2848,7 +3180,7 @@ app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
       WHERE dc.ci_id = ${req.params.id}::uuid AND d.root_id IS NULL
       ORDER BY d.created_at DESC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/contracts/:id/documents — get documents for a contract
@@ -2869,7 +3201,7 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
       WHERE dc.contract_id = ${req.params.id}::uuid AND d.root_id IS NULL
       ORDER BY d.created_at DESC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Bulk Association Endpoints ───────────────────────────────────────────────
@@ -3043,7 +3375,7 @@ app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
       WHERE document_id = ${rootId}::uuid
       ORDER BY created_at ASC`;
     res.json(rows);
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // POST /api/documents/:id/notes — add a note (any authenticated user)
@@ -3060,7 +3392,7 @@ app.post('/api/documents/:id/notes', authenticateToken, async (req, res) => {
       VALUES(gen_random_uuid(), ${rootId}::uuid, ${content.trim()}, ${req.user!.email}, now())
       RETURNING id::text AS id`;
     res.status(201).json({ id: rows[0].id });
-  } catch (e) { res.status(500).json({ error: String(e) }); }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────
@@ -3087,7 +3419,7 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
     });
   } catch (error) {
     console.error('[POST /api/admin/test-email] Error:', error);
-    res.status(500).json({ error: String(error) });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -3368,41 +3700,39 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, as
 // ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
 
 // GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
-app.get('/api/licenses', authenticateToken, async (_req, res) => {
+const LICENSES_MAX_PAGE_SIZE = 500;
+app.get('/api/licenses', authenticateToken, async (req, res) => {
+  const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
+  const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, LICENSES_MAX_PAGE_SIZE);
+  const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
+  const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const offset   = (page - 1) * limit;
   try {
-    const rows = await prisma.$queryRaw<{
-      id: string; name: string; licenseNumber: string;
-      startDate: Date; endDate: Date | null;
-      status: string | null; currency: string | null; cost: string | null;
-      vendorName: string | null; licenseTypeName: string | null;
-      licenseMetricName: string | null;
-      ciCount: bigint; addendumCount: bigint;
-    }[]>`
-      SELECT
-        l.id::text AS id,
-        l.name,
-        l.license_number AS "licenseNumber",
-        l.start_date AS "startDate",
-        l.end_date AS "endDate",
-        l.status,
-        l.currency,
-        l.cost::text AS cost,
-        v.name AS "vendorName",
-        lt.name AS "licenseTypeName",
-        lm.name AS "licenseMetricName",
-        (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
-        (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
-      FROM "licenses" l
-      LEFT JOIN "vendors" v ON v.id = l.vendor_id
-      LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
-      LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
-      ORDER BY l.created_at DESC`;
-    res.json(rows.map((r) => ({
-      ...r,
-      ciCount: Number(r.ciCount),
-      addendumCount: Number(r.addendumCount),
-      cost: r.cost ? parseFloat(r.cost) : null,
-    })));
+    type LicenseRow = { id: string; name: string; licenseNumber: string; startDate: Date; endDate: Date | null; status: string | null; currency: string | null; cost: string | null; vendorName: string | null; licenseTypeName: string | null; licenseMetricName: string | null; ciCount: bigint; addendumCount: bigint; };
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "licenses" WHERE parent_license_id IS NULL`,
+      prisma.$queryRaw<LicenseRow[]>`
+        SELECT
+          l.id::text AS id, l.name,
+          l.license_number AS "licenseNumber",
+          l.start_date AS "startDate", l.end_date AS "endDate",
+          l.status, l.currency, l.cost::text AS cost,
+          v.name AS "vendorName",
+          lt.name AS "licenseTypeName",
+          lm.name AS "licenseMetricName",
+          (SELECT COUNT(*) FROM "_LicenseToCI" lci WHERE lci."A" = l.id) AS "ciCount",
+          (SELECT COUNT(*) FROM "licenses" al WHERE al.parent_license_id = l.id) AS "addendumCount"
+        FROM "licenses" l
+        LEFT JOIN "vendors" v ON v.id = l.vendor_id
+        LEFT JOIN "license_types" lt ON lt.id = l.license_type_id
+        LEFT JOIN "license_metrics" lm ON lm.id = l.license_metric_id
+        ORDER BY l.created_at DESC
+        LIMIT ${limit} OFFSET ${offset}`,
+    ]);
+    res.json({
+      total: Number(countRows[0]?.c ?? 0), page, limit,
+      data: rows.map((r) => ({ ...r, ciCount: Number(r.ciCount), addendumCount: Number(r.addendumCount), cost: r.cost ? parseFloat(r.cost) : null })),
+    });
   } catch (e) { res.status(500).json({ error: 'Failed to fetch licenses' }); }
 });
 

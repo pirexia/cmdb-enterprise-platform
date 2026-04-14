@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { X, Loader2, AlertTriangle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function AddCIModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }): React.ReactElement {
+  const { t } = useLanguage();
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [users,            setUsers]            = useState<User[]>([]);
   const [branches,         setBranches]         = useState<Branch[]>([]);
@@ -194,7 +196,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-800">Añadir Configuration Item</h2>
+          <h2 className="text-base font-semibold text-slate-800">{t("add_ci_modal.add_title")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
         </div>
 
@@ -204,7 +206,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Governance (top) ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <Label>Estado</Label>
+              <Label>{t("add_ci_modal.status_label")}</Label>
               <Select value={form.status} onChange={(e) => set("status", e.target.value)}>
                 {["ACTIVO","INACTIVO","REPARACION","DESAPARECIDO","BAJA","OBSOLETO","DESTRUIDO"].map((s) => (
                   <option key={s} value={s}>{s}</option>
@@ -212,20 +214,20 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
               </Select>
             </div>
             <div className="sm:col-span-2">
-              <Label>Número de Inventario</Label>
+              <Label>{t("add_ci_modal.inventory_label")}</Label>
               <Input placeholder="INV-2026-001" value={form.inventoryNumber} onChange={(e) => set("inventoryNumber", e.target.value)} />
             </div>
           </div>
 
           {/* ── Type ── */}
           <div>
-            <Label>Tipo *</Label>
+            <Label>{t("add_ci_modal.type_label")} *</Label>
             <Select required value={form.ciTypeId} onChange={(e) => set("ciTypeId", e.target.value)}>
-              <option value="">— Seleccionar tipo —</option>
+              <option value="">{t("add_ci_modal.type_placeholder")}</option>
               {ciTypeCategories.map((cat) => (
                 <optgroup key={cat.code} label={cat.name}>
-                  {cat.ciTypes.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                  {cat.ciTypes.map((ct) => (
+                    <option key={ct.id} value={ct.id}>{ct.name}</option>
                   ))}
                 </optgroup>
               ))}
@@ -234,23 +236,23 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
 
           {/* ── Name / Slug ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><Label>Nombre *</Label><Input required placeholder="ej. Web Server PRD-01" value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
+            <div><Label>{t("add_ci_modal.name_label")} *</Label><Input required placeholder={t("add_ci_modal.name_placeholder")} value={form.name} onChange={(e) => set("name", e.target.value)} /></div>
             <div>
-              <Label>API Slug *</Label>
-              <Input required placeholder="ej. web-server-prd-01" value={form.apiSlug} onChange={(e) => set("apiSlug", e.target.value)} />
-              <p className="mt-1 text-[11px] text-slate-400">Auto-generado. Debe ser único.</p>
+              <Label>{t("add_ci_modal.slug_label")} *</Label>
+              <Input required placeholder={t("add_ci_modal.slug_placeholder")} value={form.apiSlug} onChange={(e) => set("apiSlug", e.target.value)} />
+              <p className="mt-1 text-[11px] text-slate-400">{t("add_ci_modal.slug_hint")}</p>
             </div>
           </div>
 
           {/* ── Env / Criticality ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><Label>Entorno *</Label>
+            <div><Label>{t("add_ci_modal.env_label")} *</Label>
               <Select required value={form.environment} onChange={(e) => set("environment", e.target.value as Environment)}>
                 <option value="PRODUCTION">Production</option><option value="STAGING">Staging</option>
                 <option value="TESTING">Testing</option><option value="DEVELOPMENT">Development</option>
               </Select>
             </div>
-            <div><Label>Criticidad *</Label>
+            <div><Label>{t("add_ci_modal.crit_label")} *</Label>
               <Select required value={form.criticality} onChange={(e) => set("criticality", e.target.value as Criticality)}>
                 <option value="MISSION_CRITICAL">Mission Critical</option><option value="HIGH">High</option>
                 <option value="MEDIUM">Medium</option><option value="LOW">Low</option>
@@ -260,14 +262,14 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
 
           {/* ── Sede (Branch) ── */}
           <div>
-            <Label>Sede</Label>
+            <Label>{t("add_ci_modal.branch_label")}</Label>
             <Select value={form.branchId} onChange={(e) => set("branchId", e.target.value)}>
-              <option value="">— Sin sede asignada —</option>
+              <option value="">{t("add_ci_modal.branch_placeholder")}</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.branch_code})</option>)}
             </Select>
             {selectedBranch && (
               <p className="mt-1 text-[11px] text-slate-400">
-                Área de soporte: <span className="font-medium text-slate-600">{selectedBranch.support_area_name}</span>
+                {t("add_ci_modal.support_area")} <span className="font-medium text-slate-600">{selectedBranch.support_area_name}</span>
               </p>
             )}
           </div>
@@ -276,16 +278,16 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {isHw && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label>Fabricante (catálogo)</Label>
+                <Label>{t("add_ci_modal.manufacturer_label")}</Label>
                 <Select value={form.manufacturerId} onChange={(e) => { set("manufacturerId", e.target.value); set("ciModelId", ""); }}>
-                  <option value="">— Sin especificar —</option>
+                  <option value="">{t("add_ci_modal.no_selection")}</option>
                   {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </Select>
               </div>
               <div>
-                <Label>Modelo (catálogo)</Label>
+                <Label>{t("add_ci_modal.model_label")}</Label>
                 <Select value={form.ciModelId} onChange={(e) => set("ciModelId", e.target.value)} disabled={filteredModels.length === 0}>
-                  <option value="">— Sin especificar —</option>
+                  <option value="">{t("add_ci_modal.no_selection")}</option>
                   {filteredModels.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </Select>
               </div>
@@ -294,15 +296,15 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
 
           {/* ── Owners ── */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><Label>Propietario de Negocio</Label>
+            <div><Label>{t("add_ci_modal.business_owner_label")}</Label>
               <Select value={form.businessOwnerId} onChange={(e) => set("businessOwnerId", e.target.value)}>
-                <option value="">— Sin asignar —</option>
+                <option value="">{t("add_ci_modal.unassigned")}</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
               </Select>
             </div>
-            <div><Label>Responsable Técnico</Label>
+            <div><Label>{t("add_ci_modal.technical_lead_label")}</Label>
               <Select value={form.technicalLeadId} onChange={(e) => set("technicalLeadId", e.target.value)}>
-                <option value="">— Sin asignar —</option>
+                <option value="">{t("add_ci_modal.unassigned")}</option>
                 {users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
               </Select>
             </div>
@@ -311,11 +313,11 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Hardware section ── */}
           {isHw && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Detalles de Hardware</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">{t("add_ci_modal.hw_details")}</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div><Label>Nº Serie / ID *</Label><Input required placeholder="SN-XXXXXXX" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
-                <div><Label>Modelo / SKU</Label><Input placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
-                <div><Label>Fabricante / Proveedor</Label><Input placeholder="Dell / AWS" value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.serial_label")} *</Label><Input required placeholder={t("add_ci_modal.serial_placeholder")} value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.model_label")}</Label><Input placeholder="PowerEdge R740" value={form.model} onChange={(e) => set("model", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.manufacturer_label")}</Label><Input placeholder="Dell / AWS" value={form.manufacturer} onChange={(e) => set("manufacturer", e.target.value)} /></div>
               </div>
             </div>
           )}
@@ -323,10 +325,10 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Software section ── */}
           {isSw && (
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Detalles de Software</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">{t("add_ci_modal.sw_details")}</p>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div><Label>Versión</Label><Input placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
-                <div><Label>Tipo de Licencia</Label><Input placeholder="Enterprise / OEM…" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.version_label")}</Label><Input placeholder="14.2.1" value={form.version} onChange={(e) => set("version", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.license_label")}</Label><Input placeholder="Enterprise / OEM…" value={form.licenseType} onChange={(e) => set("licenseType", e.target.value)} /></div>
               </div>
             </div>
           )}
@@ -334,16 +336,16 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── Technical Location + Network (infra) ── */}
           {isInfra && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">Ubicación Técnica y Red</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{t("add_ci_modal.location_section")}</p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div><Label>Planta / Piso</Label><Input placeholder="PB" value={form.floor} onChange={(e) => set("floor", e.target.value)} /></div>
-                <div><Label>Sala / CPD</Label><Input placeholder="CPD-01" value={form.room} onChange={(e) => set("room", e.target.value)} /></div>
-                <div><Label>Rack</Label><Input placeholder="R01" value={form.rack} onChange={(e) => set("rack", e.target.value)} /></div>
-                <div><Label>Unidad (U)</Label><Input placeholder="12" value={form.rackUnit} onChange={(e) => set("rackUnit", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.floor_label")}</Label><Input placeholder="PB" value={form.floor} onChange={(e) => set("floor", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.room_label")}</Label><Input placeholder="CPD-01" value={form.room} onChange={(e) => set("room", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.rack_label")}</Label><Input placeholder="R01" value={form.rack} onChange={(e) => set("rack", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.rack_unit_label")}</Label><Input placeholder="12" value={form.rackUnit} onChange={(e) => set("rackUnit", e.target.value)} /></div>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div><Label>VLAN</Label><Input placeholder="100" value={form.vlan} onChange={(e) => set("vlan", e.target.value)} /></div>
-                <div><Label>IP de Consola (OOB)</Label><Input placeholder="10.0.0.1" value={form.consoleIp} onChange={(e) => set("consoleIp", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.vlan_label")}</Label><Input placeholder="100" value={form.vlan} onChange={(e) => set("vlan", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.console_ip_label")}</Label><Input placeholder="10.0.0.1" value={form.consoleIp} onChange={(e) => set("consoleIp", e.target.value)} /></div>
               </div>
             </div>
           )}
@@ -351,75 +353,75 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
           {/* ── EOL / EoS dates (optional override — backend auto-fills from endoflife.date) ── */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 flex items-center gap-1.5">
-              Fechas de Ciclo de Vida (EoL / EoS)
-              <span className="text-[10px] font-normal text-slate-400 lowercase">— se autocompletarán vía endoflife.date si se dejan vacías</span>
+              {t("add_ci_modal.eol_section")}
+              <span className="text-[10px] font-normal text-slate-400 lowercase">{t("add_ci_modal.eol_hint")}</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div><Label>End of Life (EoL)</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
-              <div><Label>End of Support (EoS)</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
+              <div><Label>{t("add_ci_modal.eol_label")}</Label><Input type="date" value={form.eolDate} onChange={(e) => set("eolDate", e.target.value)} /></div>
+              <div><Label>{t("add_ci_modal.eos_label")}</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
             </div>
           </div>
 
           {/* ── NIS2 / Resiliencia / GDPR ── */}
           <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">NIS2 · Resiliencia · GDPR</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">{t("add_ci_modal.nis2_section")}</p>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label>Impacto de Negocio (NIS2)</Label>
+                <Label>{t("add_ci_modal.business_impact_label")}</Label>
                 <Select value={form.businessImpact} onChange={(e) => set("businessImpact", e.target.value as BusinessImpact | "")}>
-                  <option value="">— Sin clasificar —</option>
-                  <option value="LOW">Bajo</option>
-                  <option value="MEDIUM">Medio</option>
-                  <option value="HIGH">Alto</option>
-                  <option value="CRITICAL">Crítico</option>
+                  <option value="">{t("add_ci_modal.unclassified")}</option>
+                  <option value="LOW">{t("add_ci_modal.impact_low")}</option>
+                  <option value="MEDIUM">{t("add_ci_modal.impact_medium")}</option>
+                  <option value="HIGH">{t("add_ci_modal.impact_high")}</option>
+                  <option value="CRITICAL">{t("add_ci_modal.impact_critical")}</option>
                 </Select>
               </div>
               <div>
-                <Label>Clasificación de Datos (GDPR)</Label>
+                <Label>{t("add_ci_modal.data_class_label")}</Label>
                 <Select value={form.dataClassification} onChange={(e) => set("dataClassification", e.target.value as DataClassification | "")}>
-                  <option value="">— Sin clasificar —</option>
-                  <option value="PUBLIC">Público</option>
-                  <option value="INTERNAL">Interno</option>
-                  <option value="CONFIDENTIAL">Confidencial</option>
-                  <option value="RESTRICTED">Restringido</option>
+                  <option value="">{t("add_ci_modal.unclassified")}</option>
+                  <option value="PUBLIC">{t("add_ci_modal.class_public")}</option>
+                  <option value="INTERNAL">{t("add_ci_modal.class_internal")}</option>
+                  <option value="CONFIDENTIAL">{t("add_ci_modal.class_confidential")}</option>
+                  <option value="RESTRICTED">{t("add_ci_modal.class_restricted")}</option>
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <Label>Prioridad de Recuperación (1-5)</Label>
+                <Label>{t("add_ci_modal.recovery_priority_label")}</Label>
                 <Input type="number" min="1" max="5" placeholder="1 = primero" value={form.recoveryPriority} onChange={(e) => set("recoveryPriority", e.target.value)} />
               </div>
               <div>
-                <Label>RTO (minutos)</Label>
+                <Label>{t("add_ci_modal.rto_label")}</Label>
                 <Input type="number" min="0" placeholder="ej. 60" value={form.rto} onChange={(e) => set("rto", e.target.value)} />
-                <p className="mt-1 text-[10px] text-slate-400">Recovery Time Objective</p>
+                <p className="mt-1 text-[10px] text-slate-400">{t("add_ci_modal.rto_hint")}</p>
               </div>
               <div>
-                <Label>RPO (minutos)</Label>
+                <Label>{t("add_ci_modal.rpo_label")}</Label>
                 <Input type="number" min="0" placeholder="ej. 15" value={form.rpo} onChange={(e) => set("rpo", e.target.value)} />
-                <p className="mt-1 text-[10px] text-slate-400">Recovery Point Objective</p>
+                <p className="mt-1 text-[10px] text-slate-400">{t("add_ci_modal.rpo_hint")}</p>
               </div>
             </div>
             <div className="flex gap-6">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.spofRisk} onChange={(e) => set("spofRisk", e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
-                <span className="text-sm text-slate-700">Punto Único de Fallo (SPOF)</span>
+                <span className="text-sm text-slate-700">{t("add_ci_modal.spof_label")}</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.containsPii} onChange={(e) => set("containsPii", e.target.checked)}
                   className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-400" />
-                <span className="text-sm text-slate-700">Contiene Datos Personales (PII / GDPR)</span>
+                <span className="text-sm text-slate-700">{t("add_ci_modal.pii_label")}</span>
               </label>
             </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">Cancelar</button>
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>
             <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Guardando…" : "Crear CI"}
+              {submitting ? t("common.saving") : t("add_ci_modal.submit")}
             </button>
           </div>
         </form>

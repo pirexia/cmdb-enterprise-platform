@@ -215,7 +215,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
       setAllDocsLoading(true);
       apiFetch("/api/documents")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((d: AllDocRef[]) => setAllDocs(Array.isArray(d) ? d : []))
+        .then((d: { data: AllDocRef[] }) => setAllDocs(d.data ?? []))
         .catch(() => {}).finally(() => setAllDocsLoading(false));
     }
   };
@@ -622,8 +622,8 @@ export default function LicensesPage() {
     try {
       const res = await apiFetch("/api/licenses");
       if (!res.ok) throw new Error(`Status ${res.status}`);
-      const json: License[] = await res.json();
-      setLicenses(Array.isArray(json) ? json : []);
+      const json: { data: License[] } = await res.json();
+      setLicenses(json.data ?? []);
     } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
     finally { setLoading(false); }
   };
@@ -683,7 +683,7 @@ export default function LicensesPage() {
     <>
       {showModal && <AddLicenseModal onClose={() => setShowModal(false)} onCreated={fetchLicenses} />}
       <div className="min-h-screen bg-slate-50">
-        <header className="border-b border-slate-200 bg-white px-8 py-5">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-slate-900">Licencias de Software</h1>

@@ -9,6 +9,7 @@ import {
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { openPrintWindow, buildReportHTML } from "@/lib/printReport";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -412,6 +413,7 @@ function contractStats(contracts: Contract[]) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const { t } = useLanguage();
   const [cis, setCis]             = useState<CI[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -432,11 +434,11 @@ export default function ReportsPage() {
       setCis(cisJson.data ?? []);
       setContracts(contrJson.data ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -456,19 +458,19 @@ export default function ReportsPage() {
       icon: <FileWarning className="h-7 w-7 text-orange-500" />,
       color: "ring-orange-200 bg-orange-50",
       iconBg: "bg-orange-100",
-      title: "Obsolescencia EoL / EoS",
-      subtitle: "End of Life — End of Support",
-      description: "Lista todos los CIs con fechas de fin de vida o fin de soporte registradas.",
+      title: t("reports.eol_card_title"),
+      subtitle: t("reports.eol_card_subtitle"),
+      description: t("reports.eol_card_desc"),
       includes: [
-        "Semáforo visual: Vencido/<90d · <180d · OK",
-        "Fechas exactas de EoL y EoS por activo",
-        "Ordenado por urgencia (más próximo primero)",
-        "Resumen ejecutivo con totales",
+        t("reports.eol_includes_1"),
+        t("reports.eol_includes_2"),
+        t("reports.eol_includes_3"),
+        t("reports.eol_includes_4"),
       ],
       stats: [
-        { label: "Total CIs", value: cs.total, color: "text-slate-700" },
-        { label: "Con fechas EoL/EoS", value: cs.withDates, color: "text-indigo-600" },
-        { label: "Críticos (<90d)", value: cs.urgent, color: cs.urgent > 0 ? "text-red-600" : "text-emerald-600" },
+        { label: t("reports.eol_stat_total"),      value: cs.total,     color: "text-slate-700" },
+        { label: t("reports.eol_stat_with_dates"),  value: cs.withDates, color: "text-indigo-600" },
+        { label: t("reports.eol_stat_critical"),    value: cs.urgent,    color: cs.urgent > 0 ? "text-red-600" : "text-emerald-600" },
       ],
       onPDF: () => runReport("eol", () => generateEolReport(cis)),
       onCSV: () => exportEolCsv(cis),
@@ -478,19 +480,19 @@ export default function ReportsPage() {
       icon: <FileText className="h-7 w-7 text-indigo-500" />,
       color: "ring-indigo-200 bg-indigo-50",
       iconBg: "bg-indigo-100",
-      title: "Contratos y Adendas",
-      subtitle: "Gestión de Contratos",
-      description: "Consolida todos los contratos con sus adendas, estados y alertas de vencimiento.",
+      title: t("reports.contracts_card_title"),
+      subtitle: t("reports.contracts_card_subtitle"),
+      description: t("reports.contracts_card_desc"),
       includes: [
-        "Proveedor, nº contrato, tipo (Principal/Adenda)",
-        "Fechas de inicio y fin con días restantes",
-        "Alertas de contratos próximos a vencer (60 días)",
-        "Conteo de CIs cubiertos por contrato",
+        t("reports.contracts_includes_1"),
+        t("reports.contracts_includes_2"),
+        t("reports.contracts_includes_3"),
+        t("reports.contracts_includes_4"),
       ],
       stats: [
-        { label: "Total contratos", value: ct.total, color: "text-slate-700" },
-        { label: "Vencidos", value: ct.expired, color: ct.expired > 0 ? "text-red-600" : "text-emerald-600" },
-        { label: "Vencen en <60d", value: ct.expiring60, color: ct.expiring60 > 0 ? "text-orange-600" : "text-emerald-600" },
+        { label: t("reports.contracts_stat_total"),    value: ct.total,       color: "text-slate-700" },
+        { label: t("reports.contracts_stat_expired"),  value: ct.expired,     color: ct.expired > 0 ? "text-red-600" : "text-emerald-600" },
+        { label: t("reports.contracts_stat_expiring"), value: ct.expiring60,  color: ct.expiring60 > 0 ? "text-orange-600" : "text-emerald-600" },
       ],
       onPDF: () => runReport("contracts", () => generateContractsReport(contracts)),
       onCSV: () => exportContractsCsv(contracts),
@@ -500,19 +502,19 @@ export default function ReportsPage() {
       icon: <ShieldAlert className="h-7 w-7 text-red-500" />,
       color: "ring-red-200 bg-red-50",
       iconBg: "bg-red-100",
-      title: "Informe Ejecutivo de Seguridad",
-      subtitle: "Greenbone · CrowdStrike Falcon",
-      description: "Informe de salud de infraestructura con métricas de vulnerabilidades y cobertura de agentes.",
+      title: t("reports.security_card_title"),
+      subtitle: t("reports.security_card_subtitle"),
+      description: t("reports.security_card_desc"),
       includes: [
-        "Resumen: CIs por criticidad (gráfico de barras)",
-        "Top 5 servidores con mayor riesgo (score ponderado)",
-        "Cobertura de agentes CrowdStrike Falcon",
-        "CIs sin protección de agente",
+        t("reports.security_includes_1"),
+        t("reports.security_includes_2"),
+        t("reports.security_includes_3"),
+        t("reports.security_includes_4"),
       ],
       stats: [
-        { label: "Total CIs", value: cs.total, color: "text-slate-700" },
-        { label: "Vulns CRITICAL", value: cs.critVulns, color: cs.critVulns > 0 ? "text-red-600" : "text-emerald-600" },
-        { label: "Vulns abiertas", value: cs.totalVulns, color: cs.totalVulns > 0 ? "text-orange-600" : "text-emerald-600" },
+        { label: t("reports.security_stat_total"),      value: cs.total,     color: "text-slate-700" },
+        { label: t("reports.security_stat_crit_vulns"), value: cs.critVulns, color: cs.critVulns > 0 ? "text-red-600" : "text-emerald-600" },
+        { label: t("reports.security_stat_open_vulns"), value: cs.totalVulns, color: cs.totalVulns > 0 ? "text-orange-600" : "text-emerald-600" },
       ],
       onPDF: () => runReport("security", () => generateSecurityReport(cis)),
       onCSV: null,
@@ -522,14 +524,14 @@ export default function ReportsPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <BarChart3 className="h-6 w-6 text-indigo-500" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Centro de Reportes</h1>
+              <h1 className="text-xl font-bold text-slate-900">{t("reports.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Genera informes ejecutivos y exporta datos en PDF o CSV
+                {t("reports.header_subtitle")}
               </p>
             </div>
           </div>
@@ -539,7 +541,7 @@ export default function ReportsPage() {
             className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-            Actualizar datos
+            {t("reports.refresh_data")}
           </button>
         </div>
       </header>
@@ -550,7 +552,7 @@ export default function ReportsPage() {
         {error && (
           <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            No se pudo cargar los datos: {error}
+            {t("reports.load_error")} {error}
           </div>
         )}
 
@@ -558,11 +560,9 @@ export default function ReportsPage() {
         <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-6 py-4 flex items-start gap-3">
           <Printer className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-500" />
           <div>
-            <p className="text-sm font-semibold text-indigo-800">¿Cómo funciona?</p>
+            <p className="text-sm font-semibold text-indigo-800">{t("reports.how_it_works")}</p>
             <p className="text-sm text-indigo-600 mt-0.5">
-              Al hacer clic en <strong>Generar PDF</strong>, se abre una ventana con el informe formateado
-              y el diálogo de impresión. Guarda como PDF desde tu navegador.
-              Los botones <strong>CSV</strong> exportan los datos crudos para Excel.
+              {t("reports.how_it_works_desc")}
             </p>
           </div>
         </div>
@@ -622,8 +622,8 @@ export default function ReportsPage() {
                     className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-wait"
                   >
                     {generating === rpt.id
-                      ? <><RefreshCw className="h-4 w-4 animate-spin" />Generando…</>
-                      : <><Printer className="h-4 w-4" />Generar PDF</>
+                      ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("reports.generating")}</>
+                      : <><Printer className="h-4 w-4" />{t("reports.generate_pdf")}</>
                     }
                   </button>
                   {rpt.onCSV && (
@@ -633,7 +633,7 @@ export default function ReportsPage() {
                       className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <Download className="h-4 w-4" />
-                      Exportar CSV
+                      {t("reports.export_csv")}
                     </button>
                   )}
                 </div>
@@ -646,13 +646,13 @@ export default function ReportsPage() {
         <section className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-6">
           <h2 className="mb-4 text-sm font-semibold text-slate-700 flex items-center gap-2">
             <Clock className="h-4 w-4 text-slate-400" />
-            Exportaciones rápidas desde las vistas de inventario
+            {t("reports.quick_exports_title")}
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {[
-              { href: "/inventory",       icon: <ServerCrash className="h-4 w-4 text-emerald-600" />, label: "Inventario de CIs",        desc: "Botón CSV en tabla de activos" },
-              { href: "/vulnerabilities", icon: <Shield className="h-4 w-4 text-red-600" />,          label: "Vulnerabilidades",         desc: "Exporta con filtros aplicados" },
-              { href: "/contracts",       icon: <FileText className="h-4 w-4 text-indigo-600" />,     label: "Contratos y Adendas",      desc: "Descarga el listado completo" },
+              { href: "/inventory",       icon: <ServerCrash className="h-4 w-4 text-emerald-600" />, label: t("reports.quick_link_inventory_label"), desc: t("reports.quick_link_inventory_desc") },
+              { href: "/vulnerabilities", icon: <Shield className="h-4 w-4 text-red-600" />,          label: t("reports.quick_link_vulns_label"),     desc: t("reports.quick_link_vulns_desc") },
+              { href: "/contracts",       icon: <FileText className="h-4 w-4 text-indigo-600" />,     label: t("reports.quick_link_contracts_label"), desc: t("reports.quick_link_contracts_desc") },
             ].map(({ href, icon, label, desc }) => (
               <a
                 key={href}

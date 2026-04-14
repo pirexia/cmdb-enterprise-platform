@@ -22,6 +22,7 @@ import {
 import { apiFetch } from "@/lib/apiFetch";
 import AddRelationModal from "@/components/AddRelationModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,26 +84,27 @@ const CRIT_DOT: Record<string, string> = {
   LOW:              "bg-slate-300",
 };
 
-const TYPE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  PHYSICAL_SERVER:   { bg: "bg-emerald-100", text: "text-emerald-700", label: "Servidor Físico"  },
-  VIRTUAL_SERVER:    { bg: "bg-teal-100",    text: "text-teal-700",    label: "Servidor Virtual" },
-  DATABASE:          { bg: "bg-blue-100",    text: "text-blue-700",    label: "Base de Datos"    },
-  NETWORK_EQUIPMENT: { bg: "bg-cyan-100",    text: "text-cyan-700",    label: "Red"              },
-  STORAGE:           { bg: "bg-amber-100",   text: "text-amber-700",   label: "Almacenamiento"   },
-  BACKUP:            { bg: "bg-purple-100",  text: "text-purple-700",  label: "Backup"           },
-  BASE_SOFTWARE:     { bg: "bg-indigo-100",  text: "text-indigo-700",  label: "Software Base"    },
-  OTHER:             { bg: "bg-slate-100",   text: "text-slate-600",   label: "Otro"             },
+const TYPE_BADGE: Record<string, { bg: string; text: string; labelKey: string }> = {
+  PHYSICAL_SERVER:   { bg: "bg-emerald-100", text: "text-emerald-700", labelKey: "map.type_badge_physical_server" },
+  VIRTUAL_SERVER:    { bg: "bg-teal-100",    text: "text-teal-700",    labelKey: "map.type_badge_virtual_server"  },
+  DATABASE:          { bg: "bg-blue-100",    text: "text-blue-700",    labelKey: "map.type_badge_database"        },
+  NETWORK_EQUIPMENT: { bg: "bg-cyan-100",    text: "text-cyan-700",    labelKey: "map.type_badge_network"         },
+  STORAGE:           { bg: "bg-amber-100",   text: "text-amber-700",   labelKey: "map.type_badge_storage"         },
+  BACKUP:            { bg: "bg-purple-100",  text: "text-purple-700",  labelKey: "map.type_badge_backup"          },
+  BASE_SOFTWARE:     { bg: "bg-indigo-100",  text: "text-indigo-700",  labelKey: "map.type_badge_base_software"   },
+  OTHER:             { bg: "bg-slate-100",   text: "text-slate-600",   labelKey: "map.type_badge_other"           },
 };
 
 const DEPTH_OPTIONS = [
-  { value: 1, label: "1 nivel",   desc: "Solo directas" },
-  { value: 2, label: "2 niveles", desc: "Hasta 2 saltos" },
-  { value: 3, label: "3 niveles", desc: "Hasta 3 saltos" },
+  { value: 1, labelKey: "map.depth_1_label", descKey: "map.depth_1_desc" },
+  { value: 2, labelKey: "map.depth_2_label", descKey: "map.depth_2_desc" },
+  { value: 3, labelKey: "map.depth_3_label", descKey: "map.depth_3_desc" },
 ];
 
 // ─── CI Node (ReactFlow) ──────────────────────────────────────────────────────
 
 function CINode({ data }: NodeProps<CINodeData>) {
+  const { t } = useLanguage();
   const badge = TYPE_BADGE[data.ciType] ?? TYPE_BADGE["OTHER"];
   const dot   = CRIT_DOT[data.criticality] ?? "bg-slate-300";
 
@@ -118,17 +120,17 @@ function CINode({ data }: NodeProps<CINodeData>) {
       <div className="px-3 py-2.5">
         <div className="flex items-center justify-between mb-1.5">
           <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
-            {badge.label}
+            {t(badge.labelKey)}
           </span>
           <div className="flex gap-1">
             {data.spofRisk && (
-              <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Punto Único de Fallo">
+              <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title={t("map.spof_title")}>
                 SPOF
               </span>
             )}
             {data.isCenter && (
               <span className="inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                origen
+                {t("map.origin_badge")}
               </span>
             )}
           </div>
@@ -253,16 +255,27 @@ function buildGraph(
 
 // ─── Excel export ─────────────────────────────────────────────────────────────
 
-async function exportToExcel(rows: RelationRow[], center: CIOption) {
+async function exportToExcel(rows: RelationRow[], center: CIOption, t: (key: string) => string) {
   const XLSX = await import("xlsx");
+  const dirCol    = t("map.excel_col_direction");
+  const srcCol    = t("map.excel_col_source");
+  const srcSlug   = t("map.excel_col_source_slug");
+  const typeCol   = t("map.excel_col_type");
+  const tgtCol    = t("map.excel_col_target");
+  const tgtSlug   = t("map.excel_col_target_slug");
+  const depthCol  = t("map.excel_col_depth");
+  const dirOut    = t("map.excel_dir_outgoing");
+  const dirIn     = t("map.excel_dir_incoming");
+  const sheetName = t("map.excel_sheet");
+
   const data = rows.map((r) => ({
-    "Dirección":        r.source_ci_id === center.id ? "Saliente →" : "← Entrante",
-    "CI Origen":        r.source_name,
-    "Slug Origen":      r.source_slug,
-    "Tipo de Relación": r.relation_type,
-    "CI Destino":       r.target_name,
-    "Slug Destino":     r.target_slug,
-    "Profundidad":      r.depth ?? 1,
+    [dirCol]:   r.source_ci_id === center.id ? dirOut : dirIn,
+    [srcCol]:   r.source_name,
+    [srcSlug]:  r.source_slug,
+    [typeCol]:  r.relation_type,
+    [tgtCol]:   r.target_name,
+    [tgtSlug]:  r.target_slug,
+    [depthCol]: r.depth ?? 1,
   }));
   const ws = XLSX.utils.json_to_sheet(data);
   // Auto-fit column widths
@@ -272,7 +285,7 @@ async function exportToExcel(rows: RelationRow[], center: CIOption) {
   ws["!cols"] = colWidths;
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Dependencias");
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
   XLSX.writeFile(wb, `dependencias-${center.apiSlug}.xlsx`);
 }
 
@@ -291,6 +304,8 @@ function TableView({
   onDelete: (id: string) => void;
   isAdmin: boolean;
 }) {
+  const { t } = useLanguage();
+
   const allRows = relations.all ?? [...relations.outgoing, ...relations.incoming];
   // Deduplicate
   const seen = new Set<string>();
@@ -310,14 +325,15 @@ function TableView({
       {/* Table header bar */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-slate-100 bg-white flex-shrink-0">
         <p className="text-sm text-slate-500">
-          <span className="font-semibold text-slate-700">{rows.length}</span> relación{rows.length !== 1 ? "es" : ""}
-          {depth > 1 && <span className="ml-1 text-slate-400">(hasta {depth} niveles)</span>}
+          <span className="font-semibold text-slate-700">{rows.length}</span>{" "}
+          {rows.length !== 1 ? t("map.relation_count_plural").replace("{count}", "").trim() : t("map.relation_count").replace("{count}", "").trim()}
+          {depth > 1 && <span className="ml-1 text-slate-400">({t("map.up_to_levels").replace("{count}", String(depth))})</span>}
         </p>
         <button
-          onClick={() => exportToExcel(rows, center)}
+          onClick={() => exportToExcel(rows, center, t)}
           className="flex items-center gap-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
         >
-          <Download className="h-4 w-4" /> Exportar Excel
+          <Download className="h-4 w-4" /> {t("map.export_excel")}
         </button>
       </div>
 
@@ -326,15 +342,15 @@ function TableView({
         <table className="w-full text-sm border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 w-24">Dir.</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">CI Origen</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de Relación</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">CI Destino</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 w-24">{t("map.table_col_dir")}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{t("map.table_col_source")}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{t("map.table_col_type")}</th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">{t("map.table_col_target")}</th>
               {depth > 1 && (
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">Nivel</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">{t("map.table_col_level")}</th>
               )}
               {isAdmin && (
-                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">Acciones</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 w-20">{t("map.table_col_actions")}</th>
               )}
             </tr>
           </thead>
@@ -350,7 +366,7 @@ function TableView({
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
                       isSaliente ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"
                     }`}>
-                      {isSaliente ? "↗ Sal." : "↙ Ent."}
+                      {isSaliente ? t("map.dir_outgoing") : t("map.dir_incoming")}
                     </span>
                   </td>
                   {/* Source CI */}
@@ -391,7 +407,7 @@ function TableView({
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => onDelete(r.id)}
-                        title="Eliminar relación"
+                        title={t("map.delete_relation_title")}
                         className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -417,6 +433,7 @@ function CISelector({
   cis: CIOption[];
   onSelect: (ci: CIOption, depth: number) => void;
 }) {
+  const { t } = useLanguage();
   const [search,      setSearch]      = useState("");
   const [open,        setOpen]        = useState(false);
   const [selected,    setSelected]    = useState<CIOption | null>(null);
@@ -446,8 +463,8 @@ function CISelector({
             <Network className="h-5 w-5 text-indigo-600" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-slate-900">Mapa de Dependencias</h1>
-            <p className="text-sm text-slate-500">Selecciona un CI para explorar sus relaciones</p>
+            <h1 className="text-lg font-bold text-slate-900">{t("map.title")}</h1>
+            <p className="text-sm text-slate-500">{t("map.subtitle")}</p>
           </div>
         </div>
 
@@ -461,13 +478,13 @@ function CISelector({
             {selected ? (
               <span className="flex items-center gap-2 min-w-0">
                 <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${(TYPE_BADGE[selected.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"]).bg} ${(TYPE_BADGE[selected.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"]).text}`}>
-                  {(TYPE_BADGE[selected.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"]).label}
+                  {t((TYPE_BADGE[selected.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"]).labelKey)}
                 </span>
                 <span className="font-medium text-slate-800 truncate">{selected.name}</span>
                 <span className="font-mono text-xs text-slate-400 hidden sm:block">{selected.apiSlug}</span>
               </span>
             ) : (
-              <span className="text-slate-400">Buscar CI por nombre o slug…</span>
+              <span className="text-slate-400">{t("map.search_placeholder")}</span>
             )}
             <ChevronDown className={`ml-2 h-4 w-4 flex-shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
           </button>
@@ -480,14 +497,14 @@ function CISelector({
                   <input
                     autoFocus type="text" value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Escriba para filtrar…"
+                    placeholder={t("map.filter_placeholder")}
                     className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                   />
                 </div>
               </div>
               <ul className="max-h-64 overflow-y-auto py-1">
                 {filtered.length === 0 ? (
-                  <li className="px-4 py-3 text-sm italic text-slate-400">Sin resultados</li>
+                  <li className="px-4 py-3 text-sm italic text-slate-400">{t("map.no_ci_results")}</li>
                 ) : (
                   filtered.map((ci) => {
                     const badge = TYPE_BADGE[ci.ciType ?? "OTHER"] ?? TYPE_BADGE["OTHER"];
@@ -499,7 +516,7 @@ function CISelector({
                           className={`flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors ${selected?.id === ci.id ? "bg-indigo-50" : ""}`}
                         >
                           <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
-                            {badge.label}
+                            {t(badge.labelKey)}
                           </span>
                           <span className="flex-1 min-w-0">
                             <span className="font-medium text-slate-800 truncate block">{ci.name}</span>
@@ -518,7 +535,7 @@ function CISelector({
         {/* Depth selector */}
         <div className="mb-6">
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">
-            Profundidad de dependencia
+            {t("map.depth_label")}
           </label>
           <div className="flex gap-2">
             {DEPTH_OPTIONS.map((opt) => (
@@ -533,9 +550,9 @@ function CISelector({
                 }`}
               >
                 <p className={`text-sm font-bold ${depthChoice === opt.value ? "text-indigo-700" : "text-slate-700"}`}>
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-0.5">{opt.desc}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">{t(opt.descKey)}</p>
               </button>
             ))}
           </div>
@@ -547,11 +564,13 @@ function CISelector({
           onClick={() => selected && onSelect(selected, depthChoice)}
           className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          {selected ? `Ver dependencias de "${selected.name}"` : "Selecciona un CI para continuar"}
+          {selected
+            ? t("map.view_deps_of").replace("{name}", selected.name)
+            : t("map.select_to_continue")}
         </button>
 
         <p className="mt-3 text-center text-xs text-slate-400">
-          {cis.length} CIs disponibles
+          {t("map.cis_available").replace("{count}", String(cis.length))}
         </p>
       </div>
     </div>
@@ -562,6 +581,7 @@ function CISelector({
 
 export default function MapPage() {
   const { isAdmin } = useAuth();
+  const { t } = useLanguage();
 
   const [allCIs,      setAllCIs]      = useState<CIOption[]>([]);
   const [allCIsMap,   setAllCIsMap]   = useState<Map<string, CIOption>>(new Map());
@@ -584,7 +604,7 @@ export default function MapPage() {
         setAllCIs(json.data);
         setAllCIsMap(new Map(json.data.map((c) => [c.id, c])));
       })
-      .catch(() => setError("No se pudo cargar la lista de CIs"))
+      .catch(() => setError(t("map.load_cis_error")))
       .finally(() => setLoadingCIs(false));
   }, []);
 
@@ -601,11 +621,11 @@ export default function MapPage() {
       setNodes(n);
       setEdges(e);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
     } finally {
       setLoadingRels(false);
     }
-  }, [allCIsMap, setNodes, setEdges]);
+  }, [allCIsMap, setNodes, setEdges, t]);
 
   const handleSelectCI = (ci: CIOption, d: number) => {
     setSelectedCI(ci);
@@ -628,9 +648,9 @@ export default function MapPage() {
   };
 
   const handleDeleteRelation = async (id: string) => {
-    if (!confirm("¿Eliminar esta dependencia?")) return;
+    if (!confirm(t("map.confirm_delete"))) return;
     const res = await apiFetch(`/api/relations/${id}`, { method: "DELETE" });
-    if (!res.ok) { alert("Error al eliminar la relación"); return; }
+    if (!res.ok) { alert(t("map.delete_relation_error")); return; }
     if (selectedCI) loadRelations(selectedCI, depth);
   };
 
@@ -639,7 +659,7 @@ export default function MapPage() {
     return (
       <div className="flex h-full items-center justify-center bg-slate-50">
         <RefreshCw className="mr-2 h-5 w-5 animate-spin text-slate-400" />
-        <span className="text-sm text-slate-400">Cargando CIs…</span>
+        <span className="text-sm text-slate-400">{t("map.loading_cis")}</span>
       </div>
     );
   }
@@ -663,20 +683,20 @@ export default function MapPage() {
       )}
 
       {/* Header */}
-      <header className="flex-shrink-0 border-b border-slate-200 bg-white px-6 py-3">
+      <header className="sticky top-0 z-10 flex-shrink-0 border-b border-slate-200 bg-white px-6 py-3">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Back */}
           <button
             onClick={handleBack}
             className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" /> Cambiar CI
+            <ArrowLeft className="h-4 w-4" /> {t("map.change_ci")}
           </button>
 
           {/* CI info */}
           <div className="flex items-center gap-2 min-w-0">
             <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
-              {badge.label}
+              {t(badge.labelKey)}
             </span>
             <span className="font-bold text-slate-900 truncate">{selectedCI.name}</span>
             <span className="font-mono text-xs text-slate-400 hidden sm:block">{selectedCI.apiSlug}</span>
@@ -684,14 +704,16 @@ export default function MapPage() {
 
           {/* Depth badge */}
           <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 hidden md:inline">
-            {depth} nivel{depth !== 1 ? "es" : ""}
+            {depth !== 1
+              ? t("map.depth_badge_plural").replace("{count}", String(depth))
+              : t("map.depth_badge").replace("{count}", String(depth))}
           </span>
 
           {/* Stats */}
           {relations && !loadingRels && (
             <span className="text-xs text-slate-400 hidden lg:block">
-              {relations.incoming.length} entrantes · {relations.outgoing.length} salientes
-              {depth > 1 && ` · ${relations.total} total`}
+              {relations.incoming.length} {t("map.incoming")} · {relations.outgoing.length} {t("map.outgoing")}
+              {depth > 1 && ` · ${relations.total} ${t("map.total")}`}
             </span>
           )}
 
@@ -700,7 +722,7 @@ export default function MapPage() {
             <div className="flex rounded-lg border border-slate-200 overflow-hidden">
               <button
                 onClick={() => setViewMode("graph")}
-                title="Vista de grafo"
+                title={t("map.graph_view_title")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "graph"
                     ? "bg-indigo-600 text-white"
@@ -708,11 +730,11 @@ export default function MapPage() {
                 }`}
               >
                 <Network className="h-4 w-4" />
-                <span className="hidden sm:inline">Grafo</span>
+                <span className="hidden sm:inline">{t("map.graph_label")}</span>
               </button>
               <button
                 onClick={() => setViewMode("table")}
-                title="Vista de tabla"
+                title={t("map.table_view_title")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-l border-slate-200 ${
                   viewMode === "table"
                     ? "bg-indigo-600 text-white"
@@ -720,7 +742,7 @@ export default function MapPage() {
                 }`}
               >
                 <LayoutList className="h-4 w-4" />
-                <span className="hidden sm:inline">Tabla</span>
+                <span className="hidden sm:inline">{t("map.table_label")}</span>
               </button>
             </div>
 
@@ -739,7 +761,7 @@ export default function MapPage() {
               className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
             >
               <Link2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Nueva Relación</span>
+              <span className="hidden sm:inline">{t("map.new_relation")}</span>
             </button>
           </div>
         </div>
@@ -751,7 +773,7 @@ export default function MapPage() {
         {loadingRels && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-50">
             <RefreshCw className="mr-2 h-6 w-6 animate-spin text-slate-400" />
-            <span className="text-sm text-slate-400">Cargando relaciones…</span>
+            <span className="text-sm text-slate-400">{t("map.loading_relations")}</span>
           </div>
         )}
 
@@ -764,7 +786,7 @@ export default function MapPage() {
               onClick={() => loadRelations(selectedCI, depth)}
               className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
             >
-              Reintentar
+              {t("map.retry")}
             </button>
           </div>
         )}
@@ -773,12 +795,12 @@ export default function MapPage() {
         {!loadingRels && !error && relations && relations.total === 0 && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-slate-50">
             <Network className="h-12 w-12 text-slate-300" />
-            <p className="text-sm font-medium text-slate-500">Este CI no tiene relaciones</p>
+            <p className="text-sm font-medium text-slate-500">{t("map.no_relations")}</p>
             <button
               onClick={() => setShowModal(true)}
               className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
             >
-              <Link2 className="h-4 w-4" /> Crear primera relación
+              <Link2 className="h-4 w-4" /> {t("map.create_first_relation")}
             </button>
           </div>
         )}

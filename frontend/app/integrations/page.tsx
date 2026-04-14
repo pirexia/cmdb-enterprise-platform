@@ -6,6 +6,7 @@ import {
   Loader2, RefreshCw,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ interface IntegrationCardProps {
 function IntegrationCard({
   title, subtitle, description, icon, accent, endpoint, placeholder, sampleFile,
 }: IntegrationCardProps) {
+  const { t } = useLanguage();
   const [json,   setJson]   = useState("");
   const [state,  setState]  = useState<CardState>("idle");
   const [result, setResult] = useState<IntegrationResult | null>(null);
@@ -57,11 +59,11 @@ function IntegrationCard({
   };
 
   const handleProcess = async () => {
-    if (!json.trim()) { setError("Pega o carga un JSON antes de procesar."); return; }
+    if (!json.trim()) { setError(t("integrations.load_error")); return; }
 
     let body: unknown;
     try { body = JSON.parse(json); }
-    catch { setError("JSON no válido. Verifica la sintaxis."); return; }
+    catch { setError(t("integrations.json_invalid")); return; }
 
     setState("loading");
     setError(null);
@@ -89,7 +91,7 @@ function IntegrationCard({
       setResult(data as IntegrationResult);
       setState("success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
       setState("error");
     }
   };
@@ -116,7 +118,7 @@ function IntegrationCard({
         {/* Textarea */}
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-            JSON del Reporte
+            {t("integrations.json_label")}
           </label>
           <textarea
             rows={10}
@@ -135,7 +137,7 @@ function IntegrationCard({
             className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <Upload className="h-4 w-4" />
-            Cargar .json
+            {t("integrations.load_file")}
           </button>
           <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFile} />
 
@@ -145,7 +147,7 @@ function IntegrationCard({
               download
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors"
             >
-              Ejemplo
+              {t("integrations.example")}
             </a>
           )}
 
@@ -156,7 +158,7 @@ function IntegrationCard({
             className="ml-auto flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {state === "loading" ? "Procesando…" : "Procesar Datos"}
+            {state === "loading" ? t("integrations.processing") : t("integrations.process_btn")}
           </button>
         </div>
 
@@ -176,9 +178,13 @@ function IntegrationCard({
               <span className="text-sm font-semibold">{result.message}</span>
             </div>
             <div className="flex gap-4 text-xs">
-              <span className="font-medium text-emerald-700">{result.totalMatched} CIs actualizados</span>
+              <span className="font-medium text-emerald-700">
+                {t("integrations.cis_updated").replace("{count}", String(result.totalMatched))}
+              </span>
               {result.totalUnmatched > 0 && (
-                <span className="font-medium text-amber-600">{result.totalUnmatched} sin coincidencia</span>
+                <span className="font-medium text-amber-600">
+                  {result.totalUnmatched} {t("integrations.no_match")}
+                </span>
               )}
             </div>
             <div className="max-h-36 overflow-y-auto space-y-1">
@@ -191,7 +197,7 @@ function IntegrationCard({
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 text-amber-600 flex-shrink-0 ml-2">
-                      <XCircle className="h-3 w-3" />no match
+                      <XCircle className="h-3 w-3" />{t("integrations.no_match")}
                     </span>
                   )}
                 </div>
@@ -207,14 +213,16 @@ function IntegrationCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
+  const { t } = useLanguage();
+
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Conectores de Seguridad</h1>
+          <h1 className="text-xl font-bold text-slate-900">{t("integrations.page_title")}</h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Importa datos de escáneres de vulnerabilidades y agentes EDR para enriquecer el inventario
+            {t("integrations.page_subtitle")}
           </p>
         </div>
       </header>
@@ -224,11 +232,13 @@ export default function IntegrationsPage() {
         <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 px-5 py-4">
           <RefreshCw className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-500" />
           <div className="text-sm text-blue-700">
-            <p className="font-semibold mb-0.5">¿Cómo funciona?</p>
+            <p className="font-semibold mb-0.5">{t("integrations.how_it_works")}</p>
             <p>
-              Cada conector busca los CIs en la base de datos por nombre y los actualiza automáticamente.
-              Después de procesar, ve al <a href="/inventory" className="underline font-medium">Inventario</a> o
-              al <a href="/map" className="underline font-medium">Mapa</a> para ver los indicadores de riesgo actualizados.
+              {t("integrations.how_it_works_body_pre")}{" "}
+              <a href="/inventory" className="underline font-medium">{t("sidebar.inventory")}</a>
+              {" "}{t("integrations.how_it_works_body_mid")}{" "}
+              <a href="/map" className="underline font-medium">{t("sidebar.map")}</a>
+              {" "}{t("integrations.how_it_works_body_post")}
             </p>
           </div>
         </div>
@@ -237,8 +247,8 @@ export default function IntegrationsPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <IntegrationCard
             title="Greenbone OpenVAS"
-            subtitle="Vulnerability Scanner"
-            description="Importa un reporte de escaneo de Greenbone. Los CVEs y su severidad se asignarán a cada CI encontrado en el inventario."
+            subtitle={t("integrations.greenbone_subtitle")}
+            description={t("integrations.greenbone_desc")}
             icon={<Bug className="h-5 w-5 text-white" />}
             accent="bg-green-600"
             endpoint="/api/integrations/greenbone"
@@ -264,8 +274,8 @@ export default function IntegrationsPage() {
 
           <IntegrationCard
             title="CrowdStrike Falcon"
-            subtitle="EDR Agent Status"
-            description="Importa el estado de los agentes Falcon. Se registrará si el agente está activo, su política de prevención y las detecciones recientes."
+            subtitle={t("integrations.crowdstrike_subtitle")}
+            description={t("integrations.crowdstrike_desc")}
             icon={<Shield className="h-5 w-5 text-white" />}
             accent="bg-red-700"
             endpoint="/api/integrations/crowdstrike"

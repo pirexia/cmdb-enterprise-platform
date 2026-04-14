@@ -530,9 +530,11 @@ Los catálogos de referencia (métricas y tipos) se gestionan a través de los e
 
 | Control | Implementación |
 |---------|---------------|
-| Autenticación | JWT HS256 (8h) + bcrypt cost-10 |
+| Autenticación | JWT HS256 (8h, algoritmo explícito en sign y verify) + bcrypt cost-12 |
 | MFA | TOTP RFC 6238 (speakeasy). Admin: obligatorio en primer login (token limitado `mfaSetupRequired`). VIEWER: sugerido (once-only, tracked via `mfa_prompted_at`). |
-| Dispositivos de confianza | Token 32-byte hex en `trusted_devices` DB + localStorage. TTL configurable (`TRUSTED_DEVICE_TTL_DAYS`). Cleanup cron diario (02:00). |
+| Dispositivos de confianza | Token 32-byte hex en `trusted_devices` DB + localStorage. Vinculado a IP y User-Agent en creación; validación requiere igualdad estricta (sin bypass NULL). TTL configurable (`TRUSTED_DEVICE_TTL_DAYS`). Cleanup cron diario (02:00). |
+| Caducidad JWT (frontend) | `AuthContext` decodifica el claim `exp` (base64 puro, sin librería) y descarta tokens expirados en mount, cada 60 s y en `visibilitychange`. `apiFetch` valida antes de cada petición. |
+| Errores internos | Los `catch` de Express devuelven siempre `{ error: 'Internal server error' }` — nunca se exponen mensajes SQL ni stack traces al cliente. |
 | LDAP/AD | Opcional via ldap-authentication; admin-bind+search (recomendado) o direct-bind; timeout 5s fail-safe; shadow user con `sso_external_id` |
 | RBAC | ADMIN / VIEWER con `requireAdmin` middleware |
 | Headers HTTP | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |
@@ -586,6 +588,8 @@ Se optó por columnas planas en `configuration_items` porque:
 | i18n custom context | next-intl, react-i18next | Sin App Router complication, bundle mínimo, control total |
 | Alpine base images | Ubuntu, Debian | Imagen mínima (~50MB), menor superficie de ataque |
 | non-root USER node | root (default) | Requisito de hardening: principio de mínimo privilegio |
+| `@@index` en todas las FK | Sin índices explícitos (Prisma default) | Las FK sin índice causan seq scans en JOINs y filtros. Se añaden `@@index` en: `ci_types(categoryCode)`, `trusted_devices(userId)`, `locations(parentLocationId)`, `contracts(vendorId, parentContractId)`, `branches(supportAreaId)`, `device_models(manufacturerId)`, `licenses(status, endDate, licenseTypeId, licenseMetricId, vendorId)`, `document_licenses(documentId)`, y otras tablas relacionales. |
+| `onDelete`/`onUpdate` explícito en todas las relaciones | Dejar sin especificar (comportamiento implícito) | Las acciones referenciales implícitas son ambiguas entre versiones de Prisma/PostgreSQL. Política definida: `Cascade` para registros hijos/junturas, `SetNull` para FK opcionales en CIs, `Restrict` para referencias a datos maestros. |
 
 ---
 

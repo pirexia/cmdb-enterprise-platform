@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link2, Search, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,13 +19,7 @@ interface Props {
   preselectedSourceId?: string;
 }
 
-const RELATION_TYPES = [
-  { value: "HOSTS",            label: "HOSTS — el origen aloja al destino" },
-  { value: "DEPENDS_ON",       label: "DEPENDS_ON — el origen depende del destino" },
-  { value: "CONNECTED_TO",     label: "CONNECTED_TO — conexión de red entre ambos" },
-  { value: "PROVIDES_SERVICE", label: "PROVIDES_SERVICE — el origen provee servicio al destino" },
-  { value: "BACKED_UP_BY",     label: "BACKED_UP_BY — el origen es respaldado por el destino" },
-];
+const RELATION_TYPE_KEYS = ["HOSTS", "DEPENDS_ON", "CONNECTED_TO", "PROVIDES_SERVICE", "BACKED_UP_BY"] as const;
 
 // ─── Searchable CI dropdown ───────────────────────────────────────────────────
 
@@ -38,6 +33,7 @@ function CISelect({
   placeholder: string;
   disabled?: boolean;
 }) {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [open, setOpen]     = useState(false);
   const ref                 = useRef<HTMLDivElement>(null);
@@ -96,14 +92,14 @@ function CISelect({
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar CI…"
+                  placeholder={t("common.search_ci")}
                   className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
                 />
               </div>
             </div>
             <ul className="max-h-48 overflow-y-auto py-1">
               {filtered.length === 0 ? (
-                <li className="px-3 py-2 text-sm italic text-slate-400">Sin resultados</li>
+                <li className="px-3 py-2 text-sm italic text-slate-400">{t("common.no_results")}</li>
               ) : (
                 filtered.map((o) => (
                   <li key={o.id}>
@@ -137,6 +133,7 @@ function CISelect({
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function AddRelationModal({ onClose, onCreated, preselectedSourceId }: Props) {
+  const { t } = useLanguage();
   const [cis, setCis]           = useState<CIOption[]>([]);
   const [sourceId, setSourceId] = useState(preselectedSourceId ?? "");
   const [targetId, setTargetId] = useState("");
@@ -156,11 +153,11 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourceId || !targetId) {
-      setError("Selecciona el CI origen y el CI destino.");
+      setError(t("relation.error_required"));
       return;
     }
     if (sourceId === targetId) {
-      setError("El origen y el destino no pueden ser el mismo CI.");
+      setError(t("relation.error_same_ci"));
       return;
     }
 
@@ -178,7 +175,7 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
       onCreated();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
     } finally {
       setSubmitting(false);
     }
@@ -196,8 +193,8 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
             <Link2 className="h-5 w-5 text-indigo-600" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-slate-900">Nueva Relación</h2>
-            <p className="text-xs text-slate-500">Vincula dos CIs de la plataforma</p>
+            <h2 className="text-base font-bold text-slate-900">{t("relation.modal_title")}</h2>
+            <p className="text-xs text-slate-500">{t("relation.modal_subtitle")}</p>
           </div>
           <button
             type="button"
@@ -213,22 +210,22 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
           {loadingCIs ? (
             <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
               <RefreshCw className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Cargando CIs…</span>
+              <span className="text-sm">{t("relation.loading_cis")}</span>
             </div>
           ) : (
             <>
               <CISelect
-                label="CI Origen (Parent)"
+                label={t("relation.source_label")}
                 value={sourceId}
                 onChange={setSourceId}
                 options={cis}
-                placeholder="Selecciona el CI origen…"
+                placeholder={t("relation.source_placeholder")}
                 disabled={submitting}
               />
 
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Tipo de Relación
+                  {t("relation.type_label")}
                 </label>
                 <select
                   value={relType}
@@ -236,20 +233,20 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
                   disabled={submitting}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
                 >
-                  {RELATION_TYPES.map((rt) => (
-                    <option key={rt.value} value={rt.value}>
-                      {rt.label}
+                  {RELATION_TYPE_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {t(`relation.type_${key}`)}
                     </option>
                   ))}
                 </select>
               </div>
 
               <CISelect
-                label="CI Destino (Child)"
+                label={t("relation.target_label")}
                 value={targetId}
                 onChange={setTargetId}
                 options={cis.filter((c) => c.id !== sourceId)}
-                placeholder="Selecciona el CI destino…"
+                placeholder={t("relation.target_placeholder")}
                 disabled={submitting}
               />
             </>
@@ -269,7 +266,7 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
               disabled={submitting}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
-              Cancelar
+              {t("actions.cancel")}
             </button>
             <button
               type="submit"
@@ -281,7 +278,7 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
               ) : (
                 <Link2 className="h-4 w-4" />
               )}
-              Crear Relación
+              {t("relation.create_button")}
             </button>
           </div>
         </form>

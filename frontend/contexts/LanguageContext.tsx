@@ -6,14 +6,36 @@ import {
 } from "react";
 import esDict from "@/locales/es.json";
 import enDict from "@/locales/en.json";
+import deDict from "@/locales/de.json";
+import ptDict from "@/locales/pt.json";
+import frDict from "@/locales/fr.json";
+import itDict from "@/locales/it.json";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Locale = "es" | "en";
+export type Locale = "es" | "en" | "de" | "pt" | "fr" | "it";
+
+export const LOCALE_NAMES: Record<Locale, string> = {
+  es: "Español",
+  en: "English",
+  de: "Deutsch",
+  pt: "Português",
+  fr: "Français",
+  it: "Italiano",
+};
 
 type DeepDict = { [k: string]: string | DeepDict };
 
-const DICTS: Record<Locale, DeepDict> = { es: esDict, en: enDict };
+const DICTS: Record<Locale, DeepDict> = {
+  es: esDict,
+  en: enDict,
+  de: deDict,
+  pt: ptDict,
+  fr: frDict,
+  it: itDict,
+};
+
+const VALID_LOCALES = new Set<string>(["es", "en", "de", "pt", "fr", "it"]);
 
 const STORAGE_KEY = "cmdb_locale";
 
@@ -35,13 +57,17 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   // Hydrate from localStorage (or browser language) on mount
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY) as Locale | null;
-    if (stored === "es" || stored === "en") {
-      setLocaleState(stored);
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && VALID_LOCALES.has(stored)) {
+      setLocaleState(stored as Locale);
     } else {
       // Infer from browser language
       const browser = navigator.language.split("-")[0];
-      setLocaleState(browser === "en" ? "en" : "es");
+      if (VALID_LOCALES.has(browser)) {
+        setLocaleState(browser as Locale);
+      } else {
+        setLocaleState("es");
+      }
     }
   }, []);
 

@@ -885,7 +885,7 @@ export default function DocumentDetailPage() {
       const d = docData as DocumentDetail;
       setDoc(d);
       setDocTypes(Array.isArray(typesData) ? (typesData as DocumentType[]) : []);
-      setAllDocs(Array.isArray(allDocsData) ? (allDocsData as DocumentListItem[]) : []);
+      setAllDocs(((allDocsData as { data?: DocumentListItem[] }).data) ?? []);
 
       // Determine preview: use latest version if any, else root document itself
       const latestVersion = d.versions.find((v) => v.isLatest);
@@ -1042,7 +1042,7 @@ export default function DocumentDetailPage() {
     <>
       <div className="min-h-screen bg-slate-50">
         {/* Header */}
-        <header className="border-b border-slate-200 bg-white px-8 py-5">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button

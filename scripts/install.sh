@@ -447,22 +447,54 @@ prompt COMPANY_NAME "Company name" "CMDB Enterprise"
 # 9. LDAP
 USE_LDAP="false"
 LDAP_URL=""
-LDAP_SEARCH_BASE=""
+LDAP_BASE_DN=""
 LDAP_BIND_DN=""
 LDAP_BIND_PASSWORD=""
+LDAP_TLS_REJECT_UNAUTHORIZED="1"
 
 if confirm "Enable LDAP/Active Directory authentication?"; then
   USE_LDAP="true"
   prompt LDAP_URL "LDAP URL (e.g. ldap://dc.corp.local:389)" "ldap://dc.corp.local:389"
-  prompt LDAP_SEARCH_BASE "LDAP search base (e.g. dc=corp,dc=local)" "dc=corp,dc=local"
+  prompt LDAP_BASE_DN "LDAP search base (e.g. dc=corp,dc=local)" "dc=corp,dc=local"
   prompt LDAP_BIND_DN "LDAP bind DN (leave empty for direct bind)" ""
   if [ -n "$LDAP_BIND_DN" ]; then
     read -srp "$(echo -e "${CYAN}?${NC} LDAP bind password: ")" LDAP_BIND_PASSWORD
     echo ""
   fi
+  if confirm "Accept self-signed / corporate CA certificates for LDAPS?" "y"; then
+    LDAP_TLS_REJECT_UNAUTHORIZED="0"
+  fi
 fi
 
-# 10. Summary table
+# 10. Microsoft 365 SSO
+USE_MICROSOFT_SSO="false"
+AZURE_TENANT_ID=""
+AZURE_CLIENT_ID=""
+AZURE_CLIENT_SECRET=""
+AZURE_ALLOWED_DOMAIN=""
+AZURE_AUTO_PROVISION="false"
+
+if confirm "Enable Microsoft 365 SSO (Azure AD / Entra ID)?"; then
+  USE_MICROSOFT_SSO="true"
+  prompt AZURE_TENANT_ID "Azure Tenant ID (from Azure Portal → Entra ID → Overview)" ""
+  if [ -z "$AZURE_TENANT_ID" ]; then
+    error "Tenant ID is required for SSO. You can add it manually to .env later."
+    USE_MICROSOFT_SSO="false"
+  else
+    prompt AZURE_CLIENT_ID "App Registration Client ID" ""
+    read -srp "$(echo -e "${CYAN}?${NC} App Registration Client Secret: ")" AZURE_CLIENT_SECRET
+    echo ""
+    prompt AZURE_ALLOWED_DOMAIN "Corporate email domain (e.g. empresa.com)" ""
+    if confirm "Auto-provision VIEWER accounts for new SSO users?" "y"; then
+      AZURE_AUTO_PROVISION="true"
+    fi
+  fi
+fi
+
+# Compute AZURE_REDIRECT_URI from the backend API URL
+AZURE_REDIRECT_URI="${API_URL}/api/auth/sso/microsoft/callback"
+
+# 11. Summary table
 CORS_ORIGINS="${API_URL},http://${DEFAULT_HOST}:${FRONTEND_PORT}"
 if [ "$HTTPS_ENABLED" = "true" ]; then
   CORS_ORIGINS="${API_URL},https://${DEFAULT_HOST}:${FRONTEND_PORT},http://${DEFAULT_HOST}:${FRONTEND_PORT}"
@@ -483,6 +515,11 @@ printf "  ${BOLD}%-28s${NC} %s\n" "Public API URL:" "$API_URL"
 printf "  ${BOLD}%-28s${NC} %s\n" "HTTPS:" "$HTTPS_ENABLED ($SSL_MODE)"
 printf "  ${BOLD}%-28s${NC} %s\n" "Company name:" "$COMPANY_NAME"
 printf "  ${BOLD}%-28s${NC} %s\n" "LDAP:" "$USE_LDAP"
+printf "  ${BOLD}%-28s${NC} %s\n" "Microsoft 365 SSO:" "$USE_MICROSOFT_SSO"
+if [ "$USE_MICROSOFT_SSO" = "true" ]; then
+  printf "  ${BOLD}%-28s${NC} %s\n" "SSO domain:" "$AZURE_ALLOWED_DOMAIN"
+  printf "  ${BOLD}%-28s${NC} %s\n" "SSO redirect URI:" "$AZURE_REDIRECT_URI"
+fi
 printf "  ${BOLD}%-28s${NC} %s\n" "Container runtime:" "$RUNTIME"
 printf "  ${BOLD}%-28s${NC} %s\n" "Compose command:" "$COMPOSE_CMD"
 printf "  ${BOLD}%-28s${NC} %s\n" "Platform:" "$PLATFORM"
@@ -574,9 +611,23 @@ CORS_ORIGINS=${CORS_ORIGINS}
 # -- LDAP / Active Directory --------------------------------------------------
 USE_LDAP=${USE_LDAP}
 LDAP_URL=${LDAP_URL}
+LDAP_BASE_DN=${LDAP_BASE_DN}
 LDAP_BIND_DN=${LDAP_BIND_DN}
 LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}
-LDAP_SEARCH_BASE=${LDAP_SEARCH_BASE}
+LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED}
+
+# -- Microsoft 365 SSO (Azure AD / Entra ID) ----------------------------------
+# Set USE_MICROSOFT_SSO=true and fill the values below to enable SSO.
+USE_MICROSOFT_SSO=${USE_MICROSOFT_SSO}
+AZURE_TENANT_ID=${AZURE_TENANT_ID}
+AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+# Redirect URI must be registered exactly in your Azure App Registration
+AZURE_REDIRECT_URI=${AZURE_REDIRECT_URI}
+AZURE_ALLOWED_DOMAIN=${AZURE_ALLOWED_DOMAIN}
+# Frontend URL — used by backend to redirect users after SSO (no trailing slash)
+FRONTEND_URL=${API_URL/\/api/}
+AZURE_AUTO_PROVISION=${AZURE_AUTO_PROVISION}
 
 # -- Corporate Branding -------------------------------------------------------
 NEXT_PUBLIC_COMPANY_NAME=${COMPANY_NAME}
@@ -785,11 +836,23 @@ echo ""
 echo -e "${BOLD}${CYAN}  Next steps:${NC}"
 echo "    1. Log in and change the default admin password"
 echo "    2. Configure LDAP/AD integration (if not done during install)"
-echo "    3. Set up email alerts (edit SMTP_* values in .env)"
-echo "    4. Schedule database backups:"
+if [ "$USE_MICROSOFT_SSO" = "true" ]; then
+echo "    3. Register the redirect URI in Azure App Registration:"
+echo "       ${AZURE_REDIRECT_URI}"
+echo "    4. Set up email alerts (edit SMTP_* values in .env)"
+echo "    5. Schedule database backups:"
 echo "       0 2 * * * $INSTALL_DIR/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1"
-echo "    5. Review container logs:"
+echo "    6. Review container logs:"
 echo "       $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml logs -f"
+else
+echo "    3. Set up email alerts (edit SMTP_* values in .env)"
+echo "    4. To enable Microsoft 365 SSO later, edit .env and set USE_MICROSOFT_SSO=true"
+echo "       See Section 15 of the Sysadmin Manual for Azure Portal configuration steps"
+echo "    5. Schedule database backups:"
+echo "       0 2 * * * $INSTALL_DIR/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1"
+echo "    6. Review container logs:"
+echo "       $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml logs -f"
+fi
 echo ""
 echo -e "${BOLD}${GREEN}+----------------------------------------------------------+${NC}"
 echo ""

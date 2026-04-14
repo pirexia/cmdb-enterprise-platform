@@ -365,6 +365,75 @@ rollback() {
   return 1
 }
 
+# ── Step 8: Warn about new env vars missing from existing .env ────────────────
+check_new_env_vars() {
+  step "Checking .env for new variables"
+
+  local env_file="${INSTALL_DIR}/.env"
+  if [ ! -f "${env_file}" ]; then
+    warn ".env not found at ${env_file} — skipping new-variable check."
+    return 0
+  fi
+
+  # List of variables introduced in v1.7.0 that older installs won't have
+  local -a NEW_VARS=(
+    "USE_MICROSOFT_SSO"
+    "AZURE_TENANT_ID"
+    "AZURE_CLIENT_ID"
+    "AZURE_CLIENT_SECRET"
+    "AZURE_REDIRECT_URI"
+    "AZURE_ALLOWED_DOMAIN"
+    "FRONTEND_URL"
+    "AZURE_AUTO_PROVISION"
+    "LDAP_TLS_REJECT_UNAUTHORIZED"
+  )
+
+  local missing=()
+  for var in "${NEW_VARS[@]}"; do
+    if ! grep -q "^${var}=" "${env_file}" 2>/dev/null; then
+      missing+=("${var}")
+    fi
+  done
+
+  if [ ${#missing[@]} -eq 0 ]; then
+    success "All known env vars are present in .env"
+    return 0
+  fi
+
+  warn "The following new variables are not in your .env (added defaults where possible):"
+  for var in "${missing[@]}"; do
+    warn "  • ${var}"
+  done
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would append the above variables with safe defaults to ${env_file}"
+    return 0
+  fi
+
+  # Append missing vars with safe defaults
+  {
+    echo ""
+    echo "# ── Added automatically by update.sh ($(date '+%Y-%m-%d')) ──────────────────"
+    for var in "${missing[@]}"; do
+      case "${var}" in
+        USE_MICROSOFT_SSO)         echo "USE_MICROSOFT_SSO=false" ;;
+        AZURE_TENANT_ID)           echo "AZURE_TENANT_ID=" ;;
+        AZURE_CLIENT_ID)           echo "AZURE_CLIENT_ID=" ;;
+        AZURE_CLIENT_SECRET)       echo "AZURE_CLIENT_SECRET=" ;;
+        AZURE_REDIRECT_URI)        echo "AZURE_REDIRECT_URI=" ;;
+        AZURE_ALLOWED_DOMAIN)      echo "AZURE_ALLOWED_DOMAIN=" ;;
+        FRONTEND_URL)              echo "FRONTEND_URL=http://localhost:3001" ;;
+        AZURE_AUTO_PROVISION)      echo "AZURE_AUTO_PROVISION=false" ;;
+        LDAP_TLS_REJECT_UNAUTHORIZED) echo "LDAP_TLS_REJECT_UNAUTHORIZED=1" ;;
+      esac
+    done
+  } >> "${env_file}"
+
+  warn "Defaults appended to ${env_file}."
+  warn "Review and update Microsoft 365 SSO values if you want to enable SSO."
+  warn "See Section 15 of the Sysadmin Manual for Azure Portal configuration steps."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Parse flags
@@ -427,6 +496,7 @@ main() {
   deploy        || rollback "Health check failed after deploy"
 
   if [ "${DRY_RUN}" = "true" ]; then
+    check_new_env_vars
     echo ""
     echo -e "${BOLD}${YELLOW}╔══════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${YELLOW}║  DRY RUN complete — no changes made      ║${NC}"
@@ -434,6 +504,9 @@ main() {
     success "Log saved to: ${LOG_FILE}"
     exit 0
   fi
+
+  # ── Step 8: Check for new env vars not present in existing .env ──────────────
+  check_new_env_vars
 
   # Success summary
   local new_version

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
@@ -129,8 +130,11 @@ function Section({ title, children, color = "slate" }: { title: string; children
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) {
+  const { t } = useLanguage();
   const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
-  const typeLabel = CI_TYPE_LABELS[resolvedType] ?? resolvedType;
+  const typeLabel = t(`inventory.ci_types.${resolvedType}`) !== `inventory.ci_types.${resolvedType}`
+    ? t(`inventory.ci_types.${resolvedType}`)
+    : (CI_TYPE_LABELS[resolvedType] ?? resolvedType);
   const typeIcon  = CI_TYPE_ICONS[resolvedType] ?? <Server className="h-4 w-4" />;
 
   const { token, isAdmin } = useAuth();
@@ -162,7 +166,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
   }, [ci.id]);
 
   const handleRemoveDoc = async (docId: string) => {
-    if (!confirm("¿Quitar este documento del CI?")) return;
+    if (!confirm(t("ci_detail.confirm_remove_doc"))) return;
     try {
       await apiFetch(`/api/cis/${ci.id}/documents/${docId}`, { method: "DELETE" });
       loadDocs();
@@ -170,7 +174,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
   };
 
   const handleRemoveContract = async (contractId: string) => {
-    if (!confirm("¿Quitar este contrato del CI?")) return;
+    if (!confirm(t("ci_detail.confirm_remove_contract"))) return;
     try {
       await apiFetch(`/api/cis/${ci.id}/contracts/${contractId}`, { method: "DELETE" });
       loadContracts();
@@ -218,13 +222,13 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
               onClick={onEdit}
               className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
             >
-              <Pencil className="h-3.5 w-3.5" />Editar
+              <Pencil className="h-3.5 w-3.5" />{t("ci_detail.edit_btn")}
             </button>
             <button
               onClick={onDelete}
               className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 transition-colors"
             >
-              <Trash2 className="h-3.5 w-3.5" />Eliminar
+              <Trash2 className="h-3.5 w-3.5" />{t("ci_detail.delete_btn")}
             </button>
             <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
               <X className="h-5 w-5" />
@@ -249,18 +253,18 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
             </span>
           )}
           {hasSpof && (
-            <span className="inline-flex items-center rounded-md bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700" title="Punto Único de Fallo">
+            <span className="inline-flex items-center rounded-md bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700" title={t("ci_detail.spof_tooltip")}>
               SPOF
             </span>
           )}
           {hasPii && (
-            <span className="inline-flex items-center rounded-md bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700" title="Contiene datos personales (GDPR)">
+            <span className="inline-flex items-center rounded-md bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700" title={t("ci_detail.pii_tooltip")}>
               PII
             </span>
           )}
           {ci.businessImpact === "CRITICAL" && (
             <span className="inline-flex items-center rounded-md bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
-              NIS2 Crítico
+              {t("ci_detail.nis2_critical")}
             </span>
           )}
         </div>
@@ -269,12 +273,12 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
           {/* General info */}
-          <Section title="Información General" color="slate">
-            <Field label="Número de Inventario" value={ci.inventoryNumber} icon={<Hash className="h-3 w-3" />} />
-            <Field label="Responsable Técnico" value={ci.technicalLead ? `${ci.technicalLead.username} (${ci.technicalLead.email})` : null} icon={<User className="h-3 w-3" />} />
-            <Field label="Tipo" value={typeLabel} icon={<Tag className="h-3 w-3" />} />
+          <Section title={t("ci_detail.section_general")} color="slate">
+            <Field label={t("ci_detail.field_inventory")} value={ci.inventoryNumber} icon={<Hash className="h-3 w-3" />} />
+            <Field label={t("ci_detail.field_tech_lead")} value={ci.technicalLead ? `${ci.technicalLead.username} (${ci.technicalLead.email})` : null} icon={<User className="h-3 w-3" />} />
+            <Field label={t("ci_detail.field_type")} value={typeLabel} icon={<Tag className="h-3 w-3" />} />
             <Field
-              label="EoL / EoS"
+              label={t("ci_detail.field_eol_eos")}
               icon={<Calendar className="h-3 w-3" />}
               value={
                 (ci.eolDate || ci.eosDate) ? (
@@ -286,35 +290,35 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
                 ) : null
               }
             />
-            <Field label="Estado" value={ci.status} icon={<Activity className="h-3 w-3" />} />
+            <Field label={t("ci_detail.field_status")} value={ci.status} icon={<Activity className="h-3 w-3" />} />
           </Section>
 
           {/* Hardware / Software details */}
           {ci.hardware && (
-            <Section title="Hardware" color="slate">
-              <Field label="Fabricante" value={ci.hardware.manufacturer} icon={<Building2 className="h-3 w-3" />} />
-              <Field label="Modelo" value={ci.hardware.model} icon={<Cpu className="h-3 w-3" />} />
-              <Field label="Número de Serie" value={ci.hardware.serialNumber} icon={<Hash className="h-3 w-3" />} />
+            <Section title={t("ci_detail.section_hardware")} color="slate">
+              <Field label={t("ci_detail.field_manufacturer")} value={ci.hardware.manufacturer} icon={<Building2 className="h-3 w-3" />} />
+              <Field label={t("ci_detail.field_model")} value={ci.hardware.model} icon={<Cpu className="h-3 w-3" />} />
+              <Field label={t("ci_detail.field_serial")} value={ci.hardware.serialNumber} icon={<Hash className="h-3 w-3" />} />
             </Section>
           )}
           {ci.software && (
-            <Section title="Software / Licencia" color="slate">
-              <Field label="Versión" value={ci.software.version} icon={<Package className="h-3 w-3" />} />
-              <Field label="Tipo de Licencia" value={ci.software.licenseType} icon={<Key className="h-3 w-3" />} />
+            <Section title={t("ci_detail.section_software")} color="slate">
+              <Field label={t("ci_detail.field_version")} value={ci.software.version} icon={<Package className="h-3 w-3" />} />
+              <Field label={t("ci_detail.field_license_type")} value={ci.software.licenseType} icon={<Key className="h-3 w-3" />} />
             </Section>
           )}
 
           {/* Vulnerabilities */}
           <div className={`rounded-xl border p-4 ${criticalVulns > 0 ? "bg-red-50 border-red-200" : openVulns.length > 0 ? "bg-orange-50 border-orange-200" : "bg-emerald-50 border-emerald-200"}`}>
-            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Vulnerabilidades</p>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("ci_detail.section_vulns")}</p>
             {ci.vulnerabilities === null ? (
-              <div className="flex items-center gap-2 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-sm">Sin datos de escáner</span></div>
+              <div className="flex items-center gap-2 text-slate-400"><ShieldOff className="h-4 w-4" /><span className="text-sm">{t("ci_detail.vuln_no_scanner")}</span></div>
             ) : openVulns.length === 0 ? (
-              <div className="flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-sm font-medium">Sin vulnerabilidades abiertas</span></div>
+              <div className="flex items-center gap-2 text-emerald-600"><ShieldCheck className="h-4 w-4" /><span className="text-sm font-medium">{t("ci_detail.vuln_clean")}</span></div>
             ) : (
               <div className="flex items-center gap-2 text-red-700">
                 <ShieldAlert className="h-4 w-4" />
-                <span className="text-sm font-medium">{openVulns.length} abiertas</span>
+                <span className="text-sm font-medium">{t("ci_detail.vuln_open", { count: openVulns.length })}</span>
                 {criticalVulns > 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-700">CRITICAL ×{criticalVulns}</span>}
                 {highVulns > 0    && <span className="rounded bg-orange-100 px-1.5 py-0.5 text-xs font-bold text-orange-700">HIGH ×{highVulns}</span>}
               </div>
@@ -324,45 +328,45 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
           {/* CrowdStrike */}
           {ci.agentStatus && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">CrowdStrike Falcon</p>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("ci_detail.section_crowdstrike")}</p>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3">
-                <Field label="Estado" value={ci.agentStatus.status} icon={<Shield className="h-3 w-3" />} />
-                <Field label="Política" value={ci.agentStatus.preventionPolicy} icon={<Briefcase className="h-3 w-3" />} />
-                <Field label="Versión" value={ci.agentStatus.agentVersion ? `Falcon v${ci.agentStatus.agentVersion.split(".").slice(0,2).join(".")}` : null} />
-                <Field label="Última vez visto" value={ci.agentStatus.lastSeen ? new Date(ci.agentStatus.lastSeen).toLocaleString("es-ES") : null} icon={<Calendar className="h-3 w-3" />} />
-                <Field label="Detecciones" value={String((ci.agentStatus.detections ?? []).length)} icon={<AlertTriangle className="h-3 w-3" />} />
+                <Field label={t("ci_detail.field_cs_status")} value={ci.agentStatus.status} icon={<Shield className="h-3 w-3" />} />
+                <Field label={t("ci_detail.field_cs_policy")} value={ci.agentStatus.preventionPolicy} icon={<Briefcase className="h-3 w-3" />} />
+                <Field label={t("ci_detail.field_version")} value={ci.agentStatus.agentVersion ? `Falcon v${ci.agentStatus.agentVersion.split(".").slice(0,2).join(".")}` : null} />
+                <Field label={t("ci_detail.field_cs_last_seen")} value={ci.agentStatus.lastSeen ? new Date(ci.agentStatus.lastSeen).toLocaleString("es-ES") : null} icon={<Calendar className="h-3 w-3" />} />
+                <Field label={t("ci_detail.field_cs_detections")} value={String((ci.agentStatus.detections ?? []).length)} icon={<AlertTriangle className="h-3 w-3" />} />
               </dl>
             </div>
           )}
 
           {/* NIS2 / GDPR */}
           {(ci.businessImpact || ci.recoveryPriority != null || ci.rto != null || ci.rpo != null || ci.spofRisk || ci.containsPii || ci.dataClassification) && (
-            <Section title="Resiliencia NIS2 / GDPR" color="orange">
-              <Field label="Impacto de Negocio" value={ci.businessImpact} icon={<Activity className="h-3 w-3" />} />
-              <Field label="Prioridad de Recuperación" value={ci.recoveryPriority != null ? String(ci.recoveryPriority) : null} />
-              <Field label="RTO (min)" value={ci.rto != null ? `${ci.rto} min` : null} />
-              <Field label="RPO (min)" value={ci.rpo != null ? `${ci.rpo} min` : null} />
-              <Field label="Riesgo SPOF" value={ci.spofRisk ? "Sí" : "No"} />
-              <Field label="Contiene PII" value={ci.containsPii ? "Sí (GDPR)" : "No"} />
-              <Field label="Clasificación de Datos" value={ci.dataClassification} />
+            <Section title={t("ci_detail.section_nis2")} color="orange">
+              <Field label={t("ci_detail.field_business_impact")} value={ci.businessImpact} icon={<Activity className="h-3 w-3" />} />
+              <Field label={t("ci_detail.field_recovery_priority")} value={ci.recoveryPriority != null ? String(ci.recoveryPriority) : null} />
+              <Field label={t("ci_detail.field_rto")} value={ci.rto != null ? `${ci.rto} min` : null} />
+              <Field label={t("ci_detail.field_rpo")} value={ci.rpo != null ? `${ci.rpo} min` : null} />
+              <Field label={t("ci_detail.field_spof_risk")} value={ci.spofRisk ? t("common.yes") : t("common.no")} />
+              <Field label={t("ci_detail.field_pii")} value={ci.containsPii ? t("ci_detail.yes_gdpr") : t("common.no")} />
+              <Field label={t("ci_detail.field_data_class")} value={ci.dataClassification} />
             </Section>
           )}
 
           {/* Contracts */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">Contratos Asociados</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-blue-700">{t("ci_detail.section_contracts")}</p>
               {isAdmin && (
                 <button
                   onClick={() => setShowAddContracts(true)}
                   className="flex items-center gap-1 rounded-lg bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-200 transition-colors"
                 >
-                  <Plus className="h-3 w-3" />Asociar Contratos
+                  <Plus className="h-3 w-3" />{t("ci_detail.associate_contracts")}
                 </button>
               )}
             </div>
             {contracts.length === 0 ? (
-              <p className="text-sm italic text-blue-400">No hay contratos asociados.</p>
+              <p className="text-sm italic text-blue-400">{t("ci_detail.no_contracts")}</p>
             ) : (
               <div className="space-y-2">
                 {contracts.map((ct) => (
@@ -373,13 +377,13 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
                     </div>
                     <div className="flex items-center gap-2">
                       {ct.endDate && (
-                        <span className="text-xs text-slate-400">Vence: {new Date(ct.endDate).toLocaleDateString("es-ES")}</span>
+                        <span className="text-xs text-slate-400">{t("ci_detail.expires")}: {new Date(ct.endDate).toLocaleDateString("es-ES")}</span>
                       )}
                       {isAdmin && (
                         <button
                           onClick={() => handleRemoveContract(ct.id)}
                           className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                          title="Quitar contrato"
+                          title={t("ci_detail.remove_contract")}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -394,23 +398,23 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
           {/* Documents */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Documentos adjuntos</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("ci_detail.section_docs")}</p>
               {isAdmin && (
                 <button
                   onClick={() => setShowAddDocs(true)}
                   className="flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 transition-colors"
                 >
-                  <Plus className="h-3 w-3" />Asociar Documentos
+                  <Plus className="h-3 w-3" />{t("ci_detail.associate_docs")}
                 </button>
               )}
             </div>
             {docsLoading ? (
               <div className="flex items-center gap-2 text-slate-400 text-sm">
                 <FileText className="h-4 w-4 animate-pulse" />
-                <span>Cargando documentos…</span>
+                <span>{t("ci_detail.loading_docs")}</span>
               </div>
             ) : docs.length === 0 ? (
-              <p className="text-sm italic text-slate-400">No hay documentos asociados.</p>
+              <p className="text-sm italic text-slate-400">{t("ci_detail.no_docs")}</p>
             ) : (
               <div className="space-y-2">
                 {docs.map((doc) => (
@@ -435,16 +439,16 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
                       <button
                         onClick={() => handleDownload(doc.id, doc.originalName)}
                         className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                        title="Descargar"
+                        title={t("ci_detail.download")}
                       >
                         <Download className="h-3.5 w-3.5" />
-                        Descargar
+                        {t("ci_detail.download")}
                       </button>
                       {isAdmin && (
                         <button
                           onClick={() => handleRemoveDoc(doc.id)}
                           className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                          title="Quitar documento"
+                          title={t("ci_detail.remove_doc")}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -457,7 +461,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
             {!docsLoading && (
               <div className="mt-3 text-right">
                 <Link href="/documents" className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline transition-colors">
-                  Ver todos los documentos →
+                  {t("ci_detail.view_all_docs")}
                 </Link>
               </div>
             )}
@@ -467,10 +471,10 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
         {/* Footer */}
         <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex justify-end gap-2">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
-            Cerrar
+            {t("ci_detail.btn_close")}
           </button>
           <button onClick={onEdit} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
-            <Pencil className="h-4 w-4" />Editar CI
+            <Pencil className="h-4 w-4" />{t("ci_detail.btn_edit_ci")}
           </button>
         </div>
       </div>
@@ -517,6 +521,7 @@ function AddDocumentsSubModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useLanguage();
   const [allDocs, setAllDocs] = useState<DocListItem[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -565,7 +570,7 @@ function AddDocumentsSubModal({
       }
       onSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error desconocido");
+      setError(e instanceof Error ? e.message : t("ci_detail.unknown_error"));
     } finally {
       setSubmitting(false);
     }
@@ -575,7 +580,7 @@ function AddDocumentsSubModal({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">Asociar Documentos</h2>
+          <h2 className="text-base font-semibold text-slate-900">{t("ci_detail.subdoc_title")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
             <X className="h-4 w-4" />
           </button>
@@ -590,15 +595,15 @@ function AddDocumentsSubModal({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar documento por título o tipo…"
+            placeholder={t("ci_detail.subdoc_search")}
             className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
-              <RefreshCw className="h-4 w-4 animate-spin" />Cargando datos…
+              <RefreshCw className="h-4 w-4 animate-spin" />{t("ci_detail.loading_data")}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">No hay documentos disponibles para asociar.</p>
+            <p className="py-6 text-center text-sm text-slate-400">{t("ci_detail.subdoc_no_docs")}</p>
           ) : (
             <div className="overflow-y-auto max-h-64 divide-y divide-slate-50 rounded-lg border border-slate-200">
               {filtered.map((d) => (
@@ -620,7 +625,7 @@ function AddDocumentsSubModal({
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            Cancelar
+            {t("actions.cancel")}
           </button>
           <button
             onClick={handleSubmit}
@@ -628,7 +633,7 @@ function AddDocumentsSubModal({
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Asociar seleccionados
+            {t("ci_detail.subdoc_associate")}
           </button>
         </div>
       </div>
@@ -655,6 +660,7 @@ function AddContractsSubModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useLanguage();
   const [allContracts, setAllContracts] = useState<ContractSubItem[]>([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -703,7 +709,7 @@ function AddContractsSubModal({
       }
       onSuccess();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Error desconocido");
+      setError(e instanceof Error ? e.message : t("ci_detail.unknown_error"));
     } finally {
       setSubmitting(false);
     }
@@ -713,7 +719,7 @@ function AddContractsSubModal({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <h2 className="text-base font-semibold text-slate-900">Asociar Contratos</h2>
+          <h2 className="text-base font-semibold text-slate-900">{t("ci_detail.subcontract_title")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
             <X className="h-4 w-4" />
           </button>
@@ -728,15 +734,15 @@ function AddContractsSubModal({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar contrato por número o proveedor…"
+            placeholder={t("ci_detail.subcontract_search")}
             className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
-              <RefreshCw className="h-4 w-4 animate-spin" />Cargando datos…
+              <RefreshCw className="h-4 w-4 animate-spin" />{t("ci_detail.loading_data")}
             </div>
           ) : filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">No hay contratos disponibles para añadir.</p>
+            <p className="py-6 text-center text-sm text-slate-400">{t("ci_detail.subcontract_no_contracts")}</p>
           ) : (
             <div className="overflow-y-auto max-h-64 divide-y divide-slate-50 rounded-lg border border-slate-200">
               {filtered.map((c) => (
@@ -758,7 +764,7 @@ function AddContractsSubModal({
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            Cancelar
+            {t("actions.cancel")}
           </button>
           <button
             onClick={handleSubmit}
@@ -766,7 +772,7 @@ function AddContractsSubModal({
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Asociar seleccionados
+            {t("ci_detail.subdoc_associate")}
           </button>
         </div>
       </div>

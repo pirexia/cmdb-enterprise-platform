@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { X, Loader2, AlertTriangle, Search, Check } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,9 +37,10 @@ const STATUS_OPTIONS = ["ACTIVO", "BAJA"];
 const CURRENCY_OPTIONS = ["EUR", "USD", "GBP", "CHF"];
 
 function Label({ children, optional }: { children: React.ReactNode; optional?: boolean }) {
+  const { t } = useLanguage();
   return (
     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
-      {children}{optional && <span className="ml-1 normal-case font-normal text-slate-400">(opcional)</span>}
+      {children}{optional && <span className="ml-1 normal-case font-normal text-slate-400">({t("common.optional")})</span>}
     </label>
   );
 }
@@ -55,6 +57,7 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
 // ─── CI Multi-selector ────────────────────────────────────────────────────────
 
 function CIMultiSelector({ cis, selected, onChange }: { cis: CIOption[]; selected: string[]; onChange: (ids: string[]) => void }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => cis.filter((ci) => ci.name.toLowerCase().includes(query.toLowerCase()) || ci.apiSlug.toLowerCase().includes(query.toLowerCase())), [cis, query]);
   const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
@@ -74,12 +77,12 @@ function CIMultiSelector({ cis, selected, onChange }: { cis: CIOption[]; selecte
       )}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-        <input type="text" placeholder="Buscar CI…" value={query} onChange={(e) => setQuery(e.target.value)}
+        <input type="text" placeholder={t("common.search_ci")} value={query} onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
       </div>
       <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-50">
         {filtered.length === 0 ? (
-          <p className="px-4 py-3 text-xs text-slate-400 text-center">No hay CIs que coincidan.</p>
+          <p className="px-4 py-3 text-xs text-slate-400 text-center">{t("licenses.no_cis_to_add")}</p>
         ) : filtered.map((ci) => {
           const isSel = selected.includes(ci.id);
           return (
@@ -95,7 +98,7 @@ function CIMultiSelector({ cis, selected, onChange }: { cis: CIOption[]; selecte
         })}
       </div>
       <p className="text-[11px] text-slate-400">
-        {selected.length === 0 ? "Ningún CI seleccionado" : `${selected.length} CI${selected.length > 1 ? "s" : ""} seleccionado${selected.length > 1 ? "s" : ""}`}
+        {selected.length === 0 ? t("common.no_ci_selected") : selected.length === 1 ? t("common.ci_selected", { count: selected.length }) : t("common.cis_selected", { count: selected.length })}
       </p>
     </div>
   );
@@ -104,6 +107,7 @@ function CIMultiSelector({ cis, selected, onChange }: { cis: CIOption[]; selecte
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
 export default function AddLicenseModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { t } = useLanguage();
   const [form, setForm]                 = useState<FormState>(INITIAL_FORM);
   const [vendors, setVendors]           = useState<Vendor[]>([]);
   const [cis, setCis]                   = useState<CIOption[]>([]);
@@ -175,10 +179,10 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h2 className="text-base font-semibold text-slate-800">
-              {isSubLicense ? "Nueva Sub-Licencia" : "Nueva Licencia"}
+              {isSubLicense ? t("licenses.modal_sub") : t("licenses.modal_new")}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              {isSubLicense ? "Vinculada a una licencia padre" : "Licencia de software o hardware"}
+              {isSubLicense ? t("licenses.modal_sub_subtitle") : t("licenses.modal_new_subtitle")}
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
@@ -194,11 +198,11 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
           {/* Name + License number */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label>Nombre de la Licencia *</Label>
+              <Label>{t("licenses.form_name")}</Label>
               <Input required placeholder="Ej: Microsoft Office 365" value={form.name} onChange={(e) => set("name", e.target.value)} />
             </div>
             <div>
-              <Label>Número de Licencia *</Label>
+              <Label>{t("licenses.form_number")}</Label>
               <Input required placeholder="Ej: MS-O365-2025-001" value={form.licenseNumber} onChange={(e) => set("licenseNumber", e.target.value)} />
             </div>
           </div>
@@ -206,14 +210,14 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
           {/* Vendor + Status */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label optional>Proveedor</Label>
+              <Label optional>{t("licenses.form_vendor")}</Label>
               <Select value={form.vendorId} onChange={(e) => set("vendorId", e.target.value)}>
-                <option value="">— Seleccionar —</option>
+                <option value="">{t("licenses.select_placeholder")}</option>
                 {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
               </Select>
             </div>
             <div>
-              <Label>Estado</Label>
+              <Label>{t("licenses.form_status")}</Label>
               <Select value={form.status} onChange={(e) => set("status", e.target.value)}>
                 {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
               </Select>
@@ -222,23 +226,23 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
 
           {/* Dates */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div><Label>Fecha de Inicio *</Label><Input type="date" required value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
-            <div><Label optional>Fecha de Vencimiento</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
+            <div><Label>{t("licenses.form_start")}</Label><Input type="date" required value={form.startDate} onChange={(e) => set("startDate", e.target.value)} /></div>
+            <div><Label optional>{t("licenses.form_end")}</Label><Input type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} /></div>
           </div>
 
           {/* License type + metric */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label optional>Tipo de Licencia</Label>
+              <Label optional>{t("licenses.form_type")}</Label>
               <Select value={form.licenseTypeId} onChange={(e) => set("licenseTypeId", e.target.value)}>
-                <option value="">— Seleccionar —</option>
+                <option value="">{t("licenses.select_placeholder")}</option>
                 {licenseTypes.map((lt) => <option key={lt.id} value={lt.id}>{lt.name}</option>)}
               </Select>
             </div>
             <div>
-              <Label optional>Métrica de Licencia</Label>
+              <Label optional>{t("licenses.form_metric")}</Label>
               <Select value={form.licenseMetricId} onChange={(e) => set("licenseMetricId", e.target.value)}>
-                <option value="">— Seleccionar —</option>
+                <option value="">{t("licenses.select_placeholder")}</option>
                 {licenseMetrics.map((lm) => <option key={lm.id} value={lm.id}>{lm.name}</option>)}
               </Select>
             </div>
@@ -248,11 +252,11 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
           {form.licenseMetricId && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <Label optional>Valor de la Métrica</Label>
-                <Input type="number" min="0" placeholder="Ej: 100" value={form.metricValue} onChange={(e) => set("metricValue", e.target.value)} />
+                <Label optional>{t("licenses.form_metric_value")}</Label>
+                <Input type="number" min="0" placeholder={t("licenses.metric_placeholder")} value={form.metricValue} onChange={(e) => set("metricValue", e.target.value)} />
               </div>
               <div>
-                <Label optional>Unidad</Label>
+                <Label optional>{t("licenses.form_metric_unit")}</Label>
                 <Input placeholder="Ej: usuarios, núcleos, GB" value={form.metricUnit} onChange={(e) => set("metricUnit", e.target.value)} />
               </div>
             </div>
@@ -261,11 +265,11 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
           {/* Cost + currency */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <Label optional>Coste</Label>
+              <Label optional>{t("licenses.form_cost")}</Label>
               <Input type="number" min="0" step="0.01" placeholder="0.00" value={form.cost} onChange={(e) => set("cost", e.target.value)} />
             </div>
             <div>
-              <Label>Moneda</Label>
+              <Label>{t("licenses.form_currency")}</Label>
               <Select value={form.currency} onChange={(e) => set("currency", e.target.value)}>
                 {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </Select>
@@ -274,35 +278,35 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
 
           {/* Parent license */}
           <div>
-            <Label optional>Licencia Padre (si es Sub-Licencia)</Label>
+            <Label optional>{t("licenses.form_parent")}</Label>
             <Select value={form.parentLicenseId} onChange={(e) => set("parentLicenseId", e.target.value)}>
-              <option value="">— Esta es una licencia principal —</option>
+              <option value="">{t("licenses.parent_placeholder")}</option>
               {licenses.map((l) => <option key={l.id} value={l.id}>{l.name} ({l.licenseNumber})</option>)}
             </Select>
-            {isSubLicense && <p className="mt-1.5 text-xs text-amber-600 font-medium">Se guardará como sub-licencia de la licencia seleccionada.</p>}
+            {isSubLicense && <p className="mt-1.5 text-xs text-amber-600 font-medium">{t("licenses.sub_hint")}</p>}
           </div>
 
           {/* Notes */}
           <div>
-            <Label optional>Notas</Label>
-            <Textarea rows={3} placeholder="Observaciones, restricciones de uso, etc." value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+            <Label optional>{t("licenses.form_notes")}</Label>
+            <Textarea rows={3} placeholder={t("licenses.notes_placeholder")} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
           </div>
 
           {/* CIs */}
           <div>
-            <Label optional>CIs Asociados</Label>
+            <Label optional>{t("licenses.associate_cis")}</Label>
             <CIMultiSelector cis={cis} selected={form.ciIds} onChange={(ids) => set("ciIds", ids)} />
           </div>
 
           <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-              Cancelar
+              {t("actions.cancel")}
             </button>
             <button type="submit" disabled={submitting}
               className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Guardando…" : isSubLicense ? "Crear Sub-Licencia" : "Crear Licencia"}
+              {submitting ? t("common.saving") : isSubLicense ? t("licenses.create_sublicense") : t("licenses.create_license")}
             </button>
           </div>
         </form>

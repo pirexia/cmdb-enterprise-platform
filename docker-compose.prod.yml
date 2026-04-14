@@ -68,13 +68,23 @@ services:
       ALERT_RECIPIENT:      ${ALERT_RECIPIENT:-}
       ALERT_WARN_DAYS:      ${ALERT_WARN_DAYS:-30}
       ALERT_CRON_SCHEDULE:  ${ALERT_CRON_SCHEDULE:-30 8 * * *}
-      # LDAP (optional)
-      USE_LDAP:             ${USE_LDAP:-false}
-      LDAP_URL:             ${LDAP_URL:-}
-      LDAP_BASE_DN:         ${LDAP_BASE_DN:-}
-      LDAP_BIND_DN:         ${LDAP_BIND_DN:-}
-      LDAP_BIND_PASSWORD:   ${LDAP_BIND_PASSWORD:-}
-      DOCUMENTS_DIR:        /app/documents
+      # LDAP / Active Directory (optional)
+      USE_LDAP:                    ${USE_LDAP:-false}
+      LDAP_URL:                    ${LDAP_URL:-}
+      LDAP_BASE_DN:                ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN:                ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD:          ${LDAP_BIND_PASSWORD:-}
+      LDAP_TLS_REJECT_UNAUTHORIZED: ${LDAP_TLS_REJECT_UNAUTHORIZED:-1}
+      # Microsoft 365 SSO / Azure AD (optional — leave USE_MICROSOFT_SSO=false to disable)
+      USE_MICROSOFT_SSO:           ${USE_MICROSOFT_SSO:-false}
+      AZURE_TENANT_ID:             ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID:             ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET:         ${AZURE_CLIENT_SECRET:-}
+      AZURE_REDIRECT_URI:          ${AZURE_REDIRECT_URI:-}
+      AZURE_ALLOWED_DOMAIN:        ${AZURE_ALLOWED_DOMAIN:-}
+      FRONTEND_URL:                ${FRONTEND_URL:-http://localhost:3001}
+      AZURE_AUTO_PROVISION:        ${AZURE_AUTO_PROVISION:-false}
+      DOCUMENTS_DIR:               /app/documents
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:
@@ -101,6 +111,9 @@ services:
       args:
         # IMPORTANT: must be the public URL of the backend (as seen from the browser)
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL is required}
+        NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS: ${NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS:-30}
+        NEXT_PUBLIC_PASSWORD_MIN_LENGTH_ADMIN: ${PASSWORD_MIN_LENGTH_ADMIN:-16}
+        NEXT_PUBLIC_PASSWORD_MIN_LENGTH_VIEWER: ${PASSWORD_MIN_LENGTH_VIEWER:-12}
     image: cmdb-frontend:latest
     container_name: cmdb-frontend-prod
     restart: unless-stopped

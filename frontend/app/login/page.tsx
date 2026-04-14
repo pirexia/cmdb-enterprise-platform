@@ -24,7 +24,7 @@ type LoginStep =
 
 export default function LoginPage() {
   const { login, applySession } = useAuth();
-  const { locale, setLocale } = useLanguage();
+  const { locale, setLocale, t } = useLanguage();
   const router = useRouter();
 
   const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
@@ -63,8 +63,9 @@ export default function LoginPage() {
         setMfaSecret(secret);
         setQrDataUrl(url);
       })
-      .catch(() => setError("No se pudo cargar el código QR. Intenta de nuevo."))
+      .catch(() => setError(t("login.error_qr_failed")))
       .finally(() => setQrLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   // ── Credential submit ─────────────────────────────────────────────────────
@@ -76,7 +77,7 @@ export default function LoginPage() {
       await login(email, password);
       router.replace("/");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error al iniciar sesión";
+      const msg = err instanceof Error ? err.message : t("login.error_invalid");
       if (msg === "MFA_REQUIRED") {
         setStep("mfa_verify");
       } else if (msg === "MFA_SETUP_REQUIRED") {
@@ -102,9 +103,9 @@ export default function LoginPage() {
       await login(email, password, { mfaCode, trustDevice });
       router.replace("/");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Código incorrecto";
+      const msg = err instanceof Error ? err.message : t("login.error_mfa");
       if (msg === "INVALID_MFA_CODE") {
-        setError("Código incorrecto. Verifica tu aplicación TOTP.");
+        setError(t("login.error_mfa_code"));
       } else {
         setError(msg);
       }
@@ -125,17 +126,17 @@ export default function LoginPage() {
       });
       const data = await res.json() as { token?: string; user?: Parameters<typeof applySession>[1]; deviceToken?: string; error?: string };
       if (!res.ok) {
-        setError(data.error ?? "Error al activar MFA");
+        setError(data.error ?? t("login.error_mfa"));
         return;
       }
       if (!data.token || !data.user) {
-        setError("Respuesta inesperada del servidor");
+        setError(t("login.error_invalid"));
         return;
       }
       applySession(data.token, data.user, data.deviceToken);
       router.replace("/");
     } catch {
-      setError("Error de conexión. Intenta de nuevo.");
+      setError(t("login.error_qr_failed"));
     } finally {
       setLoading(false);
     }
@@ -162,19 +163,19 @@ export default function LoginPage() {
     },
     mfa_verify: {
       icon:     <ShieldCheck className="h-7 w-7 text-white" />,
-      subtitle: "Verificación en dos pasos (MFA)",
+      subtitle: t("login.mfa_verify_header"),
     },
     mfa_suggest: {
       icon:     <ShieldAlert className="h-7 w-7 text-white" />,
-      subtitle: "Protege tu cuenta",
+      subtitle: t("login.protect_account"),
     },
     mfa_setup_qr: {
       icon:     <QrCode className="h-7 w-7 text-white" />,
-      subtitle: isAdminSetup ? "Configuración obligatoria de MFA" : "Configurar autenticación MFA",
+      subtitle: isAdminSetup ? t("login.setup_subtitle_admin") : t("login.setup_subtitle_user"),
     },
     mfa_setup_verify: {
       icon:     <ShieldCheck className="h-7 w-7 text-white" />,
-      subtitle: "Verifica tu aplicación TOTP",
+      subtitle: t("login.verify_totp_header"),
     },
   };
 
@@ -194,7 +195,7 @@ export default function LoginPage() {
             <h1 className="text-xl font-bold text-white">{companyName}</h1>
             <p className="text-xs text-white/70 mt-1">{meta.subtitle}</p>
             {step === "credentials" && (
-              <p className="text-xs text-white/50 mt-1">Soporta credenciales corporativas</p>
+              <p className="text-xs text-white/50 mt-1">{t("login.ldap_hint")}</p>
             )}
           </div>
 
@@ -226,25 +227,26 @@ export default function LoginPage() {
             {step === "credentials" && (
               <form onSubmit={handleCredentials} className="space-y-5">
                 <p className="text-sm font-semibold text-slate-700 mb-5 text-center">
-                  Accede con tus credenciales
+                  {t("login.credentials_prompt")}
                 </p>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Email</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">{t("login.email_label")}</label>
                   <input
-                    type="email" required autoComplete="email" placeholder="usuario@empresa.com"
+                    type="email" required autoComplete="email" placeholder={t("login.email_placeholder")}
                     value={email} onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Contraseña</label>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">{t("login.password_label")}</label>
                   <div className="relative">
                     <input
-                      type={showPwd ? "text" : "password"} required autoComplete="current-password" placeholder="••••••••"
+                      type={showPwd ? "text" : "password"} required autoComplete="current-password" placeholder={t("login.password_placeholder")}
                       value={password} onChange={(e) => setPassword(e.target.value)}
                       className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                     />
                     <button type="button" onClick={() => setShowPwd((v) => !v)}
+                      title={showPwd ? t("login.hide_password") : t("login.show_password")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                       {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -253,7 +255,7 @@ export default function LoginPage() {
                 <button type="submit" disabled={loading}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {loading ? "Verificando…" : "Iniciar sesión"}
+                  {loading ? t("login.verifying") : t("login.submit")}
                 </button>
               </form>
             )}
@@ -262,11 +264,11 @@ export default function LoginPage() {
             {step === "mfa_verify" && (
               <form onSubmit={handleMfaVerify} className="space-y-5">
                 <p className="text-sm font-semibold text-slate-700 text-center">
-                  Introduce el código de tu aplicación TOTP
+                  {t("login.mfa_verify_subtitle")}
                 </p>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                    Código TOTP (6 dígitos)
+                    {t("login.mfa_label")}
                   </label>
                   <input
                     type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
@@ -283,18 +285,18 @@ export default function LoginPage() {
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <span className="text-xs text-slate-600 group-hover:text-slate-800 leading-relaxed">
-                    Confiar en este dispositivo durante <span className="font-semibold">{ttlDays} días</span>
-                    <span className="block text-slate-400 mt-0.5">No se pedirá el código MFA en este equipo</span>
+                    {t("login.trust_device", { days: ttlDays })}
+                    <span className="block text-slate-400 mt-0.5">{t("login.trust_device_hint")}</span>
                   </span>
                 </label>
                 <button type="submit" disabled={loading || mfaCode.length !== 6}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {loading ? "Verificando…" : "Verificar código"}
+                  {loading ? t("login.verifying") : t("login.verify_code")}
                 </button>
                 <button type="button" onClick={resetToCredentials}
                   className="w-full text-xs text-slate-400 hover:text-slate-600 underline text-center mt-1">
-                  ← Volver al inicio de sesión
+                  {t("login.back_to_login")}
                 </button>
               </form>
             )}
@@ -303,21 +305,20 @@ export default function LoginPage() {
             {step === "mfa_suggest" && (
               <div className="space-y-5">
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                  <p className="font-semibold mb-1">Recomendamos activar MFA</p>
+                  <p className="font-semibold mb-1">{t("login.mfa_suggest_recommend")}</p>
                   <p className="text-amber-700 text-xs leading-relaxed">
-                    La autenticación en dos pasos protege tu cuenta aunque tu contraseña sea comprometida.
-                    Solo se te solicitará esta vez.
+                    {t("login.mfa_suggest_body")}
                   </p>
                 </div>
                 <button
                   onClick={() => { setIsAdminSetup(false); setStep("mfa_setup_qr"); }}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
-                  <ShieldCheck className="h-4 w-4" /> Configurar MFA ahora
+                  <ShieldCheck className="h-4 w-4" /> {t("login.setup_mfa_now")}
                 </button>
                 <button
                   onClick={handleSkipSuggestion}
                   className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                  Omitir por ahora
+                  {t("login.skip_for_now")}
                 </button>
               </div>
             )}
@@ -327,12 +328,12 @@ export default function LoginPage() {
               <div className="space-y-4">
                 {isAdminSetup && (
                   <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 leading-relaxed">
-                    <span className="font-semibold block mb-0.5">MFA obligatorio para administradores</span>
-                    Debes configurar la verificación en dos pasos antes de acceder a la aplicación.
+                    <span className="font-semibold block mb-0.5">{t("login.mandatory_mfa_title")}</span>
+                    {t("login.mandatory_mfa_body")}
                   </div>
                 )}
                 <p className="text-sm text-slate-600 text-center">
-                  Escanea este código QR con tu aplicación autenticadora
+                  {t("login.scan_qr_prompt")}
                   <span className="block text-xs text-slate-400 mt-0.5">(Google Authenticator, Authy, Microsoft Authenticator…)</span>
                 </p>
 
@@ -352,7 +353,7 @@ export default function LoginPage() {
                 {mfaSecret && (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
-                      Clave manual
+                      {t("login.manual_key_label")}
                     </p>
                     <div className="flex items-center gap-2">
                       <code className={`flex-1 text-xs font-mono text-slate-700 break-all ${showSecret ? "" : "blur-sm select-none"}`}>
@@ -370,12 +371,12 @@ export default function LoginPage() {
                   onClick={() => setStep("mfa_setup_verify")}
                   disabled={!qrDataUrl || qrLoading}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                  Ya lo escaneé → Continuar
+                  {t("login.scanned_continue")}
                 </button>
                 {!isAdminSetup && (
                   <button type="button" onClick={handleSkipSuggestion}
                     className="w-full text-xs text-slate-400 hover:text-slate-600 underline text-center">
-                    Omitir por ahora
+                    {t("login.skip_for_now")}
                   </button>
                 )}
               </div>
@@ -386,11 +387,11 @@ export default function LoginPage() {
               <form onSubmit={handleSetupVerify} className="space-y-5">
                 <div className="flex items-center justify-center gap-2 text-sm text-slate-600">
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Aplicación configurada. Introduce el código para confirmar.
+                  {t("login.app_configured")}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                    Código de verificación (6 dígitos)
+                    {t("login.mfa_label")}
                   </label>
                   <input
                     type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
@@ -407,23 +408,23 @@ export default function LoginPage() {
                     className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <span className="text-xs text-slate-600 group-hover:text-slate-800 leading-relaxed">
-                    Confiar en este dispositivo durante <span className="font-semibold">{ttlDays} días</span>
-                    <span className="block text-slate-400 mt-0.5">No se pedirá el código MFA en este equipo</span>
+                    {t("login.trust_device", { days: ttlDays })}
+                    <span className="block text-slate-400 mt-0.5">{t("login.trust_device_hint")}</span>
                   </span>
                 </label>
                 <button type="submit" disabled={loading || setupCode.length !== 6}
                   className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {loading ? "Activando…" : "Activar MFA y entrar"}
+                  {loading ? t("login.activating") : t("login.enable_mfa_btn")}
                 </button>
                 <button type="button" onClick={() => setStep("mfa_setup_qr")}
                   className="w-full text-xs text-slate-400 hover:text-slate-600 underline text-center">
-                  ← Volver al código QR
+                  {t("login.back_to_qr")}
                 </button>
                 {!isAdminSetup && (
                   <button type="button" onClick={handleSkipSuggestion}
                     className="w-full text-xs text-slate-400 hover:text-slate-600 underline text-center">
-                    Omitir por ahora
+                    {t("login.skip_for_now")}
                   </button>
                 )}
               </form>

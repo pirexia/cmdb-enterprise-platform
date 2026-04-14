@@ -34,10 +34,10 @@ export default function SsoCallbackPage() {
 
     try {
       const user = JSON.parse(decodeURIComponent(userStr));
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      localStorage.setItem("cmdb_token", token);
+      localStorage.setItem("cmdb_user", JSON.stringify(user));
       if (deviceToken) {
-        localStorage.setItem("deviceToken", deviceToken);
+        localStorage.setItem("cmdb_device_token", deviceToken);
       }
       // Navigate to dashboard
       router.replace("/");

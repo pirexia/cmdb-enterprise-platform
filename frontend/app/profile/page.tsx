@@ -18,15 +18,20 @@ const MIN_LEN_VIEWER = parseInt(process.env.NEXT_PUBLIC_PASSWORD_MIN_LENGTH_VIEW
 
 interface StrengthRule { label: string; ok: boolean }
 
-function usePasswordStrength(password: string, role: string): StrengthRule[] {
+function usePasswordStrength(
+  password: string,
+  role: string,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): StrengthRule[] {
   const minLen = role === "ADMIN" ? MIN_LEN_ADMIN : MIN_LEN_VIEWER;
   return useMemo(() => [
-    { label: `Mínimo ${minLen} caracteres`,     ok: password.length >= minLen },
-    { label: "Al menos una mayúscula (A-Z)",    ok: /[A-Z]/.test(password) },
-    { label: "Al menos una minúscula (a-z)",    ok: /[a-z]/.test(password) },
-    { label: "Al menos un número (0-9)",        ok: /[0-9]/.test(password) },
-    { label: "Al menos un carácter especial",   ok: /[^A-Za-z0-9]/.test(password) },
-  ], [password, minLen]);
+    { label: t("profile.password_rule_min_len", { n: minLen }), ok: password.length >= minLen },
+    { label: t("profile.password_rule_uppercase"),               ok: /[A-Z]/.test(password) },
+    { label: t("profile.password_rule_lowercase"),               ok: /[a-z]/.test(password) },
+    { label: t("profile.password_rule_number"),                  ok: /[0-9]/.test(password) },
+    { label: t("profile.password_rule_special"),                 ok: /[^A-Za-z0-9]/.test(password) },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [password, minLen, t]);
 }
 
 function StrengthBar({ rules }: { rules: StrengthRule[] }) {
@@ -90,7 +95,7 @@ export default function ProfilePage() {
   const [pwdSuccess,  setPwdSuccess]  = useState(false);
   const [pwdErrors,   setPwdErrors]   = useState<string[]>([]);
 
-  const rules = usePasswordStrength(newPwd, user?.role ?? "VIEWER");
+  const rules = usePasswordStrength(newPwd, user?.role ?? "VIEWER", t);
   const allRulesPassed = rules.every((r) => r.ok);
   const passwordsMatch = newPwd === confirmPwd && confirmPwd.length > 0;
 
@@ -111,7 +116,7 @@ export default function ProfilePage() {
       setQrDataUrl(data.qrDataUrl);
       setMfaSecret(data.secret);
     } catch (err) {
-      setMfaError(err instanceof Error ? err.message : "Error al generar el QR");
+      setMfaError(err instanceof Error ? err.message : t("profile.mfa_qr_error"));
     } finally {
       setMfaLoading(false);
     }
@@ -137,7 +142,7 @@ export default function ProfilePage() {
       setMfaJustEnabled(true);
       setQrDataUrl(null); setMfaSecret(null); setMfaCode("");
     } catch (err) {
-      setMfaError(err instanceof Error ? err.message : "Error al activar MFA");
+      setMfaError(err instanceof Error ? err.message : t("profile.mfa_enable_error"));
     } finally {
       setMfaEnabling(false);
     }
@@ -148,11 +153,11 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwdErrors([]);
     if (!passwordsMatch) {
-      setPwdErrors(["Las contraseñas no coinciden."]);
+      setPwdErrors([t("profile.passwords_no_match")]);
       return;
     }
     if (!allRulesPassed) {
-      setPwdErrors(["La contraseña no cumple todos los requisitos de seguridad."]);
+      setPwdErrors([t("profile.password_policy_error")]);
       return;
     }
     setPwdSaving(true);
@@ -164,14 +169,14 @@ export default function ProfilePage() {
       const data = await res.json();
       if (!res.ok) {
         if (data.details) { setPwdErrors(data.details); return; }
-        setPwdErrors([data.message ?? data.error ?? "Error al cambiar la contraseña."]);
+        setPwdErrors([data.message ?? data.error ?? t("profile.password_change_error")]);
         return;
       }
       setPwdSuccess(true);
       setCurrentPwd(""); setNewPwd(""); setConfirmPwd("");
       setTimeout(() => setPwdSuccess(false), 5000);
     } catch {
-      setPwdErrors(["Error de conexión. Inténtalo de nuevo."]);
+      setPwdErrors([t("profile.connection_error")]);
     } finally {
       setPwdSaving(false);
     }
@@ -189,8 +194,8 @@ export default function ProfilePage() {
         <div className="flex items-center gap-3">
           <User className="h-5 w-5 text-indigo-500" />
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Mi Perfil</h1>
-            <p className="text-sm text-slate-500 mt-0.5">Configuración de cuenta y seguridad</p>
+            <h1 className="text-xl font-bold text-slate-900">{t("profile.title")}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{t("profile.subtitle")}</p>
           </div>
         </div>
       </header>
@@ -217,16 +222,16 @@ export default function ProfilePage() {
         <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
             <Lock className="h-4 w-4 text-slate-400" />
-            <h2 className="text-sm font-semibold text-slate-700">Cambiar Contraseña</h2>
-            <span className="ml-auto text-xs text-slate-400">Solo usuarios locales</span>
+            <h2 className="text-sm font-semibold text-slate-700">{t("profile.change_password_section")}</h2>
+            <span className="ml-auto text-xs text-slate-400">{t("profile.local_users_only")}</span>
           </div>
           <div className="p-6">
             {pwdSuccess ? (
               <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-4">
                 <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-emerald-800">Contraseña actualizada correctamente</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">Usa la nueva contraseña en tu próximo inicio de sesión.</p>
+                  <p className="text-sm font-semibold text-emerald-800">{t("profile.password_updated")}</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">{t("profile.password_updated_hint")}</p>
                 </div>
               </div>
             ) : (
@@ -235,7 +240,7 @@ export default function ProfilePage() {
                 {/* Current password */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                    Contraseña actual
+                    {t("profile.current_password")}
                   </label>
                   <div className="relative">
                     <input
@@ -255,7 +260,7 @@ export default function ProfilePage() {
                 {/* New password */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                    Nueva contraseña
+                    {t("profile.new_password")}
                   </label>
                   <div className="relative">
                     <input
@@ -281,7 +286,7 @@ export default function ProfilePage() {
                 {/* Confirm password */}
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                    Confirmar nueva contraseña
+                    {t("profile.confirm_password")}
                   </label>
                   <div className="relative">
                     <input
@@ -304,7 +309,7 @@ export default function ProfilePage() {
                   </div>
                   {confirmPwd.length > 0 && (
                     <p className={`mt-1 text-xs ${passwordsMatch ? "text-emerald-600" : "text-red-500"}`}>
-                      {passwordsMatch ? "Las contraseñas coinciden." : "Las contraseñas no coinciden."}
+                      {passwordsMatch ? t("profile.passwords_match") : t("profile.passwords_no_match")}
                     </p>
                   )}
                 </div>
@@ -326,7 +331,7 @@ export default function ProfilePage() {
                   className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 >
                   {pwdSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
-                  {pwdSaving ? "Guardando…" : "Cambiar contraseña"}
+                  {pwdSaving ? t("profile.password_saving") : t("profile.change_password_button")}
                 </button>
               </form>
             )}
@@ -337,7 +342,7 @@ export default function ProfilePage() {
         <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-slate-400" />
-            <h2 className="text-sm font-semibold text-slate-700">Autenticación de Dos Factores (TOTP / MFA)</h2>
+            <h2 className="text-sm font-semibold text-slate-700">{t("profile.mfa_section")}</h2>
           </div>
           <div className="p-6 space-y-4">
 
@@ -346,12 +351,12 @@ export default function ProfilePage() {
                 <CheckCircle2 className="h-6 w-6 text-emerald-600 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-emerald-800">
-                    {mfaJustEnabled ? "MFA activado correctamente" : "MFA activado"}
+                    {mfaJustEnabled ? t("profile.mfa_just_enabled") : t("profile.mfa_enabled_ok")}
                   </p>
                   <p className="text-xs text-emerald-600 mt-0.5">
                     {mfaJustEnabled
-                      ? "A partir de ahora se pedirá tu código TOTP al iniciar sesión."
-                      : "Tu cuenta está protegida con autenticación de doble factor (TOTP)."}
+                      ? t("profile.mfa_just_enabled_hint")
+                      : t("profile.mfa_already_enabled_hint")}
                   </p>
                 </div>
               </div>
@@ -360,11 +365,8 @@ export default function ProfilePage() {
                 <div className="flex items-start gap-3 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
                   <ShieldOff className="h-5 w-5 text-slate-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-slate-700">MFA no configurado</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Añade una capa extra de seguridad usando una aplicación TOTP
-                      (Google Authenticator, Authy, Bitwarden…).
-                    </p>
+                    <p className="text-sm font-medium text-slate-700">{t("profile.mfa_not_configured")}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{t("profile.mfa_not_configured_hint")}</p>
                   </div>
                 </div>
                 {mfaError && (
@@ -375,7 +377,7 @@ export default function ProfilePage() {
                 <button onClick={handleSetup} disabled={mfaLoading}
                   className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors">
                   {mfaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
-                  {mfaLoading ? "Generando QR…" : "Configurar MFA"}
+                  {mfaLoading ? t("profile.mfa_generating_qr") : t("profile.mfa_configure")}
                 </button>
               </>
             ) : (
@@ -383,15 +385,15 @@ export default function ProfilePage() {
                 <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
                   <ShieldCheck className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold">Escanea el código QR con tu app TOTP</p>
-                    <p className="text-xs mt-0.5">Luego introduce el código de 6 dígitos para confirmar la activación.</p>
+                    <p className="font-semibold">{t("profile.mfa_scan_instruction")}</p>
+                    <p className="text-xs mt-0.5">{t("profile.mfa_scan_hint")}</p>
                   </div>
                 </div>
                 <div className="flex flex-col items-center gap-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={qrDataUrl} alt="QR Code MFA" className="h-48 w-48 rounded-xl border border-slate-200" />
                   <div className="text-center">
-                    <p className="text-xs text-slate-500">Clave secreta (introducción manual):</p>
+                    <p className="text-xs text-slate-500">{t("profile.mfa_secret_label")}</p>
                     <code className="text-xs font-mono text-indigo-700 bg-indigo-50 rounded px-2 py-0.5 break-all">
                       {mfaSecret}
                     </code>
@@ -405,7 +407,7 @@ export default function ProfilePage() {
                 <form onSubmit={handleEnable} className="flex gap-3 items-end">
                   <div className="flex-1">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-                      Código TOTP de verificación
+                      {t("profile.mfa_totp_label")}
                     </label>
                     <input
                       type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
@@ -417,7 +419,7 @@ export default function ProfilePage() {
                   <button type="submit" disabled={mfaEnabling || mfaCode.length !== 6}
                     className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 transition-colors">
                     {mfaEnabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                    {mfaEnabling ? "Activando…" : "Activar MFA"}
+                    {mfaEnabling ? t("profile.mfa_activating") : t("profile.mfa_activate")}
                   </button>
                 </form>
               </>

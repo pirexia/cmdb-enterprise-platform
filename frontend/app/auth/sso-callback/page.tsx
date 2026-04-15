@@ -13,11 +13,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export default function SsoCallbackPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function SsoCallbackPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
       <div className="flex flex-col items-center gap-3 text-slate-500">
         <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
-        <p className="text-sm">Completing sign-in…</p>
+        <p className="text-sm">{t("auth.completing_signin")}</p>
       </div>
     </div>
   );

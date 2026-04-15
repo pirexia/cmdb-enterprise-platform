@@ -480,6 +480,8 @@ model Document {
 
   @@index([documentTypeId])
   @@index([rootId])
+  @@index([rootId, isLatest])     // "find current version of a document"
+  @@index([rootId, versionNumber]) // "list version history ordered by version"
   @@map("documents")
 }
 

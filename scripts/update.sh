@@ -213,7 +213,8 @@ tag_rollback() {
 
   if [ "${DRY_RUN}" = "true" ]; then
     info "[DRY RUN] Would create git tag: ${tag}"
-    ROLLBACK_TAG="${tag}"
+    # Do NOT set ROLLBACK_TAG — the tag is never actually created in dry-run,
+    # so setting it would cause the err_handler to attempt a failing checkout.
     return 0
   fi
 
@@ -332,6 +333,13 @@ deploy() {
 # ── Step 7: Automatic rollback ────────────────────────────────────────────────
 rollback() {
   local reason="${1:-unknown reason}"
+
+  # In dry-run mode no real state was changed and no rollback tag was created,
+  # so attempting a git checkout would fail with 'reference is not a tree'.
+  if [ "${DRY_RUN}" = "true" ]; then
+    warn "[DRY RUN] Skipping rollback — no real state was modified."
+    return 0
+  fi
 
   error ""
   error "╔══════════════════════════════════════════╗"

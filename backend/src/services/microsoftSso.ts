@@ -86,6 +86,11 @@ async function getPublicKeyForKid(kid: string, retry = true): Promise<string> {
 
   if (!key) throw new Error(`JWKS key not found for kid=${kid}`);
 
+  // RFC 7517 §4.2: only keys designated for signing may verify signatures
+  if (key.use !== 'sig') {
+    throw new Error(`JWKS key kid=${kid} is not a signing key (use=${key.use})`);
+  }
+
   // Build PEM from n/e (RSA public key) or x5c (certificate chain)
   if (key.x5c && key.x5c.length > 0) {
     const cert = key.x5c[0];

@@ -4,7 +4,7 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v1.7.0"
+    "copyright": "© {year} CMDB Platform v1.7.1"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -803,7 +803,7 @@
   },
   "profile": {
     "title": "My Profile",
-    "subtitle": "Account settings",
+    "subtitle": "Account settings and security",
     "mfa_section": "Two-Factor Authentication (MFA)",
     "mfa_enable": "Enable MFA",
     "mfa_disable": "Disable MFA",
@@ -816,16 +816,41 @@
     "language_label": "Interface language",
     "language_saved": "Language saved",
     "password_rule_length": "At least 12 characters",
-    "password_rule_uppercase": "One uppercase letter",
-    "password_rule_lowercase": "One lowercase letter",
-    "password_rule_number": "One number",
-    "password_rule_special": "One special character (!@#$…)",
+    "password_rule_uppercase": "At least one uppercase letter (A-Z)",
+    "password_rule_lowercase": "At least one lowercase letter (a-z)",
+    "password_rule_number": "At least one number (0-9)",
+    "password_rule_special": "At least one special character",
     "confirm_password": "Confirm password",
     "passwords_match": "Passwords match",
     "passwords_no_match": "Passwords do not match",
     "password_saved": "Password updated",
     "mfa_enabled_ok": "MFA enabled",
-    "mfa_disabled_ok": "MFA disabled"
+    "mfa_disabled_ok": "MFA disabled",
+    "change_password_section": "Change Password",
+    "local_users_only": "Local users only",
+    "password_updated": "Password updated successfully",
+    "password_updated_hint": "Use the new password at your next sign-in.",
+    "password_saving": "Saving…",
+    "change_password_button": "Change password",
+    "password_policy_error": "Password does not meet all security requirements.",
+    "password_change_error": "Failed to change password.",
+    "connection_error": "Connection error. Please try again.",
+    "mfa_not_configured": "MFA not configured",
+    "mfa_not_configured_hint": "Add an extra layer of security using a TOTP app (Google Authenticator, Authy, Bitwarden…).",
+    "mfa_qr_error": "Failed to generate QR code.",
+    "mfa_enable_error": "Failed to enable MFA.",
+    "mfa_just_enabled": "MFA enabled successfully",
+    "mfa_just_enabled_hint": "Your TOTP code will be required on every sign-in.",
+    "mfa_already_enabled_hint": "Your account is protected with two-factor authentication (TOTP).",
+    "mfa_scan_instruction": "Scan the QR code with your TOTP app",
+    "mfa_scan_hint": "Then enter the 6-digit code to confirm activation.",
+    "mfa_secret_label": "Secret key (manual entry):",
+    "mfa_totp_label": "TOTP verification code",
+    "mfa_activate": "Activate MFA",
+    "mfa_activating": "Activating…",
+    "mfa_generating_qr": "Generating QR…",
+    "mfa_configure": "Set up MFA",
+    "password_rule_min_len": "At least {n} characters"
   },
   "entities": {
     "title": "Entities",
@@ -1002,5 +1027,8 @@
     "subcontract_no_contracts": "No contracts available to add.",
     "loading_data": "Loading data…",
     "unknown_error": "Unknown error"
+  },
+  "auth": {
+    "completing_signin": "Completing sign-in…"
   }
 }

@@ -29,7 +29,20 @@ const CLIENT_SECRET             = process.env.AZURE_CLIENT_SECRET ?? '';
 const REDIRECT_URI              = process.env.AZURE_REDIRECT_URI ?? '';
 export const ALLOWED_DOMAIN     = process.env.AZURE_ALLOWED_DOMAIN ?? '';
 export const AUTO_PROVISION     = process.env.AZURE_AUTO_PROVISION !== 'false'; // default true
-export const FRONTEND_URL       = process.env.FRONTEND_URL ?? 'http://localhost:3001';
+// Validate FRONTEND_URL at startup — throws fast if misconfigured
+// Normalised to origin (scheme+host+port only) to prevent path/query injection
+export const FRONTEND_URL = (() => {
+  const raw = process.env.FRONTEND_URL ?? 'http://localhost:3001';
+  try {
+    const u = new URL(raw);
+    if (!['http:', 'https:'].includes(u.protocol)) {
+      throw new Error(`Unsupported protocol: ${u.protocol}`);
+    }
+    return u.origin; // e.g. "https://cmdb.example.com"
+  } catch (err) {
+    throw new Error(`FRONTEND_URL is not a valid HTTP(S) URL: "${raw}" — ${(err as Error).message}`);
+  }
+})();
 
 const AUTHORITY_BASE    = `https://login.microsoftonline.com/${TENANT_ID}`;
 const AUTHORIZE_URL     = `${AUTHORITY_BASE}/oauth2/v2.0/authorize`;
@@ -85,6 +98,11 @@ async function getPublicKeyForKid(kid: string, retry = true): Promise<string> {
   }
 
   if (!key) throw new Error(`JWKS key not found for kid=${kid}`);
+
+  // RFC 7517 §4.2: only keys designated for signing may verify signatures
+  if (key.use !== 'sig') {
+    throw new Error(`JWKS key kid=${kid} is not a signing key (use=${key.use})`);
+  }
 
   // Build PEM from n/e (RSA public key) or x5c (certificate chain)
   if (key.x5c && key.x5c.length > 0) {

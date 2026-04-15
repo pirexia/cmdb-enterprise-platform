@@ -146,8 +146,8 @@ model PasswordHistory {
 model CostCenter {
   id        String   @id @default(uuid()) @db.Uuid
   code      String   @unique @db.VarChar(50)
-  name      String   @db.VarChar(255)
-  
+  name      String   @unique @db.VarChar(255)
+
   cis       CI[]
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -176,7 +176,7 @@ model Location {
 
 model Vendor {
   id        String     @id @default(uuid()) @db.Uuid
-  name      String
+  name      String     @unique
 
   contracts Contract[]
   licenses  License[]
@@ -226,7 +226,7 @@ model SupportArea {
 
 model Branch {
   id              String      @id @default(uuid()) @db.Uuid
-  name            String      @db.VarChar(255)
+  name            String      @unique @db.VarChar(255)
   branchCode      String      @unique @map("branch_code") @db.VarChar(50)
   physicalAddress String?     @map("physical_address") @db.VarChar(500)
   supportAreaId   String      @db.Uuid @map("support_area_id")
@@ -480,6 +480,8 @@ model Document {
 
   @@index([documentTypeId])
   @@index([rootId])
+  @@index([rootId, isLatest])     // "find current version of a document"
+  @@index([rootId, versionNumber]) // "list version history ordered by version"
   @@map("documents")
 }
 

@@ -143,7 +143,7 @@ curl http://localhost:3000/health
 | Email | Password | Role |
 |-------|----------|------|
 | `admin@cmdb.local` | `Admin1234!` | ADMIN |
-| `auditor@cmdb.local` | `Audit1234!` | VIEWER |
+| `auditor@cmdb.local` | `Audit1234!` | AUDITOR |
 
 > ⚠️ Change these passwords immediately after the first login in production.
 
@@ -703,6 +703,18 @@ The script implements five layers of protection before and during the update:
 3. **Tagged rollback point:** Creates a git tag `rollback/<timestamp>` pointing at the current HEAD before running `git pull`. This tag allows restoring the exact code of the previous version.
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
+
+> **v1.7.1 — Security hardening + schema & i18n fixes:**
+> - **Security:** JWKS `use` claim validation in Microsoft SSO; `FRONTEND_URL` validated and normalised to origin at startup; `COMPANY_NAME` allowlist check prevents DN injection in TLS cert generation; `.env` created with `umask 0077` (no world-readable window); HTML injection fixed in EOL email templates.
+> - **Scripts:** `db-maintenance.sh` — Docker/Podman auto-detection, reliable exit-code capture via temp file, quoted DB name in `REINDEX`; `update.sh` — dry-run rollback no longer attempts `git checkout` on a tag that was never created.
+> - **Schema:** Unique constraints added to `Vendor.name`, `CostCenter.name`, `Branch.name`; compound indexes on `(root_id, is_latest)` and `(root_id, version_number)` for document versioning queries.
+> - **i18n:** All hardcoded strings in the profile page, SSO callback, and AppShell replaced with `t()` calls; 25 new keys added to all 6 locale files.
+> - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` wired as a build ARG so the company name set during installation is actually rendered by the frontend.
+> - **Docs:** `auditor@cmdb.local` seed user correctly documented as `AUDITOR` (not `VIEWER`); version numbers and changelog updated.
+
+> **v1.7.0 — Microsoft 365 SSO + 6-language i18n** *(superseded by v1.7.1)*:
+> - **Microsoft 365 SSO (Azure AD / Entra ID):** New OAuth2 + PKCE authentication flow. New environment variables: `USE_MICROSOFT_SSO`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_REDIRECT_URI`, `AZURE_ALLOWED_DOMAIN`, `AZURE_AUTO_PROVISION`, `FRONTEND_URL`. SSO users are stored with `sso_provider = 'microsoft'` and automatically receive a trusted device token (MFA not required for SSO sessions). New migration: `sso_provider` and `sso_external_id` columns on the `users` table.
+> - **6-language i18n:** The frontend now ships with Spanish, English, German, Portuguese, French, and Italian. Users can switch language from their profile page. All UI strings are served from locale JSON files — no backend changes required.
 
 > **v1.6.4 — Word-splitting fix in `update.sh`:** All references to the `COMPOSE_CMD` variable (which may hold `docker compose` — two words) were replaced with the `COMPOSE_CMD_ARRAY[@]` array and the `# shellcheck disable=SC2086` suppression comment was removed. This prevents unexpected behaviour when paths or values contain spaces.
 

@@ -4,7 +4,7 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v1.7.0"
+    "copyright": "© {year} CMDB Platform v1.7.1"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -803,7 +803,7 @@
   },
   "profile": {
     "title": "Mi Perfil",
-    "subtitle": "Configuración de tu cuenta",
+    "subtitle": "Configuración de cuenta y seguridad",
     "mfa_section": "Autenticación de Doble Factor (MFA)",
     "mfa_enable": "Activar MFA",
     "mfa_disable": "Desactivar MFA",
@@ -816,16 +816,41 @@
     "language_label": "Idioma de la interfaz",
     "language_saved": "Idioma guardado",
     "password_rule_length": "Al menos 12 caracteres",
-    "password_rule_uppercase": "Una letra mayúscula",
-    "password_rule_lowercase": "Una letra minúscula",
-    "password_rule_number": "Un número",
-    "password_rule_special": "Un carácter especial (!@#$…)",
+    "password_rule_uppercase": "Al menos una mayúscula (A-Z)",
+    "password_rule_lowercase": "Al menos una minúscula (a-z)",
+    "password_rule_number": "Al menos un número (0-9)",
+    "password_rule_special": "Al menos un carácter especial",
     "confirm_password": "Confirmar contraseña",
     "passwords_match": "Las contraseñas coinciden",
     "passwords_no_match": "Las contraseñas no coinciden",
     "password_saved": "Contraseña actualizada",
     "mfa_enabled_ok": "MFA activado",
-    "mfa_disabled_ok": "MFA desactivado"
+    "mfa_disabled_ok": "MFA desactivado",
+    "change_password_section": "Cambiar Contraseña",
+    "local_users_only": "Solo usuarios locales",
+    "password_updated": "Contraseña actualizada correctamente",
+    "password_updated_hint": "Usa la nueva contraseña en tu próximo inicio de sesión.",
+    "password_saving": "Guardando…",
+    "change_password_button": "Cambiar contraseña",
+    "password_policy_error": "La contraseña no cumple todos los requisitos de seguridad.",
+    "password_change_error": "Error al cambiar la contraseña.",
+    "connection_error": "Error de conexión. Inténtalo de nuevo.",
+    "mfa_not_configured": "MFA no configurado",
+    "mfa_not_configured_hint": "Añade una capa extra de seguridad usando una aplicación TOTP (Google Authenticator, Authy, Bitwarden…).",
+    "mfa_qr_error": "Error al generar el QR.",
+    "mfa_enable_error": "Error al activar MFA.",
+    "mfa_just_enabled": "MFA activado correctamente",
+    "mfa_just_enabled_hint": "A partir de ahora se pedirá tu código TOTP al iniciar sesión.",
+    "mfa_already_enabled_hint": "Tu cuenta está protegida con autenticación de doble factor (TOTP).",
+    "mfa_scan_instruction": "Escanea el código QR con tu app TOTP",
+    "mfa_scan_hint": "Luego introduce el código de 6 dígitos para confirmar la activación.",
+    "mfa_secret_label": "Clave secreta (introducción manual):",
+    "mfa_totp_label": "Código TOTP de verificación",
+    "mfa_activate": "Activar MFA",
+    "mfa_activating": "Activando…",
+    "mfa_generating_qr": "Generando QR…",
+    "mfa_configure": "Configurar MFA",
+    "password_rule_min_len": "Mínimo {n} caracteres"
   },
   "entities": {
     "title": "Entidades",
@@ -1002,5 +1027,8 @@
     "subcontract_no_contracts": "No hay contratos disponibles para añadir.",
     "loading_data": "Cargando datos…",
     "unknown_error": "Error desconocido"
+  },
+  "auth": {
+    "completing_signin": "Completando inicio de sesión…"
   }
 }

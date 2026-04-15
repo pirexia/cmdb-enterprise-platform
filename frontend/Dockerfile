@@ -28,7 +28,7 @@ COPY . .
 
 # NEXT_PUBLIC_* vars are baked into the client bundle at build time.
 # Pass the public backend URL so the browser can reach the API.
-ARG NEXT_PUBLIC_API_URL=http://localhost:3000
+ARG NEXT_PUBLIC_API_URL=https://localhost:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
 ARG NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS=30

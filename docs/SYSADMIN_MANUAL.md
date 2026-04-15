@@ -712,7 +712,15 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
-> **v1.7.0 — SSO Microsoft 365 + i18n 6 idiomas:**
+> **v1.7.1 — Hardening de seguridad + correcciones de esquema e i18n:**
+> - **Seguridad:** Validación del claim `use` en JWKS (SSO Microsoft); `FRONTEND_URL` validada y normalizada al origen en el arranque; validación de `COMPANY_NAME` con allowlist para evitar inyección DN en el certificado TLS; `.env` creado con `umask 0077` (sin ventana world-readable); inyección HTML corregida en plantillas de email EOL.
+> - **Scripts:** `db-maintenance.sh` — auto-detección Docker/Podman, captura fiable del exit code vía fichero temporal, nombre de BD entrecomillado en `REINDEX`; `update.sh` — el rollback en dry-run ya no intenta `git checkout` sobre un tag inexistente.
+> - **Esquema:** Constraints `UNIQUE` añadidos a `Vendor.name`, `CostCenter.name`, `Branch.name`; índices compuestos `(root_id, is_latest)` y `(root_id, version_number)` para consultas de versionado de documentos.
+> - **i18n:** Todas las cadenas hardcodeadas en la página de perfil, callback SSO y AppShell reemplazadas por llamadas `t()`; 25 nuevas claves añadidas a los 6 ficheros de localización.
+> - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` cableada como ARG de build para que el nombre de empresa configurado durante la instalación se muestre correctamente en el frontend.
+> - **Docs:** Usuario seed `auditor@cmdb.local` documentado correctamente como `AUDITOR` (no `VIEWER`); versiones y changelog actualizados.
+
+> **v1.7.0 — SSO Microsoft 365 + i18n 6 idiomas** *(sustituido por v1.7.1)*:
 > - **SSO Microsoft 365 (Azure AD / Entra ID):** Nuevo flujo de autenticación OAuth2 + PKCE. Nuevas variables de entorno: `USE_MICROSOFT_SSO`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_REDIRECT_URI`, `AZURE_ALLOWED_DOMAIN`, `AZURE_AUTO_PROVISION`, `FRONTEND_URL`. Los usuarios SSO se almacenan con `sso_provider = 'microsoft'` y reciben automáticamente un token de dispositivo de confianza (sin MFA requerido en sesiones SSO). Nueva migración: columnas `sso_provider` y `sso_external_id` en la tabla `users`.
 > - **i18n 6 idiomas:** El frontend incluye español, inglés, alemán, portugués, francés e italiano. Los usuarios pueden cambiar el idioma desde su perfil. Todas las cadenas de interfaz se sirven desde archivos JSON de localización — sin cambios en el backend.
 

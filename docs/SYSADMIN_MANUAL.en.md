@@ -143,7 +143,7 @@ curl http://localhost:3000/health
 | Email | Password | Role |
 |-------|----------|------|
 | `admin@cmdb.local` | `Admin1234!` | ADMIN |
-| `auditor@cmdb.local` | `Audit1234!` | VIEWER |
+| `auditor@cmdb.local` | `Audit1234!` | AUDITOR |
 
 > ⚠️ Change these passwords immediately after the first login in production.
 
@@ -703,6 +703,10 @@ The script implements five layers of protection before and during the update:
 3. **Tagged rollback point:** Creates a git tag `rollback/<timestamp>` pointing at the current HEAD before running `git pull`. This tag allows restoring the exact code of the previous version.
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
+
+> **v1.7.0 — Microsoft 365 SSO + 6-language i18n:**
+> - **Microsoft 365 SSO (Azure AD / Entra ID):** New OAuth2 + PKCE authentication flow. New environment variables: `USE_MICROSOFT_SSO`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_REDIRECT_URI`, `AZURE_ALLOWED_DOMAIN`, `AZURE_AUTO_PROVISION`, `FRONTEND_URL`. SSO users are stored with `sso_provider = 'microsoft'` and automatically receive a trusted device token (MFA not required for SSO sessions). New migration: `sso_provider` and `sso_external_id` columns on the `users` table.
+> - **6-language i18n:** The frontend now ships with Spanish, English, German, Portuguese, French, and Italian. Users can switch language from their profile page. All UI strings are served from locale JSON files — no backend changes required.
 
 > **v1.6.4 — Word-splitting fix in `update.sh`:** All references to the `COMPOSE_CMD` variable (which may hold `docker compose` — two words) were replaced with the `COMPOSE_CMD_ARRAY[@]` array and the `# shellcheck disable=SC2086` suppression comment was removed. This prevents unexpected behaviour when paths or values contain spaces.
 

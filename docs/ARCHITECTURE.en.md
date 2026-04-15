@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Technical Architecture
 
-**Version:** 1.6.0
-**Date:** 2026-04-02
+**Version:** 1.7.0
+**Date:** 2026-04-14
 **Status:** Production
 
 ---

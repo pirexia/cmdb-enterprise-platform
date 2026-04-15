@@ -143,7 +143,7 @@ curl http://localhost:3000/health
 | Email | Contraseña | Rol |
 |-------|-----------|-----|
 | `admin@cmdb.local` | `Admin1234!` | ADMIN |
-| `auditor@cmdb.local` | `Audit1234!` | VIEWER |
+| `auditor@cmdb.local` | `Audit1234!` | AUDITOR |
 
 > ⚠️ Cambia las contraseñas inmediatamente tras el primer login en producción.
 
@@ -711,6 +711,10 @@ El script implementa cinco capas de protección antes y durante la actualizació
 2. **Backup obligatorio previo:** Ejecuta `scripts/db-backup.sh` antes de cualquier cambio. Si el backup falla, el script aborta sin tocar el código ni los contenedores.
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
+
+> **v1.7.0 — SSO Microsoft 365 + i18n 6 idiomas:**
+> - **SSO Microsoft 365 (Azure AD / Entra ID):** Nuevo flujo de autenticación OAuth2 + PKCE. Nuevas variables de entorno: `USE_MICROSOFT_SSO`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_REDIRECT_URI`, `AZURE_ALLOWED_DOMAIN`, `AZURE_AUTO_PROVISION`, `FRONTEND_URL`. Los usuarios SSO se almacenan con `sso_provider = 'microsoft'` y reciben automáticamente un token de dispositivo de confianza (sin MFA requerido en sesiones SSO). Nueva migración: columnas `sso_provider` y `sso_external_id` en la tabla `users`.
+> - **i18n 6 idiomas:** El frontend incluye español, inglés, alemán, portugués, francés e italiano. Los usuarios pueden cambiar el idioma desde su perfil. Todas las cadenas de interfaz se sirven desde archivos JSON de localización — sin cambios en el backend.
 
 > **v1.6.4 — Corrección de word-splitting en `update.sh`:** Todas las referencias a la variable `COMPOSE_CMD` (que puede contener `docker compose` — dos palabras) se reemplazaron por el array `COMPOSE_CMD_ARRAY[@]` y se eliminó el comentario `# shellcheck disable=SC2086`. Esto evita comportamientos inesperados cuando rutas o valores contienen espacios.
 

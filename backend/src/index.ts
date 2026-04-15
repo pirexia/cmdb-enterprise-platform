@@ -778,6 +778,12 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       return;
     }
 
+    // Audit: primary credential verified — log before branching on MFA
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'LOGIN', 'User', ${user.id}::uuid, ${user.email}, now())
+    `;
+
     // ── Helper: build and sign full JWT ──────────────────────────────────────
     const signFullToken = () => {
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
@@ -1402,6 +1408,10 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
       include: CONTRACT_INCLUDE,
     });
 
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'CREATE', 'Contract', ${contract.id}::uuid, ${req.user!.email}, now())
+    `;
     res.status(201).json(contract);
   } catch (error: unknown) {
     console.error('[POST /api/contracts] Error:', error);
@@ -1725,6 +1735,10 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       `;
     }
 
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'MFA_ENABLED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())
+    `;
     const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role, mfa_enabled: true };
     res.json({ message: 'MFA enabled successfully', token: newToken, user: userObj, ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
   } catch (error) {
@@ -1899,6 +1913,7 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "support_areas"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','SupportArea',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1908,12 +1923,16 @@ app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, asy
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "support_areas" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','SupportArea',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','SupportArea',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Branches
@@ -1932,6 +1951,7 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
     const rows = await prisma.$queryRaw<MasterRow[]>`
       INSERT INTO "branches"(id,name,branch_code,physical_address,support_area_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${branchCode.trim()},${physicalAddress || null},${supportAreaId}::uuid,now(),now()) RETURNING id::text AS id, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Branch',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1943,12 +1963,16 @@ app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (r
       UPDATE "branches" SET name=${name.trim()}, branch_code=${branchCode.trim()}, physical_address=${physicalAddress || null}, support_area_id=${supportAreaId}::uuid, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Branch',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Branch',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Manufacturers
@@ -1964,6 +1988,7 @@ app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (r
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "manufacturers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Manufacturer',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -1973,12 +1998,16 @@ app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, asy
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "manufacturers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Manufacturer',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Manufacturer',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Device Models
@@ -1997,6 +2026,7 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
     const rows = await prisma.$queryRaw<MasterRow[]>`
       INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
       VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2008,12 +2038,16 @@ app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, asy
       UPDATE "device_models" SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','DeviceModel',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Providers
@@ -2028,6 +2062,7 @@ app.post('/api/masters/providers', authenticateToken, requireAdmin, async (req, 
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`INSERT INTO "providers"(id,name,created_at,updated_at) VALUES(gen_random_uuid(),${name.trim()},now(),now()) RETURNING id::text AS id, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Provider',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2037,12 +2072,16 @@ app.patch('/api/masters/providers/:id', authenticateToken, requireAdmin, async (
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`UPDATE "providers" SET name=${name.trim()}, updated_at=now() WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Provider',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.delete('/api/masters/providers/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Provider',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "providers" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // Cost Centers
@@ -2059,6 +2098,7 @@ app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (re
     const rows = await prisma.$queryRaw<{ id: string; code: string; name: string }[]>`
       INSERT INTO "cost_centers"(id,code,name,created_at,updated_at) VALUES(gen_random_uuid(),${code.trim()},${name.trim()},now(),now())
       RETURNING id::text AS id, code, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','CostCenter',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -2075,6 +2115,7 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
       UPDATE "cost_centers" SET code=${code.trim()}, name=${name.trim()}, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, code, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','CostCenter',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -2084,8 +2125,11 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
   }
 });
 app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
-  try { await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`; res.json({ ok: true }); }
-  catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','CostCenter',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── CI Type Categories (read-only, fixed) ─────────────────────────────────────
@@ -2125,6 +2169,7 @@ app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, r
       data: { code: code.trim().toUpperCase(), name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','CIType',${row.id}::uuid,${req.user!.email},now())`;
     res.status(201).json(row);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -2144,6 +2189,7 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
       data: { name: name.trim(), ...(categoryCode && { categoryCode }), ...(sortOrder !== undefined && { sortOrder }) },
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','CIType',${row.id}::uuid,${req.user!.email},now())`;
     res.json(row);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2159,6 +2205,7 @@ app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (
       res.status(409).json({ error: `No se puede eliminar: ${ciCount} CI${ciCount > 1 ? 's' : ''} tienen este tipo asignado` });
       return;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','CIType',${id}::uuid,${req.user!.email},now())`;
     await prisma.cIType.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e: unknown) {
@@ -2793,6 +2840,7 @@ app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (
       INSERT INTO "document_types"(id,code,name,is_system,created_at,updated_at)
       VALUES(gen_random_uuid(),${code.trim().toUpperCase()},${name.trim()},false,now(),now())
       RETURNING id::text AS id, code, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','DocumentType',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2806,6 +2854,7 @@ app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, as
       WHERE id=${req.params.id}::uuid AND is_system=false
       RETURNING id::text AS id, code, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','DocumentType',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2815,6 +2864,7 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, a
     const result = await prisma.$executeRaw`
       DELETE FROM "document_types" WHERE id=${req.params.id}::uuid AND is_system=false`;
     if (Number(result) === 0) { res.status(404).json({ error: 'Not found or system type' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','DocumentType',${req.params.id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3609,6 +3659,7 @@ app.post('/api/masters/license-metrics', authenticateToken, requireAdmin, async 
       INSERT INTO "license_metrics"(id, code, name, category_code, description, is_system, created_at, updated_at)
       VALUES(gen_random_uuid(), ${code.trim().toUpperCase()}, ${name.trim()}, ${categoryCode.trim()}, ${description ?? null}, false, now(), now())
       RETURNING id::text AS id, code, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','LicenseMetric',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: 'Failed to create license metric' }); }
 });
@@ -3625,6 +3676,7 @@ app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, a
       WHERE id = ${id}::uuid
       RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
     if (!rows.length) { res.status(404).json({ error: 'License metric not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','LicenseMetric',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: 'Failed to update license metric' }); }
 });
@@ -3641,6 +3693,7 @@ app.delete('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, 
     }
     const result = await prisma.$executeRaw`DELETE FROM "license_metrics" WHERE id = ${id}::uuid`;
     if (Number(result) === 0) { res.status(404).json({ error: 'License metric not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','LicenseMetric',${id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license metric' }); }
 });
@@ -3699,6 +3752,7 @@ app.post('/api/masters/license-types', authenticateToken, requireAdmin, async (r
       INSERT INTO "license_types"(id, code, name, category_code, description, is_system, created_at, updated_at)
       VALUES(gen_random_uuid(), ${code.trim().toUpperCase()}, ${name.trim()}, ${categoryCode.trim()}, ${description ?? null}, false, now(), now())
       RETURNING id::text AS id, code, name`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','LicenseType',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { res.status(500).json({ error: 'Failed to create license type' }); }
 });
@@ -3715,6 +3769,7 @@ app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, asy
       WHERE id = ${id}::uuid
       RETURNING id::text AS id, code, name, is_system AS "isSystem"`;
     if (!rows.length) { res.status(404).json({ error: 'License type not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','LicenseType',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.json(rows[0]);
   } catch (e) { res.status(500).json({ error: 'Failed to update license type' }); }
 });
@@ -3731,6 +3786,7 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, as
     }
     const result = await prisma.$executeRaw`DELETE FROM "license_types" WHERE id = ${id}::uuid`;
     if (Number(result) === 0) { res.status(404).json({ error: 'License type not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','LicenseType',${id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license type' }); }
 });
@@ -3838,6 +3894,7 @@ app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
         parentLicenseId: d.parentLicenseId ?? null,
       },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','License',${license.id}::uuid,${req.user!.email},now())`;
     res.status(201).json(license);
   } catch (e) { res.status(500).json({ error: 'Failed to create license' }); }
 });
@@ -3868,6 +3925,7 @@ app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res)
         ...(d.parentLicenseId !== undefined && { parentLicenseId: d.parentLicenseId }),
       },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE','License',${license.id}::uuid,${req.user!.email},now())`;
     res.json(license);
   } catch (e) { res.status(500).json({ error: 'Failed to update license' }); }
 });
@@ -3876,6 +3934,7 @@ app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res)
 app.delete('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
   const id = req.params.id as string;
   try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','License',${id}::uuid,${req.user!.email},now())`;
     await prisma.license.delete({ where: { id } });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license' }); }
@@ -3911,6 +3970,7 @@ app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, async (req, r
       where: { id: licenseId },
       data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'LINK_CI','License',${licenseId}::uuid,${req.user!.email},now())`;
     res.json({ associated: ciIds.length });
   } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to license' }); }
 });
@@ -3924,6 +3984,7 @@ app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async
       where: { id: licenseId },
       data: { cis: { disconnect: [{ id: ciId }] } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','License',${licenseId}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to disassociate CI from license' }); }
 });
@@ -3972,6 +4033,7 @@ app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, async (
         ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','License',${licenseId}::uuid,${req.user!.email},now())`;
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate documents to license' }); }
 });
@@ -3983,6 +4045,7 @@ app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin
   try {
     await prisma.$executeRaw`
       DELETE FROM "document_licenses" WHERE document_id = ${docId}::uuid AND license_id = ${licenseId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','License',${licenseId}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to remove document association from license' }); }
 });
@@ -4016,6 +4079,7 @@ app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req,
         email: email || null,
       },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','LicenseUser',${user.id}::uuid,${req.user!.email},now())`;
     res.status(201).json(user);
   } catch (e) { res.status(500).json({ error: 'Failed to create license user' }); }
 });
@@ -4024,6 +4088,7 @@ app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req,
 app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
   const userId = req.params.userId as string;
   try {
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','LicenseUser',${userId}::uuid,${req.user!.email},now())`;
     await prisma.licenseUser.delete({ where: { id: userId } });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license user' }); }

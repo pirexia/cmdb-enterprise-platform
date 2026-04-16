@@ -301,11 +301,10 @@ deploy() {
   "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" up -d
   success "Containers started."
 
-  # Health check
-  local backend_port="${BACKEND_PORT:-3000}"
-  local protocol="http"
-  [ "${HTTPS_ENABLED:-false}" = "true" ] && protocol="https"
-  local health_url="${protocol}://localhost:${backend_port}/api/health"
+  # Health check — goes through nginx (same public URL as the frontend).
+  # FRONTEND_URL is sourced from .env by pre_update_backup(); default to https://localhost.
+  local health_base="${FRONTEND_URL:-https://localhost}"
+  local health_url="${health_base}/api/health"
 
   info "Waiting for backend health check at ${health_url}"
   echo -n "  "
@@ -371,6 +370,58 @@ rollback() {
   error ""
   error "Update log : ${LOG_FILE}"
   return 1
+}
+
+# ── Step 7b: Migrate certs from legacy ./backend/certs/ to ./certs/ ──────────
+migrate_certs() {
+  local old_dir="${INSTALL_DIR}/backend/certs"
+  local new_dir="${INSTALL_DIR}/certs"
+
+  # Nothing to do if the old directory doesn't exist or is empty
+  if [ ! -d "${old_dir}" ]; then
+    return 0
+  fi
+  if [ -z "$(ls -A "${old_dir}" 2>/dev/null | grep -v '\.gitkeep')" ]; then
+    return 0
+  fi
+
+  # Only migrate if the new directory is empty (non-destructive)
+  if [ -n "$(ls -A "${new_dir}" 2>/dev/null | grep -v '\.gitkeep')" ]; then
+    info "Cert migration skipped — ${new_dir}/ already has files."
+    return 0
+  fi
+
+  step "Migrating TLS certificates to project root"
+  info "Moving certs from ${old_dir}/ → ${new_dir}/"
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would copy: ${old_dir}/server.{crt,key} → ${new_dir}/"
+    return 0
+  fi
+
+  mkdir -p "${new_dir}"
+  for f in server.crt server.key; do
+    if [ -f "${old_dir}/${f}" ]; then
+      cp "${old_dir}/${f}" "${new_dir}/${f}"
+      info "  Copied ${f}"
+    fi
+  done
+  chmod 600 "${new_dir}/server.key" 2>/dev/null || true
+  chmod 644 "${new_dir}/server.crt" 2>/dev/null || true
+
+  # Re-populate the named Docker volume so nginx picks up the certs
+  if [ -f "${new_dir}/server.crt" ] && [ -f "${new_dir}/server.key" ]; then
+    info "Refreshing named volume cmdb-tls-certs from ${new_dir}/"
+    "${RUNTIME}" volume create cmdb-tls-certs 2>/dev/null || true
+    "${RUNTIME}" run --rm \
+      -v cmdb-tls-certs:/dst \
+      -v "${new_dir}":/src:ro \
+      alpine sh -c "cp /src/server.key /src/server.crt /dst/ && chmod 600 /dst/server.key" 2>/dev/null || true
+    success "TLS volume updated."
+  fi
+
+  success "Certificates migrated to ${new_dir}/"
+  warn "The files in ${old_dir}/ were NOT removed. You may delete them manually."
 }
 
 # ── Step 8: Warn about new env vars missing from existing .env ────────────────
@@ -499,6 +550,7 @@ main() {
     fi
   fi
 
+  migrate_certs
   pull_and_detect
   build_images  || rollback "Image build failed"
   deploy        || rollback "Health check failed after deploy"

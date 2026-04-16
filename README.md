@@ -84,9 +84,14 @@ cmdb-enterprise-platform/
 │
 ├── 📄 docker-compose.yml        ← Orquestación para DESARROLLO (con Adminer)
 ├── 📄 docker-compose.prod.yml   ← Orquestación para PRODUCCIÓN (optimizada, sin Adminer)
-├── 📄 .env.example              ← Plantilla de variables de entorno
+├── 📄 .env.example              ← Plantilla de variables de entorno (mínimo 6 vars)
 ├── 📄 .gitignore / .gitattributes
 ├── 📄 README.md
+├── 📂 certs/                    ← Certificados TLS compartidos (nginx + backend)
+│   ├── server.crt               ← Certificado (generado por install.sh o Admin UI)
+│   └── server.key               ← Clave privada RSA 4096-bit (nunca committear)
+├── 📂 nginx/                    ← Configuración del gateway nginx
+│   └── conf.d/frontend.conf     ← / → frontend:3001 · /api/* → backend:3000
 │
 ├── 📂 backend/                  ← Motor de la API (Express + Prisma)
 │   ├── Dockerfile               ← Build multi-stage Node.js
@@ -134,7 +139,19 @@ Para una comprensión completa del sistema, su despliegue y uso, consulta la doc
 
 ## 👨‍💻 Quickstart para Desarrollo
 
-Para poner el proyecto en marcha rápidamente en un entorno de desarrollo local con Docker Compose (usando `docker-compose.yml`):
+### Instalación en producción (un solo comando)
+
+```bash
+bash scripts/install.sh
+```
+
+El script interactivo se encarga de todo: detecta el SO, instala dependencias, solicita la URL pública, genera un certificado autofirmado o acepta uno existente, escribe el `.env` mínimo y arranca los contenedores.
+
+Accede en `https://<tu-dominio>/` una vez que el script termine.
+
+---
+
+### Desarrollo local con Docker Compose
 
 1. **Clonar el repositorio:**
    ```bash
@@ -143,24 +160,22 @@ Para poner el proyecto en marcha rápidamente en un entorno de desarrollo local 
    ```
 
 2. **Configurar variables de entorno:**
-   Copia el archivo de ejemplo y edítalo con tus valores (especialmente las contraseñas de la BD y `JWT_SECRET`)
    ```bash
    cp .env.example .env
-   # edita .env con tu editor favorito
+   # Solo 6 variables obligatorias — el resto tiene valores por defecto
    ```
 
 3. **Levantar los servicios:**
    ```bash
    docker compose up -d --build
    ```
-   > El backend ejecuta automáticamente las migraciones y el seed inicial (usuarios, CIs y contratos de ejemplo) en el primer arranque. No es necesario ningún paso adicional.
+   > El backend ejecuta automáticamente las migraciones y el seed inicial en el primer arranque.
 
 4. **Accede a la plataforma:**
-   - **Frontend (UI):** `http://localhost:3001`
-   - **Backend (API):** `http://localhost:3000/health`
-   - **Adminer (DB UI):** `http://localhost:8080` (usuario `admin`, contraseña de `.env`)
+   - **Plataforma (via nginx):** `https://localhost` (acepta el aviso de certificado autofirmado)
+   - **Adminer (DB UI):** `http://localhost:8080`
 
-   **Credenciales por defecto (desarrollo):**
+   **Credenciales por defecto:**
    - Admin: `admin@cmdb.local` / `Admin1234!`
    - Auditor: `auditor@cmdb.local` / `Audit1234!`
    

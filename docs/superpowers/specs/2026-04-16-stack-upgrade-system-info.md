@@ -83,8 +83,8 @@ interface SystemInfoResponse {
 |-----------|--------|
 | Node.js | `process.version` |
 | npm packages | Read `node_modules/{pkg}/package.json` → `version` field |
-| nginx | `process.env.NGINX_VERSION` env var |
-| PostgreSQL | Parse major version from `process.env.DATABASE_URL` |
+| nginx | `process.env.NGINX_VERSION` env var (added to compose files) |
+| PostgreSQL | `prisma.$queryRaw\`SELECT version()\`` — parse major version from the result string |
 
 #### endoflife.date integration
 

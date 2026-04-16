@@ -16,6 +16,7 @@ import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
+import { getSystemInfo } from './services/systemInfoService';
 import {
   SSO_ENABLED, ALLOWED_DOMAIN, AUTO_PROVISION, FRONTEND_URL,
   buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
@@ -480,6 +481,17 @@ const healthHandler = (_req: Request, res: Response) => {
 };
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+
+// ── System info (admin only) ──────────────────────────────────────────────────
+app.get('/api/system-info', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const info = await getSystemInfo(prisma);
+    res.json(info);
+  } catch (err) {
+    console.error('[system-info]', err);
+    res.status(500).json({ error: 'Failed to retrieve system information' });
+  }
+});
 
 /**
  * GET /api/auth/sso/status

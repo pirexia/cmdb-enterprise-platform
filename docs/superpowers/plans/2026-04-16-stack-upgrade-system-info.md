@@ -35,6 +35,8 @@
 | Modify | `docs/SYSADMIN_MANUAL.en.md` | same in English |
 | Modify | `docs/USER_MANUAL.md` | describe new System Info table and badge meanings |
 | Modify | `docs/USER_MANUAL.en.md` | same in English |
+| Modify | `README.md` | update Node.js version reference (20 → 22) |
+| Modify | `README.en.md` | same in English |
 
 ---
 
@@ -953,13 +955,18 @@ git commit -m "feat(ui): replace static system info list with dynamic 5-column t
 
 - [ ] **Step 6: Update USER_MANUAL.en.md** — same in English.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 7: Update README.md** — find the line that references "Node.js 20" and update it to "Node.js 22". The line is near the top of the file in the tech stack summary.
+
+- [ ] **Step 8: Update README.en.md** — same change in the English README.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add docs/ARCHITECTURE.md docs/ARCHITECTURE.en.md \
         docs/SYSADMIN_MANUAL.md docs/SYSADMIN_MANUAL.en.md \
-        docs/USER_MANUAL.md docs/USER_MANUAL.en.md
-git commit -m "docs: update architecture, sysadmin, and user manuals for v1.8.0 stack upgrade"
+        docs/USER_MANUAL.md docs/USER_MANUAL.en.md \
+        README.md README.en.md
+git commit -m "docs: update architecture, sysadmin, user manuals and READMEs for v1.8.0 stack upgrade"
 ```
 
 ---

@@ -1030,5 +1030,47 @@
   },
   "auth": {
     "completing_signin": "Completing sign-in…"
+  },
+  "admin": {
+    "certificates": {
+      "title": "SSL/TLS Certificate Management",
+      "subtitle": "Generate Certificate Signing Requests (CSR) and install signed certificates from your CA.",
+      "key_notice": "All generated keys use RSA 4096-bit — stronger than the industry minimum and suitable for multi-year certificates.",
+      "csr_title": "1. Generate CSR",
+      "csr_subtitle": "Create a Certificate Signing Request to send to your CA",
+      "field_cn": "Common Name (CN)",
+      "field_cn_hint": "Server FQDN, IP address, or wildcard (e.g. *.example.com)",
+      "field_o": "Organization (O)",
+      "field_ou": "Organizational Unit (OU)",
+      "field_c": "Country (C)",
+      "field_st": "State / Province (ST)",
+      "field_l": "Locality / City (L)",
+      "field_san": "Subject Alternative Names (SAN)",
+      "field_san_hint": "Leave empty to auto-derive from CN. Format: DNS:host1,DNS:host2,IP:1.2.3.4",
+      "csr_button": "Generate CSR",
+      "csr_generating": "Generating…",
+      "csr_success": "CSR Generated Successfully",
+      "csr_download": "Download server.csr",
+      "csr_send_ca": "Send this CSR to your Certificate Authority for signing.",
+      "csr_error": "Error generating CSR",
+      "upload_title": "2. Upload Signed Certificate",
+      "upload_subtitle": "Install the certificate signed by your CA",
+      "upload_file_label": "Certificate File (.crt / .pem)",
+      "upload_or_paste": "Or paste the PEM content below",
+      "upload_pem_label": "Certificate Content (PEM format)",
+      "upload_button": "Upload Certificate",
+      "upload_uploading": "Uploading…",
+      "upload_done": "Certificate Uploaded",
+      "upload_restart_note": "Run this command on the server to apply the new certificate.",
+      "upload_error": "Error uploading certificate",
+      "upload_success": "Certificate uploaded successfully",
+      "workflow_title": "Certificate Management Workflow",
+      "workflow_step1": "Fill in the CSR form with your server details and click \"Generate CSR\"",
+      "workflow_step2": "Download the generated CSR file and send it to your Certificate Authority (CA)",
+      "workflow_step3": "When you receive the signed certificate from your CA, upload it using the form above",
+      "workflow_step4": "Run the displayed command to restart the nginx container and apply the certificate",
+      "workflow_step5": "Verify the new certificate is active in your browser or with openssl s_client",
+      "workflow_verify": "Quick verify"
+    }
   }
 }

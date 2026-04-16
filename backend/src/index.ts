@@ -9,7 +9,6 @@ const helmet = require('helmet') as { default: (...args: unknown[]) => unknown }
 const helmetFn = typeof helmet === 'function' ? helmet : (helmet as { default: (...args: unknown[]) => unknown }).default;
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import https from 'https';
 import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
@@ -88,23 +87,25 @@ declare global {
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 // ── Helmet — security headers (ISO 27001 A.8.24, A.10.1) ─────────────────────
-// Sets: X-Content-Type-Options, X-Frame-Options (clickjacking), HSTS,
-//       X-XSS-Protection, Content-Security-Policy, Referrer-Policy, etc.
-const isHttps = process.env.HTTPS_ENABLED === 'true';
+// TLS is terminated by nginx; backend runs plain HTTP internally.
+// Helmet is still applied for defence-in-depth on non-nginx traffic.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use((helmetFn as any)({
-  // HSTS only meaningful over HTTPS
-  hsts: isHttps
-    ? { maxAge: 31536000, includeSubDomains: true, preload: true }
-    : false,
-  // Relax CSP for API-only server (no HTML served)
-  contentSecurityPolicy: false,
+  hsts: false,              // nginx handles HSTS on the public interface
+  contentSecurityPolicy: false, // API-only server — no HTML served
 }));
 
-// ── CORS — strict allow-list from environment ─────────────────────────────────
-const ALLOWED_ORIGINS = (
-  process.env.CORS_ORIGINS ?? 'http://localhost:3001,http://localhost:3000'
-).split(',').map((o) => o.trim()).filter(Boolean);
+// ── CORS — derived from FRONTEND_URL (same-origin via nginx gateway) ──────────
+// With nginx acting as a unified gateway the browser origin is always
+// FRONTEND_URL (= NEXT_PUBLIC_API_URL root). CORS is therefore needed only
+// for cross-origin SSO redirects or direct API access.
+// FRONTEND_URL is already validated and normalised at module import time in
+// services/microsoftSso.ts; fall back to localhost for development.
+const _frontendOrigin = (() => {
+  try { return new URL(process.env.FRONTEND_URL ?? 'https://localhost').origin; }
+  catch { return 'https://localhost'; }
+})();
+const ALLOWED_ORIGINS = [_frontendOrigin, 'http://localhost:3000', 'https://localhost'];
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -474,9 +475,11 @@ interface Vulnerability {
 
 // ─── Public routes ────────────────────────────────────────────────────────────
 
-app.get('/health', (_req: Request, res: Response) => {
+const healthHandler = (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+};
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
 
 /**
  * GET /api/auth/sso/status
@@ -1752,12 +1755,30 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
 /**
  * POST /api/admin/certificates/csr
  * Generates a private key and CSR for SSL/TLS certificates.
- * Body: { cn: string, o?: string, ou?: string, c?: string, st?: string }
+ * Body: { cn: string, o?: string, ou?: string, c?: string, st?: string, l?: string, san?: string }
+ *   san: comma-separated SANs, e.g. "DNS:cmdb.example.com,IP:10.0.0.1"
+ *        If omitted, a DNS SAN is auto-derived from cn.
  * Returns: { csr: string, message: string }
  * ADMIN only.
  */
+
+/** Sanitise a DN field to prevent shell-injection through the -subj argument. */
+function sanitiseDnField(value: string): string {
+  // Strip characters that are special inside an OpenSSL -subj string or shell:
+  // forward-slash (path separator in DN), double-quote, backslash, backtick, $, newline.
+  return value.replace(/[/\\"'`$\n\r]/g, '');
+}
+
+/** Sanitise a SAN value (DNS or IP token). Only allow safe characters. */
+function sanitiseSan(value: string): string {
+  return value.replace(/[^a-zA-Z0-9.:,\-_*]/g, '');
+}
+
 app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { cn, o, ou, c, st } = req.body as { cn?: string; o?: string; ou?: string; c?: string; st?: string };
+  const { cn, o, ou, c, st, l, san } = req.body as {
+    cn?: string; o?: string; ou?: string; c?: string;
+    st?: string; l?: string; san?: string;
+  };
 
   if (!cn?.trim()) {
     res.status(400).json({ error: 'cn (Common Name) is required' });
@@ -1776,27 +1797,61 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     // Ensure directory exists (mapped from host via volume)
     fs.mkdirSync(certDir, { recursive: true });
 
-    // Build OpenSSL subject string
-    const subject = `/CN=${cn}${c ? `/C=${c}` : ''}${st ? `/ST=${st}` : ''}${o ? `/O=${o}` : ''}${ou ? `/OU=${ou}` : ''}`;
+    // Sanitise every DN field to prevent shell injection
+    const safeCn  = sanitiseDnField(cn.trim());
+    const safeO   = o?.trim()  ? sanitiseDnField(o.trim())   : '';
+    const safeOu  = ou?.trim() ? sanitiseDnField(ou.trim())  : '';
+    const safeC   = c?.trim()  ? sanitiseDnField(c.trim())   : '';
+    const safeSt  = st?.trim() ? sanitiseDnField(st.trim())  : '';
+    const safeL   = l?.trim()  ? sanitiseDnField(l.trim())   : '';
 
-    // Generate new private key and CSR
-    const cmd = `openssl req -new -newkey rsa:2048 -nodes -keyout "${keyPath}" -out "${csrPath}" -subj "${subject}"`;
-    
-    log.info(`[POST /api/admin/certificates/csr] Generating CSR with subject: ${subject}`);
+    // Build subject string — field order matches RFC 4514 convention
+    const subject =
+      `/CN=${safeCn}` +
+      (safeC  ? `/C=${safeC}`   : '') +
+      (safeSt ? `/ST=${safeSt}` : '') +
+      (safeL  ? `/L=${safeL}`   : '') +
+      (safeO  ? `/O=${safeO}`   : '') +
+      (safeOu ? `/OU=${safeOu}` : '');
+
+    // Build SAN extension — auto-derive from CN if not provided
+    let sanValue: string;
+    if (san?.trim()) {
+      sanValue = sanitiseSan(san.trim());
+    } else {
+      // Auto-derive: if CN looks like an IP use IP:, otherwise use DNS:
+      const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
+      sanValue = ipPattern.test(safeCn) ? `IP:${safeCn}` : `DNS:${safeCn}`;
+    }
+    // Always add localhost so development containers can verify the cert
+    if (!sanValue.includes('localhost')) {
+      sanValue += ',DNS:localhost,IP:127.0.0.1';
+    }
+
+    // Generate 4096-bit RSA private key and CSR with SAN extension
+    const cmd = `openssl req -new -newkey rsa:4096 -nodes \
+      -keyout "${keyPath}" \
+      -out "${csrPath}" \
+      -subj "${subject}" \
+      -addext "subjectAltName=${sanValue}"`;
+
+    log.info(`[POST /api/admin/certificates/csr] Generating 4096-bit CSR: ${subject} | SAN: ${sanValue}`);
     const { stderr } = await execAsync(cmd);
-    
+
     if (stderr && !stderr.includes('writing')) {
       log.warn(`[POST /api/admin/certificates/csr] OpenSSL stderr: ${stderr}`);
     }
+
+    // Secure the private key
+    fs.chmodSync(keyPath, 0o600);
 
     // Read generated CSR
     const csrContent = fs.readFileSync(csrPath, 'utf8');
 
     res.json({
       csr: csrContent,
-      message: 'CSR generated successfully. Send this to your CA for signing. The private key has been saved securely.',
-      keyPath: '/certs/server.key (inside container)',
-      csrPath: '/certs/server.csr (inside container)',
+      message: 'CSR generated (RSA 4096-bit). Send this to your CA for signing. The private key has been saved securely on the server.',
+      san: sanValue,
     });
 
   } catch (error) {
@@ -1845,9 +1900,9 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     `;
 
     res.json({
-      message: 'Certificate uploaded successfully. Restart the backend container to apply changes.',
-      restartCommand: 'docker compose -f docker-compose.prod.yml restart backend',
-      certPath: '/certs/server.crt (inside container)',
+      message: 'Certificate uploaded successfully. Restart the nginx container to apply the new certificate.',
+      restartCommand: 'docker compose -f docker-compose.prod.yml restart nginx',
+      certPath: '/certs/server.crt (shared volume)',
     });
 
   } catch (error) {
@@ -4095,47 +4150,13 @@ app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, a
 });
 
 // ─── Server ───────────────────────────────────────────────────────────────────
+// TLS is terminated by the nginx gateway; the backend always starts as plain
+// HTTP on PORT (default 3000) and is NOT exposed to the host.
 
-// ─── Server startup — HTTP or HTTPS ──────────────────────────────────────────
-
-const CERT_DIR  = '/app/certs';
-const CERT_KEY  = path.join(CERT_DIR, 'server.key');
-const CERT_FILE = path.join(CERT_DIR, 'server.crt');
-
-if (isHttps && fs.existsSync(CERT_KEY) && fs.existsSync(CERT_FILE)) {
-  // ── HTTPS mode ────────────────────────────────────────────────────────────
-  const httpsOptions = {
-    key:  fs.readFileSync(CERT_KEY),
-    cert: fs.readFileSync(CERT_FILE),
-  };
-  https.createServer(httpsOptions, app).listen(PORT, () => {
-    console.log(`🔐 CMDB API running at https://localhost:${PORT} (TLS enabled)`);
-    console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
-  });
-} else {
-  if (isHttps) {
-    console.warn('[TLS] HTTPS_ENABLED=true but certs not found in backend/certs/. Falling back to HTTP.');
-    console.warn('[TLS] Run: bash backend/scripts/generate-certs.sh  (or the .ps1 variant on Windows)');
-  }
-  // ── HTTP fallback (development) ───────────────────────────────────────────
-  app.listen(PORT, () => {
-    console.log(`🚀 CMDB API running at http://localhost:${PORT}`);
-    console.log(`   Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
-    console.log(`   → POST /api/auth/login                (public)`);
-    console.log(`   → GET  /api/users                     (any role)`);
-    console.log(`   → GET  /api/vendors                   (any role)`);
-    console.log(`   → GET  /api/cis                       (any role)`);
-    console.log(`   → POST /api/cis                       (ADMIN only)`);
-    console.log(`   → PATCH /api/vulnerabilities          (any role)`);
-    console.log(`   → POST /api/admin/reset-vulnerabilities (ADMIN only)`);
-    console.log(`   → GET  /api/contracts                 (any role)`);
-    console.log(`   → POST /api/contracts                 (ADMIN only)`);
-    console.log(`   → POST /api/integrations/greenbone    (ADMIN only)`);
-    console.log(`   → POST /api/integrations/crowdstrike  (ADMIN only)`);
-    console.log(`   → GET  /api/audit-logs               (ADMIN only)`);
-    console.log(`   → POST /api/cis/bulk                 (ADMIN only)`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
+  console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
+});
 
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received. Closing Prisma connection...');

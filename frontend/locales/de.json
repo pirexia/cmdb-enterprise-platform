@@ -911,5 +911,47 @@
   },
   "auth": {
     "completing_signin": "Anmeldung wird abgeschlossen…"
+  },
+  "admin": {
+    "certificates": {
+      "title": "SSL/TLS-Zertifikatsverwaltung",
+      "subtitle": "Erstelle Certificate Signing Requests (CSR) und installiere von deiner CA signierte Zertifikate.",
+      "key_notice": "Alle erzeugten Schlüssel verwenden RSA 4096-Bit — stärker als das Branchenminimum und geeignet für mehrjährige Zertifikate.",
+      "csr_title": "1. CSR erstellen",
+      "csr_subtitle": "Erstelle eine Zertifikatssignierungsanforderung für deine CA",
+      "field_cn": "Common Name (CN)",
+      "field_cn_hint": "Server-FQDN, IP-Adresse oder Wildcard (z. B. *.example.com)",
+      "field_o": "Organisation (O)",
+      "field_ou": "Organisationseinheit (OU)",
+      "field_c": "Land (C)",
+      "field_st": "Bundesland / Provinz (ST)",
+      "field_l": "Ort / Stadt (L)",
+      "field_san": "Subject Alternative Names (SAN)",
+      "field_san_hint": "Leer lassen, um aus CN abzuleiten. Format: DNS:host1,DNS:host2,IP:1.2.3.4",
+      "csr_button": "CSR erstellen",
+      "csr_generating": "Wird erstellt…",
+      "csr_success": "CSR erfolgreich erstellt",
+      "csr_download": "server.csr herunterladen",
+      "csr_send_ca": "Sende diesen CSR zur Signierung an deine Zertifizierungsstelle.",
+      "csr_error": "Fehler beim Erstellen des CSR",
+      "upload_title": "2. Signiertes Zertifikat hochladen",
+      "upload_subtitle": "Installiere das von deiner CA signierte Zertifikat",
+      "upload_file_label": "Zertifikatsdatei (.crt / .pem)",
+      "upload_or_paste": "Oder PEM-Inhalt unten einfügen",
+      "upload_pem_label": "Zertifikatsinhalt (PEM-Format)",
+      "upload_button": "Zertifikat hochladen",
+      "upload_uploading": "Wird hochgeladen…",
+      "upload_done": "Zertifikat hochgeladen",
+      "upload_restart_note": "Führe diesen Befehl auf dem Server aus, um das neue Zertifikat anzuwenden.",
+      "upload_error": "Fehler beim Hochladen des Zertifikats",
+      "upload_success": "Zertifikat erfolgreich hochgeladen",
+      "workflow_title": "Zertifikatsverwaltungs-Workflow",
+      "workflow_step1": "Fülle das CSR-Formular mit deinen Serverdetails aus und klicke auf \"CSR erstellen\"",
+      "workflow_step2": "Lade die generierte CSR-Datei herunter und sende sie an deine Zertifizierungsstelle (CA)",
+      "workflow_step3": "Wenn du das signierte Zertifikat von deiner CA erhältst, lade es mit dem obigen Formular hoch",
+      "workflow_step4": "Führe den angezeigten Befehl aus, um den nginx-Container neu zu starten und das Zertifikat anzuwenden",
+      "workflow_step5": "Überprüfe das neue Zertifikat im Browser oder mit openssl s_client",
+      "workflow_verify": "Schnellprüfung"
+    }
   }
 }

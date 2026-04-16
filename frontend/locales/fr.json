@@ -911,5 +911,47 @@
   },
   "auth": {
     "completing_signin": "Finalisation de la connexion…"
+  },
+  "admin": {
+    "certificates": {
+      "title": "Gestion des certificats SSL/TLS",
+      "subtitle": "Générez des demandes de signature de certificat (CSR) et installez des certificats signés par votre CA.",
+      "key_notice": "Toutes les clés générées utilisent RSA 4096 bits — plus robuste que le minimum standard et adapté aux certificats pluriannuels.",
+      "csr_title": "1. Générer un CSR",
+      "csr_subtitle": "Créez une demande de signature de certificat pour votre CA",
+      "field_cn": "Nom commun (CN)",
+      "field_cn_hint": "FQDN du serveur, adresse IP ou joker (ex. *.exemple.com)",
+      "field_o": "Organisation (O)",
+      "field_ou": "Unité organisationnelle (OU)",
+      "field_c": "Pays (C)",
+      "field_st": "État / Province (ST)",
+      "field_l": "Localité / Ville (L)",
+      "field_san": "Noms alternatifs du sujet (SAN)",
+      "field_san_hint": "Laisser vide pour dériver automatiquement du CN. Format : DNS:host1,DNS:host2,IP:1.2.3.4",
+      "csr_button": "Générer le CSR",
+      "csr_generating": "Génération en cours…",
+      "csr_success": "CSR généré avec succès",
+      "csr_download": "Télécharger server.csr",
+      "csr_send_ca": "Envoyez ce CSR à votre Autorité de Certification pour signature.",
+      "csr_error": "Erreur lors de la génération du CSR",
+      "upload_title": "2. Téléverser le certificat signé",
+      "upload_subtitle": "Installez le certificat signé par votre CA",
+      "upload_file_label": "Fichier de certificat (.crt / .pem)",
+      "upload_or_paste": "Ou collez le contenu PEM ci-dessous",
+      "upload_pem_label": "Contenu du certificat (format PEM)",
+      "upload_button": "Téléverser le certificat",
+      "upload_uploading": "Téléversement…",
+      "upload_done": "Certificat téléversé",
+      "upload_restart_note": "Exécutez cette commande sur le serveur pour appliquer le nouveau certificat.",
+      "upload_error": "Erreur lors du téléversement du certificat",
+      "upload_success": "Certificat téléversé avec succès",
+      "workflow_title": "Flux de gestion des certificats",
+      "workflow_step1": "Remplissez le formulaire CSR avec les détails de votre serveur et cliquez sur \"Générer le CSR\"",
+      "workflow_step2": "Téléchargez le fichier CSR généré et envoyez-le à votre Autorité de Certification (CA)",
+      "workflow_step3": "Lorsque vous recevez le certificat signé de votre CA, téléversez-le avec le formulaire ci-dessus",
+      "workflow_step4": "Exécutez la commande affichée pour redémarrer le conteneur nginx et appliquer le certificat",
+      "workflow_step5": "Vérifiez que le nouveau certificat est actif dans votre navigateur ou avec openssl s_client",
+      "workflow_verify": "Vérification rapide"
+    }
   }
 }

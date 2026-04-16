@@ -1,13 +1,17 @@
 version: "3.9"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CMDB Enterprise Platform — Full-stack Docker Compose
+# CMDB Enterprise Platform — Development Docker Compose
+#
+# Architecture (all traffic through nginx):
+#   Browser → nginx:443 (HTTPS) → frontend:3001 or backend:3000 (HTTP internal)
 #
 # Tested on: RHEL 8/9, CentOS Stream 9, Ubuntu 22.04, macOS (Docker Desktop)
 #
 # Quick start:
-#   cp .env.example .env        # configure variables
-#   docker compose up -d --build
+#   bash scripts/install.sh     # interactive installer (recommended)
+#   # or manually:
+#   cp .env.example .env && docker compose up -d --build
 #
 # SELinux (RHEL/CentOS): The :Z suffix on volume mounts tells the container
 # engine to relabel the volume content so SELinux Enforcing mode allows access.
@@ -23,12 +27,11 @@ services:
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-cmdb_db}
       POSTGRES_USER:     ${POSTGRES_USER:-admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cmdb_pass123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     volumes:
-      # :Z relabels the volume for SELinux Enforcing mode (RHEL/CentOS)
       - postgres-data:/var/lib/postgresql/data:Z
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-cmdb_db}"]
       interval: 10s
@@ -36,13 +39,13 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── Adminer — lightweight DB management UI ───────────────────────────────────
+  # ── Adminer — lightweight DB management UI (dev only) ────────────────────────
   adminer:
     image: adminer:latest
     container_name: cmdb-adminer
     restart: always
     ports:
-      - "${ADMINER_PORT:-8080}:8080"
+      - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,25 +60,36 @@ services:
     environment:
       NODE_ENV:     production
       PORT:         3000
-      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-cmdb_pass123}@postgres:5432/${POSTGRES_DB:-cmdb_db}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cmdb_db}
       JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required — set it in .env}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-https://localhost}
       DOCUMENTS_DIR: /app/documents
-      # Microsoft 365 SSO (optional — leave USE_MICROSOFT_SSO=false to disable)
+      # SMTP (optional — leave SMTP_USER empty to disable alert emails)
+      SMTP_HOST:    ${SMTP_HOST:-}
+      SMTP_PORT:    ${SMTP_PORT:-587}
+      SMTP_SECURE:  ${SMTP_SECURE:-false}
+      SMTP_USER:    ${SMTP_USER:-}
+      SMTP_PASS:    ${SMTP_PASS:-}
+      ALERT_RECIPIENT: ${ALERT_RECIPIENT:-}
+      # LDAP / Active Directory (optional — USE_LDAP=false to disable)
+      USE_LDAP:          ${USE_LDAP:-false}
+      LDAP_URL:          ${LDAP_URL:-}
+      LDAP_BASE_DN:      ${LDAP_BASE_DN:-}
+      LDAP_BIND_DN:      ${LDAP_BIND_DN:-}
+      LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      # Microsoft 365 SSO (optional — USE_MICROSOFT_SSO=false to disable)
       USE_MICROSOFT_SSO:    ${USE_MICROSOFT_SSO:-false}
       AZURE_TENANT_ID:      ${AZURE_TENANT_ID:-}
       AZURE_CLIENT_ID:      ${AZURE_CLIENT_ID:-}
       AZURE_CLIENT_SECRET:  ${AZURE_CLIENT_SECRET:-}
       AZURE_REDIRECT_URI:   ${AZURE_REDIRECT_URI:-}
       AZURE_ALLOWED_DOMAIN: ${AZURE_ALLOWED_DOMAIN:-}
-      FRONTEND_URL:         ${FRONTEND_URL:-http://localhost:3001}
       AZURE_AUTO_PROVISION: ${AZURE_AUTO_PROVISION:-false}
     volumes:
-      - ./backend/certs:/app/certs:Z
+      # Shared TLS certs — backend writes CSR/key here via admin UI
+      - ./certs:/app/certs:Z
       - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
-    ports:
-      - "${BACKEND_PORT:-3000}:3000"
+    # Backend NOT exposed to host — reachable only via nginx (/api/*)
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,10 +100,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Baked into the client-side JS bundle at build time.
-        # Must point to the backend as reachable from the BROWSER
-        # (i.e. the server's public IP or domain name, not "backend")
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+        # NEXT_PUBLIC_* vars are baked into the JS bundle at build time.
+        # NEXT_PUBLIC_API_URL must be the public HTTPS URL (same host as frontend,
+        # since nginx serves both on 443).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://localhost}
         NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS: ${NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS:-30}
         NEXT_PUBLIC_PASSWORD_MIN_LENGTH_ADMIN: ${PASSWORD_MIN_LENGTH_ADMIN:-16}
         NEXT_PUBLIC_PASSWORD_MIN_LENGTH_VIEWER: ${PASSWORD_MIN_LENGTH_VIEWER:-12}
@@ -99,26 +113,26 @@ services:
     environment:
       NODE_ENV: production
       PORT:     3001
-    # Frontend port is NOT exposed to the host — only reachable via nginx
+    # Frontend NOT exposed to host — reachable only via nginx (/)
     depends_on:
       - backend
 
-  # ── Nginx — TLS termination proxy ────────────────────────────────────────────
+  # ── Nginx — unified TLS gateway ──────────────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
     container_name: cmdb-nginx
     restart: always
     volumes:
-      # nginx configuration (read-only)
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro,Z
       - ./nginx/conf.d:/etc/nginx/conf.d:ro,Z
-      # TLS certificates (read-only) — generated by scripts/install.sh or manually
-      - ./backend/certs:/etc/nginx/certs:ro,Z
+      # Shared TLS certs (read-only for nginx)
+      - ./certs:/etc/nginx/certs:ro,Z
     ports:
-      - "${FRONTEND_PORT:-443}:443"   # HTTPS
-      - "80:80"                        # HTTP → HTTPS redirect
+      - "443:443"   # HTTPS — all traffic enters here
+      - "80:80"     # HTTP → HTTPS redirect
     depends_on:
       - frontend
+      - backend
 
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:

@@ -496,7 +496,20 @@
       "smtp_configured": "Configured",
       "smtp_schedule": "Daily alert engine active. Schedule: 08:30 AM (Europe/Madrid).",
       "test_email": "Sending…",
-      "sending": "Sending…"
+      "sending": "Sending…",
+      "sys_col_component": "Component",
+      "sys_col_version": "Version",
+      "sys_col_eol": "End of Support",
+      "sys_col_license": "License",
+      "sys_col_status": "Status",
+      "sys_status_active": "Active",
+      "sys_status_eol_soon": "EOL Soon",
+      "sys_status_eol": "No Support",
+      "sys_status_community": "Community",
+      "sys_eol_unknown": "—",
+      "sys_loading": "Loading system information…",
+      "sys_error": "Could not load system information.",
+      "sys_retry": "Retry"
     }
   },
   "dashboard": {

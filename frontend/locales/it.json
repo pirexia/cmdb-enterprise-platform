@@ -451,7 +451,20 @@
       "smtp_configured": "Configurato",
       "smtp_schedule": "Motore di notifiche giornaliero attivo. Orario: 08:30 (Europe/Madrid).",
       "test_email": "Invio…",
-      "sending": "Invio…"
+      "sending": "Invio…",
+      "sys_col_component": "Componente",
+      "sys_col_version": "Versione",
+      "sys_col_eol": "Fine supporto",
+      "sys_col_license": "Licenza",
+      "sys_col_status": "Stato",
+      "sys_status_active": "Attivo",
+      "sys_status_eol_soon": "EOL prossimo",
+      "sys_status_eol": "Nessun supporto",
+      "sys_status_community": "Community",
+      "sys_eol_unknown": "—",
+      "sys_loading": "Caricamento informazioni di sistema…",
+      "sys_error": "Impossibile caricare le informazioni di sistema.",
+      "sys_retry": "Riprova"
     }
   },
   "dashboard": {

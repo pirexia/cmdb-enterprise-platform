@@ -129,7 +129,7 @@ app.use(express.json({ limit: '2mb' }));
 // Strict limiter for login: 10 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de acceso. Inténtelo de nuevo en 15 minutos.' },
@@ -139,7 +139,7 @@ const loginLimiter = rateLimit({
 // SSO callback limiter: 20 requests per 15 minutes per IP
 const ssoLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many SSO attempts. Try again in 15 minutes.' },
@@ -182,7 +182,7 @@ setInterval(purgeSsoTokens, 5 * 60 * 1000);
 // General API limiter: 300 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
+  limit: 300,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Inténtelo de nuevo en un momento.' },

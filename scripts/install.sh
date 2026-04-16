@@ -321,19 +321,20 @@ info "Runtime: $RUNTIME | Compose: $COMPOSE_CMD"
 detect_openshift
 info "Platform mode: $PLATFORM"
 
+
 # =============================================================================
 # PHASE 5 — Configuration Wizard
 # =============================================================================
 step "Phase 4: Configuration wizard"
 echo ""
 info "Answer the following questions to configure CMDB Enterprise Platform."
-info "Press Enter to accept the default value shown in brackets."
+info "Press Enter to accept the default shown in brackets."
 echo ""
 
-# 1. Install directory
+# ── Install directory ─────────────────────────────────────────────────────────
 prompt INSTALL_DIR "Install directory" "/opt/cmdb"
 
-# 2. Git repo URL
+# ── Repository detection ──────────────────────────────────────────────────────
 DEFAULT_REPO="https://github.com/pirexia/cmdb-enterprise-platform.git"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -351,189 +352,212 @@ if [ "$SKIP_CLONE" = "false" ]; then
   prompt GIT_REPO "Git repository URL" "$DEFAULT_REPO"
 fi
 
-# 3. Database password (validated)
+# ── Public URL / domain ───────────────────────────────────────────────────────
+# nginx serves BOTH frontend and API on the same host:port (443).
+echo ""
+info "Public URL — the address users type in their browser (e.g. https://cmdb.example.com)."
+info "For local/dev: https://localhost"
+DEFAULT_HOST="$(hostname -f 2>/dev/null || hostname)"
+DEFAULT_URL="https://${DEFAULT_HOST}"
+prompt PUBLIC_URL "Public URL (https://...)" "$DEFAULT_URL"
+# Normalise: strip trailing slash
+PUBLIC_URL="${PUBLIC_URL%/}"
+# Ensure it starts with https://
+if ! echo "$PUBLIC_URL" | grep -q "^https://"; then
+  if echo "$PUBLIC_URL" | grep -q "^http://"; then
+    PUBLIC_URL="${PUBLIC_URL/http:\/\//https:\/\/}"
+    info "Auto-corrected to: $PUBLIC_URL"
+  else
+    PUBLIC_URL="https://${PUBLIC_URL}"
+    info "Auto-added https://: $PUBLIC_URL"
+  fi
+fi
+
+# ── Company name ──────────────────────────────────────────────────────────────
+echo ""
+prompt COMPANY_NAME "Company name (shown in the UI)" "CMDB Enterprise"
+if ! [[ "${COMPANY_NAME}" =~ ^[A-Za-z0-9\ \.\-]+$ ]]; then
+  error "Company name must contain only letters, numbers, spaces, hyphens, and periods."
+  exit 1
+fi
+
+# ── Database password ─────────────────────────────────────────────────────────
+echo ""
+info "Database password — must be at least 16 chars with upper+lower+digit+special."
+info "Press Enter to auto-generate a secure password."
 while true; do
-  echo ""
-  read -srp "$(echo -e "${CYAN}?${NC} Database password (min 16 chars, upper+lower+digit+special): ")" DB_PASSWORD
+  read -srp "$(echo -e "${CYAN}?${NC} Database password [auto-generate]: ")" DB_PASSWORD
   echo ""
 
+  if [ -z "$DB_PASSWORD" ]; then
+    DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
+    success "Auto-generated database password."
+    break
+  fi
+
   if [ ${#DB_PASSWORD} -lt 16 ]; then
-    error "Password must be at least 16 characters."
-    continue
+    error "Password must be at least 16 characters."; continue
   fi
   if ! echo "$DB_PASSWORD" | grep -qP '[A-Z]'; then
-    error "Password must contain at least one uppercase letter."
-    continue
+    error "Must contain at least one uppercase letter."; continue
   fi
   if ! echo "$DB_PASSWORD" | grep -qP '[a-z]'; then
-    error "Password must contain at least one lowercase letter."
-    continue
+    error "Must contain at least one lowercase letter."; continue
   fi
   if ! echo "$DB_PASSWORD" | grep -qP '[0-9]'; then
-    error "Password must contain at least one digit."
-    continue
+    error "Must contain at least one digit."; continue
   fi
   if ! echo "$DB_PASSWORD" | grep -qP '[^A-Za-z0-9]'; then
-    error "Password must contain at least one special character."
-    continue
+    error "Must contain at least one special character."; continue
   fi
 
   read -srp "$(echo -e "${CYAN}?${NC} Confirm database password: ")" DB_PASSWORD_CONFIRM
   echo ""
   if [ "$DB_PASSWORD" != "$DB_PASSWORD_CONFIRM" ]; then
-    error "Passwords do not match. Try again."
-    continue
+    error "Passwords do not match. Try again."; continue
   fi
 
   success "Database password accepted."
   break
 done
 
-# 4. Backend port
-prompt BACKEND_PORT "Backend API port" "3000"
+# ── JWT secret (always auto-generated) ───────────────────────────────────────
+JWT_SECRET="$(openssl rand -base64 48)"
+success "JWT secret auto-generated."
 
-# 5. Frontend port
-prompt FRONTEND_PORT "Frontend port" "3001"
+# ── TLS certificate setup ─────────────────────────────────────────────────────
+echo ""
+info "TLS certificate — nginx requires server.crt and server.key in ./certs/"
+info "  a) Generate self-signed certificate (fine for internal / dev use)"
+info "  b) Provide existing certificate and key files"
+read -rp "$(echo -e "${CYAN}?${NC} Choose [a]: ")" ssl_choice
+ssl_choice="${ssl_choice:-a}"
 
-# 6. Public API URL
-DEFAULT_HOST="$(hostname -f 2>/dev/null || hostname)"
-DEFAULT_API_URL="http://${DEFAULT_HOST}:${BACKEND_PORT}"
-prompt API_URL "Public API URL (as seen from browser)" "$DEFAULT_API_URL"
-
-# 7. HTTPS
-HTTPS_ENABLED="false"
-SSL_MODE="none"
+SSL_MODE="self-signed"
 SSL_CERT_PATH=""
 SSL_KEY_PATH=""
 
-if confirm "Enable HTTPS?"; then
-  HTTPS_ENABLED="true"
+# DN fields for self-signed cert
+CERT_CN=""
+CERT_O=""
+CERT_OU=""
+CERT_C=""
+CERT_ST=""
+CERT_L=""
+CERT_SAN=""
+
+if [ "$ssl_choice" = "b" ]; then
+  SSL_MODE="provided"
+  read -rp "$(echo -e "${CYAN}?${NC} Path to certificate file (.crt / .pem): ")" SSL_CERT_PATH
+  read -rp "$(echo -e "${CYAN}?${NC} Path to private key file (.key): ")" SSL_KEY_PATH
+  if [ ! -f "$SSL_CERT_PATH" ]; then
+    error "Certificate file not found: $SSL_CERT_PATH"; exit 1
+  fi
+  if [ ! -f "$SSL_KEY_PATH" ]; then
+    error "Private key file not found: $SSL_KEY_PATH"; exit 1
+  fi
+  success "Using provided certificates."
+else
+  SSL_MODE="self-signed"
   echo ""
-  info "  a) Generate self-signed certificate"
-  info "  b) Provide existing certificate paths"
-  read -rp "$(echo -e "${CYAN}?${NC} Choose [a]: ")" ssl_choice
-  ssl_choice="${ssl_choice:-a}"
+  info "Certificate details (Distinguished Name). Press Enter to accept defaults."
 
-  if [ "$ssl_choice" = "b" ]; then
-    SSL_MODE="provided"
-    read -rp "$(echo -e "${CYAN}?${NC} Path to SSL certificate (.crt): ")" SSL_CERT_PATH
-    read -rp "$(echo -e "${CYAN}?${NC} Path to SSL private key (.key): ")" SSL_KEY_PATH
-    if [ ! -f "$SSL_CERT_PATH" ]; then
-      error "Certificate file not found: $SSL_CERT_PATH"
-      exit 1
-    fi
-    if [ ! -f "$SSL_KEY_PATH" ]; then
-      error "Key file not found: $SSL_KEY_PATH"
-      exit 1
-    fi
-    success "Using provided certificates."
-  else
-    SSL_MODE="self-signed"
-    info "Self-signed certificate will be generated during installation."
-  fi
+  # Derive default CN from the public URL hostname
+  DEFAULT_CN="${PUBLIC_URL#https://}"
+  DEFAULT_CN="${DEFAULT_CN%%/*}"
+  DEFAULT_CN="${DEFAULT_CN%%:*}"  # strip port if any
 
-  # Update API URL to https if user left default
-  if echo "$API_URL" | grep -q "^http://"; then
-    NEW_API_URL="${API_URL/http:\/\//https:\/\/}"
-    if confirm "Update API URL to $NEW_API_URL?"; then
-      API_URL="$NEW_API_URL"
-    fi
+  prompt CERT_CN "Common Name (CN) — server hostname / FQDN" "$DEFAULT_CN"
+  prompt CERT_O  "Organization (O)" "$COMPANY_NAME"
+  prompt CERT_OU "Organizational Unit (OU)" "IT"
+  prompt CERT_C  "Country (C) — 2-letter ISO code" "ES"
+  prompt CERT_ST "State / Province (ST)" ""
+  prompt CERT_L  "Locality / City (L)" ""
+
+  # Auto-build SAN from CN; user can extend
+  DEFAULT_SAN="DNS:${CERT_CN},DNS:localhost,IP:127.0.0.1"
+  CERT_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [ -n "$CERT_IP" ] && [ "$CERT_IP" != "127.0.0.1" ]; then
+    DEFAULT_SAN="${DEFAULT_SAN},IP:${CERT_IP}"
   fi
+  prompt CERT_SAN "Subject Alternative Names (SAN)" "$DEFAULT_SAN"
+
+  info "Self-signed certificate will be generated with RSA 4096-bit key."
 fi
 
-# 8. Company name
-prompt COMPANY_NAME "Company name" "CMDB Enterprise"
-# Validate: only letters, digits, spaces, hyphens, periods — prevents DN injection
-# in the OpenSSL -subj string used during TLS certificate generation
-if ! [[ "${COMPANY_NAME}" =~ ^[A-Za-z0-9\ \.\-]+$ ]]; then
-  error "Company name must contain only letters, numbers, spaces, hyphens, and periods."
-  exit 1
+# ── Optional: SMTP ────────────────────────────────────────────────────────────
+echo ""
+USE_SMTP="false"
+SMTP_HOST=""; SMTP_PORT="587"; SMTP_SECURE="false"
+SMTP_USER=""; SMTP_PASS=""; ALERT_RECIPIENT=""
+
+if confirm "Configure SMTP for email alerts?"; then
+  USE_SMTP="true"
+  prompt SMTP_HOST "SMTP host" "smtp.gmail.com"
+  prompt SMTP_PORT "SMTP port" "587"
+  if confirm "Use SMTP over TLS (port 465)?" "n"; then SMTP_SECURE="true"; fi
+  prompt SMTP_USER "SMTP username / email" ""
+  read -srp "$(echo -e "${CYAN}?${NC} SMTP password: ")" SMTP_PASS; echo ""
+  prompt ALERT_RECIPIENT "Alert recipient email" "admin@$(echo "$PUBLIC_URL" | sed 's|https://||;s|/.*||')"
 fi
 
-# 9. LDAP
+# ── Optional: LDAP ────────────────────────────────────────────────────────────
+echo ""
 USE_LDAP="false"
-LDAP_URL=""
-LDAP_BASE_DN=""
-LDAP_BIND_DN=""
-LDAP_BIND_PASSWORD=""
+LDAP_URL=""; LDAP_BASE_DN=""; LDAP_BIND_DN=""; LDAP_BIND_PASSWORD=""
 LDAP_TLS_REJECT_UNAUTHORIZED="1"
 
-if confirm "Enable LDAP/Active Directory authentication?"; then
+if confirm "Enable LDAP / Active Directory authentication?"; then
   USE_LDAP="true"
-  prompt LDAP_URL "LDAP URL (e.g. ldap://dc.corp.local:389)" "ldap://dc.corp.local:389"
-  prompt LDAP_BASE_DN "LDAP search base (e.g. dc=corp,dc=local)" "dc=corp,dc=local"
-  prompt LDAP_BIND_DN "LDAP bind DN (leave empty for direct bind)" ""
+  prompt LDAP_URL      "LDAP URL" "ldap://dc.corp.local:389"
+  prompt LDAP_BASE_DN  "Search base DN" "dc=corp,dc=local"
+  prompt LDAP_BIND_DN  "Bind DN (empty for direct bind)" ""
   if [ -n "$LDAP_BIND_DN" ]; then
-    read -srp "$(echo -e "${CYAN}?${NC} LDAP bind password: ")" LDAP_BIND_PASSWORD
-    echo ""
+    read -srp "$(echo -e "${CYAN}?${NC} Bind password: ")" LDAP_BIND_PASSWORD; echo ""
   fi
-  if confirm "Accept self-signed / corporate CA certificates for LDAPS?" "y"; then
+  if confirm "Accept self-signed / internal CA certificates for LDAPS?" "y"; then
     LDAP_TLS_REJECT_UNAUTHORIZED="0"
   fi
 fi
 
-# 10. Microsoft 365 SSO
+# ── Optional: Microsoft 365 SSO ───────────────────────────────────────────────
+echo ""
 USE_MICROSOFT_SSO="false"
-AZURE_TENANT_ID=""
-AZURE_CLIENT_ID=""
-AZURE_CLIENT_SECRET=""
-AZURE_ALLOWED_DOMAIN=""
-AZURE_AUTO_PROVISION="false"
+AZURE_TENANT_ID=""; AZURE_CLIENT_ID=""; AZURE_CLIENT_SECRET=""
+AZURE_ALLOWED_DOMAIN=""; AZURE_AUTO_PROVISION="false"
+AZURE_REDIRECT_URI="${PUBLIC_URL}/api/auth/sso/microsoft/callback"
 
 if confirm "Enable Microsoft 365 SSO (Azure AD / Entra ID)?"; then
   USE_MICROSOFT_SSO="true"
-  prompt AZURE_TENANT_ID "Azure Tenant ID (from Azure Portal → Entra ID → Overview)" ""
-  if [ -z "$AZURE_TENANT_ID" ]; then
-    error "Tenant ID is required for SSO. You can add it manually to .env later."
-    USE_MICROSOFT_SSO="false"
-  else
-    prompt AZURE_CLIENT_ID "App Registration Client ID" ""
-    read -srp "$(echo -e "${CYAN}?${NC} App Registration Client Secret: ")" AZURE_CLIENT_SECRET
-    echo ""
-    prompt AZURE_ALLOWED_DOMAIN "Corporate email domain (e.g. empresa.com)" ""
-    if confirm "Auto-provision VIEWER accounts for new SSO users?" "y"; then
-      AZURE_AUTO_PROVISION="true"
-    fi
+  prompt AZURE_TENANT_ID      "Azure Tenant ID" ""
+  prompt AZURE_CLIENT_ID      "App Registration Client ID" ""
+  read -srp "$(echo -e "${CYAN}?${NC} App Registration Client Secret: ")" AZURE_CLIENT_SECRET; echo ""
+  prompt AZURE_ALLOWED_DOMAIN "Allowed corporate email domain (e.g. empresa.com)" ""
+  if confirm "Auto-provision VIEWER accounts for new SSO users?" "y"; then
+    AZURE_AUTO_PROVISION="true"
   fi
 fi
 
-# Compute AZURE_REDIRECT_URI from the backend API URL
-AZURE_REDIRECT_URI="${API_URL}/api/auth/sso/microsoft/callback"
-
-# 11. Summary table
-CORS_ORIGINS="${API_URL},http://${DEFAULT_HOST}:${FRONTEND_PORT}"
-if [ "$HTTPS_ENABLED" = "true" ]; then
-  CORS_ORIGINS="${API_URL},https://${DEFAULT_HOST}:${FRONTEND_PORT},http://${DEFAULT_HOST}:${FRONTEND_PORT}"
-fi
-
+# ── Summary ───────────────────────────────────────────────────────────────────
 step "Configuration Summary"
 echo ""
-printf "  ${BOLD}%-28s${NC} %s\n" "Install directory:" "$INSTALL_DIR"
-if [ "$SKIP_CLONE" = "false" ]; then
-  printf "  ${BOLD}%-28s${NC} %s\n" "Git repository:" "$GIT_REPO"
-else
-  printf "  ${BOLD}%-28s${NC} %s\n" "Git repository:" "(using existing repo)"
+printf "  ${BOLD}%-30s${NC} %s\n" "Install directory:"  "$INSTALL_DIR"
+printf "  ${BOLD}%-30s${NC} %s\n" "Public URL:"         "$PUBLIC_URL"
+printf "  ${BOLD}%-30s${NC} %s\n" "Company name:"       "$COMPANY_NAME"
+printf "  ${BOLD}%-30s${NC} %s\n" "DB password:"        "****"
+printf "  ${BOLD}%-30s${NC} %s\n" "TLS certificate:"    "$SSL_MODE"
+if [ "$SSL_MODE" = "self-signed" ]; then
+  printf "  ${BOLD}%-30s${NC} %s\n" "  CN:"             "$CERT_CN"
+  printf "  ${BOLD}%-30s${NC} %s\n" "  SAN:"            "$CERT_SAN"
 fi
-printf "  ${BOLD}%-28s${NC} %s\n" "Database password:" "********"
-printf "  ${BOLD}%-28s${NC} %s\n" "Backend port:" "$BACKEND_PORT"
-printf "  ${BOLD}%-28s${NC} %s\n" "Frontend port:" "$FRONTEND_PORT"
-printf "  ${BOLD}%-28s${NC} %s\n" "Public API URL:" "$API_URL"
-printf "  ${BOLD}%-28s${NC} %s\n" "HTTPS:" "$HTTPS_ENABLED ($SSL_MODE)"
-printf "  ${BOLD}%-28s${NC} %s\n" "Company name:" "$COMPANY_NAME"
-printf "  ${BOLD}%-28s${NC} %s\n" "LDAP:" "$USE_LDAP"
-printf "  ${BOLD}%-28s${NC} %s\n" "Microsoft 365 SSO:" "$USE_MICROSOFT_SSO"
-if [ "$USE_MICROSOFT_SSO" = "true" ]; then
-  printf "  ${BOLD}%-28s${NC} %s\n" "SSO domain:" "$AZURE_ALLOWED_DOMAIN"
-  printf "  ${BOLD}%-28s${NC} %s\n" "SSO redirect URI:" "$AZURE_REDIRECT_URI"
-fi
-printf "  ${BOLD}%-28s${NC} %s\n" "Container runtime:" "$RUNTIME"
-printf "  ${BOLD}%-28s${NC} %s\n" "Compose command:" "$COMPOSE_CMD"
-printf "  ${BOLD}%-28s${NC} %s\n" "Platform:" "$PLATFORM"
+printf "  ${BOLD}%-30s${NC} %s\n" "SMTP alerts:"        "$( [ "$USE_SMTP" = "true" ] && echo "yes ($SMTP_USER → $ALERT_RECIPIENT)" || echo "disabled" )"
+printf "  ${BOLD}%-30s${NC} %s\n" "LDAP:"               "$USE_LDAP"
+printf "  ${BOLD}%-30s${NC} %s\n" "Microsoft 365 SSO:"  "$USE_MICROSOFT_SSO"
+printf "  ${BOLD}%-30s${NC} %s\n" "Runtime:"            "$RUNTIME"
 echo ""
 
 if ! confirm "Proceed with installation?" "y"; then
-  info "Installation cancelled by user."
-  exit 0
+  info "Installation cancelled."; exit 0
 fi
 
 # =============================================================================
@@ -541,30 +565,25 @@ fi
 # =============================================================================
 step "Phase 5: Preparing install directory"
 
-# Relocate log file to final destination
 mkdir -p "$INSTALL_DIR/logs"
 FINAL_LOG="$INSTALL_DIR/logs/install_$(date +%Y%m%d_%H%M%S).log"
-if [ -f "$LOG_FILE" ]; then
-  cp "$LOG_FILE" "$FINAL_LOG"
-fi
+[ -f "$LOG_FILE" ] && cp "$LOG_FILE" "$FINAL_LOG"
 LOG_FILE="$FINAL_LOG"
 info "Log file: $LOG_FILE"
 
 # Clone or copy repository
 if [ "$SKIP_CLONE" = "false" ]; then
   if [ -d "$INSTALL_DIR/.git" ]; then
-    info "Repository already exists at $INSTALL_DIR -- pulling latest changes."
+    info "Repository already exists at $INSTALL_DIR -- pulling latest."
     git -C "$INSTALL_DIR" pull --ff-only
   elif [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null | grep -cv '^logs$')" -gt 0 ]; then
-    warn "Directory $INSTALL_DIR is not empty. Cloning into it."
+    warn "Directory $INSTALL_DIR is not empty. Cloning alongside existing content."
     git clone "$GIT_REPO" "$INSTALL_DIR.tmp"
-    # Move git content into install dir (preserve logs)
     cp -rT "$INSTALL_DIR.tmp" "$INSTALL_DIR"
     rm -rf "$INSTALL_DIR.tmp"
   else
     info "Cloning repository into $INSTALL_DIR ..."
     git clone "$GIT_REPO" "$INSTALL_DIR"
-    # Ensure logs directory survives the clone
     mkdir -p "$INSTALL_DIR/logs"
   fi
 elif [ "$INSTALL_DIR" != "$REPO_ROOT" ]; then
@@ -573,182 +592,148 @@ elif [ "$INSTALL_DIR" != "$REPO_ROOT" ]; then
   rsync -a --exclude='node_modules' --exclude='.next' "$REPO_ROOT/" "$INSTALL_DIR/"
 fi
 
-# Ensure we are in the install directory for all remaining operations
 cd "$INSTALL_DIR"
 success "Working directory: $(pwd)"
 
-# Create required directories
 mkdir -p "$INSTALL_DIR/logs"
 mkdir -p "$INSTALL_DIR/backups"
 mkdir -p "$INSTALL_DIR/document-storage"
-mkdir -p "$INSTALL_DIR/backend/certs"
+mkdir -p "$INSTALL_DIR/certs"          # shared TLS cert directory (nginx + backend)
 
 # =============================================================================
 # PHASE 7 — Generate .env
 # =============================================================================
 step "Phase 6: Generating .env configuration"
 
-JWT_SECRET="$(openssl rand -base64 48)"
-
-# Create .env inside a subshell with umask 0077 so the file is created
-# with mode 600 from the start — no window where secrets are world-readable.
 (
 umask 0077
 cat > "$INSTALL_DIR/.env" <<ENVEOF
-# =============================================================================
-# CMDB Enterprise Platform -- Generated by install.sh
-# Generated: $(date '+%Y-%m-%d %H:%M:%S')
-# =============================================================================
+# ==============================================================================
+# CMDB Enterprise Platform — Configuration
+# Generated: $(date '+%Y-%m-%d %H:%M:%S') by install.sh
+# ==============================================================================
 
-# -- PostgreSQL ---------------------------------------------------------------
-POSTGRES_DB=cmdb_db
-POSTGRES_USER=cmdb_db_user
+# ── Database ──────────────────────────────────────────────────────────────────
 POSTGRES_PASSWORD=${DB_PASSWORD}
-POSTGRES_PORT=5432
 
-# -- Backend API --------------------------------------------------------------
-BACKEND_PORT=${BACKEND_PORT}
+# ── Security ──────────────────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
 
-# -- Frontend (Next.js) -------------------------------------------------------
-FRONTEND_PORT=${FRONTEND_PORT}
-NEXT_PUBLIC_API_URL=${API_URL}
+# ── URLs ──────────────────────────────────────────────────────────────────────
+# nginx serves frontend (/) and API (/api/*) on the same public URL.
+NEXT_PUBLIC_API_URL=${PUBLIC_URL}
+FRONTEND_URL=${PUBLIC_URL}
 
-# -- Security / TLS -----------------------------------------------------------
-HTTPS_ENABLED=${HTTPS_ENABLED}
-CORS_ORIGINS=${CORS_ORIGINS}
+# ── Branding ──────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_COMPANY_NAME=${COMPANY_NAME}
 
-# -- LDAP / Active Directory --------------------------------------------------
+# ── Document storage ──────────────────────────────────────────────────────────
+DOCUMENTS_STORAGE_PATH=./document-storage
+
+# ── SMTP / Email alerts ───────────────────────────────────────────────────────
+SMTP_HOST=${SMTP_HOST}
+SMTP_PORT=${SMTP_PORT}
+SMTP_SECURE=${SMTP_SECURE}
+SMTP_USER=${SMTP_USER}
+SMTP_PASS=${SMTP_PASS}
+ALERT_RECIPIENT=${ALERT_RECIPIENT}
+
+# ── LDAP / Active Directory ───────────────────────────────────────────────────
 USE_LDAP=${USE_LDAP}
 LDAP_URL=${LDAP_URL}
 LDAP_BASE_DN=${LDAP_BASE_DN}
 LDAP_BIND_DN=${LDAP_BIND_DN}
 LDAP_BIND_PASSWORD=${LDAP_BIND_PASSWORD}
-LDAP_TLS_REJECT_UNAUTHORIZED=${LDAP_TLS_REJECT_UNAUTHORIZED}
 
-# -- Microsoft 365 SSO (Azure AD / Entra ID) ----------------------------------
-# Set USE_MICROSOFT_SSO=true and fill the values below to enable SSO.
+# ── Microsoft 365 SSO ─────────────────────────────────────────────────────────
 USE_MICROSOFT_SSO=${USE_MICROSOFT_SSO}
 AZURE_TENANT_ID=${AZURE_TENANT_ID}
 AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
 AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
-# Redirect URI must be registered exactly in your Azure App Registration
 AZURE_REDIRECT_URI=${AZURE_REDIRECT_URI}
 AZURE_ALLOWED_DOMAIN=${AZURE_ALLOWED_DOMAIN}
-# Frontend URL — used by backend to redirect users after SSO (no trailing slash)
-FRONTEND_URL=${API_URL/\/api/}
 AZURE_AUTO_PROVISION=${AZURE_AUTO_PROVISION}
-
-# -- Corporate Branding -------------------------------------------------------
-NEXT_PUBLIC_COMPANY_NAME=${COMPANY_NAME}
-NEXT_PUBLIC_LOGO_URL=/logo.png
-NEXT_PUBLIC_THEME_COLOR=#4f46e5
-
-# -- Application Environment --------------------------------------------------
-APP_ENV=prod
-NEXT_PUBLIC_APP_ENV=prod
-
-# -- Alert Engine / Email Notifications ----------------------------------------
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=
-SMTP_PASS=
-ALERT_RECIPIENT=admin@yourdomain.com
-ALERT_WARN_DAYS=30
-ALERT_CRON_SCHEDULE=30 8 * * *
-
-# -- Database Maintenance ------------------------------------------------------
-AUDIT_RETENTION_DAYS=365
-
-# -- MFA / Trusted Devices ----------------------------------------------------
-TRUSTED_DEVICE_TTL_DAYS=30
-NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS=30
-
-# -- Password Policy -----------------------------------------------------------
-PASSWORD_MIN_LENGTH_ADMIN=16
-PASSWORD_MIN_LENGTH_VIEWER=12
-PASSWORD_HISTORY_COUNT=20
-
-# -- Document Repository -------------------------------------------------------
-MAX_DOCUMENT_SIZE_MB=50
-DOCUMENTS_STORAGE_PATH=./document-storage
 ENVEOF
-) # end umask 0077 subshell
+)
 
-chmod 600 "$INSTALL_DIR/.env"  # defence-in-depth — file was already created 600
-success ".env generated at $INSTALL_DIR/.env (permissions: 600)"
+chmod 600 "$INSTALL_DIR/.env"
+success ".env generated at $INSTALL_DIR/.env (mode 600)"
 
 # =============================================================================
-# PHASE 8 — SSL Certificate Generation
+# PHASE 8 — TLS Certificate Setup
 # =============================================================================
-step "Phase 7: SSL certificate setup"
+step "Phase 7: TLS certificate setup"
 
-if [ "$HTTPS_ENABLED" = "true" ]; then
-  if [ "$SSL_MODE" = "self-signed" ]; then
-    info "Generating self-signed TLS certificate (RSA 2048, 10 years) ..."
+CERT_DIR="$INSTALL_DIR/certs"
 
-    CERT_HOST="$(hostname -f 2>/dev/null || hostname)"
-    CERT_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-    # Fallback if hostname -I is unavailable (macOS)
-    if [ -z "$CERT_IP" ]; then
-      CERT_IP="$(ipconfig getifaddr en0 2>/dev/null || echo '127.0.0.1')"
-    fi
+if [ "$SSL_MODE" = "self-signed" ]; then
+  info "Generating self-signed RSA 4096-bit certificate (valid 10 years) ..."
 
-    SAN="DNS:${CERT_HOST}"
-    if [ -n "$CERT_IP" ] && [ "$CERT_IP" != "127.0.0.1" ]; then
-      SAN="${SAN},IP:${CERT_IP}"
-    fi
-    SAN="${SAN},DNS:localhost,IP:127.0.0.1"
+  # Sanitise DN fields (strip chars that would break the openssl -subj string)
+  _san_cert_cn() { echo "$1" | tr -d '/"\\'; }
+  SAFE_CN="$(_san_cert_cn "$CERT_CN")"
+  SAFE_O="$(_san_cert_cn "$CERT_O")"
+  SAFE_OU="$(_san_cert_cn "$CERT_OU")"
+  SAFE_C="$(echo "$CERT_C" | tr -dc 'A-Za-z' | head -c 2)"
+  SAFE_ST="$(_san_cert_cn "$CERT_ST")"
+  SAFE_L="$(_san_cert_cn "$CERT_L")"
 
-    openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-      -keyout "$INSTALL_DIR/backend/certs/server.key" \
-      -out "$INSTALL_DIR/backend/certs/server.crt" \
-      -subj "/CN=${CERT_HOST}/O=${COMPANY_NAME}/C=ES" \
-      -addext "subjectAltName=${SAN}"
+  SUBJECT="/CN=${SAFE_CN}"
+  [ -n "$SAFE_C"  ] && SUBJECT="${SUBJECT}/C=${SAFE_C}"
+  [ -n "$SAFE_ST" ] && SUBJECT="${SUBJECT}/ST=${SAFE_ST}"
+  [ -n "$SAFE_L"  ] && SUBJECT="${SUBJECT}/L=${SAFE_L}"
+  [ -n "$SAFE_O"  ] && SUBJECT="${SUBJECT}/O=${SAFE_O}"
+  [ -n "$SAFE_OU" ] && SUBJECT="${SUBJECT}/OU=${SAFE_OU}"
 
-    chmod 600 "$INSTALL_DIR/backend/certs/server.key"
-    chmod 644 "$INSTALL_DIR/backend/certs/server.crt"
-    success "Self-signed certificate generated in $INSTALL_DIR/backend/certs/"
+  openssl req -x509 -nodes -days 3650 -newkey rsa:4096 \
+    -keyout "${CERT_DIR}/server.key" \
+    -out    "${CERT_DIR}/server.crt" \
+    -subj   "${SUBJECT}" \
+    -addext "subjectAltName=${CERT_SAN}" 2>/dev/null
 
-  elif [ "$SSL_MODE" = "provided" ]; then
-    info "Copying provided certificates ..."
-    cp "$SSL_CERT_PATH" "$INSTALL_DIR/backend/certs/server.crt"
-    cp "$SSL_KEY_PATH" "$INSTALL_DIR/backend/certs/server.key"
-    chmod 600 "$INSTALL_DIR/backend/certs/server.key"
-    chmod 644 "$INSTALL_DIR/backend/certs/server.crt"
-    success "Certificates installed in $INSTALL_DIR/backend/certs/"
-  fi
-else
-  info "HTTPS disabled -- skipping certificate setup."
+  chmod 600 "${CERT_DIR}/server.key"
+  chmod 644 "${CERT_DIR}/server.crt"
+  success "Self-signed certificate generated in ${CERT_DIR}/"
+  info "  Subject:  ${SUBJECT}"
+  info "  SAN:      ${CERT_SAN}"
+  info "  Key size: RSA 4096-bit"
+
+elif [ "$SSL_MODE" = "provided" ]; then
+  info "Copying provided certificates ..."
+  cp "$SSL_CERT_PATH" "${CERT_DIR}/server.crt"
+  cp "$SSL_KEY_PATH"  "${CERT_DIR}/server.key"
+  chmod 600 "${CERT_DIR}/server.key"
+  chmod 644 "${CERT_DIR}/server.crt"
+  success "Certificates installed in ${CERT_DIR}/"
 fi
 
 # =============================================================================
-# PHASE 9 — Populate TLS Volume (production compose uses a named volume)
+# PHASE 9 — Populate TLS Named Volume (docker-compose.prod.yml uses tls-certs)
 # =============================================================================
 step "Phase 8: Preparing TLS volume for production compose"
 
-if [ "$HTTPS_ENABLED" = "true" ] && [ -f "$INSTALL_DIR/backend/certs/server.crt" ]; then
-  info "Creating named volume cmdb-tls-certs and copying certificates ..."
+if [ -f "${CERT_DIR}/server.crt" ] && [ -f "${CERT_DIR}/server.key" ]; then
+  info "Populating named Docker volume cmdb-tls-certs ..."
   $RUNTIME volume create cmdb-tls-certs 2>/dev/null || true
   $RUNTIME run --rm \
-    -v cmdb-tls-certs:/certs \
-    -v "$INSTALL_DIR/backend/certs":/src:ro \
-    alpine sh -c "cp /src/server.key /src/server.crt /certs/ && chmod 600 /certs/server.key"
+    -v cmdb-tls-certs:/dst \
+    -v "${CERT_DIR}":/src:ro \
+    alpine sh -c "cp /src/server.key /src/server.crt /dst/ && chmod 600 /dst/server.key"
   success "TLS certificates loaded into volume cmdb-tls-certs"
 else
-  info "No TLS certificates to load into volume."
+  warn "No certificates found in ${CERT_DIR}/ — skipping volume population."
+  warn "You can generate or install certs later via the Admin → Certificates UI."
 fi
 
 # =============================================================================
-# PHASE 10 — Build & Start (compose mode only)
+# PHASE 10 — Build & Start
 # =============================================================================
 if [ "$PLATFORM" = "compose" ]; then
   step "Phase 9: Building and starting containers"
 
   cd "$INSTALL_DIR"
 
-  info "Building images (this may take several minutes) ..."
+  info "Building container images (this may take several minutes) ..."
   $COMPOSE_CMD -f docker-compose.prod.yml build --no-cache
 
   info "Starting services ..."
@@ -756,14 +741,8 @@ if [ "$PLATFORM" = "compose" ]; then
 
   success "Containers started."
 
-  # ── Health check ───────────────────────────────────────────────────────────
+  # ── Health check ─────────────────────────────────────────────────────────────
   step "Phase 10: Verifying health"
-
-  HEALTH_PROTO="http"
-  if [ "$HTTPS_ENABLED" = "true" ]; then
-    HEALTH_PROTO="https"
-  fi
-  HEALTH_URL="${HEALTH_PROTO}://localhost:${BACKEND_PORT}"
 
   wait_healthy() {
     local url="$1" max=120 i=0
@@ -781,18 +760,21 @@ if [ "$PLATFORM" = "compose" ]; then
     return 1
   }
 
+  # Health check goes through nginx (same public URL)
+  HEALTH_URL="${PUBLIC_URL}"
+
   if wait_healthy "$HEALTH_URL"; then
-    success "Backend is healthy and responding at ${HEALTH_URL}/api/health"
+    success "Platform is healthy — backend responding at ${HEALTH_URL}/api/health"
   else
-    warn "Backend did not respond within 120 seconds."
-    warn "Check logs with: $COMPOSE_CMD -f docker-compose.prod.yml logs backend"
+    warn "Health check timed out (120 s)."
+    warn "Check logs: $COMPOSE_CMD -f docker-compose.prod.yml logs"
   fi
 
-  # Quick check on frontend
+  # Quick check on nginx / frontend
   echo -n "  Checking frontend "
   FRONTEND_OK="false"
   for attempt in $(seq 1 30); do
-    if curl -sk "http://localhost:${FRONTEND_PORT}" &>/dev/null; then
+    if curl -sk "${PUBLIC_URL}" &>/dev/null; then
       FRONTEND_OK="true"
       break
     fi
@@ -802,70 +784,53 @@ if [ "$PLATFORM" = "compose" ]; then
   echo ""
 
   if [ "$FRONTEND_OK" = "true" ]; then
-    success "Frontend is responding at http://localhost:${FRONTEND_PORT}"
+    success "Frontend accessible at ${PUBLIC_URL}"
   else
-    warn "Frontend did not respond within 60 seconds."
-    warn "Check logs with: $COMPOSE_CMD -f docker-compose.prod.yml logs frontend"
+    warn "Frontend did not respond within 60 s."
+    warn "Check logs: $COMPOSE_CMD -f docker-compose.prod.yml logs nginx"
   fi
 
 elif [ "$PLATFORM" = "openshift" ]; then
   step "Phase 9: OpenShift deployment"
   warn "Container build and deployment skipped for OpenShift."
-  warn "Review the docker-compose.prod.yml and generated .env, then deploy using:"
-  warn "  oc new-app --file=openshift/deployment.yaml"
-  info "Alternatively, use kompose to convert the compose file:"
-  info "  kompose convert -f docker-compose.prod.yml -o openshift/"
+  warn "Apply manifests: oc apply -f openshift/"
 fi
 
 # =============================================================================
 # PHASE 11 — Post-install Summary
 # =============================================================================
 step "Installation Complete"
-
-FRONTEND_URL="http://${DEFAULT_HOST}:${FRONTEND_PORT}"
-if [ "$HTTPS_ENABLED" = "true" ]; then
-  FRONTEND_URL="https://${DEFAULT_HOST}:${FRONTEND_PORT}"
-fi
-
 echo ""
 echo -e "${BOLD}${GREEN}+----------------------------------------------------------+${NC}"
-echo -e "${BOLD}${GREEN}|          CMDB Enterprise Platform - Installed             |${NC}"
+echo -e "${BOLD}${GREEN}|       CMDB Enterprise Platform — Installed                |${NC}"
 echo -e "${BOLD}${GREEN}+----------------------------------------------------------+${NC}"
 echo ""
-printf "  ${BOLD}%-24s${NC} %s\n" "Frontend URL:" "$FRONTEND_URL"
-printf "  ${BOLD}%-24s${NC} %s\n" "Backend API URL:" "$API_URL"
-printf "  ${BOLD}%-24s${NC} %s\n" "Default admin user:" "admin@cmdb.local"
-printf "  ${BOLD}%-24s${NC} %s\n" "Default admin password:" "Admin1234!"
+printf "  ${BOLD}%-26s${NC} %s\n" "Platform URL:"        "$PUBLIC_URL"
+printf "  ${BOLD}%-26s${NC} %s\n" "Default admin user:"  "admin@cmdb.local"
+printf "  ${BOLD}%-26s${NC} %s\n" "Default admin pass:"  "Admin1234!"
 echo ""
 echo -e "  ${RED}${BOLD}>> IMPORTANT: Change the default password immediately! <<${NC}"
 echo ""
-printf "  ${BOLD}%-24s${NC} %s\n" ".env file:" "$INSTALL_DIR/.env"
-printf "  ${BOLD}%-24s${NC} %s\n" "Install log:" "$LOG_FILE"
-printf "  ${BOLD}%-24s${NC} %s\n" "Container runtime:" "$RUNTIME"
-printf "  ${BOLD}%-24s${NC} %s\n" "Compose command:" "$COMPOSE_CMD"
+printf "  ${BOLD}%-26s${NC} %s\n" ".env file:"     "$INSTALL_DIR/.env"
+printf "  ${BOLD}%-26s${NC} %s\n" "TLS certs:"     "$INSTALL_DIR/certs/"
+printf "  ${BOLD}%-26s${NC} %s\n" "Install log:"   "$LOG_FILE"
+printf "  ${BOLD}%-26s${NC} %s\n" "Runtime:"       "$RUNTIME"
 echo ""
 echo -e "${BOLD}${CYAN}  Next steps:${NC}"
-echo "    1. Log in and change the default admin password"
-echo "    2. Configure LDAP/AD integration (if not done during install)"
+echo "    1. Open ${PUBLIC_URL} in your browser (accept the self-signed cert warning if applicable)"
+echo "    2. Log in with admin@cmdb.local / Admin1234! and change the password immediately"
+echo "    3. Upload a CA-signed certificate via Admin → Certificates, then: docker compose restart nginx"
 if [ "$USE_MICROSOFT_SSO" = "true" ]; then
-echo "    3. Register the redirect URI in Azure App Registration:"
+echo "    4. Register SSO redirect URI in Azure Portal App Registration:"
 echo "       ${AZURE_REDIRECT_URI}"
-echo "    4. Set up email alerts (edit SMTP_* values in .env)"
-echo "    5. Schedule database backups:"
-echo "       0 2 * * * $INSTALL_DIR/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1"
-echo "    6. Review container logs:"
-echo "       $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml logs -f"
-else
-echo "    3. Set up email alerts (edit SMTP_* values in .env)"
-echo "    4. To enable Microsoft 365 SSO later, edit .env and set USE_MICROSOFT_SSO=true"
-echo "       See Section 15 of the Sysadmin Manual for Azure Portal configuration steps"
-echo "    5. Schedule database backups:"
-echo "       0 2 * * * $INSTALL_DIR/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1"
-echo "    6. Review container logs:"
-echo "       $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml logs -f"
 fi
+if [ "$USE_SMTP" = "false" ]; then
+echo "    5. Configure SMTP for email alerts by editing SMTP_* in $INSTALL_DIR/.env"
+fi
+echo "    6. Schedule daily backups:"
+echo "       0 2 * * * $INSTALL_DIR/scripts/db-backup.sh >> /var/log/cmdb-backup.log 2>&1"
+echo "    7. View container logs:"
+echo "       $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml logs -f"
 echo ""
 echo -e "${BOLD}${GREEN}+----------------------------------------------------------+${NC}"
 echo ""
-
-success "Installation finished. Log saved to: $LOG_FILE"

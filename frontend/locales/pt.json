@@ -911,5 +911,47 @@
   },
   "auth": {
     "completing_signin": "Concluindo o acesso…"
+  },
+  "admin": {
+    "certificates": {
+      "title": "Gestão de Certificados SSL/TLS",
+      "subtitle": "Gere pedidos de assinatura de certificado (CSR) e instala certificados assinados pela tua CA.",
+      "key_notice": "Todas as chaves geradas utilizam RSA 4096-bit — mais forte que o mínimo do setor e adequado para certificados plurianuais.",
+      "csr_title": "1. Gerar CSR",
+      "csr_subtitle": "Cria um Pedido de Assinatura de Certificado para enviar à tua CA",
+      "field_cn": "Nome Comum (CN)",
+      "field_cn_hint": "FQDN do servidor, endereço IP ou wildcard (ex. *.exemplo.com)",
+      "field_o": "Organização (O)",
+      "field_ou": "Unidade Organizacional (OU)",
+      "field_c": "País (C)",
+      "field_st": "Estado / Província (ST)",
+      "field_l": "Localidade / Cidade (L)",
+      "field_san": "Nomes Alternativos do Sujeito (SAN)",
+      "field_san_hint": "Deixar vazio para derivar automaticamente do CN. Formato: DNS:host1,DNS:host2,IP:1.2.3.4",
+      "csr_button": "Gerar CSR",
+      "csr_generating": "A gerar…",
+      "csr_success": "CSR Gerado com Sucesso",
+      "csr_download": "Descarregar server.csr",
+      "csr_send_ca": "Envia este CSR à tua Autoridade de Certificação para assinatura.",
+      "csr_error": "Erro ao gerar o CSR",
+      "upload_title": "2. Carregar Certificado Assinado",
+      "upload_subtitle": "Instala o certificado assinado pela tua CA",
+      "upload_file_label": "Ficheiro de Certificado (.crt / .pem)",
+      "upload_or_paste": "Ou cola o conteúdo PEM abaixo",
+      "upload_pem_label": "Conteúdo do Certificado (formato PEM)",
+      "upload_button": "Carregar Certificado",
+      "upload_uploading": "A carregar…",
+      "upload_done": "Certificado Carregado",
+      "upload_restart_note": "Executa este comando no servidor para aplicar o novo certificado.",
+      "upload_error": "Erro ao carregar o certificado",
+      "upload_success": "Certificado carregado com sucesso",
+      "workflow_title": "Fluxo de Gestão de Certificados",
+      "workflow_step1": "Preenche o formulário CSR com os detalhes do teu servidor e clica em \"Gerar CSR\"",
+      "workflow_step2": "Descarrega o ficheiro CSR gerado e envia-o à tua Autoridade de Certificação (CA)",
+      "workflow_step3": "Quando receberes o certificado assinado da tua CA, carrega-o com o formulário acima",
+      "workflow_step4": "Executa o comando apresentado para reiniciar o contentor nginx e aplicar o certificado",
+      "workflow_step5": "Verifica que o novo certificado está ativo no teu navegador ou com openssl s_client",
+      "workflow_verify": "Verificação rápida"
+    }
   }
 }

@@ -87,26 +87,34 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 │  ┌──────────────────────────────────────────────────────────────┐  │
 │  │                     cmdb-public network                      │  │
 │  │                                                              │  │
-│  │   ┌─────────────────────┐    ┌────────────────────────────┐ │  │
-│  │   │   cmdb-frontend      │    │      cmdb-backend          │ │  │
-│  │   │   Next.js :3001      │───▶│   Express + Prisma :3000   │ │  │
-│  │   │   (node non-root)    │    │   (node non-root)          │ │  │
-│  │   └─────────────────────┘    └────────────┬───────────────┘ │  │
-│  │          ▲                                │                  │  │
-│  └──────────┼────────────────────────────────┼──────────────────┘  │
-│             │                                │                     │
-│         :3001                          ┌─────▼──────────────────┐  │
-│         HOST                           │   cmdb-internal network │  │
-│                                        │                        │  │
-│                                  ┌─────▼──────────────────────┐ │  │
-│                                  │   cmdb-postgres-prod        │ │  │
-│                                  │   PostgreSQL 16 :5432       │ │  │
-│                                  │   (NO expuesto al host)    │ │  │
-│                                  └────────────────────────────┘ │  │
-│                                        └────────────────────────┘  │
-│                                                                     │
-│   Puertos expuestos al exterior:  :3000 (API)   :3001 (UI)         │
-└─────────────────────────────────────────────────────────────────────┘
+│  │   ┌────────────────────────────────────────────────────┐    │  │
+│  │   │  cmdb-nginx    (nginx 1.27-alpine)                  │    │  │
+│  │   │  Puertos host: :443 (HTTPS)  :80 (→ redirect 301)  │    │  │
+│  │   │  /         → frontend:3001                          │    │  │
+│  │   │  /api/*    → backend:3000                           │    │  │
+│  │   │  certs: tls-certs (ro)                             │    │  │
+│  │   └──────────────┬──────────────┬─────────────────────┘    │  │
+│  │                  │              │                            │  │
+│  │                  ▼              ▼                            │  │
+│  │   ┌─────────────────┐  ┌───────────────────────────────┐   │  │
+│  │   │  cmdb-frontend   │  │       cmdb-backend            │   │  │
+│  │   │  Next.js :3001   │  │  Express + Prisma :3000       │   │  │
+│  │   │  (HTTP interno)  │  │  (HTTP interno)               │   │  │
+│  │   └─────────────────┘  └────────────┬──────────────────┘   │  │
+│  │          (NO expuesto al host)       │  certs: tls-certs(rw)│  │
+│  └──────────────────────────────────────┼──────────────────────┘  │
+│                                         │                          │
+│                                   ┌─────▼──────────────────┐      │
+│                                   │   cmdb-internal network │      │
+│                                   │                         │      │
+│                                   │   cmdb-postgres-prod        │      │
+│                                   │   PostgreSQL 16 :5432       │      │
+│                                   │   (NO expuesto al host)     │      │
+│                                   └─────────────────────────────┘      │
+│                                                                         │
+│   Puertos expuestos al host:  :443 (HTTPS)   :80 (HTTP → redirect)     │
+│   Frontend y backend: SOLO red interna Docker, sin binding al host      │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -124,8 +132,9 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 
 | Servicio | Puerto Interno | Puerto Host | Protocolo | Descripción |
 |---------|---------------|-------------|-----------|-------------|
-| Frontend (Next.js) | 3001 | 3001 | HTTP/HTTPS | Interfaz web de usuario |
-| Backend (Express) | 3000 | 3000 | HTTP / HTTPS (TLS) | API REST |
+| nginx (gateway TLS) | 443 / 80 | **443 / 80** | HTTPS / HTTP→HTTPS | Único punto de entrada; termina TLS |
+| Frontend (Next.js) | 3001 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/` |
+| Backend (Express) | 3000 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/api/*` |
 | PostgreSQL | 5432 | **NO EXPUESTO** | TCP | Solo accesible desde cmdb-internal |
 | Adminer (dev) | 8080 | 8080 | HTTP | UI de administración DB (development only) |
 
@@ -234,14 +243,17 @@ Admin sube JSON → POST /api/integrations/greenbone
   └── Audit log entry
 ```
 
-### Flujo HTTPS (cuando HTTPS_ENABLED=true)
+### Flujo HTTPS (nginx como gateway TLS unificado)
 ```
-Browser → Frontend (3001) [HTTP]
-Browser → API (3000) [HTTPS/TLS]
-  └── TLS: certificado en cmdb-tls-certs volume
-  └── Helmet HSTS header
-  └── CORS strict: origen en CORS_ORIGINS
+Browser → nginx:443 [HTTPS/TLS — certificado en ./certs/]
+  ├── /         → frontend:3001 [HTTP interno]
+  └── /api/*    → backend:3000  [HTTP interno]
+                    └── Helmet HSTS header
+                    └── CORS: solo FRONTEND_URL (mismo origen via nginx)
+  nginx:80 → 301 redirect → https://
 ```
+Al usar nginx como gateway único, frontend y backend comparten el mismo origen
+(`https://host/` y `https://host/api/*`) — CORS no es necesario en la práctica.
 
 ---
 
@@ -249,14 +261,15 @@ Browser → API (3000) [HTTPS/TLS]
 
 ```mermaid
 graph TB
-    subgraph Browser["🌐 Navegador del Usuario"]
+    subgraph Browser["Navegador del Usuario"]
         UI[Next.js SPA]
     end
 
-    subgraph Host["🖥️ cmdb-server (RHEL)"]
+    subgraph Host["cmdb-server (RHEL)"]
         subgraph PublicNet["cmdb-public (bridge)"]
-            FE["Frontend\nNext.js :3001\nnode non-root"]
-            BE["Backend\nExpress+Prisma :3000\nnode non-root"]
+            NG["nginx :443/:80\nGateway TLS\n/ → frontend\n/api/* → backend"]
+            FE["Frontend\nNext.js :3001\n(HTTP interno)"]
+            BE["Backend\nExpress+Prisma :3000\n(HTTP interno)"]
         end
 
         subgraph InternalNet["cmdb-internal (isolated)"]
@@ -264,23 +277,24 @@ graph TB
         end
 
         VOL1[("postgres-data\n(named volume)")]
-        VOL2[("tls-certs\n(named volume)")]
+        VOL2[("tls-certs\n(named volume)\n./certs/ en host")]
     end
 
-    subgraph External["🌍 Servicios Externos"]
+    subgraph External["Servicios Externos"]
         LDAP["AD/LDAP\n:389/:636"]
         SMTP["SMTP Server\n:587/:465"]
         EOL["endoflife.date API\n:443 HTTPS"]
     end
 
-    UI -->|"HTTPS :3001"| FE
-    UI -->|"HTTPS :3000\nBearer JWT"| BE
-    FE -->|"API calls"| BE
+    UI -->|"HTTPS :443"| NG
+    NG -->|"/ HTTP"| FE
+    NG -->|"/api/* HTTP"| BE
     BE -->|"Prisma ORM\nTCP :5432"| DB
     BE -->|"LDAP auth\nTCP :389"| LDAP
     BE -->|"Alert emails\nSTARTTLS :587"| SMTP
     BE -->|"EOL lookup\nHTTPS :443"| EOL
     DB --- VOL1
+    NG --- VOL2
     BE --- VOL2
 
     style PublicNet fill:#e0f2fe,stroke:#0284c7

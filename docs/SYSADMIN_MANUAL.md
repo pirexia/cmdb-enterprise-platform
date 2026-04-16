@@ -36,13 +36,15 @@ Para la mayoría de las instalaciones nuevas, tres comandos son suficientes:
 git clone https://github.com/pirexia/cmdb-enterprise-platform.git /opt/cmdb && cd /opt/cmdb
 
 # 2. Ejecutar el instalador guiado
-#    (detecta el SO, verifica requisitos, lanza el asistente de configuración y arranca la plataforma)
-sudo bash scripts/install.sh
+#    (detecta el SO, verifica requisitos, solicita URL/contraseñas/TLS y arranca la plataforma)
+bash scripts/install.sh
 
 # 3. Abrir el navegador
-# Frontend: http://<tu-servidor>:3001
+# Plataforma (frontend + API via nginx): https://<tu-servidor>/
 # Login por defecto: admin@cmdb.local / Admin1234! — CAMBIAR INMEDIATAMENTE
 ```
+
+> **Arquitectura:** nginx en `:443` actúa como gateway único. Enruta `/` → frontend y `/api/*` → backend. Solo nginx expone puertos al host (443 y 80). Frontend y backend son contenedores internos de Docker.
 
 > Para control detallado sobre cada paso, o para entornos con requisitos especiales, consulta la [Sección 2](#2-despliegue-inicial).
 
@@ -104,18 +106,18 @@ nano .env               # Editar con valores reales (ver sección 3)
 chmod 600 .env          # Restringir lectura al propietario
 ```
 
-### Paso 3: Generar certificados SSL (si HTTPS_ENABLED=true)
+### Paso 3: Generar certificados SSL
 ```bash
 bash backend/scripts/generate-certs.sh
-# Resultado: backend/certs/server.key y server.crt
+# Resultado: certs/server.key y certs/server.crt (RSA 4096-bit, en la raíz del proyecto)
 ```
 
-### Paso 4: Preparar volumen TLS
+### Paso 4: Preparar volumen TLS (producción)
 ```bash
 docker volume create cmdb-tls-certs
 docker run --rm \
   -v cmdb-tls-certs:/dest \
-  -v $(pwd)/backend/certs:/src:ro \
+  -v $(pwd)/certs:/src:ro \
   alpine sh -c "cp /src/server.key /src/server.crt /dest/ && chmod 600 /dest/server.key"
 ```
 
@@ -135,8 +137,9 @@ docker compose -f docker-compose.prod.yml ps
 
 ### Paso 6: Verificar salud
 ```bash
-curl http://localhost:3000/health
+curl -sk https://localhost/api/health
 # Respuesta esperada: {"status":"ok","timestamp":"..."}
+# La petición pasa por nginx (puerto 443) → backend (puerto 3000 interno)
 ```
 
 ### Credenciales por defecto tras el seed
@@ -153,42 +156,39 @@ curl http://localhost:3000/health
 
 ### Variables obligatorias en producción
 
+El `.env` solo requiere **6 variables obligatorias**. Todo lo demás tiene valores por defecto seguros en el código.
+
 ```bash
 # ── Base de Datos ──────────────────────────────────────────────────────
-POSTGRES_DB=cmdb_db
-POSTGRES_USER=cmdb_admin              # ¡Cambiar del default!
 POSTGRES_PASSWORD=<min-32-chars>      # Generar: openssl rand -base64 32
 
-# ── Backend ────────────────────────────────────────────────────────────
-BACKEND_PORT=3000
+# ── Seguridad ──────────────────────────────────────────────────────────
 JWT_SECRET=<min-48-chars>             # Generar: openssl rand -base64 48
 
-# ── Frontend ───────────────────────────────────────────────────────────
-FRONTEND_PORT=3001
-NEXT_PUBLIC_API_URL=https://cmdb.tudominio.com:3000
+# ── URLs (nginx sirve frontend Y API en el mismo host/puerto) ──────────
+NEXT_PUBLIC_API_URL=https://cmdb.tudominio.com   # URL pública (sin puerto, nginx usa 443)
+FRONTEND_URL=https://cmdb.tudominio.com          # Misma URL — usada para SSO y CORS
 
-# ── Seguridad ──────────────────────────────────────────────────────────
-HTTPS_ENABLED=true
-CORS_ORIGINS=https://cmdb.tudominio.com:3001
+# ── Marca ──────────────────────────────────────────────────────────────
+NEXT_PUBLIC_COMPANY_NAME=Mi Empresa
 
-# ── SMTP / Alertas ─────────────────────────────────────────────────────
+# ── Almacenamiento Documental ──────────────────────────────────────────
+DOCUMENTS_STORAGE_PATH=./document-storage
+
+# ── SMTP / Alertas (Opcional — dejar vacío para deshabilitar) ──────────
 SMTP_HOST=smtp.tudominio.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=cmdb-alerts@tudominio.com
 SMTP_PASS=<contraseña-smtp>
 ALERT_RECIPIENT=it-ops@tudominio.com
-ALERT_WARN_DAYS=30
-ALERT_CRON_SCHEDULE=30 8 * * *
 
 # ── LDAP / Active Directory (Opcional) ────────────────────────────────
 USE_LDAP=false
-# USE_LDAP=true
-# LDAP_URL=ldap://ad.tudominio.com:389
-# LDAP_BIND_DN=CN=cmdb-svc,OU=Service Accounts,DC=tudominio,DC=com
-# LDAP_BIND_PASSWORD=<contraseña-cuenta-servicio>
-# LDAP_SEARCH_BASE=DC=tudominio,DC=com
-# LDAP_TLS_REJECT_UNAUTHORIZED=0    # Solo si usas cert autofirmado interno
+LDAP_URL=
+LDAP_BASE_DN=
+LDAP_BIND_DN=
+LDAP_BIND_PASSWORD=
 ```
 
 ### Variables opcionales — Repositorio Documental
@@ -373,49 +373,55 @@ docker exec cmdb-backend-prod node -e "
 
 ## 4. Gestión de Certificados SSL/HTTPS
 
+> Los certificados TLS los gestiona **nginx**. Se almacenan en `./certs/` (raíz del proyecto) y se montan en el volumen Docker `cmdb-tls-certs`. La UI de administración en **Admin → Certificados** permite generar CSR y subir certificados firmados directamente desde el navegador.
+
 ### 4.1 Generar certificado autofirmado (intranet)
 ```bash
 bash backend/scripts/generate-certs.sh
-# Crea: backend/certs/server.key (privado) y server.crt (público)
-# Validez: 365 días
+# Crea: certs/server.key (privado, RSA 4096-bit) y certs/server.crt (público)
+# Validez: 10 años
 ```
 
 ### 4.2 Solicitar certificado de CA corporativa
 
+**Opción A — Via UI (recomendado):** Admin → Certificados → «Generar CSR». Rellena los campos DN y SAN. Descarga el `.csr`, envíalo a tu CA, y sube el `.crt` firmado en la misma pantalla.
+
+**Opción B — Via línea de comandos:**
 ```bash
 # Paso 1: Generar CSR (Certificate Signing Request)
-openssl req -new -newkey rsa:2048 -nodes \
-  -keyout backend/certs/server.key \
-  -out    backend/certs/server.csr \
-  -subj   "/C=ES/ST=Madrid/O=TuEmpresa/CN=cmdb.tudominio.com"
+openssl req -new -newkey rsa:4096 -nodes \
+  -keyout certs/server.key \
+  -out    certs/server.csr \
+  -subj   "/C=ES/ST=Madrid/O=TuEmpresa/CN=cmdb.tudominio.com" \
+  -addext "subjectAltName=DNS:cmdb.tudominio.com,DNS:localhost"
 
-# Paso 2: Enviar server.csr a tu CA corporativa
+# Paso 2: Enviar certs/server.csr a tu CA corporativa
 # Paso 3: Guardar el certificado firmado:
-cp certificado-firmado.crt backend/certs/server.crt
+cp certificado-firmado.crt certs/server.crt
 
 # Paso 4: Verificar que clave y certificado coinciden (mismo hash MD5)
-openssl x509 -noout -modulus -in backend/certs/server.crt | md5sum
-openssl rsa  -noout -modulus -in backend/certs/server.key | md5sum
+openssl x509 -noout -modulus -in certs/server.crt | md5sum
+openssl rsa  -noout -modulus -in certs/server.key | md5sum
 ```
 
 ### 4.3 Renovar certificados
 
 ```bash
-# 1. Generar nuevos certificados (no borrar los antiguos hasta verificar)
+# 1. Generar nuevos certificados o subirlos via UI (Admin → Certificados)
 bash backend/scripts/generate-certs.sh
 
 # 2. Actualizar el volumen Docker
 docker run --rm \
   -v cmdb-tls-certs:/dest \
-  -v $(pwd)/backend/certs:/src:ro \
+  -v $(pwd)/certs:/src:ro \
   alpine sh -c "cp /src/server.key /src/server.crt /dest/ && chmod 600 /dest/server.key"
 
-# 3. Reiniciar el backend para que cargue los nuevos certificados
-docker compose -f docker-compose.prod.yml restart backend
+# 3. Reiniciar nginx para que cargue los nuevos certificados
+docker compose -f docker-compose.prod.yml restart nginx
 
 # 4. Verificar
-curl -k https://localhost:3000/health
-openssl s_client -connect localhost:3000 -showcerts 2>/dev/null | openssl x509 -noout -dates
+curl -sk https://localhost/api/health
+openssl s_client -connect localhost:443 -showcerts 2>/dev/null | openssl x509 -noout -dates
 ```
 
 ### 4.4 Verificar caducidad del certificado actual
@@ -439,11 +445,13 @@ docker compose -f docker-compose.prod.yml ps
 docker compose -f docker-compose.prod.yml logs -f
 
 # Ver logs de un servicio específico
+docker compose -f docker-compose.prod.yml logs -f nginx
 docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs -f postgres
 docker compose -f docker-compose.prod.yml logs -f frontend
 
 # Reiniciar un servicio (sin rebuild)
+docker compose -f docker-compose.prod.yml restart nginx   # Tras actualizar certificados
 docker compose -f docker-compose.prod.yml restart backend
 
 # Parar todos los servicios (los datos persisten en volúmenes)

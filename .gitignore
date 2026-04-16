@@ -5,6 +5,12 @@
 .env.production
 .env.production.local
 
+# ─── TLS private keys and CSR — NEVER commit ──────────────────────────────────
+certs/server.key
+certs/server.csr
+backend/certs/server.key
+backend/certs/server.csr
+
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 node_modules/
 

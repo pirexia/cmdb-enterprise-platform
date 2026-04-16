@@ -36,13 +36,15 @@ For most new installations, three commands are sufficient:
 git clone https://github.com/pirexia/cmdb-enterprise-platform.git /opt/cmdb && cd /opt/cmdb
 
 # 2. Run the guided installer
-#    (detects the OS, verifies prerequisites, launches the configuration wizard, and starts the platform)
-sudo bash scripts/install.sh
+#    (detects OS, verifies prerequisites, prompts for URL/passwords/TLS, starts the platform)
+bash scripts/install.sh
 
 # 3. Open the browser
-# Frontend: http://<your-server>:3001
+# Platform (frontend + API via nginx): https://<your-server>/
 # Default login: admin@cmdb.local / Admin1234! — CHANGE IMMEDIATELY
 ```
+
+> **Architecture:** nginx on `:443` is the single entry point. It routes `/` → frontend and `/api/*` → backend. Only nginx exposes ports to the host (443 and 80). Frontend and backend are internal Docker containers.
 
 > For detailed control over each step, or for environments with special requirements, see [Section 2](#2-initial-deployment).
 
@@ -104,18 +106,18 @@ nano .env               # Edit with real values (see section 3)
 chmod 600 .env          # Restrict read access to the owner
 ```
 
-### Step 3: Generate SSL certificates (if HTTPS_ENABLED=true)
+### Step 3: Generate SSL certificates
 ```bash
 bash backend/scripts/generate-certs.sh
-# Output: backend/certs/server.key and server.crt
+# Output: certs/server.key and certs/server.crt (RSA 4096-bit, project root)
 ```
 
-### Step 4: Prepare the TLS volume
+### Step 4: Prepare the TLS volume (production)
 ```bash
 docker volume create cmdb-tls-certs
 docker run --rm \
   -v cmdb-tls-certs:/dest \
-  -v $(pwd)/backend/certs:/src:ro \
+  -v $(pwd)/certs:/src:ro \
   alpine sh -c "cp /src/server.key /src/server.crt /dest/ && chmod 600 /dest/server.key"
 ```
 
@@ -135,8 +137,9 @@ docker compose -f docker-compose.prod.yml ps
 
 ### Step 6: Verify health
 ```bash
-curl http://localhost:3000/health
+curl -sk https://localhost/api/health
 # Expected response: {"status":"ok","timestamp":"..."}
+# Request goes through nginx (port 443) → backend (internal port 3000)
 ```
 
 ### Default credentials after seeding

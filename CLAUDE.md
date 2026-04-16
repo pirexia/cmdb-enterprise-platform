@@ -41,13 +41,21 @@ These are caused by a Prisma client generation mismatch inside Docker; they do n
 
 ### Overview
 
-Single-repo monolith with two independent Docker services communicating over `cmdb-network`:
+Single-repo monolith with three Docker services behind an nginx TLS gateway:
 
 ```
-frontend (Next.js 15, :3001) ──HTTP──▶ backend (Express, :3000) ──▶ postgres (:5432)
+Browser ──HTTPS:443──▶ nginx ─── /         ──▶ frontend (Next.js, :3001, HTTP internal)
+                               └── /api/*   ──▶ backend  (Express,  :3000, HTTP internal)
+                                                              └──▶ postgres (:5432, internal)
 ```
 
-Two compose files: `docker-compose.yml` (development, exposes all ports, includes Adminer) and `docker-compose.prod.yml` (production, DB not exposed, isolated networks, named TLS volume). The frontend's `NEXT_PUBLIC_API_URL` env var is baked in at build time; changing it requires a full container rebuild.
+Only nginx exposes host ports (443 HTTPS, 80 HTTP→redirect). Frontend and backend are internal containers with no host port binding.
+
+Two compose files: `docker-compose.yml` (development, exposes all ports, includes Adminer) and `docker-compose.prod.yml` (production, nginx as gateway, DB and backend not exposed, isolated networks, named TLS volume `cmdb-tls-certs`).
+
+**TLS certificates** live in `./certs/` at project root (not `./backend/certs/`). Nginx mounts them read-only; backend mounts them read-write (for the CSR generation endpoint). The named Docker volume `cmdb-tls-certs` mirrors this directory for the production compose.
+
+The frontend's `NEXT_PUBLIC_API_URL` env var is baked in at build time; changing it requires a full container rebuild. With the nginx gateway, `NEXT_PUBLIC_API_URL` should be the same URL as `FRONTEND_URL` (e.g. `https://localhost`) — no port suffix needed.
 
 ### Backend (`backend/src/index.ts`)
 
@@ -124,10 +132,12 @@ Before committing any `fix` or `feat`:
 
 1. `npx tsc --noEmit` passes (no new errors beyond the known pre-existing ones)
 2. Containers rebuild and start cleanly (`docker compose up -d --build`)
-3. Update docs if applicable:
+3. Health check passes through nginx: `curl -sk https://localhost/api/health`
+4. Update docs if applicable:
    - Visual/flow changes → `docs/USER_MANUAL.md` + `docs/USER_MANUAL.en.md`
    - Sysadmin/install changes → `docs/SYSADMIN_MANUAL.md` + `docs/SYSADMIN_MANUAL.en.md`
-   - Architecture changes → `ARCHITECTURE.md` + `ARCHITECTURE.en.md`
+   - Architecture changes → `docs/ARCHITECTURE.md` + `docs/ARCHITECTURE.en.md`
+   - nginx config changes → `nginx/conf.d/frontend.conf`
 
 ## Git Workflow
 

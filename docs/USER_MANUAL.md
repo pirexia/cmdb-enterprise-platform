@@ -40,8 +40,10 @@
 Abre tu navegador y dirígete a la URL que te haya proporcionado tu equipo de sistemas. Normalmente será algo como:
 
 ```
-http://cmdb-server:3001
+https://cmdb-server
 ```
+
+La plataforma utiliza HTTPS en el puerto estándar 443 (no es necesario indicar el puerto en la URL).
 
 ### Credenciales por defecto
 

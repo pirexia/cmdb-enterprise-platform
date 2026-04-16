@@ -71,6 +71,9 @@ services:
       SMTP_USER:    ${SMTP_USER:-}
       SMTP_PASS:    ${SMTP_PASS:-}
       ALERT_RECIPIENT: ${ALERT_RECIPIENT:-}
+      # Nginx version — read by systemInfoService for System Info display
+      # Update this when changing the nginx image tag
+      NGINX_VERSION: "1.27"
       # LDAP / Active Directory (optional — USE_LDAP=false to disable)
       USE_LDAP:          ${USE_LDAP:-false}
       LDAP_URL:          ${LDAP_URL:-}

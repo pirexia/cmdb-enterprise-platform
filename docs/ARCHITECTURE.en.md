@@ -59,7 +59,7 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | HTTP Security | Helmet | 8.x   |
 | Email Alerts | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
-| HTTPS      | Node.js https (built-in) | — |
+| TLS Proxy  | nginx 1.27 | — |
 | File upload | multer | 1.x |
 
 ### Database

@@ -59,7 +59,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Seguridad HTTP | Helmet | 8.x   |
 | Alertas Email | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
-| HTTPS      | Node.js https (built-in) | — |
+| Proxy TLS  | nginx 1.27 | — |
 | Upload de ficheros | multer | 1.x |
 
 ### Base de Datos

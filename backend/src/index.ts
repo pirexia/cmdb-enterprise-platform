@@ -130,7 +130,7 @@ app.use(express.json({ limit: '2mb' }));
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  standardHeaders: true,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de acceso. Inténtelo de nuevo en 15 minutos.' },
   skipSuccessfulRequests: true, // only count failed attempts
@@ -140,7 +140,7 @@ const loginLimiter = rateLimit({
 const ssoLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
-  standardHeaders: true,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many SSO attempts. Try again in 15 minutes.' },
 });
@@ -183,7 +183,7 @@ setInterval(purgeSsoTokens, 5 * 60 * 1000);
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 300,
-  standardHeaders: true,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Inténtelo de nuevo en un momento.' },
 });

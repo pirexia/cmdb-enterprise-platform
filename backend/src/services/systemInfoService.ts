@@ -75,7 +75,7 @@ const LICENSE_MAP: Record<string, string> = {
 const FRONTEND_VERSIONS: Record<string, string> = {
   'Next.js':      '16.1.6',
   'React':        '19.2.3',
-  'Tailwind CSS': '4.x',
+  'Tailwind CSS': '4.2.1',  // resolved from frontend/package-lock.json
 };
 
 // ── Cache ──────────────────────────────────────────────────────────────────────

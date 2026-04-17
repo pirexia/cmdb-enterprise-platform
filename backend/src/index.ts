@@ -16,6 +16,7 @@ import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAndSendAlerts } from './services/emailService';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
+import { getSystemInfo } from './services/systemInfoService';
 import {
   SSO_ENABLED, ALLOWED_DOMAIN, AUTO_PROVISION, FRONTEND_URL,
   buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
@@ -129,8 +130,8 @@ app.use(express.json({ limit: '2mb' }));
 // Strict limiter for login: 10 attempts per 15 minutes per IP
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
-  standardHeaders: true,
+  limit: 10,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiados intentos de acceso. Inténtelo de nuevo en 15 minutos.' },
   skipSuccessfulRequests: true, // only count failed attempts
@@ -139,8 +140,8 @@ const loginLimiter = rateLimit({
 // SSO callback limiter: 20 requests per 15 minutes per IP
 const ssoLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
-  standardHeaders: true,
+  limit: 20,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Too many SSO attempts. Try again in 15 minutes.' },
 });
@@ -182,8 +183,8 @@ setInterval(purgeSsoTokens, 5 * 60 * 1000);
 // General API limiter: 300 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 300,
-  standardHeaders: true,
+  limit: 300,
+  standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Inténtelo de nuevo en un momento.' },
 });
@@ -480,6 +481,17 @@ const healthHandler = (_req: Request, res: Response) => {
 };
 app.get('/health', healthHandler);
 app.get('/api/health', healthHandler);
+
+// ── System info (admin only) ──────────────────────────────────────────────────
+app.get('/api/system-info', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const info = await getSystemInfo(prisma);
+    res.json(info);
+  } catch (err) {
+    console.error('[system-info]', err);
+    res.status(500).json({ error: 'Failed to retrieve system information' });
+  }
+});
 
 /**
  * GET /api/auth/sso/status

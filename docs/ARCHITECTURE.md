@@ -59,7 +59,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Seguridad HTTP | Helmet | 8.x   |
 | Alertas Email | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
-| HTTPS      | Node.js https (built-in) | — |
+| Proxy TLS  | nginx 1.30 | — |
 | Upload de ficheros | multer | 1.x |
 
 ### Base de Datos
@@ -88,7 +88,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 │  │                     cmdb-public network                      │  │
 │  │                                                              │  │
 │  │   ┌────────────────────────────────────────────────────┐    │  │
-│  │   │  cmdb-nginx    (nginx 1.27-alpine)                  │    │  │
+│  │   │  cmdb-nginx    (nginx 1.30-alpine)                  │    │  │
 │  │   │  Puertos host: :443 (HTTPS)  :80 (→ redirect 301)  │    │  │
 │  │   │  /         → frontend:3001                          │    │  │
 │  │   │  /api/*    → backend:3000                           │    │  │
@@ -662,7 +662,7 @@ La siguiente tabla proporciona guías de dimensionamiento basadas en el volumen 
 - Se debe reservar RAM para el sistema operativo RHEL (~1 GB)
 
 **Espacio LVM en /home:**
-- **Imágenes de contenedores:** ~3-4 GB (Node.js 20 Alpine + PostgreSQL 16 Alpine + frontend)
+- **Imágenes de contenedores:** ~3-4 GB (Node.js 22 Alpine + PostgreSQL 16 Alpine + frontend)
 - **Base de datos PostgreSQL:** Depende del volumen de CIs (ver "Crecimiento BD")
 - **Logs de contenedores:** ~500 MB - 1 GB por mes (con logrotate configurado)
 - **Backups locales:** Si se almacenan en `/home/cmdb-admin/backups`, calcular ~1 GB por backup diario × retención (default 30 días)

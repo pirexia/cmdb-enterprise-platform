@@ -82,6 +82,25 @@ git --version
 openssl version
 ```
 
+### Versiones del stack de la plataforma
+
+| Componente | Versión | EOL          | Licencia            |
+|------------|---------|--------------|---------------------|
+| Node.js    | 22 LTS  | Abr 2027     | MIT                 |
+| PostgreSQL | 15/16   | Nov 2027/28  | PostgreSQL License  |
+| nginx      | 1.30    | —            | BSD-2-Clause        |
+| Next.js    | 16      | —            | MIT                 |
+| Express    | 5       | —            | MIT                 |
+| Prisma     | 5       | —            | Apache 2.0          |
+
+### Configuración nginx
+
+El gateway TLS nginx se configura en:
+- **Configuración principal:** `nginx/nginx.conf`
+- **Virtual hosts:** `nginx/conf.d/`
+- **Certificados TLS:** `./certs/` (montado en solo lectura para nginx, lectura-escritura para el backend)
+- La variable `NGINX_VERSION` en docker-compose alimenta el panel de Información del Sistema en la UI.
+
 ---
 
 ## 2. Despliegue Inicial
@@ -719,6 +738,13 @@ El script implementa cinco capas de protección antes y durante la actualizació
 2. **Backup obligatorio previo:** Ejecuta `scripts/db-backup.sh` antes de cualquier cambio. Si el backup falla, el script aborta sin tocar el código ni los contenedores.
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
+
+> **v2.0.1 — Upgrade del stack, panel de sistema dinámico, cabeceras fijas:**
+> - **nginx 1.30 (stable):** Actualización desde nginx 1.27; EOL abierta.
+> - **Panel de sistema dinámico:** Nuevo endpoint `GET /api/system-info` (solo ADMIN) con tabla de 5 columnas que muestra versiones del stack y fechas EOL via endoflife.date con caché 24h.
+> - **Cabeceras de página fijas:** Todos los encabezados de página permanecen visibles al hacer scroll (`sticky top-0 z-10`).
+> - **Upgrade de dependencias:** Node.js 22-alpine, Prisma, Next.js 15, y dependencias backend/frontend actualizadas a versiones estables más recientes.
+> - **Corrección de condición de carrera:** Panel de información del sistema: corregida condición de carrera en reintento automático.
 
 > **v1.7.1 — Hardening de seguridad + correcciones de esquema e i18n:**
 > - **Seguridad:** Validación del claim `use` en JWKS (SSO Microsoft); `FRONTEND_URL` validada y normalizada al origen en el arranque; validación de `COMPANY_NAME` con allowlist para evitar inyección DN en el certificado TLS; `.env` creado con `umask 0077` (sin ventana world-readable); inyección HTML corregida en plantillas de email EOL.

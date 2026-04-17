@@ -296,46 +296,36 @@ ls -l .env
 
 ### Variables obligatorias en producción
 
+Solo se requieren **6 variables** — el resto tiene valores seguros por defecto en el código.
+
 ```bash
 # ── Base de datos ──────────────────────────────────────────────────────────
-POSTGRES_DB=cmdb_db
-POSTGRES_USER=cmdb_admin           # Cambia el usuario por defecto
-POSTGRES_PASSWORD=<contraseña-segura-32-chars>
-
-# ── Backend ────────────────────────────────────────────────────────────────
-BACKEND_PORT=3000
-JWT_SECRET=$(openssl rand -base64 48)   # Genera y pega el resultado
-
-# ── Frontend ───────────────────────────────────────────────────────────────
-FRONTEND_PORT=3001
-# URL del backend tal como la ve el NAVEGADOR del usuario (IP/dominio real)
-NEXT_PUBLIC_API_URL=https://cmdb.tudominio.com:3000
-
-# ⚠️ IMPORTANTE: NEXT_PUBLIC_* variables are baked into the frontend image at BUILD time.
-# If you change NEXT_PUBLIC_API_URL, you MUST rebuild the frontend:
-#   docker compose -f docker-compose.prod.yml build frontend --no-cache
-#   docker compose -f docker-compose.prod.yml up -d
-
-# ── Entorno de Aplicación ──────────────────────────────────────────────────
-# CRÍTICO: Establecer APP_ENV=prod en producción para:
-#   - Reducir verbosidad de logs (solo warn/error)
-#   - Ocultar helpers de UI (cuentas de prueba en login)
-APP_ENV=prod
-NEXT_PUBLIC_APP_ENV=prod
+POSTGRES_PASSWORD=<contraseña-segura-32-chars>   # openssl rand -base64 32
 
 # ── Seguridad ──────────────────────────────────────────────────────────────
-HTTPS_ENABLED=true
-CORS_ORIGINS=https://cmdb.tudominio.com:3001
+JWT_SECRET=<min-48-chars>            # openssl rand -base64 48
 
-# ── SMTP / Alertas ─────────────────────────────────────────────────────────
+# ── URLs (nginx sirve frontend Y API en el mismo host/puerto) ──────────────
+# nginx escucha en :443 — no incluir puerto en la URL
+NEXT_PUBLIC_API_URL=https://cmdb.tudominio.com
+FRONTEND_URL=https://cmdb.tudominio.com
+
+# ⚠️ NEXT_PUBLIC_API_URL se baja en el build de la imagen frontend.
+# Si la cambias debes reconstruir: docker compose -f docker-compose.prod.yml build frontend --no-cache
+
+# ── Marca ──────────────────────────────────────────────────────────────────
+NEXT_PUBLIC_COMPANY_NAME=Mi Empresa
+
+# ── Almacenamiento Documental ──────────────────────────────────────────────
+DOCUMENTS_STORAGE_PATH=./document-storage
+
+# ── SMTP / Alertas (opcional — vacío para deshabilitar) ───────────────────
 SMTP_HOST=smtp.tudominio.com
 SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=cmdb-alerts@tudominio.com
 SMTP_PASS=<contraseña-smtp>
 ALERT_RECIPIENT=it-ops@tudominio.com
-ALERT_WARN_DAYS=30
-ALERT_CRON_SCHEDULE=30 8 * * *
 ```
 
 > **Seguridad:** El archivo `.env` nunca debe commitearse. Está en `.gitignore`.
@@ -357,34 +347,39 @@ openssl rand -base64 48
 
 ## 5. Generar los certificados SSL
 
+Los certificados se almacenan en **`./certs/`** (raíz del proyecto) y son montados por nginx.
+
 ### Opción A — Certificado autofirmado (desarrollo/intranet)
 
 ```bash
-# Usando el script incluido en el proyecto
+# Usando el script incluido (RSA 4096-bit, válido 10 años)
 bash backend/scripts/generate-certs.sh
 
-# Los certificados se generan en backend/certs/
-ls -la backend/certs/
-# → server.key   (clave privada — NUNCA compartir)
-# → server.crt   (certificado autofirmado — 365 días)
+# Los certificados se generan en ./certs/
+ls -la certs/
+# → server.key   (clave privada RSA 4096-bit — NUNCA compartir ni commitear)
+# → server.crt   (certificado autofirmado — 10 años)
 ```
+
+**Alternativa via UI:** Admin → Certificados → «Generar CSR» (genera clave + CSR directamente desde el navegador).
 
 ### Opción B — Certificado de una CA corporativa (recomendado producción)
 
 ```bash
-# 1. Genera una CSR (Certificate Signing Request)
-openssl req -new -newkey rsa:2048 -nodes \
-  -keyout backend/certs/server.key \
-  -out    backend/certs/server.csr \
-  -subj   "/C=ES/ST=Madrid/O=TuEmpresa/CN=cmdb.tudominio.com"
+# 1. Genera una CSR (Certificate Signing Request) — RSA 4096-bit
+openssl req -new -newkey rsa:4096 -nodes \
+  -keyout certs/server.key \
+  -out    certs/server.csr \
+  -subj   "/C=ES/ST=Madrid/O=TuEmpresa/CN=cmdb.tudominio.com" \
+  -addext "subjectAltName=DNS:cmdb.tudominio.com,DNS:localhost"
 
-# 2. Envía server.csr a tu CA corporativa
+# 2. Envía certs/server.csr a tu CA corporativa
 # 3. Cuando recibas el certificado firmado, guárdalo como:
-cp certificado-firmado.crt backend/certs/server.crt
+cp certificado-firmado.crt certs/server.crt
 
 # 4. Verifica que la clave y el certificado coinciden
-openssl x509 -noout -modulus -in backend/certs/server.crt | md5sum
-openssl rsa  -noout -modulus -in backend/certs/server.key | md5sum
+openssl x509 -noout -modulus -in certs/server.crt | md5sum
+openssl rsa  -noout -modulus -in certs/server.key | md5sum
 # Ambas líneas deben mostrar el mismo hash MD5
 ```
 
@@ -392,7 +387,7 @@ openssl rsa  -noout -modulus -in backend/certs/server.key | md5sum
 
 ## 6. Preparar los volúmenes TLS
 
-Los certificados deben copiarse al volumen Docker nombrado `cmdb-tls-certs`:
+Los certificados deben copiarse al volumen Docker nombrado `cmdb-tls-certs` (usado por `docker-compose.prod.yml`):
 
 ```bash
 # Crear el volumen (si no existe)
@@ -401,7 +396,7 @@ docker volume create cmdb-tls-certs
 # Copiar los certificados al volumen
 docker run --rm \
   -v cmdb-tls-certs:/dest \
-  -v $(pwd)/backend/certs:/src:ro \
+  -v $(pwd)/certs:/src:ro \
   alpine sh -c "cp /src/server.key /src/server.crt /dest/ && chmod 600 /dest/server.key"
 
 # Verificar
@@ -440,32 +435,35 @@ Salida esperada:
 ```
 NAME                  STATUS            PORTS
 cmdb-postgres-prod    running (healthy)
-cmdb-backend-prod     running (healthy) 0.0.0.0:3000->3000/tcp
-cmdb-frontend-prod    running           0.0.0.0:3001->3001/tcp
+cmdb-backend-prod     running (healthy) 3000/tcp
+cmdb-frontend-prod    running           3001/tcp
+cmdb-nginx-prod       running           0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
 ```
+
+> Solo nginx expone puertos al host (443 y 80). Backend y frontend son internos.
 
 ---
 
 ## 8. Verificar el despliegue
 
 ```bash
-# 1. Salud del backend API
-curl -k https://localhost:3000/health
+# 1. Salud del backend (a través de nginx)
+curl -sk https://localhost/api/health
 # Respuesta: {"status":"ok","timestamp":"..."}
 
-# 2. Frontend accesible
-curl -sI http://localhost:3001 | head -5
-# Respuesta: HTTP/1.1 200 OK
+# 2. Redirección HTTP → HTTPS
+curl -sI http://localhost | grep -i location
+# Respuesta: Location: https://localhost/
 
-# 3. Verificar headers de seguridad (Helmet)
-curl -sI http://localhost:3000/health | grep -i "x-frame\|x-content\|x-xss"
-# Debe mostrar:
-#   X-Frame-Options: SAMEORIGIN
-#   X-Content-Type-Options: nosniff
-#   X-XSS-Protection: 0
+# 3. Frontend accesible (a través de nginx)
+curl -skI https://localhost | head -3
+# Respuesta: HTTP/2 200
 
-# 4. Primer login
-# Abre en el navegador: http://cmdb-server:3001
+# 4. Verificar certificado TLS
+openssl s_client -connect localhost:443 -showcerts 2>/dev/null | openssl x509 -noout -subject -dates
+
+# 5. Primer login
+# Abre en el navegador: https://cmdb-server
 # Usuario admin por defecto: admin@cmdb.local / Admin1234!
 # (Cambia la contraseña inmediatamente tras el primer login)
 ```
@@ -528,17 +526,17 @@ EOF
 ## 10. Configurar firewall (firewalld)
 
 ```bash
-# Abrir puertos necesarios
-sudo firewall-cmd --permanent --add-port=3000/tcp   # Backend API
-sudo firewall-cmd --permanent --add-port=3001/tcp   # Frontend
+# Abrir solo los puertos de nginx (único punto de entrada)
+sudo firewall-cmd --permanent --add-service=https   # Puerto 443
+sudo firewall-cmd --permanent --add-service=http    # Puerto 80 (redirect a HTTPS)
 sudo firewall-cmd --reload
 
 # Verificar
-sudo firewall-cmd --list-ports
-# Debe mostrar: 3000/tcp 3001/tcp
+sudo firewall-cmd --list-services
+# Debe mostrar: http https
 
-# Nota: Puerto 5432 (PostgreSQL) NO debe abrirse — la BD es solo interna
-# Nota: Si usas un reverse proxy (Nginx), abre 80/443 en lugar de 3000/3001
+# NO abrir puertos 3000 ni 3001 — backend y frontend son internos a Docker
+# NO abrir puerto 5432 — PostgreSQL es solo de red interna
 ```
 
 ---
@@ -546,22 +544,20 @@ sudo firewall-cmd --list-ports
 ## 11. Actualización de la aplicación
 
 ```bash
-# Ejecutar como cmdb-admin
-whoami  # cmdb-admin
+# Opción A — Script automatizado (recomendado)
+bash scripts/update.sh
+# Hace backup, detecta migraciones, reconstruye, verifica salud, rollback automático si falla
+
+# Opción B — Manual
 cd /opt/cmdb-enterprise-platform
 
-# 1. Obtener cambios del repositorio
 git pull origin main
-
-# 2. Reconstruir las imágenes con los cambios
 docker compose -f docker-compose.prod.yml build --no-cache
-
-# 3. Reiniciar con cero downtime (reemplaza contenedores uno a uno)
 docker compose -f docker-compose.prod.yml up -d
 
-# 4. Verificar que todo está correcto
+# Verificar
 docker compose -f docker-compose.prod.yml ps
-curl -k https://localhost:3000/health
+curl -sk https://localhost/api/health
 ```
 
 ---
@@ -621,6 +617,7 @@ gunzip -c /opt/cmdb/backups/backup_20260315_020000.sql.gz \
 ### Reiniciar un servicio sin detener los demás
 
 ```bash
+docker compose -f docker-compose.prod.yml restart nginx      # Tras renovar certificados
 docker compose -f docker-compose.prod.yml restart backend
 docker compose -f docker-compose.prod.yml restart frontend
 ```
@@ -643,12 +640,14 @@ docker system prune -f --volumes
 
 ## Resumen de URLs y puertos
 
-| Servicio | URL | Puerto |
-|----------|-----|--------|
-| Frontend (UI) | `http://cmdb-server:3001` | 3001 |
-| Backend API | `http://cmdb-server:3000` | 3000 |
-| Backend API (HTTPS) | `https://cmdb-server:3000` | 3000 |
-| PostgreSQL | Solo interno (no expuesto) | — |
+| Servicio | URL pública | Puerto host | Descripción |
+|----------|-------------|-------------|-------------|
+| Plataforma (UI + API) | `https://cmdb-server/` | **443** | nginx TLS gateway |
+| Redirect HTTP | `http://cmdb-server/` | **80** | Redirige a HTTPS |
+| Frontend (interno) | — | *no expuesto* | nginx → frontend:3001 |
+| Backend API (interno) | — | *no expuesto* | nginx → backend:3000 |
+| PostgreSQL | — | *no expuesto* | Solo red interna Docker |
+| Adminer (dev) | `http://cmdb-server:8080` | 8080 | Solo en `docker-compose.yml` |
 
 ---
 

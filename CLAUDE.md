@@ -144,7 +144,7 @@ Before committing any `fix` or `feat`:
 - `main` — production releases (tagged `vX.Y.Z`)
 - `develop` — active development; PRs merge here first
 - Feature branches cut from `develop`, merged back via PR
-- Current release: **v1.7.1** (security hardening + schema & i18n fixes over v1.7.0)
+- Current release: **v2.0.1** (nginx 1.30, dynamic system info panel, sticky headers, stack upgrades)
 
 ## Specialist Skills
 

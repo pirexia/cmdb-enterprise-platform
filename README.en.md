@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-1.6.3-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v1.6.3)
+[![Version](https://img.shields.io/badge/version-2.0.1-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.0.1)
 
 ---
 
@@ -66,7 +66,7 @@
 |-------|-----------|
 | **Database** | PostgreSQL 16 |
 | **ORM** | Prisma 5 |
-| **Backend** | Node.js 20 · Express 5 · TypeScript 5 |
+| **Backend** | Node.js 22 · Express 5 · TypeScript 5 |
 | **Auth** | JWT (jsonwebtoken) · bcrypt · speakeasy (MFA) · ldap-authentication |
 | **Frontend** | Next.js 16 (App Router) · React 19 · Tailwind CSS 4 |
 | **Visualisation** | React Flow 11 · Lucide React |

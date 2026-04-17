@@ -82,6 +82,25 @@ git --version
 openssl version
 ```
 
+### Platform stack versions
+
+| Component  | Version | EOL          | License             |
+|------------|---------|--------------|---------------------|
+| Node.js    | 22 LTS  | Apr 2027     | MIT                 |
+| PostgreSQL | 15/16   | Nov 2027/28  | PostgreSQL License  |
+| nginx      | 1.30    | —            | BSD-2-Clause        |
+| Next.js    | 16      | —            | MIT                 |
+| Express    | 5       | —            | MIT                 |
+| Prisma     | 5       | —            | Apache 2.0          |
+
+### nginx configuration
+
+The nginx TLS gateway is configured in:
+- **Main configuration:** `nginx/nginx.conf`
+- **Virtual hosts:** `nginx/conf.d/`
+- **TLS certificates:** `./certs/` (mounted read-only to nginx, read-write to the backend)
+- The `NGINX_VERSION` env var in docker-compose feeds the System Information panel in the UI.
+
 ---
 
 ## 2. Initial Deployment
@@ -706,6 +725,13 @@ The script implements five layers of protection before and during the update:
 3. **Tagged rollback point:** Creates a git tag `rollback/<timestamp>` pointing at the current HEAD before running `git pull`. This tag allows restoring the exact code of the previous version.
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
+
+> **v2.0.1 — Stack upgrade, dynamic system info panel, sticky headers:**
+> - **nginx 1.30 (stable):** Upgraded from nginx 1.27; EOL open.
+> - **Dynamic system info panel:** New `GET /api/system-info` endpoint (admin only) with a 5-column table showing stack versions and EOL dates via endoflife.date with 24h cache.
+> - **Sticky page headers:** All page header bars remain visible when scrolling (`sticky top-0 z-10`).
+> - **Dependency upgrades:** Node.js 22-alpine, Prisma, Next.js 15, and all backend/frontend packages updated to latest stable.
+> - **Race condition fix:** System info panel: fixed retry race condition on auto-refresh.
 
 > **v1.7.1 — Security hardening + schema & i18n fixes:**
 > - **Security:** JWKS `use` claim validation in Microsoft SSO; `FRONTEND_URL` validated and normalised to origin at startup; `COMPANY_NAME` allowlist check prevents DN injection in TLS cert generation; `.env` created with `umask 0077` (no world-readable window); HTML injection fixed in EOL email templates.

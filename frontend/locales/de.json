@@ -4,7 +4,7 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v1.7.1"
+    "copyright": "© {year} CMDB Platform v2.0.1"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -451,7 +451,20 @@
       "smtp_configured": "Konfiguriert",
       "smtp_schedule": "Tägliches Benachrichtigungsmodul aktiv. Zeitplan: 08:30 Uhr (Europe/Madrid).",
       "test_email": "Senden…",
-      "sending": "Senden…"
+      "sending": "Senden…",
+      "sys_col_component": "Komponente",
+      "sys_col_version": "Version",
+      "sys_col_eol": "Support-Ende",
+      "sys_col_license": "Lizenz",
+      "sys_col_status": "Status",
+      "sys_status_active": "Aktiv",
+      "sys_status_eol_soon": "EOL bald",
+      "sys_status_eol": "Kein Support",
+      "sys_status_community": "Community",
+      "sys_eol_unknown": "—",
+      "sys_loading": "Systeminformationen werden geladen…",
+      "sys_error": "Systeminformationen konnten nicht geladen werden.",
+      "sys_retry": "Erneut versuchen"
     }
   },
   "dashboard": {

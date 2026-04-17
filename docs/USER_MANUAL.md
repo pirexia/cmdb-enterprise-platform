@@ -764,6 +764,12 @@ Esta operación solo está disponible para cuentas locales y debe realizarse por
 
 Muestra el estado de los servicios del sistema: el servidor de la plataforma, la integración con el directorio corporativo y el motor de correo electrónico. Desde aquí, el administrador puede enviar un correo de prueba para verificar que las alertas funcionan correctamente.
 
+El panel de **Información del Sistema** muestra el stack tecnológico completo de la plataforma con datos en tiempo real. Cada fila muestra el nombre del componente, versión instalada, fecha de fin de soporte (obtenida de endoflife.date, actualizada cada 24 horas), licencia de software y un indicador de estado:
+- **Activo** (verde): con soporte, fin de soporte a más de 90 días
+- **Próximo EOL** (ámbar): fin de soporte en 90 días o menos
+- **Sin soporte** (rojo): fecha de fin de soporte superada
+- **Comunidad** (gris): mantenido por la comunidad sin política de EOL formal
+
 ---
 
 ## 18. Datos Maestros — Tipos de CI

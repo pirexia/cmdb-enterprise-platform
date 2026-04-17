@@ -4,7 +4,7 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v1.7.1"
+    "copyright": "© {year} CMDB Platform v2.0.1"
   },
   "sidebar": {
     "dashboard": "Tableau de bord",
@@ -451,7 +451,20 @@
       "smtp_configured": "Configuré",
       "smtp_schedule": "Moteur d'alertes quotidiennes actif. Horaire : 08h30 (Europe/Madrid).",
       "test_email": "Envoi…",
-      "sending": "Envoi…"
+      "sending": "Envoi…",
+      "sys_col_component": "Composant",
+      "sys_col_version": "Version",
+      "sys_col_eol": "Fin du support",
+      "sys_col_license": "Licence",
+      "sys_col_status": "Statut",
+      "sys_status_active": "Actif",
+      "sys_status_eol_soon": "EOL proche",
+      "sys_status_eol": "Sans support",
+      "sys_status_community": "Communauté",
+      "sys_eol_unknown": "—",
+      "sys_loading": "Chargement des informations système…",
+      "sys_error": "Impossible de charger les informations système.",
+      "sys_retry": "Réessayer"
     }
   },
   "dashboard": {

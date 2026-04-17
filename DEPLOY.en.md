@@ -154,7 +154,61 @@ ls -ld /opt/cmdb-enterprise-platform
 # drwxr-x--- 2 cmdb-admin cmdb-admin 4096 ... /opt/cmdb-enterprise-platform
 ```
 
-### 1.5 Switch to the Service User
+### 1.5 Root-only Prerequisites (Rootless Podman)
+
+> **Run as root or a sudo-enabled user BEFORE switching to `cmdb-admin`.**
+
+These are the only commands that require system administrator privileges. The installer (`install.sh`) will verify each one and abort with clear instructions if they have not been applied.
+
+#### a) Enable privileged ports for rootless Podman
+
+RHEL 9 restricts unprivileged ports to ≥ 1024 by default. nginx requires port 80 (HTTP→HTTPS redirect) and port 443 (HTTPS). Lower the threshold to 80:
+
+```bash
+# Persist across reboots
+sudo tee /etc/sysctl.d/99-cmdb-podman.conf <<'EOF'
+net.ipv4.ip_unprivileged_port_start=80
+EOF
+
+# Apply immediately (no reboot required)
+sudo sysctl --system
+
+# Verify
+sysctl net.ipv4.ip_unprivileged_port_start
+# net.ipv4.ip_unprivileged_port_start = 80
+```
+
+> **Why 80 and not lower?** Setting 80 allows any local user to bind ports 80 and above. If a stricter security profile is required, 443 can be used instead (HTTPS only, HTTP redirect disabled).
+
+#### b) Configure the firewall (firewalld)
+
+```bash
+sudo firewall-cmd --permanent --add-service=https   # port 443
+sudo firewall-cmd --permanent --add-service=http    # port 80 (redirect)
+sudo firewall-cmd --reload
+
+# Verify
+sudo firewall-cmd --list-services
+# dhcpv6-client http https ssh
+```
+
+#### c) Enable linger for `cmdb-admin`
+
+Without linger, Podman containers stop when the SSH session is closed:
+
+```bash
+sudo loginctl enable-linger cmdb-admin
+
+# Verify
+loginctl show-user cmdb-admin | grep Linger
+# Linger=yes
+```
+
+> **Root operations summary:** only the three steps above. The installer handles everything else without requiring `sudo`.
+
+---
+
+### 1.6 Switch to the Service User
 
 **All subsequent operations must be run as `cmdb-admin`:**
 

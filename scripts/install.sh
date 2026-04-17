@@ -356,8 +356,9 @@ ensure_podman_policy
 
 # ── Podman rootless: privileged port access ───────────────────────────────────
 # Rootless Podman cannot bind ports < net.ipv4.ip_unprivileged_port_start
-# (default 1024 on RHEL 9). nginx requires ports 80 and 443.
-# We lower the threshold to 80 via sysctl (requires sudo) and persist it.
+# (default 1024 on RHEL 9). nginx requires 80 and 443.
+# This sysctl must be set by a root/sudo admin BEFORE running this installer.
+# See DEPLOY.md § "Prerrequisitos de root" for the exact commands.
 ensure_podman_port_access() {
   [ "$RUNTIME" = "podman" ] || return 0
 
@@ -365,24 +366,20 @@ ensure_podman_port_access() {
   port_start=$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo "1024")
 
   if [ "$port_start" -le 80 ]; then
-    success "Unprivileged port start already at ${port_start} — OK."
+    success "Unprivileged port start = ${port_start} — OK."
     return 0
   fi
 
-  warn "Rootless Podman cannot bind ports < ${port_start} (nginx needs 80 + 443)."
-  info "Applying sysctl net.ipv4.ip_unprivileged_port_start=80 (requires sudo) ..."
-
-  if ! sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80; then
-    error "sudo sysctl failed. Either re-run as root or set it manually:"
-    error "  echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/99-cmdb-podman.conf"
-    error "  sudo sysctl --system"
-    exit 1
-  fi
-
-  # Persist across reboots
-  echo "net.ipv4.ip_unprivileged_port_start=80" \
-    | sudo tee /etc/sysctl.d/99-cmdb-podman.conf > /dev/null
-  success "Unprivileged port start set to 80 (persisted via /etc/sysctl.d/99-cmdb-podman.conf)."
+  error "Rootless Podman cannot bind ports 80/443 (current limit: ${port_start})."
+  error "A root administrator must run the following ONCE before re-running this installer:"
+  error ""
+  error "  sudo tee /etc/sysctl.d/99-cmdb-podman.conf <<'EOF'"
+  error "  net.ipv4.ip_unprivileged_port_start=80"
+  error "  EOF"
+  error "  sudo sysctl --system"
+  error ""
+  error "See DEPLOY.md, section \"Prerrequisitos de root (Podman rootless)\", for details."
+  exit 1
 }
 
 ensure_podman_port_access
@@ -402,7 +399,7 @@ info "Press Enter to accept the default shown in brackets."
 echo ""
 
 # ── Install directory ─────────────────────────────────────────────────────────
-prompt INSTALL_DIR "Install directory" "/opt/cmdb"
+prompt INSTALL_DIR "Install directory" "/opt/cmdb-enterprise-platform"
 INSTALL_DIR="${INSTALL_DIR%/}"   # strip accidental trailing slash
 
 # ── Repository detection ──────────────────────────────────────────────────────

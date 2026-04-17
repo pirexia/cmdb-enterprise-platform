@@ -154,7 +154,61 @@ ls -ld /opt/cmdb-enterprise-platform
 # drwxr-x--- 2 cmdb-admin cmdb-admin 4096 ... /opt/cmdb-enterprise-platform
 ```
 
-### 1.5 Cambiar al usuario de servicio
+### 1.5 Prerrequisitos de root (Podman rootless)
+
+> **Ejecutar como root o usuario con sudo ANTES de cambiar a `cmdb-admin`.**
+
+Estos son los únicos comandos que requieren privilegios de administrador del sistema. El instalador (`install.sh`) los verificará y abortará con instrucciones claras si no están aplicados.
+
+#### a) Habilitar puertos privilegiados para Podman rootless
+
+RHEL 9 limita por defecto los puertos no privilegiados a ≥ 1024. nginx requiere los puertos 80 (HTTP→HTTPS redirect) y 443 (HTTPS). Es necesario bajar ese límite a 80:
+
+```bash
+# Persistir en sysctl (sobrevive reinicios)
+sudo tee /etc/sysctl.d/99-cmdb-podman.conf <<'EOF'
+net.ipv4.ip_unprivileged_port_start=80
+EOF
+
+# Aplicar en caliente (sin reiniciar)
+sudo sysctl --system
+
+# Verificar
+sysctl net.ipv4.ip_unprivileged_port_start
+# net.ipv4.ip_unprivileged_port_start = 80
+```
+
+> **¿Por qué este valor y no menor?** El valor 80 permite a cualquier usuario del sistema bindear puertos 80 y superiores. Si el perfil de seguridad requiere un límite más estricto, se puede usar 443 (solo HTTPS, sin redirect HTTP) aunque se perdería la redirección automática HTTP→HTTPS.
+
+#### b) Configurar firewall (firewalld)
+
+```bash
+sudo firewall-cmd --permanent --add-service=https   # puerto 443
+sudo firewall-cmd --permanent --add-service=http    # puerto 80 (redirect)
+sudo firewall-cmd --reload
+
+# Verificar
+sudo firewall-cmd --list-services
+# dhcpv6-client http https ssh
+```
+
+#### c) Habilitar linger para `cmdb-admin`
+
+Sin linger, los contenedores Podman se detienen al cerrar la sesión SSH:
+
+```bash
+sudo loginctl enable-linger cmdb-admin
+
+# Verificar
+loginctl show-user cmdb-admin | grep Linger
+# Linger=yes
+```
+
+> **Resumen de operaciones root requeridas:** solo las tres anteriores. El instalador gestiona todo lo demás sin necesidad de `sudo`.
+
+---
+
+### 1.6 Cambiar al usuario de servicio
 
 **Todas las operaciones posteriores deben ejecutarse como `cmdb-admin`:**
 
@@ -524,6 +578,8 @@ EOF
 ---
 
 ## 10. Configurar firewall (firewalld)
+
+> **Nota:** Este paso debe realizarse como root antes de ejecutar el instalador. Ver sección 1.5b para los comandos completos.
 
 ```bash
 # Abrir solo los puertos de nginx (único punto de entrada)

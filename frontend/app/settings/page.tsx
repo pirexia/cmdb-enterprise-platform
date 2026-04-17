@@ -564,14 +564,8 @@ export default function SettingsPage() {
                   <p className="text-sm text-red-600">{t("settings.integrations.sys_error")}</p>
                   <button
                     onClick={() => {
-                      setSysInfo(null);
                       setSysInfoError(false);
-                      setSysInfoLoading(true);
-                      apiFetch('/api/system-info')
-                        .then(r => r.json())
-                        .then((data: SystemInfoData) => setSysInfo(data))
-                        .catch(() => setSysInfoError(true))
-                        .finally(() => setSysInfoLoading(false));
+                      setSysInfo(null);
                     }}
                     className="text-xs font-medium text-indigo-600 hover:underline"
                   >

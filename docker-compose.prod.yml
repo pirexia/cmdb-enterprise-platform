@@ -70,7 +70,7 @@ services:
       ALERT_RECIPIENT: ${ALERT_RECIPIENT:-}
       # Nginx version — read by systemInfoService for System Info display
       # Update this when changing the nginx image tag
-      NGINX_VERSION: "1.27"
+      NGINX_VERSION: "1.30"
       # LDAP / Active Directory (optional)
       USE_LDAP:          ${USE_LDAP:-false}
       LDAP_URL:          ${LDAP_URL:-}
@@ -132,7 +132,7 @@ services:
 
   # ── Nginx — unified TLS gateway ──────────────────────────────────────────────
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.30-alpine
     container_name: cmdb-nginx-prod
     restart: unless-stopped
     volumes:

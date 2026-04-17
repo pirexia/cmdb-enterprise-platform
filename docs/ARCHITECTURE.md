@@ -59,7 +59,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Seguridad HTTP | Helmet | 8.x   |
 | Alertas Email | nodemailer | 8.x  |
 | Scheduler  | node-cron  | 4.x     |
-| Proxy TLS  | nginx 1.27 | — |
+| Proxy TLS  | nginx 1.30 | — |
 | Upload de ficheros | multer | 1.x |
 
 ### Base de Datos
@@ -88,7 +88,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 │  │                     cmdb-public network                      │  │
 │  │                                                              │  │
 │  │   ┌────────────────────────────────────────────────────┐    │  │
-│  │   │  cmdb-nginx    (nginx 1.27-alpine)                  │    │  │
+│  │   │  cmdb-nginx    (nginx 1.30-alpine)                  │    │  │
 │  │   │  Puertos host: :443 (HTTPS)  :80 (→ redirect 301)  │    │  │
 │  │   │  /         → frontend:3001                          │    │  │
 │  │   │  /api/*    → backend:3000                           │    │  │

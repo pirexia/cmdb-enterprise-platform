@@ -88,7 +88,7 @@ openssl version
 |------------|---------|--------------|---------------------|
 | Node.js    | 22 LTS  | Apr 2027     | MIT                 |
 | PostgreSQL | 15/16   | Nov 2027/28  | PostgreSQL License  |
-| nginx      | 1.27    | —            | BSD-2-Clause        |
+| nginx      | 1.30    | —            | BSD-2-Clause        |
 | Next.js    | 16      | —            | MIT                 |
 | Express    | 5       | —            | MIT                 |
 | Prisma     | 5       | —            | Apache 2.0          |

@@ -256,7 +256,7 @@ function buildGraph(
 // ─── Excel export ─────────────────────────────────────────────────────────────
 
 async function exportToExcel(rows: RelationRow[], center: CIOption, t: (key: string) => string) {
-  const XLSX = await import("xlsx");
+  const ExcelJS = (await import("exceljs")).default;
   const dirCol    = t("map.excel_col_direction");
   const srcCol    = t("map.excel_col_source");
   const srcSlug   = t("map.excel_col_source_slug");
@@ -277,16 +277,25 @@ async function exportToExcel(rows: RelationRow[], center: CIOption, t: (key: str
     [tgtSlug]:  r.target_slug,
     [depthCol]: r.depth ?? 1,
   }));
-  const ws = XLSX.utils.json_to_sheet(data);
-  // Auto-fit column widths
-  const colWidths = Object.keys(data[0] ?? {}).map((key) => ({
-    wch: Math.max(key.length, ...data.map((row) => String(row[key as keyof typeof row]).length)) + 2,
-  }));
-  ws["!cols"] = colWidths;
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  XLSX.writeFile(wb, `dependencias-${center.apiSlug}.xlsx`);
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName);
+  if (data.length > 0) {
+    const keys = Object.keys(data[0]);
+    ws.columns = keys.map((key) => ({
+      header: key,
+      key,
+      width: Math.max(key.length, ...data.map((row) => String(row[key as keyof typeof row]).length)) + 2,
+    }));
+    data.forEach((r) => ws.addRow(r));
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `dependencias-${center.apiSlug}.xlsx`;
+  a.click(); URL.revokeObjectURL(url);
 }
 
 // ─── Table view ───────────────────────────────────────────────────────────────

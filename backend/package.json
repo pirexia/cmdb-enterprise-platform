@@ -17,6 +17,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "overrides": {
+    "path-to-regexp": ">=8.3.1"
+  },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
@@ -44,7 +47,7 @@
     "jsonwebtoken": "^9.0.3",
     "ldap-authentication": "^4.0.4",
     "node-cron": "^4.2.1",
-    "nodemailer": "^8.0.2",
+    "nodemailer": "^8.0.5",
     "qrcode": "^1.5.4",
     "speakeasy": "^2.0.0"
   }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ClipboardList, Download, FilterX, RefreshCw, AlertTriangle, Search, Shield, Server, ShieldAlert } from "lucide-react";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -134,7 +134,7 @@ export default function AuditPage() {
     });
   }, [logs, filters.search, filters.entity, filters.action]);
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const rows = filtered.map((l) => ({
       [t("audit.columns.date")]:    formatDateTime(l.created_at),
       [t("common.email")]:          l.user_email,
@@ -143,10 +143,18 @@ export default function AuditPage() {
       [t("common.name")]:           l.entity_name ?? "",
       "ID Afectado":                l.entity_id,
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Auditoría");
-    XLSX.writeFile(wb, `auditoria_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Auditoría");
+    if (rows.length > 0) {
+      ws.columns = Object.keys(rows[0]).map((key) => ({ header: key, key }));
+      rows.forEach((r) => ws.addRow(r));
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `auditoria_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click(); URL.revokeObjectURL(url);
   };
 
   const filterBadgeLabel =

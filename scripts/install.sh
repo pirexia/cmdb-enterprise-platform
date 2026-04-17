@@ -818,6 +818,7 @@ if [ "$PLATFORM" = "compose" ]; then
   $COMPOSE_CMD -f docker-compose.prod.yml build --no-cache
 
   info "Starting services ..."
+  $COMPOSE_CMD -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
   $COMPOSE_CMD -f docker-compose.prod.yml up -d
 
   success "Containers started."

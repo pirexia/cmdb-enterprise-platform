@@ -82,6 +82,25 @@ git --version
 openssl version
 ```
 
+### Versiones del stack de la plataforma
+
+| Componente | Versión | EOL          | Licencia            |
+|------------|---------|--------------|---------------------|
+| Node.js    | 22 LTS  | Abr 2027     | MIT                 |
+| PostgreSQL | 15/16   | Nov 2027/28  | PostgreSQL License  |
+| nginx      | 1.27    | —            | BSD-2-Clause        |
+| Next.js    | 16      | —            | MIT                 |
+| Express    | 5       | —            | MIT                 |
+| Prisma     | 5       | —            | Apache 2.0          |
+
+### Configuración nginx
+
+El gateway TLS nginx se configura en:
+- **Configuración principal:** `nginx/nginx.conf`
+- **Virtual hosts:** `nginx/conf.d/`
+- **Certificados TLS:** `./certs/` (montado en solo lectura para nginx, lectura-escritura para el backend)
+- La variable `NGINX_VERSION` en docker-compose alimenta el panel de Información del Sistema en la UI.
+
 ---
 
 ## 2. Despliegue Inicial

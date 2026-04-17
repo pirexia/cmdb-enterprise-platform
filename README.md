@@ -67,7 +67,7 @@
 |------|-----------|
 | **Base de datos** | PostgreSQL 16 |
 | **ORM** | Prisma 5 |
-| **Backend** | Node.js 20 · Express 5 · TypeScript 5 |
+| **Backend** | Node.js 22 · Express 5 · TypeScript 5 |
 | **Auth** | JWT (jsonwebtoken) · bcrypt · speakeasy (MFA) · ldap-authentication |
 | **Frontend** | Next.js 16 (App Router) · React 19 · Tailwind CSS 4 |
 | **Visualización** | React Flow 11 · Lucide React |

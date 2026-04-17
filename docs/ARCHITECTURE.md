@@ -662,7 +662,7 @@ La siguiente tabla proporciona guías de dimensionamiento basadas en el volumen 
 - Se debe reservar RAM para el sistema operativo RHEL (~1 GB)
 
 **Espacio LVM en /home:**
-- **Imágenes de contenedores:** ~3-4 GB (Node.js 20 Alpine + PostgreSQL 16 Alpine + frontend)
+- **Imágenes de contenedores:** ~3-4 GB (Node.js 22 Alpine + PostgreSQL 16 Alpine + frontend)
 - **Base de datos PostgreSQL:** Depende del volumen de CIs (ver "Crecimiento BD")
 - **Logs de contenedores:** ~500 MB - 1 GB por mes (con logrotate configurado)
 - **Backups locales:** Si se almacenan en `/home/cmdb-admin/backups`, calcular ~1 GB por backup diario × retención (default 30 días)

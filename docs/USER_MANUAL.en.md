@@ -764,6 +764,12 @@ This operation is only available for local accounts and must be carried out by y
 
 Shows the status of the system's services: the platform server, the corporate directory integration, and the email engine. From here, the administrator can send a test email to verify that alerts are working correctly.
 
+The **System Information** panel shows the platform's full technology stack with live data. Each row displays the component name, installed version, end-of-support date (sourced from endoflife.date, refreshed every 24 hours), software license, and a status badge:
+- **Active** (green): supported, end of support more than 90 days away
+- **EOL Soon** (amber): end of support within 90 days
+- **No Support** (red): end-of-life date has passed
+- **Community** (grey): maintained by community without a formal EOL policy
+
 ---
 
 ## 18. Master Data — CI Types

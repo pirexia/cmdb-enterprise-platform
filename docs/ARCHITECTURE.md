@@ -41,7 +41,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Iconos     | Lucide React | 0.577 |
 | Parsing CSV | PapaParse | 5.x    |
 | Mapas de dependencias | ReactFlow | 11.x |
-| Export Excel | SheetJS (xlsx) | 0.18.x |
+| Export Excel | ExcelJS | 4.4.x |
 | i18n       | Custom Context (sin librería) | — |
 | Autenticación | JWT localStorage + AuthContext | — |
 
@@ -598,7 +598,7 @@ Se optó por columnas planas en `configuration_items` porque:
 | JSONB para vulns/agents | Tablas relacionales separadas | Flexibilidad de esquema, datos heterogéneos por fuente |
 | node-cron | Bull, Agenda | Sin dependencia de Redis; simplicidad para alertas diarias |
 | Travesía de grafo con CTE recursiva (PostgreSQL) | N peticiones HTTP desde el frontend (BFS cliente) | Una sola query; el motor PostgreSQL gestiona la travesía y la prevención de ciclos con arrays de camino |
-| SheetJS (xlsx) para export | jsPDF, backend CSV | Export de Excel 100% cliente, sin petición adicional al servidor, compatible con todos los navegadores modernos |
+| ExcelJS para export | jsPDF, backend CSV | Export de Excel 100% cliente, sin petición adicional al servidor, sin CVEs activos (xlsx tenía Prototype Pollution sin fix) |
 | i18n custom context | next-intl, react-i18next | Sin App Router complication, bundle mínimo, control total |
 | Alpine base images | Ubuntu, Debian | Imagen mínima (~50MB), menor superficie de ataque |
 | non-root USER node | root (default) | Requisito de hardening: principio de mínimo privilegio |

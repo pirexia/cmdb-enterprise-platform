@@ -41,7 +41,7 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | Icons      | Lucide React | 0.577 |
 | CSV Parsing | PapaParse | 5.x    |
 | Dependency Maps | ReactFlow | 11.x |
-| Excel Export | SheetJS (xlsx) | 0.18.x |
+| Excel Export | ExcelJS | 4.4.x |
 | i18n       | Custom Context (no library) | — |
 | Authentication | JWT localStorage + AuthContext | — |
 
@@ -597,7 +597,7 @@ Flat columns in `configuration_items` were chosen because:
 | JSONB for vulns/agents | Separate relational tables | Schema flexibility, heterogeneous data per source |
 | node-cron | Bull, Agenda | No Redis dependency; simplicity for daily alerts |
 | Graph traversal with recursive CTE (PostgreSQL) | N HTTP requests from frontend (client-side BFS) | Single query; the PostgreSQL engine handles traversal and cycle prevention with path arrays |
-| SheetJS (xlsx) for export | jsPDF, backend CSV | 100% client-side Excel export, no additional server request, compatible with all modern browsers |
+| ExcelJS for export | jsPDF, backend CSV | 100% client-side Excel export, no additional server request, no active CVEs (xlsx had unfixable Prototype Pollution) |
 | Custom i18n context | next-intl, react-i18next | No App Router complications, minimal bundle, full control |
 | Alpine base images | Ubuntu, Debian | Minimal image (~50MB), smaller attack surface |
 | non-root USER node | root (default) | Hardening requirement: principle of least privilege |

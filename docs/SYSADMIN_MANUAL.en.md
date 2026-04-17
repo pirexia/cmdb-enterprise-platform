@@ -213,6 +213,24 @@ USE_LDAP=false
 # LDAP_TLS_REJECT_UNAUTHORIZED=0    # Only if using an internal self-signed cert
 ```
 
+### nginx ports (optional variables)
+
+By default nginx listens on the standard ports 443 (HTTPS) and 80 (HTTP→redirect). If the server already has another application on those ports, override them in `.env`:
+
+```bash
+# ── nginx ports (host → container) ──────────────────────────────────
+# The container-internal port does not change (always 443/80).
+# Only the host-side port mapping is affected.
+NGINX_HTTPS_PORT=8443   # e.g. access via https://cmdb.example.com:8443
+NGINX_HTTP_PORT=8080    # e.g. HTTP redirect on port 8080
+
+# When using non-standard ports, also update the public URL:
+# NEXT_PUBLIC_API_URL=https://cmdb.example.com:8443
+# FRONTEND_URL=https://cmdb.example.com:8443
+```
+
+> **Rootless Podman note:** If the chosen ports are < 1024, the RHEL 9 kernel requires `net.ipv4.ip_unprivileged_port_start` to be lowered. The installer detects this and guides the administrator. Using ports ≥ 1024 (e.g. 8443/8080) avoids this requirement entirely.
+
 ### Optional variables — Document Repository
 
 The Document Repository stores **all file types** managed by the platform: contracts, addendums, licences, technical documents, quotes, and any custom type. All share the same storage directory on disk.

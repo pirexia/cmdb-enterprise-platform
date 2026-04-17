@@ -210,6 +210,24 @@ LDAP_BIND_DN=
 LDAP_BIND_PASSWORD=
 ```
 
+### Puertos de nginx (variables opcionales)
+
+Por defecto nginx escucha en los puertos estándar 443 (HTTPS) y 80 (HTTP→redirect). Si el servidor ya tiene otra aplicación en esos puertos, se pueden cambiar añadiendo estas variables al `.env`:
+
+```bash
+# ── Puertos nginx (host → contenedor) ────────────────────────────────
+# El puerto interno del contenedor no cambia (siempre 443/80).
+# Solo se modifica el puerto expuesto en el host.
+NGINX_HTTPS_PORT=8443   # Ejemplo: acceso en https://cmdb.ejemplo.com:8443
+NGINX_HTTP_PORT=8080    # Ejemplo: redirect HTTP en puerto 8080
+
+# Si se usan puertos no estándar, actualizar también PUBLIC_URL:
+# NEXT_PUBLIC_API_URL=https://cmdb.ejemplo.com:8443
+# FRONTEND_URL=https://cmdb.ejemplo.com:8443
+```
+
+> **Nota Podman rootless:** Si los puertos elegidos son < 1024, el kernel de RHEL 9 requiere `net.ipv4.ip_unprivileged_port_start` ajustado. El instalador detecta este caso y guía al administrador. Usar puertos ≥ 1024 (ej. 8443/8080) evita este requisito.
+
 ### Variables opcionales — Repositorio Documental
 
 El Repositorio Documental almacena **todos los tipos de fichero** gestionados por la plataforma: contratos, adendas, licencias, documentos técnicos, ofertas y cualquier tipo personalizado. Todos comparten el mismo directorio de almacenamiento en disco.

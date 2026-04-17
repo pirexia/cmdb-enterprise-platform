@@ -69,13 +69,15 @@ const LICENSE_MAP: Record<string, string> = {
   'node-cron':    'MIT',
   'nodemailer':   'MIT',
   'multer':       'MIT',
+  'ExcelJS':      'MIT',
 };
 
 // ⚠️  Keep in sync with frontend/package.json
 const FRONTEND_VERSIONS: Record<string, string> = {
-  'Next.js':      '16.1.6',
+  'Next.js':      '16.2.4',
   'React':        '19.2.3',
   'Tailwind CSS': '4.2.1',  // resolved from frontend/package-lock.json
+  'ExcelJS':      '4.4.0',
 };
 
 // ── Cache ──────────────────────────────────────────────────────────────────────
@@ -163,6 +165,7 @@ export async function getSystemInfo(prisma: PrismaClient): Promise<SystemInfoRes
     { name: 'node-cron',    category: 'Library',   version: readPkgVersion('node-cron') },
     { name: 'nodemailer',   category: 'Library',   version: readPkgVersion('nodemailer') },
     { name: 'multer',       category: 'Library',   version: readPkgVersion('multer') },
+    { name: 'ExcelJS',      category: 'Library',   version: FRONTEND_VERSIONS['ExcelJS'] },
   ];
 
   const components: StackComponent[] = await Promise.all(

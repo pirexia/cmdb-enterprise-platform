@@ -362,27 +362,42 @@ ensure_podman_policy
 ensure_podman_port_access() {
   [ "$RUNTIME" = "podman" ] || return 0
 
+  # Determine the lowest port we need to bind (known at call time only when
+  # NGINX_HTTP_PORT / NGINX_HTTPS_PORT are already set; fall back to 80/443).
+  local min_port=80
+  if [ -n "${NGINX_HTTP_PORT:-}" ] && [ -n "${NGINX_HTTPS_PORT:-}" ]; then
+    min_port=$(( NGINX_HTTP_PORT < NGINX_HTTPS_PORT ? NGINX_HTTP_PORT : NGINX_HTTPS_PORT ))
+  fi
+
+  # If both ports are unprivileged (>=1024) no sysctl change is needed.
+  if [ "$min_port" -ge 1024 ]; then
+    success "Both nginx ports >= 1024 — no sysctl change needed."
+    return 0
+  fi
+
   local port_start
   port_start=$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo "1024")
 
-  if [ "$port_start" -le 80 ]; then
+  if [ "$port_start" -le "$min_port" ]; then
     success "Unprivileged port start = ${port_start} — OK."
     return 0
   fi
 
-  error "Rootless Podman cannot bind ports 80/443 (current limit: ${port_start})."
+  error "Rootless Podman cannot bind port ${min_port} (current limit: ${port_start})."
   error "A root administrator must run the following ONCE before re-running this installer:"
   error ""
   error "  sudo tee /etc/sysctl.d/99-cmdb-podman.conf <<'EOF'"
-  error "  net.ipv4.ip_unprivileged_port_start=80"
+  error "  net.ipv4.ip_unprivileged_port_start=${min_port}"
   error "  EOF"
   error "  sudo sysctl --system"
   error ""
+  error "Alternatively, choose ports >= 1024 (e.g. HTTPS=8443, HTTP=8080)."
   error "See DEPLOY.md, section \"Prerrequisitos de root (Podman rootless)\", for details."
   exit 1
 }
 
-ensure_podman_port_access
+# Note: ensure_podman_port_access is called AFTER the port prompts (below)
+# so it knows the actual NGINX_*_PORT values.
 
 # OpenShift detection
 detect_openshift
@@ -441,6 +456,27 @@ if ! echo "$PUBLIC_URL" | grep -q "^https://"; then
     info "Auto-added https://: $PUBLIC_URL"
   fi
 fi
+
+# ── nginx listen ports ────────────────────────────────────────────────────────
+echo ""
+info "nginx listen ports — change if 80/443 are already in use on this host."
+prompt NGINX_HTTPS_PORT "HTTPS port" "443"
+prompt NGINX_HTTP_PORT  "HTTP port (redirect → HTTPS)" "80"
+# Validate: must be numeric 1-65535
+for _p in "$NGINX_HTTPS_PORT" "$NGINX_HTTP_PORT"; do
+  if ! [[ "$_p" =~ ^[0-9]+$ ]] || [ "$_p" -lt 1 ] || [ "$_p" -gt 65535 ]; then
+    error "Invalid port: $_p (must be 1-65535)"; exit 1
+  fi
+done
+# If HTTPS port is non-standard, append it to PUBLIC_URL (if not already there)
+if [ "$NGINX_HTTPS_PORT" != "443" ]; then
+  _host_only="$(echo "$PUBLIC_URL" | sed 's|https://||;s|/.*||;s|:[0-9]*$||')"
+  PUBLIC_URL="https://${_host_only}:${NGINX_HTTPS_PORT}"
+  info "Public URL updated to include custom port: $PUBLIC_URL"
+fi
+
+# Port access check now that we know the actual port values
+ensure_podman_port_access
 
 # ── Company name ──────────────────────────────────────────────────────────────
 echo ""
@@ -614,6 +650,8 @@ step "Configuration Summary"
 echo ""
 printf "  ${BOLD}%-30s${NC} %s\n" "Install directory:"  "$INSTALL_DIR"
 printf "  ${BOLD}%-30s${NC} %s\n" "Public URL:"         "$PUBLIC_URL"
+printf "  ${BOLD}%-30s${NC} %s\n" "nginx HTTPS port:"   "$NGINX_HTTPS_PORT"
+printf "  ${BOLD}%-30s${NC} %s\n" "nginx HTTP port:"    "$NGINX_HTTP_PORT"
 printf "  ${BOLD}%-30s${NC} %s\n" "Company name:"       "$COMPANY_NAME"
 printf "  ${BOLD}%-30s${NC} %s\n" "DB password:"        "****"
 printf "  ${BOLD}%-30s${NC} %s\n" "TLS certificate:"    "$SSL_MODE"
@@ -726,6 +764,12 @@ AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
 AZURE_REDIRECT_URI=${AZURE_REDIRECT_URI}
 AZURE_ALLOWED_DOMAIN=${AZURE_ALLOWED_DOMAIN}
 AZURE_AUTO_PROVISION=${AZURE_AUTO_PROVISION}
+
+# ── nginx listen ports ────────────────────────────────────────────────────────
+# Host ports mapped to the nginx container (container-internal ports are fixed).
+# Change these if 80 or 443 are already in use on this host.
+NGINX_HTTPS_PORT=${NGINX_HTTPS_PORT}
+NGINX_HTTP_PORT=${NGINX_HTTP_PORT}
 ENVEOF
 )
 

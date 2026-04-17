@@ -21,7 +21,7 @@ services:
 
   # ── PostgreSQL 15 ────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:15-alpine
+    image: docker.io/library/postgres:15-alpine
     container_name: cmdb-postgres
     restart: always
     environment:
@@ -41,7 +41,7 @@ services:
 
   # ── Adminer — lightweight DB management UI (dev only) ────────────────────────
   adminer:
-    image: adminer:latest
+    image: docker.io/library/adminer:latest
     container_name: cmdb-adminer
     restart: always
     ports:
@@ -122,7 +122,7 @@ services:
 
   # ── Nginx — unified TLS gateway ──────────────────────────────────────────────
   nginx:
-    image: nginx:1.30-alpine
+    image: docker.io/library/nginx:1.30-alpine
     container_name: cmdb-nginx
     restart: always
     volumes:

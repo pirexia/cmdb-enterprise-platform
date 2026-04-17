@@ -7,7 +7,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ── Stage 1: Deps ────────────────────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM docker.io/library/node:22-alpine AS deps
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
@@ -17,7 +17,7 @@ COPY package*.json ./
 RUN npm ci
 
 # ── Stage 2: Builder ─────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM docker.io/library/node:22-alpine AS builder
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
@@ -46,7 +46,7 @@ ENV NEXT_PUBLIC_COMPANY_NAME=$NEXT_PUBLIC_COMPANY_NAME
 RUN npm run build
 
 # ── Stage 3: Runner ──────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM docker.io/library/node:22-alpine AS runner
 
 RUN apk add --no-cache dumb-init
 

@@ -726,6 +726,13 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v2.0.1 — Stack upgrade, dynamic system info panel, sticky headers:**
+> - **nginx 1.30 (stable):** Upgraded from nginx 1.27; EOL open.
+> - **Dynamic system info panel:** New `GET /api/system-info` endpoint (admin only) with a 5-column table showing stack versions and EOL dates via endoflife.date with 24h cache.
+> - **Sticky page headers:** All page header bars remain visible when scrolling (`sticky top-0 z-10`).
+> - **Dependency upgrades:** Node.js 22-alpine, Prisma, Next.js 15, and all backend/frontend packages updated to latest stable.
+> - **Race condition fix:** System info panel: fixed retry race condition on auto-refresh.
+
 > **v1.7.1 — Security hardening + schema & i18n fixes:**
 > - **Security:** JWKS `use` claim validation in Microsoft SSO; `FRONTEND_URL` validated and normalised to origin at startup; `COMPANY_NAME` allowlist check prevents DN injection in TLS cert generation; `.env` created with `umask 0077` (no world-readable window); HTML injection fixed in EOL email templates.
 > - **Scripts:** `db-maintenance.sh` — Docker/Podman auto-detection, reliable exit-code capture via temp file, quoted DB name in `REINDEX`; `update.sh` — dry-run rollback no longer attempts `git checkout` on a tag that was never created.

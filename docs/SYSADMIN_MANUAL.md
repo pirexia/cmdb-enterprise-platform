@@ -739,6 +739,13 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
+> **v2.0.1 — Upgrade del stack, panel de sistema dinámico, cabeceras fijas:**
+> - **nginx 1.30 (stable):** Actualización desde nginx 1.27; EOL abierta.
+> - **Panel de sistema dinámico:** Nuevo endpoint `GET /api/system-info` (solo ADMIN) con tabla de 5 columnas que muestra versiones del stack y fechas EOL via endoflife.date con caché 24h.
+> - **Cabeceras de página fijas:** Todos los encabezados de página permanecen visibles al hacer scroll (`sticky top-0 z-10`).
+> - **Upgrade de dependencias:** Node.js 22-alpine, Prisma, Next.js 15, y dependencias backend/frontend actualizadas a versiones estables más recientes.
+> - **Corrección de condición de carrera:** Panel de información del sistema: corregida condición de carrera en reintento automático.
+
 > **v1.7.1 — Hardening de seguridad + correcciones de esquema e i18n:**
 > - **Seguridad:** Validación del claim `use` en JWKS (SSO Microsoft); `FRONTEND_URL` validada y normalizada al origen en el arranque; validación de `COMPANY_NAME` con allowlist para evitar inyección DN en el certificado TLS; `.env` creado con `umask 0077` (sin ventana world-readable); inyección HTML corregida en plantillas de email EOL.
 > - **Scripts:** `db-maintenance.sh` — auto-detección Docker/Podman, captura fiable del exit code vía fichero temporal, nombre de BD entrecomillado en `REINDEX`; `update.sh` — el rollback en dry-run ya no intenta `git checkout` sobre un tag inexistente.

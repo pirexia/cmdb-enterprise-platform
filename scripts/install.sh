@@ -323,6 +323,37 @@ fi
 success "All prerequisites satisfied"
 info "Runtime: $RUNTIME | Compose: $COMPOSE_CMD"
 
+# ── Podman policy.json bootstrap ─────────────────────────────────────────────
+# On minimal RHEL 9 / rootless Podman installs, neither /etc/containers/policy.json
+# nor ~/.config/containers/policy.json exists. Without a policy file Podman refuses
+# to pull ANY image with:
+#   "no policy.json file found at any of the following: ..."
+# We create a permissive default (insecureAcceptAnything, same as Docker's default)
+# in the user's config dir ONLY if no policy is present at either location.
+ensure_podman_policy() {
+  [ "$RUNTIME" = "podman" ] || return 0
+
+  local user_policy="${HOME}/.config/containers/policy.json"
+  if [ -f /etc/containers/policy.json ] || [ -f "$user_policy" ]; then
+    return 0
+  fi
+
+  info "No Podman policy.json found — creating default-accept policy at $user_policy"
+  mkdir -p "$(dirname "$user_policy")"
+  cat > "$user_policy" <<'POLICY_JSON'
+{
+    "default": [
+        {
+            "type": "insecureAcceptAnything"
+        }
+    ]
+}
+POLICY_JSON
+  success "Podman policy.json created (rootless, default-accept)."
+}
+
+ensure_podman_policy
+
 # OpenShift detection
 detect_openshift
 info "Platform mode: $PLATFORM"

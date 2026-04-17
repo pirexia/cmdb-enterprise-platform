@@ -354,6 +354,39 @@ POLICY_JSON
 
 ensure_podman_policy
 
+# ── Podman rootless: privileged port access ───────────────────────────────────
+# Rootless Podman cannot bind ports < net.ipv4.ip_unprivileged_port_start
+# (default 1024 on RHEL 9). nginx requires ports 80 and 443.
+# We lower the threshold to 80 via sysctl (requires sudo) and persist it.
+ensure_podman_port_access() {
+  [ "$RUNTIME" = "podman" ] || return 0
+
+  local port_start
+  port_start=$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || echo "1024")
+
+  if [ "$port_start" -le 80 ]; then
+    success "Unprivileged port start already at ${port_start} — OK."
+    return 0
+  fi
+
+  warn "Rootless Podman cannot bind ports < ${port_start} (nginx needs 80 + 443)."
+  info "Applying sysctl net.ipv4.ip_unprivileged_port_start=80 (requires sudo) ..."
+
+  if ! sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80; then
+    error "sudo sysctl failed. Either re-run as root or set it manually:"
+    error "  echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/99-cmdb-podman.conf"
+    error "  sudo sysctl --system"
+    exit 1
+  fi
+
+  # Persist across reboots
+  echo "net.ipv4.ip_unprivileged_port_start=80" \
+    | sudo tee /etc/sysctl.d/99-cmdb-podman.conf > /dev/null
+  success "Unprivileged port start set to 80 (persisted via /etc/sysctl.d/99-cmdb-podman.conf)."
+}
+
+ensure_podman_port_access
+
 # OpenShift detection
 detect_openshift
 info "Platform mode: $PLATFORM"

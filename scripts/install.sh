@@ -36,10 +36,14 @@ cleanup_on_error() {
 trap 'cleanup_on_error $LINENO' ERR
 
 # ── Helper: prompt with default ──────────────────────────────────────────────
+# printf + read (no -p) avoids ANSI escape codes shifting the terminal cursor
+# on RHEL 9 / some terminal emulators, which caused read -rp to capture
+# truncated input (e.g. "/op/..." instead of "/opt/...").
 prompt() {
   local var_name="$1" prompt_text="$2" default="$3"
   local input
-  read -rp "$(echo -e "${CYAN}?${NC} ${prompt_text} [${default}]: ")" input
+  printf "${CYAN}?${NC} %s [%s]: " "$prompt_text" "$default"
+  read -r input
   printf -v "$var_name" '%s' "${input:-$default}"
 }
 
@@ -48,10 +52,12 @@ confirm() {
   local prompt_text="$1" default="${2:-n}"
   local input
   if [ "$default" = "y" ]; then
-    read -rp "$(echo -e "${CYAN}?${NC} ${prompt_text} [Y/n]: ")" input
+    printf "${CYAN}?${NC} %s [Y/n]: " "$prompt_text"
+    read -r input
     input="${input:-y}"
   else
-    read -rp "$(echo -e "${CYAN}?${NC} ${prompt_text} [y/N]: ")" input
+    printf "${CYAN}?${NC} %s [y/N]: " "$prompt_text"
+    read -r input
     input="${input:-n}"
   fi
   [[ "${input,,}" == "y" || "${input,,}" == "yes" ]]
@@ -275,7 +281,7 @@ if [ ${#MISSING_PKGS[@]} -gt 0 ]; then
         if [ "$PKG_MGR" = "dnf" ]; then
           info "  1) podman (recommended for RHEL/CentOS)"
           info "  2) docker"
-          read -rp "$(echo -e "${CYAN}?${NC} Select [1]: ")" rt_choice
+          printf "${CYAN}?${NC} Select [1]: "; read -r rt_choice
           rt_choice="${rt_choice:-1}"
           if [ "$rt_choice" = "2" ]; then
             offer_install "docker"
@@ -333,6 +339,7 @@ echo ""
 
 # ── Install directory ─────────────────────────────────────────────────────────
 prompt INSTALL_DIR "Install directory" "/opt/cmdb"
+INSTALL_DIR="${INSTALL_DIR%/}"   # strip accidental trailing slash
 
 # ── Repository detection ──────────────────────────────────────────────────────
 DEFAULT_REPO="https://github.com/pirexia/cmdb-enterprise-platform.git"
@@ -342,7 +349,8 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 SKIP_CLONE="false"
 if [ -f "$REPO_ROOT/docker-compose.prod.yml" ] && [ -f "$REPO_ROOT/.env.example" ]; then
   info "Detected existing repository at: $REPO_ROOT"
-  if [ "$INSTALL_DIR" = "$REPO_ROOT" ] || [ "$INSTALL_DIR" = "$(pwd)" ]; then
+  if [ "$INSTALL_DIR" = "$REPO_ROOT" ] || [ "$INSTALL_DIR" = "$(pwd)" ] || \
+     [ "$INSTALL_DIR" = "${REPO_ROOT%/}" ]; then
     SKIP_CLONE="true"
     info "Install directory matches current repo -- skipping clone."
   fi
@@ -386,7 +394,8 @@ echo ""
 info "Database password — must be at least 16 chars with upper+lower+digit+special."
 info "Press Enter to auto-generate a secure password."
 while true; do
-  read -srp "$(echo -e "${CYAN}?${NC} Database password [auto-generate]: ")" DB_PASSWORD
+  printf "${CYAN}?${NC} Database password [auto-generate]: "
+  read -sr DB_PASSWORD
   echo ""
 
   if [ -z "$DB_PASSWORD" ]; then
@@ -411,7 +420,8 @@ while true; do
     error "Must contain at least one special character."; continue
   fi
 
-  read -srp "$(echo -e "${CYAN}?${NC} Confirm database password: ")" DB_PASSWORD_CONFIRM
+  printf "${CYAN}?${NC} Confirm database password: "
+  read -sr DB_PASSWORD_CONFIRM
   echo ""
   if [ "$DB_PASSWORD" != "$DB_PASSWORD_CONFIRM" ]; then
     error "Passwords do not match. Try again."; continue
@@ -430,7 +440,7 @@ echo ""
 info "TLS certificate — nginx requires server.crt and server.key in ./certs/"
 info "  a) Generate self-signed certificate (fine for internal / dev use)"
 info "  b) Provide existing certificate and key files"
-read -rp "$(echo -e "${CYAN}?${NC} Choose [a]: ")" ssl_choice
+printf "${CYAN}?${NC} Choose [a]: "; read -r ssl_choice
 ssl_choice="${ssl_choice:-a}"
 
 SSL_MODE="self-signed"
@@ -448,8 +458,8 @@ CERT_SAN=""
 
 if [ "$ssl_choice" = "b" ]; then
   SSL_MODE="provided"
-  read -rp "$(echo -e "${CYAN}?${NC} Path to certificate file (.crt / .pem): ")" SSL_CERT_PATH
-  read -rp "$(echo -e "${CYAN}?${NC} Path to private key file (.key): ")" SSL_KEY_PATH
+  printf "${CYAN}?${NC} Path to certificate file (.crt / .pem): "; read -r SSL_CERT_PATH
+  printf "${CYAN}?${NC} Path to private key file (.key): "; read -r SSL_KEY_PATH
   if [ ! -f "$SSL_CERT_PATH" ]; then
     error "Certificate file not found: $SSL_CERT_PATH"; exit 1
   fi
@@ -497,7 +507,7 @@ if confirm "Configure SMTP for email alerts?"; then
   prompt SMTP_PORT "SMTP port" "587"
   if confirm "Use SMTP over TLS (port 465)?" "n"; then SMTP_SECURE="true"; fi
   prompt SMTP_USER "SMTP username / email" ""
-  read -srp "$(echo -e "${CYAN}?${NC} SMTP password: ")" SMTP_PASS; echo ""
+  printf "${CYAN}?${NC} SMTP password: "; read -sr SMTP_PASS; echo ""
   prompt ALERT_RECIPIENT "Alert recipient email" "admin@$(echo "$PUBLIC_URL" | sed 's|https://||;s|/.*||')"
 fi
 
@@ -513,7 +523,7 @@ if confirm "Enable LDAP / Active Directory authentication?"; then
   prompt LDAP_BASE_DN  "Search base DN" "dc=corp,dc=local"
   prompt LDAP_BIND_DN  "Bind DN (empty for direct bind)" ""
   if [ -n "$LDAP_BIND_DN" ]; then
-    read -srp "$(echo -e "${CYAN}?${NC} Bind password: ")" LDAP_BIND_PASSWORD; echo ""
+    printf "${CYAN}?${NC} Bind password: "; read -sr LDAP_BIND_PASSWORD; echo ""
   fi
   if confirm "Accept self-signed / internal CA certificates for LDAPS?" "y"; then
     LDAP_TLS_REJECT_UNAUTHORIZED="0"
@@ -531,7 +541,7 @@ if confirm "Enable Microsoft 365 SSO (Azure AD / Entra ID)?"; then
   USE_MICROSOFT_SSO="true"
   prompt AZURE_TENANT_ID      "Azure Tenant ID" ""
   prompt AZURE_CLIENT_ID      "App Registration Client ID" ""
-  read -srp "$(echo -e "${CYAN}?${NC} App Registration Client Secret: ")" AZURE_CLIENT_SECRET; echo ""
+  printf "${CYAN}?${NC} App Registration Client Secret: "; read -sr AZURE_CLIENT_SECRET; echo ""
   prompt AZURE_ALLOWED_DOMAIN "Allowed corporate email domain (e.g. empresa.com)" ""
   if confirm "Auto-provision VIEWER accounts for new SSO users?" "y"; then
     AZURE_AUTO_PROVISION="true"

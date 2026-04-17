@@ -25,6 +25,23 @@ interface User {
 
 type TabId = "users" | "integrations" | "certificates";
 
+interface StackComponent {
+  name:           string;
+  category:       string;
+  version:        string;
+  latestVersion?: string;
+  eolDate?:       string | boolean;
+  isEol:          boolean;
+  daysToEol?:     number;
+  license:        string;
+  hasEolData:     boolean;
+}
+
+interface SystemInfoData {
+  components:   StackComponent[];
+  generatedAt:  string;
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Sel(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
@@ -90,6 +107,10 @@ export default function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
+
+  const [sysInfo, setSysInfo]               = useState<SystemInfoData | null>(null);
+  const [sysInfoLoading, setSysInfoLoading] = useState(false);
+  const [sysInfoError, setSysInfoError]     = useState(false);
 
   const loadUsers = useCallback(async () => {
     setLoading(true); setError(null);
@@ -236,11 +257,55 @@ export default function SettingsPage() {
     apiFetch("/health").then((r) => r.json()).then(setHealthData).catch(() => null);
   }, []);
 
+  useEffect(() => {
+    if (tab !== 'integrations' || sysInfo !== null) return;
+    setSysInfoLoading(true);
+    setSysInfoError(false);
+    apiFetch('/api/system-info')
+      .then(r => r.json())
+      .then((data: SystemInfoData) => setSysInfo(data))
+      .catch(() => setSysInfoError(true))
+      .finally(() => setSysInfoLoading(false));
+  }, [tab, sysInfo]);
+
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
     { id: "users",        label: t('settings.tabs.users'),        icon: <Users className="h-4 w-4" /> },
     { id: "integrations", label: t('settings.tabs.integrations'), icon: <Plug  className="h-4 w-4" /> },
     { id: "certificates", label: "SSL/TLS Certificates",         icon: <Shield className="h-4 w-4" /> },
   ];
+
+  function SysStatusBadge({ c }: { c: StackComponent }) {
+    if (!c.hasEolData) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+          {t("settings.integrations.sys_status_community")}
+        </span>
+      );
+    }
+    if (c.isEol) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          {t("settings.integrations.sys_status_eol")}
+        </span>
+      );
+    }
+    if (typeof c.daysToEol === 'number' && c.daysToEol <= 90) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+          {t("settings.integrations.sys_status_eol_soon")}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+        {t("settings.integrations.sys_status_active")}
+      </span>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden">
@@ -476,30 +541,80 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* System Info */}
+            {/* System Info — dynamic table */}
             <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
-                <p className="text-sm font-semibold text-slate-700">Información del Sistema</p>
+              <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-700">{t("settings.integrations.system_info")}</p>
+                {sysInfo && (
+                  <span className="text-xs text-slate-400">
+                    {new Date(sysInfo.generatedAt).toLocaleString()}
+                  </span>
+                )}
               </div>
-              <div className="px-6 py-4">
-                <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
-                  {[
-                    ["Plataforma",        "CMDB Enterprise Platform"],
-                    ["Stack Backend",     "Node.js + Express + Prisma ORM"],
-                    ["Stack Frontend",    "Next.js 16 + Tailwind CSS 4"],
-                    ["Base de datos",     "PostgreSQL 16"],
-                    ["Autenticación",     "JWT HS256 (8h) + MFA TOTP"],
-                    ["Seguridad",         "Helmet + CORS estricto + HTTPS opcional"],
-                    ["Alertas",           "node-cron + nodemailer (SMTP)"],
-                    ["Cumplimiento",      "ISO 27001 A.9.2 / A.10.1 / A.12.4"],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex justify-between border-b border-slate-50 pb-2">
-                      <dt className="text-slate-500 font-medium">{k}</dt>
-                      <dd className="text-slate-800 text-right">{v}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
+
+              {sysInfoLoading && (
+                <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  {t("settings.integrations.sys_loading")}
+                </div>
+              )}
+
+              {sysInfoError && (
+                <div className="flex items-center justify-between px-6 py-4">
+                  <p className="text-sm text-red-600">{t("settings.integrations.sys_error")}</p>
+                  <button
+                    onClick={() => {
+                      setSysInfo(null);
+                      setSysInfoError(false);
+                      setSysInfoLoading(true);
+                      apiFetch('/api/system-info')
+                        .then(r => r.json())
+                        .then((data: SystemInfoData) => setSysInfo(data))
+                        .catch(() => setSysInfoError(true))
+                        .finally(() => setSysInfoLoading(false));
+                    }}
+                    className="text-xs font-medium text-indigo-600 hover:underline"
+                  >
+                    {t("settings.integrations.sys_retry")}
+                  </button>
+                </div>
+              )}
+
+              {sysInfo && !sysInfoLoading && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-slate-50">
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">{t("settings.integrations.sys_col_component")}</th>
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">{t("settings.integrations.sys_col_version")}</th>
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">{t("settings.integrations.sys_col_eol")}</th>
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">{t("settings.integrations.sys_col_license")}</th>
+                        <th className="px-4 py-2 text-left font-semibold text-slate-500">{t("settings.integrations.sys_col_status")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sysInfo.components.map((c) => (
+                        <tr key={c.name} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                          <td className="px-4 py-2.5 font-medium text-slate-800">
+                            {c.name}
+                            <span className="ml-1.5 text-slate-400 font-normal">{c.category}</span>
+                          </td>
+                          <td className="px-4 py-2.5 font-mono text-slate-700">{c.version}</td>
+                          <td className="px-4 py-2.5 text-slate-600">
+                            {typeof c.eolDate === 'string'
+                              ? c.eolDate
+                              : t("settings.integrations.sys_eol_unknown")}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600">{c.license}</td>
+                          <td className="px-4 py-2.5">
+                            <SysStatusBadge c={c} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}

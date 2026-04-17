@@ -715,10 +715,18 @@ step "Phase 8: Preparing TLS volume for production compose"
 if [ -f "${CERT_DIR}/server.crt" ] && [ -f "${CERT_DIR}/server.key" ]; then
   info "Populating named Docker volume cmdb-tls-certs ..."
   $RUNTIME volume create cmdb-tls-certs 2>/dev/null || true
-  $RUNTIME run --rm \
-    -v cmdb-tls-certs:/dst \
-    -v "${CERT_DIR}":/src:ro \
-    alpine sh -c "cp /src/server.key /src/server.crt /dst/ && chmod 600 /dst/server.key"
+  if [ "$RUNTIME" = "podman" ]; then
+    # Podman exposes volume mountpoint directly — avoids short-name resolution
+    # failures on RHEL 9 where containers-registries.conf may not be present.
+    VOLUME_MP="$($RUNTIME volume inspect cmdb-tls-certs --format '{{.Mountpoint}}')"
+    cp "${CERT_DIR}/server.key" "${CERT_DIR}/server.crt" "$VOLUME_MP/"
+    chmod 600 "${VOLUME_MP}/server.key"
+  else
+    $RUNTIME run --rm \
+      -v cmdb-tls-certs:/dst \
+      -v "${CERT_DIR}":/src:ro \
+      docker.io/library/alpine sh -c "cp /src/server.key /src/server.crt /dst/ && chmod 600 /dst/server.key"
+  fi
   success "TLS certificates loaded into volume cmdb-tls-certs"
 else
   warn "No certificates found in ${CERT_DIR}/ — skipping volume population."

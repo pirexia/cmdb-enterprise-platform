@@ -563,7 +563,8 @@
     "sso_loading": "Reindirizzamento a Microsoft…",
     "sso_error": "Accesso SSO non riuscito. Usa le tue credenziali o contatta l'amministratore.",
     "sso_not_provisioned": "Il tuo account Microsoft non è registrato in questa piattaforma. Contatta il tuo amministratore.",
-    "sso_disabled": "Il tuo account è disabilitato. Contatta il tuo amministratore."
+    "sso_disabled": "Il tuo account è disabilitato. Contatta il tuo amministratore.",
+    "privacy_link": "Informativa sulla privacy"
   },
   "add_ci_modal": {
     "title": "Nuovo CI",
@@ -966,5 +967,22 @@
       "workflow_step5": "Verifica che il nuovo certificato sia attivo nel tuo browser o con openssl s_client",
       "workflow_verify": "Verifica rapida"
     }
+  },
+  "privacy": {
+    "page_title": "Informativa sulla privacy",
+    "link_text": "Informativa sulla privacy",
+    "controller_title": "1. Titolare del trattamento",
+    "controller_body": "I dati personali raccolti su questa piattaforma sono trattati da [REPLACE: nome dell'organizzazione], con sede in [REPLACE: indirizzo]. Contatto DPO: [REPLACE: email del DPO].",
+    "data_title": "2. Dati personali trattati",
+    "data_body": "Nome utente, indirizzo e-mail, timestamp di accesso, voci del registro di audit (azione + risorsa + e-mail + timestamp), token dei dispositivi attendibili.",
+    "basis_title": "3. Base giuridica",
+    "basis_body": "Il trattamento è necessario per l'esecuzione di un contratto di servizio (Art. 6(1)(b) GDPR) e per adempiere a obblighi legali di tracciabilità e audit (Art. 6(1)(c) GDPR).",
+    "retention_title": "4. Periodi di conservazione",
+    "retention_body": "I registri di audit vengono conservati per un minimo di 730 giorni (2 anni) per soddisfare i requisiti NIS2. Gli account utente vengono eliminati su richiesta di cancellazione o alla fine del rapporto di lavoro.",
+    "rights_title": "5. I tuoi diritti",
+    "rights_body": "Puoi esercitare i diritti di accesso, rettifica, cancellazione, limitazione, portabilità e opposizione contattando [REPLACE: email di contatto]. Hai il diritto di presentare un reclamo all'autorità di controllo competente.",
+    "transfers_title": "6. Trasferimenti internazionali",
+    "transfers_body": "Se viene utilizzato il login Microsoft 365, parte del trattamento dell'identità viene effettuato da Microsoft Corporation (USA) nell'ambito dell'Accordo sul trattamento dei dati di Microsoft e delle Clausole contrattuali standard.",
+    "back": "← Torna al login"
   }
 }

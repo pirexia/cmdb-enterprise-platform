@@ -1789,3 +1789,15 @@ LDAP_STRICT_MODE=true
 With this setting, if the LDAP server does not respond, LDAP users receive `Invalid credentials` instead of attempting local auth. **Does not affect local accounts** (emails ending in `@cmdb.local` or `@cmdb.internal`).
 
 **Impact:** If the LDAP server goes down, no LDAP users can authenticate until it recovers. Always maintain at least one active local ADMIN account.
+
+---
+
+## 18. Privacy Notice and GDPR Art. 13/14 Obligations
+
+The platform includes a privacy notice page at `/privacy`. Fields marked `[REPLACE: ...]` must be completed by the organisation before production deployment:
+
+- **Name and contact details of the data controller** (Art. 13(1)(a) GDPR)
+- **Data Protection Officer contact details** (Art. 13(1)(b) GDPR)
+- **Contact email for data subject rights requests**
+
+**Auto-provisioned users (SSO/LDAP):** The platform automatically creates accounts for Microsoft Azure AD and LDAP users without direct interaction. This triggers the Art. 14 GDPR obligation (indirect collection notice). The organisation must inform these users via internal communication (HR, corporate email) as the application does not send welcome emails.

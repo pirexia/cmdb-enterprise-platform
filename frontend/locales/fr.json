@@ -563,7 +563,8 @@
     "sso_loading": "Redirection vers Microsoft…",
     "sso_error": "La connexion SSO a échoué. Utilisez vos identifiants ou contactez votre administrateur.",
     "sso_not_provisioned": "Votre compte Microsoft n'est pas enregistré sur cette plateforme. Contactez votre administrateur.",
-    "sso_disabled": "Votre compte est désactivé. Contactez votre administrateur."
+    "sso_disabled": "Votre compte est désactivé. Contactez votre administrateur.",
+    "privacy_link": "Avis de confidentialité"
   },
   "add_ci_modal": {
     "title": "Nouveau CI",
@@ -966,5 +967,22 @@
       "workflow_step5": "Vérifiez que le nouveau certificat est actif dans votre navigateur ou avec openssl s_client",
       "workflow_verify": "Vérification rapide"
     }
+  },
+  "privacy": {
+    "page_title": "Avis de confidentialité",
+    "link_text": "Avis de confidentialité",
+    "controller_title": "1. Responsable du traitement",
+    "controller_body": "Les données personnelles collectées sur cette plateforme sont traitées par [REPLACE: nom de l'organisation], dont le siège est situé à [REPLACE: adresse]. Contact DPO : [REPLACE: e-mail du DPO].",
+    "data_title": "2. Données personnelles traitées",
+    "data_body": "Nom d'utilisateur, adresse e-mail, horodatages d'accès, entrées du journal d'audit (action + ressource + e-mail + horodatage), jetons d'appareils de confiance.",
+    "basis_title": "3. Base juridique",
+    "basis_body": "Le traitement est nécessaire à l'exécution d'un contrat de service (Art. 6(1)(b) RGPD) et au respect d'obligations légales de traçabilité et d'audit (Art. 6(1)(c) RGPD).",
+    "retention_title": "4. Durées de conservation",
+    "retention_body": "Les journaux d'audit sont conservés pendant au moins 730 jours (2 ans) pour satisfaire aux exigences NIS2. Les comptes utilisateur sont supprimés sur demande d'effacement ou à la fin de la relation de travail.",
+    "rights_title": "5. Vos droits",
+    "rights_body": "Vous pouvez exercer vos droits d'accès, de rectification, d'effacement, de limitation, de portabilité et d'opposition en contactant [REPLACE: e-mail de contact]. Vous avez le droit d'introduire une réclamation auprès de l'autorité de contrôle compétente.",
+    "transfers_title": "6. Transferts internationaux",
+    "transfers_body": "Si la connexion Microsoft 365 est utilisée, une partie du traitement d'identité est effectuée par Microsoft Corporation (États-Unis) dans le cadre de l'Accord de traitement des données de Microsoft et des Clauses contractuelles types.",
+    "back": "← Retour à la connexion"
   }
 }

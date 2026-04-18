@@ -1814,3 +1814,15 @@ LDAP_STRICT_MODE=true
 Con esta opción, si el servidor LDAP no responde, los usuarios LDAP reciben `Invalid credentials` en lugar de intentar autenticación local. **No afecta a las cuentas locales** (emails que terminan en `@cmdb.local` o `@cmdb.internal`).
 
 **Impacto:** Si el servidor LDAP cae, ningún usuario LDAP podrá autenticarse hasta que LDAP se recupere. Mantén siempre al menos una cuenta ADMIN local activa.
+
+---
+
+## 18. Aviso de Privacidad y Obligaciones GDPR Art. 13/14
+
+La plataforma incluye una página de aviso de privacidad en `/privacy`. Los campos marcados como `[REPLACE: ...]` deben ser completados por la organización antes del despliegue en producción:
+
+- **Nombre y datos del responsable del tratamiento** (Art. 13.1.a RGPD)
+- **Datos de contacto del Delegado de Protección de Datos** (Art. 13.1.b RGPD)
+- **Email de contacto para ejercicio de derechos**
+
+**Usuarios auto-provisionados (SSO/LDAP):** La plataforma crea cuentas automáticamente para usuarios de Microsoft Azure AD y LDAP sin interacción directa. Esto activa la obligación del Art. 14 RGPD (información indirecta). La organización debe informar a estos usuarios mediante comunicación interna (RRHH, correo corporativo) ya que la aplicación no envía correos de bienvenida.

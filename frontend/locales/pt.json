@@ -563,7 +563,8 @@
     "sso_loading": "Redirecionando para Microsoft…",
     "sso_error": "O login SSO falhou. Use suas credenciais ou entre em contato com o administrador.",
     "sso_not_provisioned": "Sua conta Microsoft não está registrada nesta plataforma. Entre em contato com o administrador.",
-    "sso_disabled": "Sua conta está desativada. Entre em contato com o administrador."
+    "sso_disabled": "Sua conta está desativada. Entre em contato com o administrador.",
+    "privacy_link": "Aviso de privacidade"
   },
   "add_ci_modal": {
     "title": "Novo CI",
@@ -966,5 +967,22 @@
       "workflow_step5": "Verifica que o novo certificado está ativo no teu navegador ou com openssl s_client",
       "workflow_verify": "Verificação rápida"
     }
+  },
+  "privacy": {
+    "page_title": "Aviso de Privacidade",
+    "link_text": "Aviso de privacidade",
+    "controller_title": "1. Responsável pelo tratamento",
+    "controller_body": "Os dados pessoais recolhidos nesta plataforma são tratados por [REPLACE: nome da organização], com sede em [REPLACE: morada]. Contacto do EPD: [REPLACE: email do EPD].",
+    "data_title": "2. Dados pessoais tratados",
+    "data_body": "Nome de utilizador, endereço de e-mail, marcas temporais de acesso, entradas no registo de auditoria (ação + recurso + e-mail + timestamp), tokens de dispositivos de confiança.",
+    "basis_title": "3. Base jurídica",
+    "basis_body": "O tratamento é necessário para a execução de um contrato de serviço (Art. 6.º, n.º 1, alínea b) RGPD) e para o cumprimento de obrigações legais de rastreabilidade e auditoria (Art. 6.º, n.º 1, alínea c) RGPD).",
+    "retention_title": "4. Prazos de conservação",
+    "retention_body": "Os registos de auditoria são conservados por um mínimo de 730 dias (2 anos) para cumprir os requisitos NIS2. As contas de utilizador são eliminadas mediante pedido de apagamento ou fim da relação laboral.",
+    "rights_title": "5. Os seus direitos",
+    "rights_body": "Pode exercer os seus direitos de acesso, retificação, apagamento, limitação, portabilidade e oposição através de [REPLACE: e-mail de contacto]. Tem o direito de apresentar uma reclamação à autoridade de controlo competente.",
+    "transfers_title": "6. Transferências internacionais",
+    "transfers_body": "Se for utilizado o início de sessão com Microsoft 365, parte do tratamento de identidade é realizado pela Microsoft Corporation (EUA) ao abrigo do Contrato de Processamento de Dados da Microsoft e das Cláusulas Contratuais-Tipo.",
+    "back": "← Voltar ao início de sessão"
   }
 }

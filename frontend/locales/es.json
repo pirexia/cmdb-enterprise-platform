@@ -608,7 +608,8 @@
     "sso_loading": "Redirigiendo a Microsoft…",
     "sso_error": "El inicio de sesión SSO ha fallado. Usa tus credenciales o contacta con tu administrador.",
     "sso_not_provisioned": "Tu cuenta de Microsoft no está registrada en esta plataforma. Contacta con tu administrador.",
-    "sso_disabled": "Tu cuenta está deshabilitada. Contacta con tu administrador."
+    "sso_disabled": "Tu cuenta está deshabilitada. Contacta con tu administrador.",
+    "privacy_link": "Aviso de privacidad"
   },
   "add_ci_modal": {
     "title": "Nuevo CI",
@@ -1085,5 +1086,22 @@
       "workflow_step5": "Verifica que el nuevo certificado está activo en tu navegador o con openssl s_client",
       "workflow_verify": "Verificación rápida"
     }
+  },
+  "privacy": {
+    "page_title": "Aviso de Privacidad",
+    "link_text": "Aviso de privacidad",
+    "controller_title": "1. Responsable del tratamiento",
+    "controller_body": "Los datos personales recogidos en esta plataforma son tratados por [REPLACE: nombre de la organización], con domicilio en [REPLACE: dirección]. Contacto DPD: [REPLACE: email del DPD].",
+    "data_title": "2. Datos personales tratados",
+    "data_body": "Nombre de usuario, dirección de correo electrónico, marca de tiempo de acceso, registros de auditoría (acción + recurso + email + timestamp), tokens de dispositivos de confianza.",
+    "basis_title": "3. Base jurídica",
+    "basis_body": "El tratamiento es necesario para la ejecución del contrato de prestación de servicio (Art. 6.1.b RGPD) y para el cumplimiento de obligaciones legales de trazabilidad y auditoría (Art. 6.1.c RGPD).",
+    "retention_title": "4. Plazo de conservación",
+    "retention_body": "Los registros de auditoría se conservan un mínimo de 730 días (2 años) para cumplir con los requisitos de NIS2. Las cuentas de usuario se eliminan cuando el usuario ejerce su derecho de supresión o finaliza la relación laboral.",
+    "rights_title": "5. Sus derechos",
+    "rights_body": "Puede ejercer los derechos de acceso, rectificación, supresión, limitación, portabilidad y oposición dirigiéndose a [REPLACE: email de contacto]. Tiene derecho a presentar una reclamación ante la autoridad de control competente.",
+    "transfers_title": "6. Transferencias internacionales",
+    "transfers_body": "Si se utiliza el inicio de sesión con Microsoft 365, parte del tratamiento de identidad se realiza por Microsoft Corporation (EE.UU.) bajo el Acuerdo de Procesamiento de Datos de Microsoft y las Cláusulas Contractuales Tipo.",
+    "back": "← Volver al inicio"
   }
 }

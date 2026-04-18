@@ -1751,3 +1751,25 @@ Expected response when SSO is active:
 ```
 
 If `enabled` is `false`, verify that `USE_MICROSOFT_SSO=true` is in `.env` and that the backend was restarted after the change.
+
+---
+
+## 16. User Erasure (GDPR Art. 17)
+
+To erase a user and fulfill a GDPR right-to-erasure request:
+
+```http
+DELETE /api/admin/users/:id
+Authorization: Bearer <admin-token>
+```
+
+**Behavior:**
+1. Audit log entries matching the user's email are pseudonymised to `[deleted-{hash16}]`. The hash is SHA-256(email + JWT_SECRET) truncated — stable and irreversible.
+2. The user record is permanently deleted (trusted_devices and password_history cascade automatically).
+3. A `GDPR_ERASURE` entry is inserted into audit_logs under the admin's email.
+
+**Restrictions:** An admin cannot erase their own account. SSO admin accounts must also be revoked in Azure AD / LDAP.
+
+**GDPR Art.17 / ISO 27001 A.8.15 conflict resolution:** Pseudonymisation preserves audit trail chronological integrity (ISO 27001 requirement) while removing the direct personal identifier (GDPR requirement). This approach is defensible under Art.17(3)(b) (legal obligation compliance).
+
+The `audit_logs` table has Row-Level Security (RLS) with `FORCE` enabled — row deletion is blocked at the database level for all roles including the table owner.

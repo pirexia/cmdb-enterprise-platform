@@ -1083,6 +1083,66 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
   }
 });
 
+/**
+ * DELETE /api/admin/users/:id
+ * GDPR Art. 17 right to erasure. ADMIN only.
+ *
+ * Performs structured erasure:
+ *   1. Pseudonymises audit_logs entries (replaces email with a stable hash)
+ *   2. Clears all PII fields on the user record (email, password, MFA secrets, SSO id)
+ *   3. Hard-deletes trusted_devices and password_history (cascade from user delete)
+ *   4. Hard-deletes the user row
+ *
+ * The audit trail sequence is preserved (action/entity/timestamps intact).
+ * The requesting admin cannot erase their own account.
+ */
+app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const targetId = req.params.id as string;
+
+  // Prevent self-erasure
+  if (targetId === req.user!.id) {
+    res.status(400).json({ error: 'You cannot erase your own account.' });
+    return;
+  }
+
+  try {
+    // 1. Resolve the user and get their email
+    const rows = await prisma.$queryRaw<{ id: string; email: string; username: string }[]>`
+      SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
+    `;
+    if (!rows.length) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+    const { email } = rows[0];
+
+    // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
+    //    The token is deterministic so repeat erasures produce the same result (idempotent).
+    const pseudoToken = '[deleted-' +
+      crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
+      ']';
+    await prisma.$executeRaw`
+      UPDATE "audit_logs" SET user_email = ${pseudoToken} WHERE user_email = ${email}
+    `;
+
+    // 3. Hard-delete the user (trusted_devices + password_history cascade automatically)
+    await prisma.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
+
+    // 4. Record the erasure in the audit log under the admin's email
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
+    `;
+
+    log.info(`[DELETE /api/admin/users/${targetId}] GDPR erasure completed by ${req.user!.email}. Audit logs pseudonymised as ${pseudoToken}.`);
+    res.json({ message: 'User erased. Audit log entries pseudonymised.' });
+
+  } catch (error) {
+    log.error('[DELETE /api/admin/users/:id] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── Vendors ──────────────────────────────────────────────────────────────────
 
 app.get('/api/vendors', authenticateToken, async (_req: Request, res: Response) => {

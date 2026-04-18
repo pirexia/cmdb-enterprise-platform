@@ -1776,3 +1776,25 @@ Respuesta esperada cuando SSO está activo:
 Si `enabled` es `false`, verifica que `USE_MICROSOFT_SSO=true` está en el `.env` y que el backend se reinició después del cambio.
 
 > Las migraciones de Prisma en OpenShift deben ejecutarse manualmente o como un Job de Kubernetes antes del rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`
+
+---
+
+## 16. Borrado de Usuarios (GDPR Art. 17)
+
+Para eliminar un usuario y cumplir con el derecho de supresión del RGPD:
+
+```http
+DELETE /api/admin/users/:id
+Authorization: Bearer <admin-token>
+```
+
+**Comportamiento:**
+1. Las entradas en `audit_logs` con el email del usuario se pseudonomizan a `[deleted-{hash16}]`. El hash es SHA-256(email + JWT_SECRET) truncado — estable e irreversible.
+2. El registro de usuario se elimina permanentemente (cascada a `trusted_devices` y `password_history`).
+3. Se registra una entrada `GDPR_ERASURE` en `audit_logs` bajo el email del administrador.
+
+**Restricciones:** Un administrador no puede borrar su propia cuenta. Los administradores SSO deben revocar el acceso también en Azure AD / LDAP.
+
+**Conflicto GDPR Art.17 / ISO 27001 A.8.15:** La pseudonimización conserva la integridad cronológica de la pista de auditoría (requisito ISO 27001) mientras elimina el identificador personal directo (requisito GDPR). Este enfoque está amparado en el Art. 17(3)(b) del RGPD (obligación legal de conservación).
+
+La tabla `audit_logs` tiene habilitada Row-Level Security (RLS) con `FORCE` — el borrado de filas está bloqueado a nivel de base de datos para todos los roles incluido el propietario de la tabla.

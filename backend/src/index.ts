@@ -94,8 +94,14 @@ declare global {
 // Helmet is still applied for defence-in-depth on non-nginx traffic.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use((helmetFn as any)({
-  hsts: false,              // nginx handles HSTS on the public interface
-  contentSecurityPolicy: false, // API-only server — no HTML served
+  hsts: false, // nginx handles HSTS on the public interface
+  contentSecurityPolicy: {
+    // Restrictive API-only policy: no content rendered, so only frame-ancestors matters.
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
 }));
 
 // ── CORS — derived from FRONTEND_URL (same-origin via nginx gateway) ──────────

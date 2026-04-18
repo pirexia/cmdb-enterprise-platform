@@ -7,6 +7,17 @@
 
 ---
 
+## Remediation Update — 2026-04-18 (develop branch, v2.0.2)
+
+| Finding | Status | Commit |
+|---------|--------|--------|
+| No formal IRP / no Art. 23 notification timelines (Art. 21(2)(b)) | ✅ **Fixed** | `c975f1b` — IRP v1.1: brute-force SQL, 24h/72h/1mo notification table, templates (closes #79) |
+| No BCP/RTO/RPO for Art. 21(2)(c) business continuity | ✅ **Fixed** | `6e6300c` — ISMS-BCP-001: RPO ≤ 24h, RTO ≤ 4h, MTPD 72h (closes #81) |
+| Audit log immutability gaps (traceability) | ✅ **Fixed** | `3ae7df1` — RLS FORCE; INSERT-only enforced at DB level (closes #73) |
+| MFA library deprecated (speakeasy) | ✅ **Fixed** | `2682216` — replaced with otplib (closes #74) |
+
+---
+
 ## Executive Summary
 
 The CMDB Enterprise Platform demonstrates a strong baseline security posture relative to NIS2 Article 21 requirements, with well-implemented cryptographic controls, multi-factor authentication, structured audit logging, and network segmentation via Docker. The platform's most significant NIS2 gap lies in the absence of a formal, documented incident response plan (Article 21(2)(b)) — alerting via email is implemented but there is no structured playbook for classification, escalation, or 24-hour regulatory notification. Supply chain security (Article 21(2)(d)) is partially addressed through `npm audit`, but lacks a formal Software Bill of Materials (SBOM), third-party risk assessments for external API integrations (endoflife.date, CrowdStrike, Greenbone), and a vendor security assessment process. Governance gaps across risk analysis documentation, training programmes, and cryptographic key lifecycle management reduce the overall compliance level from operational to partial.

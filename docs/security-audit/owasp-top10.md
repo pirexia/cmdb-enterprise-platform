@@ -6,6 +6,19 @@
 
 ---
 
+## Remediation Update — 2026-04-18 (develop branch, v2.0.2)
+
+| OWASP | Finding | Status | Commit |
+|-------|---------|--------|--------|
+| A03 | Command injection in CSR endpoint | ✅ **Fixed** | `613be53` — `execFile` + array args (closes #68) |
+| A02 | JWT in `localStorage` (XSS theft) | ✅ **Fixed** | `023328f` — HttpOnly cookie (closes #71) |
+| A05 | Missing Content-Security-Policy | ✅ **Fixed** | `0798208` — CSP in nginx + next.config.ts + Helmet (closes #76, #83) |
+| A05 | Missing Referrer-Policy / Permissions-Policy | ✅ **Fixed** | `0798208` — added to nginx (closes #83) |
+| A06 | Deprecated speakeasy TOTP library | ✅ **Fixed** | `2682216` — replaced with otplib (closes #74) |
+| A05 | Backend port 3000 exposed on host | 🟡 **Open** | Verify with `docker ps` on production host |
+
+---
+
 ## Executive Summary
 
 The CMDB Enterprise Platform demonstrates a mature security posture for an enterprise internal tool: all database queries use parameterized Prisma tagged-template literals without string concatenation, JWT verification explicitly pins the algorithm to HS256, PKCE + server-side state/nonce prevents SSO CSRF and replay attacks, and file uploads validate magic bytes after the multer filter step. The most critical finding is an OS command injection vulnerability in `POST /api/admin/certificates/csr` (index.ts:1783) where user-supplied OpenSSL Subject fields (`cn`, `o`, `ou`, `c`, `st`) are interpolated without sanitization into a shell command string executed with `execAsync`. A secondary high-severity issue is that JWTs are stored in `localStorage` rather than `HttpOnly` cookies, exposing them to any XSS vector. The absence of a Content Security Policy header on the frontend is a compounding factor, and the backend port (3000) is exposed directly to the host in both compose files, bypassing the intended nginx gateway.

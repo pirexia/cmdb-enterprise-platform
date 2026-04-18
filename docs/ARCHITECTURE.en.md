@@ -43,7 +43,7 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | Dependency Maps | ReactFlow | 11.x |
 | Excel Export | ExcelJS | 4.4.x |
 | i18n       | Custom Context (no library) | — |
-| Authentication | JWT localStorage + AuthContext | — |
+| Authentication | JWT HttpOnly cookie + AuthContext | — |
 
 ### Backend
 | Component | Technology | Version |
@@ -53,7 +53,7 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | ORM        | Prisma     | 5.x     |
 | Language   | TypeScript | 5.x     |
 | Authentication | JWT (jsonwebtoken) + bcrypt | 9.x / 6.x |
-| MFA        | speakeasy (TOTP RFC 6238) | 2.x |
+| MFA        | otplib (TOTP RFC 6238) | 12.x |
 | QR Code    | qrcode     | 1.5.x   |
 | LDAP       | ldap-authentication | 4.x |
 | HTTP Security | Helmet | 8.x   |
@@ -165,7 +165,7 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
   └── [If MFA active (mfa_enabled=true)]
        ├── deviceToken in body? → look up in trusted_devices (expiresAt > now())
        │    └── FOUND → update lastSeenAt → jwt.sign() → 200 OK
-       ├── mfaCode? → speakeasy.totp.verify()
+       ├── mfaCode? → authenticator.check() (otplib)
        │    ├── INVALID → 401 INVALID_MFA_CODE
        │    └── VALID → (if trustDevice=true) → create TrustedDevice → return deviceToken
        │         └── jwt.sign() → 200 { token, user, deviceToken? }
@@ -180,7 +180,7 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
 ### MFA Flow — First-login Setup (Admin)
 ```
 Frontend receives requireAction:'MFA_SETUP_REQUIRED'
-  └── Stores limited token (mfaSetupRequired=true) in localStorage
+  └── Limited token (mfaSetupRequired=true) stored in HttpOnly cookie
   └── Shows MFA wizard (no "Skip" button)
   └── POST /api/auth/mfa/setup → generates secret + QR (with limited token)
   └── User scans QR → enters verification code
@@ -544,13 +544,13 @@ The reference catalogues (metrics and types) are managed through the `/api/maste
 | Control | Implementation |
 |---------|---------------|
 | Authentication | JWT HS256 (8h, algorithm explicit in both sign and verify) + bcrypt cost-12 |
-| MFA | TOTP RFC 6238 (speakeasy). Admin: mandatory on first login (limited token `mfaSetupRequired`). VIEWER: suggested (once-only, tracked via `mfa_prompted_at`). |
-| Trusted Devices | 32-byte hex token in `trusted_devices` DB + localStorage. Bound to client IP and User-Agent at creation; validation enforces strict equality (no NULL bypass). Configurable TTL (`TRUSTED_DEVICE_TTL_DAYS`). Daily cleanup cron (02:00). |
-| JWT Expiry (frontend) | `AuthContext` decodes the `exp` claim (pure base64, no library) and discards expired tokens on mount, every 60 s, and on `visibilitychange`. `apiFetch` validates before every request. |
+| MFA | TOTP RFC 6238 (otplib). Admin: mandatory on first login (limited token `mfaSetupRequired`). VIEWER: suggested (once-only, tracked via `mfa_prompted_at`). |
+| Trusted Devices | 32-byte hex token in `trusted_devices` DB. Bound to client IP and User-Agent at creation; validation enforces strict equality (no NULL bypass). Configurable TTL (`TRUSTED_DEVICE_TTL_DAYS`). Daily cleanup cron (02:00). |
+| JWT Expiry (frontend) | `AuthContext` decodes the `exp` claim from `cmdb_user` localStorage and discards expired sessions on mount, every 60 s, and on `visibilitychange`. `apiFetch` validates before every request. JWT itself stored in HttpOnly cookie purged by `POST /api/auth/logout`. |
 | Internal Errors | Express `catch` blocks always return `{ error: 'Internal server error' }` — raw SQL messages and stack traces are never sent to clients. |
 | LDAP/AD | Optional via ldap-authentication; admin-bind+search (recommended) or direct-bind; 5s fail-safe timeout; shadow user with `sso_external_id` |
 | RBAC | ADMIN / VIEWER with `requireAdmin` middleware |
-| HTTP Headers | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |
+| HTTP Headers | Helmet 8.x + nginx: CSP, X-Frame-Options DENY, HSTS includeSubDomains+preload, Referrer-Policy, Permissions-Policy |
 | CORS | Explicit allowlist (CORS_ORIGINS env var) |
 | HTTPS | Node.js https module + certificates in Docker volume |
 | Isolated DB | `cmdb-internal` network — port 5432 never exposed |
@@ -593,7 +593,7 @@ Flat columns in `configuration_items` were chosen because:
 |----------|------------------------|---------------|
 | Next.js App Router | Pages Router, Vite+React | Standalone Docker support, SSR, native layouts |
 | Prisma ORM | TypeORM, Sequelize, raw SQL | Type-safety, automatic migrations, JSONB support |
-| JWT in localStorage | httpOnly Cookies, Session | CORS cross-origin compatibility without a session server |
+| JWT in HttpOnly cookie | localStorage, Session | XSS-safe; cookie sent automatically; logout via POST endpoint |
 | JSONB for vulns/agents | Separate relational tables | Schema flexibility, heterogeneous data per source |
 | node-cron | Bull, Agenda | No Redis dependency; simplicity for daily alerts |
 | Graph traversal with recursive CTE (PostgreSQL) | N HTTP requests from frontend (client-side BFS) | Single query; the PostgreSQL engine handles traversal and cycle prevention with path arrays |

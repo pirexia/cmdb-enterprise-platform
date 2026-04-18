@@ -9,7 +9,7 @@ import Sidebar from "@/components/Sidebar";
 const PUBLIC_PATHS = ["/login"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { token, loading } = useAuth();
+  const { user, loading } = useAuth();
   const { t } = useLanguage();
   const router   = useRouter();
   const pathname = usePathname();
@@ -18,15 +18,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-
-    if (!token && !isPublic) {
+    if (!user && !isPublic) {
       router.replace("/login");
-    } else if (token && isPublic) {
+    } else if (user && isPublic) {
       router.replace("/");
     }
-  }, [token, loading, isPublic, router]);
+  }, [user, loading, isPublic, router]);
 
-  // Show loading spinner while hydrating auth state
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
@@ -38,17 +36,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Login page — no sidebar, no layout wrapper
   if (isPublic) {
     return <>{children}</>;
   }
 
-  // Not authenticated yet — prevent flash of protected content
-  if (!token) {
+  if (!user) {
     return null;
   }
 
-  // Authenticated — full shell with sidebar
   return (
     <div className="flex h-screen bg-slate-50">
       <Sidebar />

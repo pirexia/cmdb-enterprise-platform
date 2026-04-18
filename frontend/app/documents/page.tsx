@@ -91,10 +91,10 @@ function SortTh({
 // ─── Upload Modal ─────────────────────────────────────────────────────────────
 
 function UploadModal({
-  docTypes, cis, contracts, token, onClose, onSuccess,
+  docTypes, cis, contracts, onClose, onSuccess,
 }: {
   docTypes: DocumentType[]; cis: CIOption[]; contracts: ContractOption[];
-  token: string | null; onClose: () => void; onSuccess: () => void;
+  onClose: () => void; onSuccess: () => void;
 }) {
   const { t } = useLanguage();
   const [title, setTitle] = useState("");
@@ -127,7 +127,7 @@ function UploadModal({
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
       const res = await fetch(`${apiBase}/api/documents`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       if (!res.ok) {
@@ -226,7 +226,7 @@ function UploadModal({
 
 export default function DocumentsPage() {
   const { t } = useLanguage();
-  const { isAdmin, token } = useAuth();
+  const { isAdmin } = useAuth();
   const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -297,7 +297,7 @@ export default function DocumentsPage() {
   const handleDownload = async (doc: DocumentListItem, e: React.MouseEvent) => {
     e.stopPropagation();
     const res = await fetch(`${apiBase}/api/documents/${doc.latestVersionId}/download`, {
-      headers: { Authorization: `Bearer ${token ?? ""}` },
+      credentials: "include",
     });
     if (!res.ok) return;
     const blob = await res.blob();
@@ -491,7 +491,7 @@ export default function DocumentsPage() {
 
       {showUpload && (
         <UploadModal
-          docTypes={docTypes} cis={cis} contracts={contracts} token={token}
+          docTypes={docTypes} cis={cis} contracts={contracts}
           onClose={() => setShowUpload(false)}
           onSuccess={() => { setShowUpload(false); void load(); }}
         />

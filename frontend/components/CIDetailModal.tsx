@@ -137,7 +137,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
     : (CI_TYPE_LABELS[resolvedType] ?? resolvedType);
   const typeIcon  = CI_TYPE_ICONS[resolvedType] ?? <Server className="h-4 w-4" />;
 
-  const { token, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const [docs, setDocs]         = useState<DocRef[]>([]);
   const [docsLoading, setDocsLoading] = useState(true);
   const [contracts, setContracts] = useState<ContractRef[]>(ci.contracts ?? []);
@@ -183,7 +183,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
 
   const handleDownload = async (docId: string, fileName: string) => {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/documents/${docId}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (!res.ok) return;
     const blob = await res.blob();

@@ -173,7 +173,7 @@ export default function LoginPage() {
         setError(t("login.error_invalid"));
         return;
       }
-      applySession(data.token, data.user, data.deviceToken);
+      applySession(data.token ?? null, data.user, data.deviceToken);
       router.replace("/");
     } catch {
       setError(t("login.error_qr_failed"));

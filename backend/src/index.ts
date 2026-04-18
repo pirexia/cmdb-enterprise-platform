@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -125,6 +126,25 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+const COOKIE_NAME = 'cmdb_token';
+const COOKIE_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours — matches JWT expiry
+
+function setAuthCookie(res: Response, token: string): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    maxAge: COOKIE_MAX_AGE_MS,
+    path: '/',
+  });
+}
+
+function clearAuthCookie(res: Response): void {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
 
 // ── Rate limiting (OWASP: Brute-force prevention) ────────────────────────────
 
@@ -237,8 +257,10 @@ const ContractCreateSchema = z.object({
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
 async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
+  const authHeader  = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const token       = cookieToken ?? bearerToken ?? null;
 
   if (!token) {
     res.status(401).json({ error: 'Authentication required. Please login.' });
@@ -704,7 +726,18 @@ app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response
     return;
   }
   ssoTokenStore.delete(code); // one-time use — delete immediately
+  setAuthCookie(res, entry.token);
   res.json({ token: entry.token, deviceToken: entry.deviceToken, user: entry.user });
+});
+
+/**
+ * POST /api/auth/logout
+ * Clears the HttpOnly session cookie. No auth required — if the cookie is
+ * missing the call is a no-op.
+ */
+app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  clearAuthCookie(res);
+  res.json({ message: 'Logged out.' });
 });
 
 /**
@@ -840,7 +873,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         `;
         if (trusted.length > 0) {
           await prisma.$executeRaw`UPDATE "trusted_devices" SET last_seen_at = now() WHERE token = ${deviceToken}`;
-          res.json({ token: signFullToken(), user: userObj() });
+          const t1 = signFullToken();
+          setAuthCookie(res, t1);
+          res.json({ token: t1, user: userObj() });
           return;
         }
       }
@@ -860,7 +895,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       let newDeviceToken: string | undefined;
       if (trustDevice) newDeviceToken = await createTrustedDevice();
 
-      res.json({ token: signFullToken(), user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
+      const t2 = signFullToken();
+      setAuthCookie(res, t2);
+      res.json({ token: t2, user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
       return;
     }
 
@@ -869,6 +906,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       // Admin: mandatory MFA setup — issue short-lived limited token
       const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
       const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m', algorithm: 'HS256' as const });
+      setAuthCookie(res, limitedToken);
       res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
       return;
     }
@@ -876,12 +914,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     // Non-admin: suggest MFA on first login
     if (!user.mfa_prompted_at) {
       await prisma.$executeRaw`UPDATE "users" SET mfa_prompted_at = now(), updated_at = now() WHERE id = ${user.id}::uuid`;
-      res.json({ token: signFullToken(), user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
+      const t4a = signFullToken();
+      setAuthCookie(res, t4a);
+      res.json({ token: t4a, user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
       return;
     }
 
     // Normal login (non-admin, already prompted before or MFA skipped)
-    res.json({ token: signFullToken(), user: userObj() });
+    const t4b = signFullToken();
+    setAuthCookie(res, t4b);
+    res.json({ token: t4b, user: userObj() });
 
   } catch (error) {
     console.error('[POST /api/auth/login] Error:', error);
@@ -1795,6 +1837,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
     const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
+    setAuthCookie(res, newToken);
 
     let newDeviceToken: string | undefined;
     if (trustDevice) {

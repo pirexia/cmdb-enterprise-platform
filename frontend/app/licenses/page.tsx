@@ -70,7 +70,7 @@ function formatCost(cost: number | null, currency: string | null) {
 
 function LicenseRow({ license, onExpand, expanded }: { license: License; onExpand: () => void; expanded: boolean }) {
   const status = getLicenseStatus(license.status, license.endDate);
-  const { token, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
 
   // ── Docs state ──────────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
   // ── Download ────────────────────────────────────────────────────────────────
   const handleDownload = async (docId: string, fileName: string) => {
     const res = await fetch(`${apiBase}/api/documents/${docId}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (!res.ok) return;
     const blob = await res.blob();
@@ -159,7 +159,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
     setOpenPreviews((prev) => new Set(prev).add(docId));
     try {
       const res = await fetch(`${apiBase}/api/documents/${docId}/download?inline=true`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("fetch failed");
       const mimeType = doc.mimeType;

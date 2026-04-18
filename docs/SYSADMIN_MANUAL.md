@@ -1798,3 +1798,19 @@ Authorization: Bearer <admin-token>
 **Conflicto GDPR Art.17 / ISO 27001 A.8.15:** La pseudonimización conserva la integridad cronológica de la pista de auditoría (requisito ISO 27001) mientras elimina el identificador personal directo (requisito GDPR). Este enfoque está amparado en el Art. 17(3)(b) del RGPD (obligación legal de conservación).
 
 La tabla `audit_logs` tiene habilitada Row-Level Security (RLS) con `FORCE` — el borrado de filas está bloqueado a nivel de base de datos para todos los roles incluido el propietario de la tabla.
+
+---
+
+## 17. LDAP_STRICT_MODE
+
+Por defecto, si el servidor LDAP no está disponible, la autenticación LDAP falla y el sistema intenta autenticación local. Los usuarios shadow LDAP tienen un hash de contraseña aleatorio que no puede usarse para login local, por lo que el fallback es seguro por diseño.
+
+Para entornos de alta seguridad que requieren bloqueo explícito del fallback:
+
+```env
+LDAP_STRICT_MODE=true
+```
+
+Con esta opción, si el servidor LDAP no responde, los usuarios LDAP reciben `Invalid credentials` en lugar de intentar autenticación local. **No afecta a las cuentas locales** (emails que terminan en `@cmdb.local` o `@cmdb.internal`).
+
+**Impacto:** Si el servidor LDAP cae, ningún usuario LDAP podrá autenticarse hasta que LDAP se recupere. Mantén siempre al menos una cuenta ADMIN local activa.

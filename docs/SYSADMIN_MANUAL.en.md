@@ -1773,3 +1773,19 @@ Authorization: Bearer <admin-token>
 **GDPR Art.17 / ISO 27001 A.8.15 conflict resolution:** Pseudonymisation preserves audit trail chronological integrity (ISO 27001 requirement) while removing the direct personal identifier (GDPR requirement). This approach is defensible under Art.17(3)(b) (legal obligation compliance).
 
 The `audit_logs` table has Row-Level Security (RLS) with `FORCE` enabled — row deletion is blocked at the database level for all roles including the table owner.
+
+---
+
+## 17. LDAP_STRICT_MODE
+
+By default, if the LDAP server is unavailable, the system falls back to local authentication. LDAP shadow users have a random bcrypt hash (not usable for real login), so the fallback is safe by design.
+
+For high-security deployments requiring explicit policy enforcement:
+
+```env
+LDAP_STRICT_MODE=true
+```
+
+With this setting, if the LDAP server does not respond, LDAP users receive `Invalid credentials` instead of attempting local auth. **Does not affect local accounts** (emails ending in `@cmdb.local` or `@cmdb.internal`).
+
+**Impact:** If the LDAP server goes down, no LDAP users can authenticate until it recovers. Always maintain at least one active local ADMIN account.

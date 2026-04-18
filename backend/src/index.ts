@@ -805,6 +805,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     }
 
     if (!ldapSuccess) {
+      // LDAP_STRICT_MODE=true: block local auth fallback for LDAP-provisioned accounts.
+      // This prevents the (already-safe) fallback when the LDAP server is unreachable.
+      // LDAP shadow users have a random bcrypt hash they don't know, so fallback is
+      // already safe by design — but strict mode makes this an explicit policy.
+      if (process.env.LDAP_STRICT_MODE === 'true' && process.env.USE_LDAP === 'true' && !isLocalAccount) {
+        log.warn(`[POST /api/auth/login] LDAP_STRICT_MODE: blocking local fallback for ${email}`);
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
       const rows = await prisma.$queryRaw<UserRow[]>`
         SELECT id, username, email, password, role, COALESCE(active, true) AS active,
                mfa_enabled, mfa_secret, mfa_prompted_at
@@ -814,6 +824,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
+      // Safety note: LDAP shadow users have password = bcrypt(random-token) so
+      // bcrypt.compare against a real user-supplied password will always fail.
+      // LDAP_STRICT_MODE adds an explicit policy-level block before this check.
       const valid = await bcrypt.compare(password, rows[0].password);
       if (!valid) {
         res.status(401).json({ error: 'Invalid credentials' });

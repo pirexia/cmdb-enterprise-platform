@@ -22,7 +22,8 @@ import {
   buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
   generateCodeVerifier, generateCodeChallenge,
 } from './services/microsoftSso';
-import * as speakeasy from 'speakeasy';
+import { authenticator } from 'otplib';
+authenticator.options = { window: 1 }; // accept 1 step before/after current (30-sec clock drift)
 import QRCode from 'qrcode';
 import multer from 'multer';
 
@@ -850,7 +851,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         return;
       }
 
-      const mfaValid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 });
+      const mfaValid = authenticator.check(mfaCode, user.mfa_secret as string);
       if (!mfaValid) {
         res.status(401).json({ error: 'INVALID_MFA_CODE' });
         return;
@@ -1680,9 +1681,8 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const secretObj = speakeasy.generateSecret({ name: `CMDB Enterprise (${req.user!.email})`, length: 20 });
-    const secret    = secretObj.base32;
-    const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
+    const secret  = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(req.user!.email, 'CMDB Enterprise', secret);
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
     // Store the pending secret server-side so /mfa/enable can retrieve it
@@ -1722,7 +1722,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       res.status(400).json({ error: 'MFA setup not initiated. Please call /api/auth/mfa/setup first.' });
       return;
     }
-    const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+    const valid = authenticator.check(code, secret);
     if (!valid) {
       res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
       return;

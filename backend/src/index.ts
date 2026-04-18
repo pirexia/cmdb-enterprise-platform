@@ -1774,18 +1774,6 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
  * ADMIN only.
  */
 
-/** Sanitise a DN field to prevent shell-injection through the -subj argument. */
-function sanitiseDnField(value: string): string {
-  // Strip characters that are special inside an OpenSSL -subj string or shell:
-  // forward-slash (path separator in DN), double-quote, backslash, backtick, $, newline.
-  return value.replace(/[/\\"'`$\n\r]/g, '');
-}
-
-/** Sanitise a SAN value (DNS or IP token). Only allow safe characters. */
-function sanitiseSan(value: string): string {
-  return value.replace(/[^a-zA-Z0-9.:,\-_*]/g, '');
-}
-
 app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const { cn, o, ou, c, st, l, san } = req.body as {
     cn?: string; o?: string; ou?: string; c?: string;
@@ -1798,9 +1786,9 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
   }
 
   try {
-    const { exec } = await import('child_process');
+    const { execFile } = await import('child_process');
     const { promisify } = await import('util');
-    const execAsync = promisify(exec);
+    const execFileAsync = promisify(execFile);
 
     const certDir = '/app/certs';
     const keyPath = path.join(certDir, 'server.key');
@@ -1809,13 +1797,13 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     // Ensure directory exists (mapped from host via volume)
     fs.mkdirSync(certDir, { recursive: true });
 
-    // Sanitise every DN field to prevent shell injection
-    const safeCn  = sanitiseDnField(cn.trim());
-    const safeO   = o?.trim()  ? sanitiseDnField(o.trim())   : '';
-    const safeOu  = ou?.trim() ? sanitiseDnField(ou.trim())  : '';
-    const safeC   = c?.trim()  ? sanitiseDnField(c.trim())   : '';
-    const safeSt  = st?.trim() ? sanitiseDnField(st.trim())  : '';
-    const safeL   = l?.trim()  ? sanitiseDnField(l.trim())   : '';
+    // Strip characters that are structurally special in OpenSSL DN notation
+    const safeCn  = cn.trim().replace(/[/\\"'\0]/g, '');
+    const safeO   = o?.trim()  ? o.trim().replace(/[/\\"'\0]/g, '')   : '';
+    const safeOu  = ou?.trim() ? ou.trim().replace(/[/\\"'\0]/g, '')  : '';
+    const safeC   = c?.trim()  ? c.trim().replace(/[/\\"'\0]/g, '')   : '';
+    const safeSt  = st?.trim() ? st.trim().replace(/[/\\"'\0]/g, '')  : '';
+    const safeL   = l?.trim()  ? l.trim().replace(/[/\\"'\0]/g, '')   : '';
 
     // Build subject string — field order matches RFC 4514 convention
     const subject =
@@ -1829,7 +1817,7 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     // Build SAN extension — auto-derive from CN if not provided
     let sanValue: string;
     if (san?.trim()) {
-      sanValue = sanitiseSan(san.trim());
+      sanValue = san.trim().replace(/[^a-zA-Z0-9.:,\-_*]/g, '');
     } else {
       // Auto-derive: if CN looks like an IP use IP:, otherwise use DNS:
       const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -1840,15 +1828,17 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
       sanValue += ',DNS:localhost,IP:127.0.0.1';
     }
 
-    // Generate 4096-bit RSA private key and CSR with SAN extension
-    const cmd = `openssl req -new -newkey rsa:4096 -nodes \
-      -keyout "${keyPath}" \
-      -out "${csrPath}" \
-      -subj "${subject}" \
-      -addext "subjectAltName=${sanValue}"`;
-
     log.info(`[POST /api/admin/certificates/csr] Generating 4096-bit CSR: ${subject} | SAN: ${sanValue}`);
-    const { stderr } = await execAsync(cmd);
+
+    // execFile bypasses the shell — args are passed directly to the kernel,
+    // making injection structurally impossible regardless of field content
+    const { stderr } = await execFileAsync('openssl', [
+      'req', '-new', '-newkey', 'rsa:4096', '-nodes',
+      '-keyout', keyPath,
+      '-out',    csrPath,
+      '-subj',   subject,
+      '-addext', `subjectAltName=${sanValue}`,
+    ]);
 
     if (stderr && !stderr.includes('writing')) {
       log.warn(`[POST /api/admin/certificates/csr] OpenSSL stderr: ${stderr}`);

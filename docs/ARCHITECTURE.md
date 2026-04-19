@@ -43,7 +43,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Mapas de dependencias | ReactFlow | 11.x |
 | Export Excel | ExcelJS | 4.4.x |
 | i18n       | Custom Context (sin librería) | — |
-| Autenticación | JWT localStorage + AuthContext | — |
+| Autenticación | JWT HttpOnly cookie + AuthContext | — |
 
 ### Backend
 | Componente | Tecnología | Versión |
@@ -53,7 +53,7 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | ORM        | Prisma     | 5.x     |
 | Lenguaje   | TypeScript | 5.x     |
 | Autenticación | JWT (jsonwebtoken) + bcrypt | 9.x / 6.x |
-| MFA        | speakeasy (TOTP RFC 6238) | 2.x |
+| MFA        | otplib (TOTP RFC 6238) | 12.x |
 | QR Code    | qrcode     | 1.5.x   |
 | LDAP       | ldap-authentication | 4.x |
 | Seguridad HTTP | Helmet | 8.x   |
@@ -166,7 +166,7 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
   └── [Si MFA activo (mfa_enabled=true)]
        ├── ¿deviceToken en body? → buscar en trusted_devices (expiresAt > now())
        │    └── ENCONTRADO → update lastSeenAt → jwt.sign() → 200 OK
-       ├── ¿mfaCode? → speakeasy.totp.verify()
+       ├── ¿mfaCode? → authenticator.check() (otplib)
        │    ├── INVÁLIDO → 401 INVALID_MFA_CODE
        │    └── VÁLIDO → (si trustDevice=true) → crear TrustedDevice → devolver deviceToken
        │         └── jwt.sign() → 200 { token, user, deviceToken? }
@@ -181,7 +181,7 @@ Browser → Frontend (3001) → API /api/auth/login (3000)
 ### Flujo MFA — Configuración en primer login (Admin)
 ```
 Frontend recibe requireAction:'MFA_SETUP_REQUIRED'
-  └── Guarda token limitado (mfaSetupRequired=true) en localStorage
+  └── Token limitado (mfaSetupRequired=true) almacenado en cookie HttpOnly
   └── Muestra asistente MFA (no tiene botón "Omitir")
   └── POST /api/auth/mfa/setup → genera secret + QR (con token limitado)
   └── Usuario escanea QR → introduce código de verificación
@@ -545,13 +545,13 @@ Los catálogos de referencia (métricas y tipos) se gestionan a través de los e
 | Control | Implementación |
 |---------|---------------|
 | Autenticación | JWT HS256 (8h, algoritmo explícito en sign y verify) + bcrypt cost-12 |
-| MFA | TOTP RFC 6238 (speakeasy). Admin: obligatorio en primer login (token limitado `mfaSetupRequired`). VIEWER: sugerido (once-only, tracked via `mfa_prompted_at`). |
-| Dispositivos de confianza | Token 32-byte hex en `trusted_devices` DB + localStorage. Vinculado a IP y User-Agent en creación; validación requiere igualdad estricta (sin bypass NULL). TTL configurable (`TRUSTED_DEVICE_TTL_DAYS`). Cleanup cron diario (02:00). |
-| Caducidad JWT (frontend) | `AuthContext` decodifica el claim `exp` (base64 puro, sin librería) y descarta tokens expirados en mount, cada 60 s y en `visibilitychange`. `apiFetch` valida antes de cada petición. |
+| MFA | TOTP RFC 6238 (otplib). Admin: obligatorio en primer login (token limitado `mfaSetupRequired`). VIEWER: sugerido (once-only, tracked via `mfa_prompted_at`). |
+| Dispositivos de confianza | Token 32-byte hex en `trusted_devices` DB. Vinculado a IP y User-Agent en creación; validación requiere igualdad estricta (sin bypass NULL). TTL configurable (`TRUSTED_DEVICE_TTL_DAYS`). Cleanup cron diario (02:00). |
+| Caducidad JWT (frontend) | `AuthContext` decodifica el claim `exp` del cmdb_user localStorage y descarta sesiones expiradas en mount, cada 60 s y en `visibilitychange`. `apiFetch` valida antes de cada petición. Cookie HttpOnly purga con `POST /api/auth/logout`. |
 | Errores internos | Los `catch` de Express devuelven siempre `{ error: 'Internal server error' }` — nunca se exponen mensajes SQL ni stack traces al cliente. |
 | LDAP/AD | Opcional via ldap-authentication; admin-bind+search (recomendado) o direct-bind; timeout 5s fail-safe; shadow user con `sso_external_id` |
 | RBAC | ADMIN / VIEWER con `requireAdmin` middleware |
-| Headers HTTP | Helmet 8.x (X-Frame, X-Content-Type, HSTS, XSS) |
+| Headers HTTP | Helmet 8.x + nginx: CSP, X-Frame-Options DENY, HSTS includeSubDomains+preload, Referrer-Policy, Permissions-Policy |
 | CORS | Lista blanca explícita (CORS_ORIGINS env var) |
 | HTTPS | Node.js https module + certificados en volumen Docker |
 | DB Aislada | Red `cmdb-internal` — puerto 5432 nunca expuesto |
@@ -594,7 +594,7 @@ Se optó por columnas planas en `configuration_items` porque:
 |----------|--------------------------|---------------|
 | Next.js App Router | Pages Router, Vite+React | Soporte standalone Docker, SSR, layouts nativos |
 | Prisma ORM | TypeORM, Sequelize, SQL puro | Type-safety, migrations automáticas, soporte JSONB |
-| JWT en localStorage | Cookies httpOnly, Session | Compatibilidad CORS cross-origin sin servidor de sesión |
+| JWT en HttpOnly cookie | localStorage, Session | XSS-safe; misma cookie enviada automáticamente; logout vía POST endpoint |
 | JSONB para vulns/agents | Tablas relacionales separadas | Flexibilidad de esquema, datos heterogéneos por fuente |
 | node-cron | Bull, Agenda | Sin dependencia de Redis; simplicidad para alertas diarias |
 | Travesía de grafo con CTE recursiva (PostgreSQL) | N peticiones HTTP desde el frontend (BFS cliente) | Una sola query; el motor PostgreSQL gestiona la travesía y la prevención de ciclos con arrays de camino |

@@ -36,7 +36,9 @@ export default function SsoCallbackPage() {
     }
 
     // Exchange the one-time code for real credentials
-    fetch(`${API_BASE}/api/auth/sso/exchange?code=${encodeURIComponent(code)}`)
+    fetch(`${API_BASE}/api/auth/sso/exchange?code=${encodeURIComponent(code)}`, {
+      credentials: "include",
+    })
       .then(async (res) => {
         if (!res.ok) throw new Error("Exchange failed");
         return res.json() as Promise<{
@@ -46,8 +48,17 @@ export default function SsoCallbackPage() {
         }>;
       })
       .then(({ token, deviceToken, user }) => {
-        localStorage.setItem("cmdb_token", token);
-        localStorage.setItem("cmdb_user", JSON.stringify(user));
+        // Token is now in an HttpOnly cookie set by the backend exchange endpoint.
+        // Only store user JSON (with exp extracted from token) for UI state.
+        let exp: number | undefined;
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+            exp = typeof payload.exp === "number" ? payload.exp : undefined;
+          }
+        } catch { /* ignore */ }
+        localStorage.setItem("cmdb_user", JSON.stringify({ ...user, ...(exp ? { exp } : {}) }));
         if (deviceToken) {
           localStorage.setItem("cmdb_device_token", deviceToken);
         }

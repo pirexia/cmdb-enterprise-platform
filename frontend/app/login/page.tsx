@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
@@ -173,7 +174,7 @@ export default function LoginPage() {
         setError(t("login.error_invalid"));
         return;
       }
-      applySession(data.token, data.user, data.deviceToken);
+      applySession(data.token ?? null, data.user, data.deviceToken);
       router.replace("/");
     } catch {
       setError(t("login.error_qr_failed"));
@@ -498,6 +499,11 @@ export default function LoginPage() {
           </div>
         </div>
 
+      </div>
+      <div className="text-center mt-6">
+        <Link href="/privacy" className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+          {t("login.privacy_link")}
+        </Link>
       </div>
     </div>
   );

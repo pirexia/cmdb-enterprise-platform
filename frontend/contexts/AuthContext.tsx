@@ -9,49 +9,6 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/apiFetch";
 
-// ─── JWT helpers (no external library – pure base64 decode) ──────────────────
-
-/**
- * Decode the payload segment of a JWT without verifying the signature.
- * Signature verification is the server's responsibility; here we only need
- * the `exp` claim so we can avoid sending a visibly-expired token.
- *
- * Returns `null` when the token is malformed.
- */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-
-    // Base64url → Base64 → binary string → JSON
-    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    // atob is available in every modern browser and in Node 16+
-    const jsonStr = atob(base64);
-    return JSON.parse(jsonStr) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Returns `true` when the JWT has an `exp` claim whose value is in the past.
- * Tokens without an `exp` claim are treated as non-expired (the server will
- * reject them if they are actually invalid).
- *
- * @param bufferSeconds - Treat the token as expired this many seconds before
- *   the real `exp` to account for clock skew and network latency (default 30 s).
- */
-export function isJwtExpired(token: string, bufferSeconds = 30): boolean {
-  const payload = decodeJwtPayload(token);
-  if (!payload) return true; // malformed → treat as expired
-
-  const exp = payload["exp"];
-  if (typeof exp !== "number") return false; // no expiry claim → not expired
-
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  return nowSeconds >= exp - bufferSeconds;
-}
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER";
@@ -62,6 +19,7 @@ export interface AuthUser {
   email:       string;
   role:        UserRole;
   mfa_enabled: boolean;
+  exp?:        number; // JWT expiry as Unix timestamp — stored for client-side session management
 }
 
 export interface LoginOptions {
@@ -71,12 +29,19 @@ export interface LoginOptions {
 
 interface AuthContextType {
   user:         AuthUser | null;
-  token:        string | null;
   loading:      boolean;
   isAdmin:      boolean;
   login:        (email: string, password: string, options?: LoginOptions) => Promise<void>;
   logout:       () => void;
-  applySession: (token: string, user: AuthUser, deviceToken?: string) => void;
+  applySession: (token: string | null, user: AuthUser, deviceToken?: string) => void;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Returns true when the stored session exp has passed (with 30s buffer). */
+function isUserExpired(u: AuthUser): boolean {
+  if (typeof u.exp !== "number") return false;
+  return Math.floor(Date.now() / 1000) >= u.exp - 30;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -85,35 +50,28 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user,    setUser]    = useState<AuthUser | null>(null);
-  const [token,   setToken]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   /** Clear all session data from state and localStorage. */
   const clearSession = useCallback(() => {
-    localStorage.removeItem("cmdb_token");
     localStorage.removeItem("cmdb_user");
-    setToken(null);
+    // cmdb_device_token intentionally retained (trusted device persists across sessions)
     setUser(null);
   }, []);
 
-  // Rehydrate from localStorage on first mount, validating the token's expiry.
+  // Rehydrate from localStorage on first mount, validating the session exp.
   useEffect(() => {
     try {
-      const storedToken = localStorage.getItem("cmdb_token");
-      const storedUser  = localStorage.getItem("cmdb_user");
-
-      if (storedToken && storedUser) {
-        if (isJwtExpired(storedToken)) {
-          // Expired token – discard immediately so the user is sent to login.
-          localStorage.removeItem("cmdb_token");
+      const storedUser = localStorage.getItem("cmdb_user");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser) as AuthUser;
+        if (isUserExpired(parsed)) {
           localStorage.removeItem("cmdb_user");
         } else {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser) as AuthUser);
+          setUser(parsed);
         }
       }
     } catch {
-      localStorage.removeItem("cmdb_token");
       localStorage.removeItem("cmdb_user");
     } finally {
       setLoading(false);
@@ -122,22 +80,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   /**
    * Periodic expiry check (every 60 seconds) + visibility-change check.
-   *
-   * This ensures that a long-lived tab whose token expires while the user is
-   * idle gets signed out automatically rather than silently sending stale
-   * Bearer tokens to the backend.
    */
   useEffect(() => {
     const checkExpiry = () => {
-      const storedToken = localStorage.getItem("cmdb_token");
-      if (storedToken && isJwtExpired(storedToken)) {
-        clearSession();
-      }
+      setUser(prev => {
+        if (prev && isUserExpired(prev)) {
+          clearSession();
+          return null;
+        }
+        return prev;
+      });
     };
-
-    const intervalId = setInterval(checkExpiry, 60_000); // every 60 s
+    const intervalId = setInterval(checkExpiry, 60_000);
     document.addEventListener("visibilitychange", checkExpiry);
-
     return () => {
       clearInterval(intervalId);
       document.removeEventListener("visibilitychange", checkExpiry);
@@ -145,31 +100,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [clearSession]);
 
   /**
-   * Apply a token + user directly (used after MFA setup flow completes
-   * to replace a limited setup-token with a full session token).
+   * Apply session: extracts exp from token (for client-side expiry tracking),
+   * stores user+exp in localStorage. Token goes to HttpOnly cookie automatically.
    */
-  const applySession = useCallback((newToken: string, newUser: AuthUser, deviceToken?: string) => {
-    if (isJwtExpired(newToken)) {
-      // Guard: reject a token that is already expired before we even store it.
+  const applySession = useCallback((token: string | null, newUser: AuthUser, deviceToken?: string) => {
+    let exp: number | undefined;
+    if (token) {
+      try {
+        const parts = token.split(".");
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+          exp = typeof payload.exp === "number" ? payload.exp : undefined;
+        }
+      } catch { /* ignore */ }
+    }
+    if (exp && Math.floor(Date.now() / 1000) >= exp - 30) {
       throw new Error("Cannot apply an already-expired session token.");
     }
-    localStorage.setItem("cmdb_token", newToken);
-    localStorage.setItem("cmdb_user", JSON.stringify(newUser));
+    const userWithExp: AuthUser = { ...newUser, ...(exp ? { exp } : {}) };
+    localStorage.setItem("cmdb_user", JSON.stringify(userWithExp));
     if (deviceToken) localStorage.setItem("cmdb_device_token", deviceToken);
-    setToken(newToken);
-    setUser(newUser);
+    setUser(userWithExp);
   }, []);
 
   /**
-   * Login:
-   *  - On success (no special action): stores token, returns normally.
-   *  - Throws "MFA_REQUIRED"        → caller must prompt for TOTP code.
-   *  - Throws "MFA_SETUP_REQUIRED"  → admin must complete MFA setup before proceeding.
-   *  - Throws "MFA_SETUP_SUGGESTED" → non-admin can optionally set up MFA.
-   *  - Throws other error messages  → display as login error.
-   *
-   * Device token from localStorage is sent automatically so the backend can
-   * skip the MFA challenge for trusted devices.
+   * Login: cookie set by backend on successful auth.
+   * Throws action strings for MFA flows; throws error strings for failures.
    */
   const login = useCallback(async (email: string, password: string, options: LoginOptions = {}) => {
     const storedDeviceToken = localStorage.getItem("cmdb_device_token");
@@ -197,39 +153,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(data.error ?? `Login failed (${res.status})`);
     }
 
-    if (!data.token || !data.user) {
+    if (!data.user) {
       throw new Error("Respuesta inesperada del servidor");
     }
 
-    // Store token and user (may be a limited token for MFA_SETUP_REQUIRED)
-    localStorage.setItem("cmdb_token", data.token);
-    localStorage.setItem("cmdb_user", JSON.stringify(data.user));
-    setToken(data.token);
-    setUser(data.user);
+    // Use applySession to store user+exp (token goes to HttpOnly cookie automatically)
+    applySession(data.token ?? null, data.user, data.deviceToken);
 
-    // Persist trusted device token if the backend granted one
-    if (data.deviceToken) {
-      localStorage.setItem("cmdb_device_token", data.deviceToken);
-    }
-
-    // Signal special post-login actions to the caller
     if (data.requireAction) {
-      throw new Error(data.requireAction); // "MFA_SETUP_REQUIRED" | "MFA_SETUP_SUGGESTED"
+      throw new Error(data.requireAction);
     }
-  }, []);
+  }, [applySession]);
 
   const logout = useCallback(() => {
-    // NOTE: cmdb_device_token is intentionally NOT removed here.
-    // Trusted device tokens are bound to the browser, not the session.
-    // They persist across logout/login cycles until they expire server-side
-    // (TTL controlled by TRUSTED_DEVICE_TTL_DAYS).
+    apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     clearSession();
   }, [clearSession]);
 
   return (
     <AuthContext.Provider value={{
       user,
-      token,
       loading,
       isAdmin: user?.role === "ADMIN",
       login,

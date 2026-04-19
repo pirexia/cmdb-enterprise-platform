@@ -137,7 +137,7 @@ export default function ProfilePage() {
       }
       // Update the session so user.mfa_enabled = true is reflected immediately
       if (data.token && data.user && user) {
-        applySession(data.token, data.user as AuthUser, data.deviceToken);
+        applySession(data.token ?? null, data.user as AuthUser, data.deviceToken);
       }
       setMfaJustEnabled(true);
       setQrDataUrl(null); setMfaSecret(null); setMfaCode("");

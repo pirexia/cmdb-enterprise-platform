@@ -7,6 +7,20 @@
 
 ---
 
+## Remediation Update — 2026-04-18 (develop branch, v2.0.2)
+
+| Finding | Status | Commit |
+|---------|--------|--------|
+| Command injection in CSR endpoint (`execAsync` shell concatenation) | ✅ **Fixed** | `613be53` — replaced with `execFile` + array args (closes #68) |
+| JWT stored in `localStorage` — XSS exposure | ✅ **Fixed** | `023328f` — HttpOnly cookie migration (closes #71) |
+| Missing Content-Security-Policy header | ✅ **Fixed** | `0798208` — CSP added to nginx + next.config.ts + Helmet (closes #76, #83) |
+| Missing Referrer-Policy / Permissions-Policy headers | ✅ **Fixed** | `0798208` — extended headers in nginx (closes #83) |
+| Deprecated `speakeasy` TOTP library (unmaintained) | ✅ **Fixed** | `2682216` — replaced with `otplib` (closes #74) |
+| LDAP auth fallback behaviour undocumented | ✅ **Fixed** | `6a90aa7` — LDAP_STRICT_MODE env var + docs (closes #78) |
+| Backend port 3000 exposed on host in `docker-compose.prod.yml` | 🟡 **Open** | Verify with `docker ps`; may have been fixed in infrastructure |
+
+---
+
 ## Executive Summary
 
 The CMDB Enterprise Platform demonstrates a solid security foundation with consistent use of parameterized Prisma tagged-template literals, PKCE-protected SSO, TOTP-based MFA with server-side secret storage, a strict CORS allow-list, and bcrypt-12 password hashing. However, four findings require immediate attention before a production go-live. The most critical is a command injection vulnerability in the CSR generation endpoint (`/api/admin/certificates/csr`) where user-supplied Distinguished Name fields are concatenated unsanitized into a shell command string. A second critical finding is that the backend service port (3000) is directly exposed to the host in `docker-compose.prod.yml`, bypassing any planned nginx TLS gateway. High-severity findings include JWTs stored in `localStorage` (full XSS exposure), missing nginx configuration (no TLS gateway, no security headers at the edge, no nginx-level rate limiting), and a missing Content-Security-Policy header on the frontend. The overall posture is **Good/Moderate** — the injection surface is narrow and the authentication architecture is thoughtful, but the infrastructure hardening gaps must be closed.

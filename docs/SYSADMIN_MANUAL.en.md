@@ -1751,3 +1751,53 @@ Expected response when SSO is active:
 ```
 
 If `enabled` is `false`, verify that `USE_MICROSOFT_SSO=true` is in `.env` and that the backend was restarted after the change.
+
+---
+
+## 16. User Erasure (GDPR Art. 17)
+
+To erase a user and fulfill a GDPR right-to-erasure request:
+
+```http
+DELETE /api/admin/users/:id
+Authorization: Bearer <admin-token>
+```
+
+**Behavior:**
+1. Audit log entries matching the user's email are pseudonymised to `[deleted-{hash16}]`. The hash is SHA-256(email + JWT_SECRET) truncated — stable and irreversible.
+2. The user record is permanently deleted (trusted_devices and password_history cascade automatically).
+3. A `GDPR_ERASURE` entry is inserted into audit_logs under the admin's email.
+
+**Restrictions:** An admin cannot erase their own account. SSO admin accounts must also be revoked in Azure AD / LDAP.
+
+**GDPR Art.17 / ISO 27001 A.8.15 conflict resolution:** Pseudonymisation preserves audit trail chronological integrity (ISO 27001 requirement) while removing the direct personal identifier (GDPR requirement). This approach is defensible under Art.17(3)(b) (legal obligation compliance).
+
+The `audit_logs` table has Row-Level Security (RLS) with `FORCE` enabled — row deletion is blocked at the database level for all roles including the table owner.
+
+---
+
+## 17. LDAP_STRICT_MODE
+
+By default, if the LDAP server is unavailable, the system falls back to local authentication. LDAP shadow users have a random bcrypt hash (not usable for real login), so the fallback is safe by design.
+
+For high-security deployments requiring explicit policy enforcement:
+
+```env
+LDAP_STRICT_MODE=true
+```
+
+With this setting, if the LDAP server does not respond, LDAP users receive `Invalid credentials` instead of attempting local auth. **Does not affect local accounts** (emails ending in `@cmdb.local` or `@cmdb.internal`).
+
+**Impact:** If the LDAP server goes down, no LDAP users can authenticate until it recovers. Always maintain at least one active local ADMIN account.
+
+---
+
+## 18. Privacy Notice and GDPR Art. 13/14 Obligations
+
+The platform includes a privacy notice page at `/privacy`. Fields marked `[REPLACE: ...]` must be completed by the organisation before production deployment:
+
+- **Name and contact details of the data controller** (Art. 13(1)(a) GDPR)
+- **Data Protection Officer contact details** (Art. 13(1)(b) GDPR)
+- **Contact email for data subject rights requests**
+
+**Auto-provisioned users (SSO/LDAP):** The platform automatically creates accounts for Microsoft Azure AD and LDAP users without direct interaction. This triggers the Art. 14 GDPR obligation (indirect collection notice). The organisation must inform these users via internal communication (HR, corporate email) as the application does not send welcome emails.

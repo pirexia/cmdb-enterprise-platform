@@ -1776,3 +1776,53 @@ Respuesta esperada cuando SSO está activo:
 Si `enabled` es `false`, verifica que `USE_MICROSOFT_SSO=true` está en el `.env` y que el backend se reinició después del cambio.
 
 > Las migraciones de Prisma en OpenShift deben ejecutarse manualmente o como un Job de Kubernetes antes del rollout: `oc run prisma-migrate --image=... --restart=Never -- npx prisma migrate deploy`
+
+---
+
+## 16. Borrado de Usuarios (GDPR Art. 17)
+
+Para eliminar un usuario y cumplir con el derecho de supresión del RGPD:
+
+```http
+DELETE /api/admin/users/:id
+Authorization: Bearer <admin-token>
+```
+
+**Comportamiento:**
+1. Las entradas en `audit_logs` con el email del usuario se pseudonomizan a `[deleted-{hash16}]`. El hash es SHA-256(email + JWT_SECRET) truncado — estable e irreversible.
+2. El registro de usuario se elimina permanentemente (cascada a `trusted_devices` y `password_history`).
+3. Se registra una entrada `GDPR_ERASURE` en `audit_logs` bajo el email del administrador.
+
+**Restricciones:** Un administrador no puede borrar su propia cuenta. Los administradores SSO deben revocar el acceso también en Azure AD / LDAP.
+
+**Conflicto GDPR Art.17 / ISO 27001 A.8.15:** La pseudonimización conserva la integridad cronológica de la pista de auditoría (requisito ISO 27001) mientras elimina el identificador personal directo (requisito GDPR). Este enfoque está amparado en el Art. 17(3)(b) del RGPD (obligación legal de conservación).
+
+La tabla `audit_logs` tiene habilitada Row-Level Security (RLS) con `FORCE` — el borrado de filas está bloqueado a nivel de base de datos para todos los roles incluido el propietario de la tabla.
+
+---
+
+## 17. LDAP_STRICT_MODE
+
+Por defecto, si el servidor LDAP no está disponible, la autenticación LDAP falla y el sistema intenta autenticación local. Los usuarios shadow LDAP tienen un hash de contraseña aleatorio que no puede usarse para login local, por lo que el fallback es seguro por diseño.
+
+Para entornos de alta seguridad que requieren bloqueo explícito del fallback:
+
+```env
+LDAP_STRICT_MODE=true
+```
+
+Con esta opción, si el servidor LDAP no responde, los usuarios LDAP reciben `Invalid credentials` en lugar de intentar autenticación local. **No afecta a las cuentas locales** (emails que terminan en `@cmdb.local` o `@cmdb.internal`).
+
+**Impacto:** Si el servidor LDAP cae, ningún usuario LDAP podrá autenticarse hasta que LDAP se recupere. Mantén siempre al menos una cuenta ADMIN local activa.
+
+---
+
+## 18. Aviso de Privacidad y Obligaciones GDPR Art. 13/14
+
+La plataforma incluye una página de aviso de privacidad en `/privacy`. Los campos marcados como `[REPLACE: ...]` deben ser completados por la organización antes del despliegue en producción:
+
+- **Nombre y datos del responsable del tratamiento** (Art. 13.1.a RGPD)
+- **Datos de contacto del Delegado de Protección de Datos** (Art. 13.1.b RGPD)
+- **Email de contacto para ejercicio de derechos**
+
+**Usuarios auto-provisionados (SSO/LDAP):** La plataforma crea cuentas automáticamente para usuarios de Microsoft Azure AD y LDAP sin interacción directa. Esto activa la obligación del Art. 14 RGPD (información indirecta). La organización debe informar a estos usuarios mediante comunicación interna (RRHH, correo corporativo) ya que la aplicación no envía correos de bienvenida.

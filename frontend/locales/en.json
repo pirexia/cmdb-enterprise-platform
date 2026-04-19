@@ -608,7 +608,8 @@
     "sso_loading": "Redirecting to Microsoft…",
     "sso_error": "SSO sign-in failed. Please use your credentials or contact your administrator.",
     "sso_not_provisioned": "Your Microsoft account is not registered in this platform. Contact your administrator.",
-    "sso_disabled": "Your account is disabled. Contact your administrator."
+    "sso_disabled": "Your account is disabled. Contact your administrator.",
+    "privacy_link": "Privacy notice"
   },
   "add_ci_modal": {
     "title": "New CI",
@@ -1085,5 +1086,22 @@
       "workflow_step5": "Verify the new certificate is active in your browser or with openssl s_client",
       "workflow_verify": "Quick verify"
     }
+  },
+  "privacy": {
+    "page_title": "Privacy Notice",
+    "link_text": "Privacy notice",
+    "controller_title": "1. Data Controller",
+    "controller_body": "Personal data collected on this platform is processed by [REPLACE: organisation name], registered at [REPLACE: address]. DPO contact: [REPLACE: DPO email].",
+    "data_title": "2. Personal Data Processed",
+    "data_body": "Username, email address, access timestamps, audit log entries (action + resource + email + timestamp), trusted device tokens.",
+    "basis_title": "3. Legal Basis",
+    "basis_body": "Processing is necessary for the performance of a service contract (Art. 6(1)(b) GDPR) and to comply with legal traceability and audit obligations (Art. 6(1)(c) GDPR).",
+    "retention_title": "4. Retention Periods",
+    "retention_body": "Audit logs are retained for a minimum of 730 days (2 years) to comply with NIS2 requirements. User accounts are deleted upon right-to-erasure request or end of employment.",
+    "rights_title": "5. Your Rights",
+    "rights_body": "You may exercise your rights of access, rectification, erasure, restriction, portability, and objection by contacting [REPLACE: contact email]. You have the right to lodge a complaint with the competent supervisory authority.",
+    "transfers_title": "6. International Transfers",
+    "transfers_body": "If Microsoft 365 SSO is used, part of the identity processing is carried out by Microsoft Corporation (USA) under Microsoft's Data Processing Agreement and Standard Contractual Clauses.",
+    "back": "← Back to login"
   }
 }

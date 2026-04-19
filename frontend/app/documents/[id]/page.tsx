@@ -140,12 +140,10 @@ function DocumentViewer({
   docId,
   mimeType,
   originalName,
-  token,
 }: {
   docId: string;
   mimeType: string;
   originalName: string;
-  token: string | null;
 }) {
   const { t } = useLanguage();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -169,7 +167,7 @@ function DocumentViewer({
     setTextContent(null);
 
     fetch(`${apiBase}/api/documents/${docId}/download?inline=true`, {
-      headers: { Authorization: `Bearer ${token ?? ""}` },
+      credentials: "include",
     })
       .then(async (r) => {
         if (!r.ok) throw new Error(`${r.status}`);
@@ -263,12 +261,10 @@ function DocumentViewer({
 
 function AddVersionModal({
   docId,
-  token,
   onClose,
   onSuccess,
 }: {
   docId: string;
-  token: string | null;
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -287,7 +283,7 @@ function AddVersionModal({
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
       const res = await fetch(`${apiBase}/api/documents/${docId}/versions`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
         body: formData,
       });
       if (!res.ok) {
@@ -839,7 +835,7 @@ function EditMetadataModal({
 
 export default function DocumentDetailPage() {
   const { t } = useLanguage();
-  const { isAdmin, token } = useAuth();
+  const { isAdmin } = useAuth();
   const router = useRouter();
   const params = useParams();
   const docId = params.id as string;
@@ -912,7 +908,7 @@ export default function DocumentDetailPage() {
     const id = versionId ?? docId;
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
     const res = await fetch(`${apiBase}/api/documents/${id}/download`, {
-      headers: { Authorization: `Bearer ${token ?? ""}` },
+      credentials: "include",
     });
     if (!res.ok) return;
     const blob = await res.blob();
@@ -1152,7 +1148,6 @@ export default function DocumentDetailPage() {
                 docId={previewId}
                 mimeType={previewMime}
                 originalName={previewName}
-                token={token}
               />
             </SectionCard>
           )}
@@ -1393,7 +1388,6 @@ export default function DocumentDetailPage() {
       {showAddVersion && (
         <AddVersionModal
           docId={docId}
-          token={token}
           onClose={() => setShowAddVersion(false)}
           onSuccess={() => { setShowAddVersion(false); void load(); }}
         />

@@ -8,6 +8,20 @@
 
 ---
 
+## Remediation Update — 2026-04-18 (develop branch, v2.0.2)
+
+| Finding | Status | Commit |
+|---------|--------|--------|
+| No user account deletion / Art. 17 erasure impossible | ✅ **Fixed** | `3ae7df1` — `DELETE /api/admin/users/:id` + audit log pseudonymisation (closes #70, #73) |
+| JWT in `localStorage` — XSS theft risk (Art. 32) | ✅ **Fixed** | `023328f` — HttpOnly cookie migration (closes #71) |
+| No privacy notice / Arts. 13/14 notice absent | ✅ **Fixed** | `50d622d` — `/privacy` page + login link + all 6 locales (closes #77) |
+| No DPIA despite high-risk processing (Art. 35) | ✅ **Fixed** | `c975f1b` — ISMS-DPIA-001 created in `docs/security/isms/06-dpia.md` (closes #80) |
+| Audit log immutability vs. erasure conflict unresolved | ✅ **Fixed** | `3ae7df1` — pseudonymisation (SHA-256 hash) as Art. 17(3)(b) exception; RLS enforced |
+| DNI/national ID lacks documented legal basis | 🟡 **Open** | Documented in DPIA §3.2 — decision required before production deployment |
+| No data portability mechanism (Art. 20) | 🟡 **Open** | Not in scope for current release |
+
+---
+
 ## Executive Summary
 
 The CMDB Enterprise Platform processes three categories of personal data: platform user accounts (email, hashed credentials, MFA secrets, SSO identifiers), audit log entries (user email linked to actions and timestamps), and license user records (full name, DNI/national ID number, email). The platform demonstrates strong technical security controls — including RBAC, MFA enforcement for administrators, bcrypt-hashed passwords (cost factor 12), parameterised SQL throughout, Helmet security headers, and rate-limited endpoints — which positively address Art. 32 integrity and confidentiality obligations. However, several significant GDPR gaps exist: there is no user-account deletion endpoint (making Art. 17 erasure impossible without direct database intervention), no documented lawful basis for processing LicenseUser DNI/national ID numbers, no privacy notice or data subject information system (Arts. 13/14), no data portability mechanism (Art. 20), and no formal Data Protection Impact Assessment despite processing national identity numbers at scale. The audit classifies the overall compliance posture as **Partial — Requires Remediation**, with two High-risk gaps requiring immediate attention.

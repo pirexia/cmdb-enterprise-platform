@@ -68,6 +68,15 @@ ${RUNTIME} exec "${PG_CONTAINER}" \
 BACKUP_SIZE="$(du -sh "${BACKUP_FILE}" | cut -f1)"
 echo "${LOG_PREFIX} ✅ Backup created: ${BACKUP_FILE} (${BACKUP_SIZE})"
 
+# ── Verify backup integrity ───────────────────────────────────────────────────
+echo "${LOG_PREFIX} Verifying backup integrity…"
+if ! gunzip -t "${BACKUP_FILE}" 2>/dev/null; then
+  echo "${LOG_PREFIX} ❌ INTEGRITY CHECK FAILED: ${BACKUP_FILE} is corrupt." >&2
+  rm -f "${BACKUP_FILE}"
+  exit 1
+fi
+echo "${LOG_PREFIX} ✅ Integrity check passed."
+
 # ── Rotate old backups ────────────────────────────────────────────────────────
 echo "${LOG_PREFIX} Rotating backups older than ${RETENTION_DAYS} days…"
 DELETED_COUNT=0

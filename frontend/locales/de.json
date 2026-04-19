@@ -563,7 +563,8 @@
     "sso_loading": "Weiterleitung zu Microsoft…",
     "sso_error": "SSO-Anmeldung fehlgeschlagen. Bitte verwenden Sie Ihre Anmeldedaten oder kontaktieren Sie Ihren Administrator.",
     "sso_not_provisioned": "Ihr Microsoft-Konto ist nicht in dieser Plattform registriert. Kontaktieren Sie Ihren Administrator.",
-    "sso_disabled": "Ihr Konto ist deaktiviert. Kontaktieren Sie Ihren Administrator."
+    "sso_disabled": "Ihr Konto ist deaktiviert. Kontaktieren Sie Ihren Administrator.",
+    "privacy_link": "Datenschutzhinweis"
   },
   "add_ci_modal": {
     "title": "Neues CI",
@@ -966,5 +967,22 @@
       "workflow_step5": "Überprüfe das neue Zertifikat im Browser oder mit openssl s_client",
       "workflow_verify": "Schnellprüfung"
     }
+  },
+  "privacy": {
+    "page_title": "Datenschutzhinweis",
+    "link_text": "Datenschutzhinweis",
+    "controller_title": "1. Verantwortlicher",
+    "controller_body": "Die auf dieser Plattform erhobenen personenbezogenen Daten werden verarbeitet von [REPLACE: Name der Organisation], [REPLACE: Adresse]. DSB-Kontakt: [REPLACE: DSB-E-Mail].",
+    "data_title": "2. Verarbeitete personenbezogene Daten",
+    "data_body": "Benutzername, E-Mail-Adresse, Zugriffszeitstempel, Audit-Protokolleinträge (Aktion + Ressource + E-Mail + Zeitstempel), vertrauenswürdige Geräte-Token.",
+    "basis_title": "3. Rechtsgrundlage",
+    "basis_body": "Die Verarbeitung ist erforderlich für die Erfüllung eines Dienstleistungsvertrags (Art. 6 Abs. 1 lit. b DSGVO) und zur Erfüllung gesetzlicher Nachvollziehbarkeits- und Prüfpflichten (Art. 6 Abs. 1 lit. c DSGVO).",
+    "retention_title": "4. Speicherdauer",
+    "retention_body": "Audit-Protokolle werden mindestens 730 Tage (2 Jahre) aufbewahrt, um die NIS2-Anforderungen zu erfüllen. Benutzerkonten werden auf Antrag auf Löschung oder bei Beendigung des Arbeitsverhältnisses gelöscht.",
+    "rights_title": "5. Ihre Rechte",
+    "rights_body": "Sie können Ihre Rechte auf Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit und Widerspruch unter [REPLACE: Kontakt-E-Mail] geltend machen. Sie haben das Recht, Beschwerde bei der zuständigen Aufsichtsbehörde einzulegen.",
+    "transfers_title": "6. Internationale Übermittlungen",
+    "transfers_body": "Bei Verwendung von Microsoft 365 SSO wird ein Teil der Identitätsverarbeitung von der Microsoft Corporation (USA) im Rahmen des Microsoft-Datenverarbeitungsvertrags und der Standardvertragsklauseln durchgeführt.",
+    "back": "← Zurück zur Anmeldung"
   }
 }

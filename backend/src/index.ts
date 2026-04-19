@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import crypto from 'crypto';
@@ -22,7 +23,8 @@ import {
   buildAuthorizationUrl, exchangeCodeForTokens, validateIdToken,
   generateCodeVerifier, generateCodeChallenge,
 } from './services/microsoftSso';
-import * as speakeasy from 'speakeasy';
+import { authenticator } from 'otplib';
+authenticator.options = { window: 1 }; // accept 1 step before/after current (30-sec clock drift)
 import QRCode from 'qrcode';
 import multer from 'multer';
 
@@ -92,8 +94,14 @@ declare global {
 // Helmet is still applied for defence-in-depth on non-nginx traffic.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 app.use((helmetFn as any)({
-  hsts: false,              // nginx handles HSTS on the public interface
-  contentSecurityPolicy: false, // API-only server — no HTML served
+  hsts: false, // nginx handles HSTS on the public interface
+  contentSecurityPolicy: {
+    // Restrictive API-only policy: no content rendered, so only frame-ancestors matters.
+    directives: {
+      defaultSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
 }));
 
 // ── CORS — derived from FRONTEND_URL (same-origin via nginx gateway) ──────────
@@ -124,6 +132,25 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
+
+const COOKIE_NAME = 'cmdb_token';
+const COOKIE_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours — matches JWT expiry
+
+function setAuthCookie(res: Response, token: string): void {
+  const isProduction = process.env.NODE_ENV === 'production';
+  res.cookie(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'strict' : 'lax',
+    maxAge: COOKIE_MAX_AGE_MS,
+    path: '/',
+  });
+}
+
+function clearAuthCookie(res: Response): void {
+  res.clearCookie(COOKIE_NAME, { path: '/' });
+}
 
 // ── Rate limiting (OWASP: Brute-force prevention) ────────────────────────────
 
@@ -236,8 +263,10 @@ const ContractCreateSchema = z.object({
 // ── Auth middleware ────────────────────────────────────────────────────────────
 
 async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
+  const authHeader  = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+  const token       = cookieToken ?? bearerToken ?? null;
 
   if (!token) {
     res.status(401).json({ error: 'Authentication required. Please login.' });
@@ -703,7 +732,18 @@ app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response
     return;
   }
   ssoTokenStore.delete(code); // one-time use — delete immediately
+  setAuthCookie(res, entry.token);
   res.json({ token: entry.token, deviceToken: entry.deviceToken, user: entry.user });
+});
+
+/**
+ * POST /api/auth/logout
+ * Clears the HttpOnly session cookie. No auth required — if the cookie is
+ * missing the call is a no-op.
+ */
+app.post('/api/auth/logout', (_req: Request, res: Response) => {
+  clearAuthCookie(res);
+  res.json({ message: 'Logged out.' });
 });
 
 /**
@@ -765,6 +805,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     }
 
     if (!ldapSuccess) {
+      // LDAP_STRICT_MODE=true: block local auth fallback for LDAP-provisioned accounts.
+      // This prevents the (already-safe) fallback when the LDAP server is unreachable.
+      // LDAP shadow users have a random bcrypt hash they don't know, so fallback is
+      // already safe by design — but strict mode makes this an explicit policy.
+      if (process.env.LDAP_STRICT_MODE === 'true' && process.env.USE_LDAP === 'true' && !isLocalAccount) {
+        log.warn(`[POST /api/auth/login] LDAP_STRICT_MODE: blocking local fallback for ${email}`);
+        res.status(401).json({ error: 'Invalid credentials' });
+        return;
+      }
+
       const rows = await prisma.$queryRaw<UserRow[]>`
         SELECT id, username, email, password, role, COALESCE(active, true) AS active,
                mfa_enabled, mfa_secret, mfa_prompted_at
@@ -774,6 +824,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         res.status(401).json({ error: 'Invalid credentials' });
         return;
       }
+      // Safety note: LDAP shadow users have password = bcrypt(random-token) so
+      // bcrypt.compare against a real user-supplied password will always fail.
+      // LDAP_STRICT_MODE adds an explicit policy-level block before this check.
       const valid = await bcrypt.compare(password, rows[0].password);
       if (!valid) {
         res.status(401).json({ error: 'Invalid credentials' });
@@ -839,7 +892,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         `;
         if (trusted.length > 0) {
           await prisma.$executeRaw`UPDATE "trusted_devices" SET last_seen_at = now() WHERE token = ${deviceToken}`;
-          res.json({ token: signFullToken(), user: userObj() });
+          const t1 = signFullToken();
+          setAuthCookie(res, t1);
+          res.json({ token: t1, user: userObj() });
           return;
         }
       }
@@ -850,7 +905,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         return;
       }
 
-      const mfaValid = speakeasy.totp.verify({ secret: user.mfa_secret, encoding: 'base32', token: mfaCode, window: 1 });
+      const mfaValid = authenticator.check(mfaCode, user.mfa_secret as string);
       if (!mfaValid) {
         res.status(401).json({ error: 'INVALID_MFA_CODE' });
         return;
@@ -859,7 +914,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       let newDeviceToken: string | undefined;
       if (trustDevice) newDeviceToken = await createTrustedDevice();
 
-      res.json({ token: signFullToken(), user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
+      const t2 = signFullToken();
+      setAuthCookie(res, t2);
+      res.json({ token: t2, user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
       return;
     }
 
@@ -868,6 +925,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       // Admin: mandatory MFA setup — issue short-lived limited token
       const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
       const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m', algorithm: 'HS256' as const });
+      setAuthCookie(res, limitedToken);
       res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
       return;
     }
@@ -875,12 +933,16 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     // Non-admin: suggest MFA on first login
     if (!user.mfa_prompted_at) {
       await prisma.$executeRaw`UPDATE "users" SET mfa_prompted_at = now(), updated_at = now() WHERE id = ${user.id}::uuid`;
-      res.json({ token: signFullToken(), user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
+      const t4a = signFullToken();
+      setAuthCookie(res, t4a);
+      res.json({ token: t4a, user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
       return;
     }
 
     // Normal login (non-admin, already prompted before or MFA skipped)
-    res.json({ token: signFullToken(), user: userObj() });
+    const t4b = signFullToken();
+    setAuthCookie(res, t4b);
+    res.json({ token: t4b, user: userObj() });
 
   } catch (error) {
     console.error('[POST /api/auth/login] Error:', error);
@@ -1078,6 +1140,66 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
     res.json({ message: `Contraseña reseteada para el usuario ${user.email}.` });
   } catch (e) {
     console.error('[POST /api/users/:id/reset-password]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/admin/users/:id
+ * GDPR Art. 17 right to erasure. ADMIN only.
+ *
+ * Performs structured erasure:
+ *   1. Pseudonymises audit_logs entries (replaces email with a stable hash)
+ *   2. Clears all PII fields on the user record (email, password, MFA secrets, SSO id)
+ *   3. Hard-deletes trusted_devices and password_history (cascade from user delete)
+ *   4. Hard-deletes the user row
+ *
+ * The audit trail sequence is preserved (action/entity/timestamps intact).
+ * The requesting admin cannot erase their own account.
+ */
+app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const targetId = req.params.id as string;
+
+  // Prevent self-erasure
+  if (targetId === req.user!.id) {
+    res.status(400).json({ error: 'You cannot erase your own account.' });
+    return;
+  }
+
+  try {
+    // 1. Resolve the user and get their email
+    const rows = await prisma.$queryRaw<{ id: string; email: string; username: string }[]>`
+      SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
+    `;
+    if (!rows.length) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+    const { email } = rows[0];
+
+    // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
+    //    The token is deterministic so repeat erasures produce the same result (idempotent).
+    const pseudoToken = '[deleted-' +
+      crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
+      ']';
+    await prisma.$executeRaw`
+      UPDATE "audit_logs" SET user_email = ${pseudoToken} WHERE user_email = ${email}
+    `;
+
+    // 3. Hard-delete the user (trusted_devices + password_history cascade automatically)
+    await prisma.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
+
+    // 4. Record the erasure in the audit log under the admin's email
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
+    `;
+
+    log.info(`[DELETE /api/admin/users/${targetId}] GDPR erasure completed by ${req.user!.email}. Audit logs pseudonymised as ${pseudoToken}.`);
+    res.json({ message: 'User erased. Audit log entries pseudonymised.' });
+
+  } catch (error) {
+    log.error('[DELETE /api/admin/users/:id] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1680,9 +1802,8 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
  */
 app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Response) => {
   try {
-    const secretObj = speakeasy.generateSecret({ name: `CMDB Enterprise (${req.user!.email})`, length: 20 });
-    const secret    = secretObj.base32;
-    const otpauth   = secretObj.otpauth_url ?? speakeasy.otpauthURL({ secret, label: req.user!.email, issuer: 'CMDB Enterprise', encoding: 'base32' });
+    const secret  = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(req.user!.email, 'CMDB Enterprise', secret);
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
     // Store the pending secret server-side so /mfa/enable can retrieve it
@@ -1722,7 +1843,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       res.status(400).json({ error: 'MFA setup not initiated. Please call /api/auth/mfa/setup first.' });
       return;
     }
-    const valid = speakeasy.totp.verify({ secret, encoding: 'base32', token: code, window: 1 });
+    const valid = authenticator.check(code, secret);
     if (!valid) {
       res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
       return;
@@ -1735,6 +1856,7 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
     // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
     const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
+    setAuthCookie(res, newToken);
 
     let newDeviceToken: string | undefined;
     if (trustDevice) {
@@ -1774,18 +1896,6 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
  * ADMIN only.
  */
 
-/** Sanitise a DN field to prevent shell-injection through the -subj argument. */
-function sanitiseDnField(value: string): string {
-  // Strip characters that are special inside an OpenSSL -subj string or shell:
-  // forward-slash (path separator in DN), double-quote, backslash, backtick, $, newline.
-  return value.replace(/[/\\"'`$\n\r]/g, '');
-}
-
-/** Sanitise a SAN value (DNS or IP token). Only allow safe characters. */
-function sanitiseSan(value: string): string {
-  return value.replace(/[^a-zA-Z0-9.:,\-_*]/g, '');
-}
-
 app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const { cn, o, ou, c, st, l, san } = req.body as {
     cn?: string; o?: string; ou?: string; c?: string;
@@ -1798,9 +1908,9 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
   }
 
   try {
-    const { exec } = await import('child_process');
+    const { execFile } = await import('child_process');
     const { promisify } = await import('util');
-    const execAsync = promisify(exec);
+    const execFileAsync = promisify(execFile);
 
     const certDir = '/app/certs';
     const keyPath = path.join(certDir, 'server.key');
@@ -1809,13 +1919,13 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     // Ensure directory exists (mapped from host via volume)
     fs.mkdirSync(certDir, { recursive: true });
 
-    // Sanitise every DN field to prevent shell injection
-    const safeCn  = sanitiseDnField(cn.trim());
-    const safeO   = o?.trim()  ? sanitiseDnField(o.trim())   : '';
-    const safeOu  = ou?.trim() ? sanitiseDnField(ou.trim())  : '';
-    const safeC   = c?.trim()  ? sanitiseDnField(c.trim())   : '';
-    const safeSt  = st?.trim() ? sanitiseDnField(st.trim())  : '';
-    const safeL   = l?.trim()  ? sanitiseDnField(l.trim())   : '';
+    // Strip characters that are structurally special in OpenSSL DN notation
+    const safeCn  = cn.trim().replace(/[/\\"'\0]/g, '');
+    const safeO   = o?.trim()  ? o.trim().replace(/[/\\"'\0]/g, '')   : '';
+    const safeOu  = ou?.trim() ? ou.trim().replace(/[/\\"'\0]/g, '')  : '';
+    const safeC   = c?.trim()  ? c.trim().replace(/[/\\"'\0]/g, '')   : '';
+    const safeSt  = st?.trim() ? st.trim().replace(/[/\\"'\0]/g, '')  : '';
+    const safeL   = l?.trim()  ? l.trim().replace(/[/\\"'\0]/g, '')   : '';
 
     // Build subject string — field order matches RFC 4514 convention
     const subject =
@@ -1829,7 +1939,7 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
     // Build SAN extension — auto-derive from CN if not provided
     let sanValue: string;
     if (san?.trim()) {
-      sanValue = sanitiseSan(san.trim());
+      sanValue = san.trim().replace(/[^a-zA-Z0-9.:,\-_*]/g, '');
     } else {
       // Auto-derive: if CN looks like an IP use IP:, otherwise use DNS:
       const ipPattern = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -1840,15 +1950,17 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
       sanValue += ',DNS:localhost,IP:127.0.0.1';
     }
 
-    // Generate 4096-bit RSA private key and CSR with SAN extension
-    const cmd = `openssl req -new -newkey rsa:4096 -nodes \
-      -keyout "${keyPath}" \
-      -out "${csrPath}" \
-      -subj "${subject}" \
-      -addext "subjectAltName=${sanValue}"`;
-
     log.info(`[POST /api/admin/certificates/csr] Generating 4096-bit CSR: ${subject} | SAN: ${sanValue}`);
-    const { stderr } = await execAsync(cmd);
+
+    // execFile bypasses the shell — args are passed directly to the kernel,
+    // making injection structurally impossible regardless of field content
+    const { stderr } = await execFileAsync('openssl', [
+      'req', '-new', '-newkey', 'rsa:4096', '-nodes',
+      '-keyout', keyPath,
+      '-out',    csrPath,
+      '-subj',   subject,
+      '-addext', `subjectAltName=${sanValue}`,
+    ]);
 
     if (stderr && !stderr.includes('writing')) {
       log.warn(`[POST /api/admin/certificates/csr] OpenSSL stderr: ${stderr}`);

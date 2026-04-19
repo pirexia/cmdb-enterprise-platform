@@ -58,7 +58,7 @@ function formatDate(iso: string) {
 function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onExpand: () => void; expanded: boolean }) {
   const status     = getContractStatus(contract.endDate);
   const isAddendum = !!contract.parentContract;
-  const { token, isAdmin }  = useAuth();
+  const { isAdmin }  = useAuth();
   const { t } = useLanguage();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -121,7 +121,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
   // ── Download ────────────────────────────────────────────────────────────────
   const handleDownload = async (docId: string, fileName: string) => {
     const res = await fetch(`${apiBase}/api/documents/${docId}/download`, {
-      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
     });
     if (!res.ok) return;
     const blob = await res.blob();
@@ -154,7 +154,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
 
     try {
       const res = await fetch(`${apiBase}/api/documents/${docId}/download?inline=true`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       if (!res.ok) throw new Error("fetch failed");
 

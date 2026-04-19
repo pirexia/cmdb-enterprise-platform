@@ -3714,17 +3714,15 @@ const ThemeUpdateSchema = z.object({
   companyName: z.string().min(1).max(100).trim().optional(),
 });
 
-async function getSettingsMap(): Promise<Record<string, string>> {
-  const rows = await (prisma as any).appSettings.findMany() as Array<{ key: string; value: string }>;
-  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
-}
-
 /**
  * GET /api/settings/theme — public (needed for login page before auth)
  */
 app.get('/api/settings/theme', async (_req: Request, res: Response) => {
   try {
-    const s = await getSettingsMap();
+    const rows = await (prisma as any).appSettings.findMany({
+      where: { key: { in: ['sidebar_bg', 'accent_color', 'company_name', 'logo_data'] } },
+    }) as { key: string; value: string }[];
+    const s = Object.fromEntries(rows.map((r: { key: string; value: string }) => [r.key, r.value]));
     res.json({
       sidebarBg:   s['sidebar_bg']   ?? '#0f172a',
       accentColor: s['accent_color'] ?? '#3b82f6',
@@ -3742,7 +3740,10 @@ app.get('/api/settings/theme', async (_req: Request, res: Response) => {
  */
 app.get('/api/settings/logo', async (_req: Request, res: Response) => {
   try {
-    const s = await getSettingsMap();
+    const rows = await (prisma as any).appSettings.findMany({
+      where: { key: { in: ['logo_data', 'logo_mime'] } },
+    }) as { key: string; value: string }[];
+    const s = Object.fromEntries(rows.map((r: { key: string; value: string }) => [r.key, r.value]));
     if (!s['logo_data'] || s['logo_data'].length === 0) {
       res.status(404).json({ error: 'No logo configured' });
       return;
@@ -3805,25 +3806,32 @@ app.post('/api/settings/logo', authenticateToken, requireAdmin, logoUpload.singl
     return;
   }
   const buf = req.file.buffer;
+  if (buf.length < 12) {
+    res.status(400).json({ error: 'El archivo no es una imagen válida (PNG, JPEG o WebP)' });
+    return;
+  }
   const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
   const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
-  const isWebP = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46;
+  const isWebP = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+                 buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
   if (!isPng && !isJpeg && !isWebP) {
     res.status(400).json({ error: 'El archivo no es una imagen válida (PNG, JPEG o WebP)' });
     return;
   }
   try {
     const b64 = buf.toString('base64');
-    await (prisma as any).appSettings.upsert({
-      where:  { key: 'logo_data' },
-      update: { value: b64 },
-      create: { key: 'logo_data', value: b64 },
-    });
-    await (prisma as any).appSettings.upsert({
-      where:  { key: 'logo_mime' },
-      update: { value: req.file.mimetype },
-      create: { key: 'logo_mime', value: req.file.mimetype },
-    });
+    await (prisma as any).$transaction([
+      (prisma as any).appSettings.upsert({
+        where:  { key: 'logo_data' },
+        update: { value: b64 },
+        create: { key: 'logo_data', value: b64 },
+      }),
+      (prisma as any).appSettings.upsert({
+        where:  { key: 'logo_mime' },
+        update: { value: req.file.mimetype },
+        create: { key: 'logo_mime', value: req.file.mimetype },
+      }),
+    ]);
     await prisma.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
       VALUES (gen_random_uuid(), 'UPDATE_LOGO', 'AppSettings', 'logo', ${req.user!.email}, now())
@@ -3840,13 +3848,10 @@ app.post('/api/settings/logo', authenticateToken, requireAdmin, logoUpload.singl
  */
 app.delete('/api/settings/logo', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    for (const key of ['logo_data', 'logo_mime']) {
-      await (prisma as any).appSettings.upsert({
-        where:  { key },
-        update: { value: '' },
-        create: { key, value: '' },
-      });
-    }
+    await (prisma as any).$transaction([
+      (prisma as any).appSettings.upsert({ where: { key: 'logo_data' }, update: { value: '' }, create: { key: 'logo_data', value: '' } }),
+      (prisma as any).appSettings.upsert({ where: { key: 'logo_mime' }, update: { value: '' }, create: { key: 'logo_mime', value: '' } }),
+    ]);
     await prisma.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
       VALUES (gen_random_uuid(), 'DELETE_LOGO', 'AppSettings', 'logo', ${req.user!.email}, now())

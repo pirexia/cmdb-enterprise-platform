@@ -672,3 +672,11 @@ model DocumentLicense {
   @@index([licenseId])
   @@map("document_licenses")
 }
+
+model AppSettings {
+  key       String   @id
+  value     String   @default("")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("AppSettings")
+}

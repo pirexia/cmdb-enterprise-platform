@@ -40,9 +40,12 @@ export default function LoginPage() {
   const { locale, setLocale, t } = useLanguage();
   const router = useRouter();
 
-  const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
-  const themeColor  = process.env.NEXT_PUBLIC_THEME_COLOR  || "#4f46e5";
-  const ttlDays     = process.env.NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS || "30";
+  const ttlDays = process.env.NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS || "30";
+
+  const [themeColor,  setThemeColor]  = useState("#0f172a");
+  const [accentColor, setAccentColor] = useState("#3b82f6");
+  const [companyName, setCompanyName] = useState("CMDB Platform");
+  const [hasLogo,     setHasLogo]     = useState(false);
 
   // ── SSO status ────────────────────────────────────────────────────────────
   const [ssoEnabled,   setSsoEnabled]   = useState(false);
@@ -90,6 +93,21 @@ export default function LoginPage() {
     if (urlError) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Load theme settings from API ───────────────────────────────────────
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/settings/theme`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { sidebarBg: string; accentColor: string; companyName: string; hasLogo: boolean } | null) => {
+        if (!d) return;
+        setThemeColor(d.sidebarBg);
+        setAccentColor(d.accentColor);
+        setCompanyName(d.companyName);
+        setHasLogo(d.hasLogo);
+      })
+      .catch(() => { /* use defaults */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -230,8 +248,12 @@ export default function LoginPage() {
 
           {/* Header band */}
           <div className="px-8 py-7 text-center" style={{ backgroundColor: themeColor }}>
-            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mb-3">
-              {meta.icon}
+            <div className="inline-flex h-14 w-14 items-center justify-center bg-white/20 mb-3 mx-auto">
+              {hasLogo
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/settings/logo`} alt={companyName} className="h-10 w-10 object-contain" />
+                : meta.icon
+              }
             </div>
             <h1 className="text-xl font-bold text-white">{companyName}</h1>
             <p className="text-xs text-white/70 mt-1">{meta.subtitle}</p>
@@ -294,7 +316,8 @@ export default function LoginPage() {
                   </div>
                 </div>
                 <button type="submit" disabled={loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.verifying") : t("login.submit")}
                 </button>
@@ -356,7 +379,8 @@ export default function LoginPage() {
                   </span>
                 </label>
                 <button type="submit" disabled={loading || mfaCode.length !== 6}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.verifying") : t("login.verify_code")}
                 </button>
@@ -378,7 +402,8 @@ export default function LoginPage() {
                 </div>
                 <button
                   onClick={() => { setIsAdminSetup(false); setStep("mfa_setup_qr"); }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   <ShieldCheck className="h-4 w-4" /> {t("login.setup_mfa_now")}
                 </button>
                 <button
@@ -436,7 +461,8 @@ export default function LoginPage() {
                 <button
                   onClick={() => setStep("mfa_setup_verify")}
                   disabled={!qrDataUrl || qrLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {t("login.scanned_continue")}
                 </button>
                 {!isAdminSetup && (

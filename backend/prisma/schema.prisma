@@ -678,5 +678,5 @@ model AppSettings {
   value     String   @default("")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("AppSettings")
+  @@map("app_settings")
 }

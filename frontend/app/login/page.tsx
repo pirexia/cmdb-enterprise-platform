@@ -499,11 +499,11 @@ export default function LoginPage() {
           </div>
         </div>
 
-      </div>
-      <div className="text-center mt-6">
-        <Link href="/privacy" className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
-          {t("login.privacy_link")}
-        </Link>
+        <div className="text-center mt-4">
+          <Link href="/privacy" className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+            {t("login.privacy_link")}
+          </Link>
+        </div>
       </div>
     </div>
   );

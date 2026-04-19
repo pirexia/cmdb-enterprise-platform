@@ -41,6 +41,7 @@ const log = {
 };
 
 const app    = express();
+app.set('trust proxy', 1); // nginx terminates TLS and sets X-Forwarded-For
 const prisma = new PrismaClient();
 const PORT   = process.env.PORT || 3000;
 

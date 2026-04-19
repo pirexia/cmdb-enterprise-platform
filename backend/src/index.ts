@@ -3691,6 +3691,173 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
   }
 });
 
+// ─── App Settings — Theme & Branding ─────────────────────────────────────────
+
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Tipo de imagen no permitido. Use PNG, JPEG o WebP.'));
+    }
+  },
+});
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+
+const ThemeUpdateSchema = z.object({
+  sidebarBg:   z.string().regex(HEX_COLOR_RE).optional(),
+  accentColor: z.string().regex(HEX_COLOR_RE).optional(),
+  companyName: z.string().min(1).max(100).trim().optional(),
+});
+
+async function getSettingsMap(): Promise<Record<string, string>> {
+  const rows = await (prisma as any).appSettings.findMany() as Array<{ key: string; value: string }>;
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+/**
+ * GET /api/settings/theme — public (needed for login page before auth)
+ */
+app.get('/api/settings/theme', async (_req: Request, res: Response) => {
+  try {
+    const s = await getSettingsMap();
+    res.json({
+      sidebarBg:   s['sidebar_bg']   ?? '#0f172a',
+      accentColor: s['accent_color'] ?? '#3b82f6',
+      companyName: s['company_name'] ?? 'CMDB Platform',
+      hasLogo:     !!(s['logo_data'] && s['logo_data'].length > 0),
+    });
+  } catch (error) {
+    log.error('[GET /api/settings/theme] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/settings/logo — public, returns binary image
+ */
+app.get('/api/settings/logo', async (_req: Request, res: Response) => {
+  try {
+    const s = await getSettingsMap();
+    if (!s['logo_data'] || s['logo_data'].length === 0) {
+      res.status(404).json({ error: 'No logo configured' });
+      return;
+    }
+    const buf = Buffer.from(s['logo_data'], 'base64');
+    res.setHeader('Content-Type', s['logo_mime'] || 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(buf);
+  } catch (error) {
+    log.error('[GET /api/settings/logo] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PUT /api/settings/theme — ADMIN only
+ */
+app.put('/api/settings/theme', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const parsed = ThemeUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Datos inválidos', details: parsed.error.flatten() });
+    return;
+  }
+  const { sidebarBg, accentColor, companyName } = parsed.data;
+  const updates: { key: string; value: string }[] = [];
+  if (sidebarBg)              updates.push({ key: 'sidebar_bg',   value: sidebarBg });
+  if (accentColor)            updates.push({ key: 'accent_color', value: accentColor });
+  if (companyName !== undefined) updates.push({ key: 'company_name', value: companyName });
+  if (updates.length === 0) {
+    res.status(400).json({ error: 'No fields to update' });
+    return;
+  }
+  try {
+    await Promise.all(
+      updates.map((u) =>
+        (prisma as any).appSettings.upsert({
+          where:  { key: u.key },
+          update: { value: u.value },
+          create: { key: u.key, value: u.value },
+        })
+      )
+    );
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPDATE_THEME', 'AppSettings', 'theme', ${req.user!.email}, now())
+    `;
+    res.json({ ok: true });
+  } catch (error) {
+    log.error('[PUT /api/settings/theme] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/settings/logo — ADMIN only, multipart/form-data field "logo"
+ */
+app.post('/api/settings/logo', authenticateToken, requireAdmin, logoUpload.single('logo'), async (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'No se adjuntó ningún archivo' });
+    return;
+  }
+  const buf = req.file.buffer;
+  const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  const isJpeg = buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const isWebP = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46;
+  if (!isPng && !isJpeg && !isWebP) {
+    res.status(400).json({ error: 'El archivo no es una imagen válida (PNG, JPEG o WebP)' });
+    return;
+  }
+  try {
+    const b64 = buf.toString('base64');
+    await (prisma as any).appSettings.upsert({
+      where:  { key: 'logo_data' },
+      update: { value: b64 },
+      create: { key: 'logo_data', value: b64 },
+    });
+    await (prisma as any).appSettings.upsert({
+      where:  { key: 'logo_mime' },
+      update: { value: req.file.mimetype },
+      create: { key: 'logo_mime', value: req.file.mimetype },
+    });
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPDATE_LOGO', 'AppSettings', 'logo', ${req.user!.email}, now())
+    `;
+    res.json({ ok: true });
+  } catch (error) {
+    log.error('[POST /api/settings/logo] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/settings/logo — ADMIN only
+ */
+app.delete('/api/settings/logo', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    for (const key of ['logo_data', 'logo_mime']) {
+      await (prisma as any).appSettings.upsert({
+        where:  { key },
+        update: { value: '' },
+        create: { key, value: '' },
+      });
+    }
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'DELETE_LOGO', 'AppSettings', 'logo', ${req.user!.email}, now())
+    `;
+    res.json({ ok: true });
+  } catch (error) {
+    log.error('[DELETE /api/settings/logo] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Daily Alert Cron (08:30 AM every day) ───────────────────────────────────
 // To test immediately without waiting, temporarily change the schedule to:
 //   '* * * * *'   (every minute)

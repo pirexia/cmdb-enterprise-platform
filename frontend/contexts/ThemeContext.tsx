@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 interface ThemeData {
   companyName: string;
@@ -8,11 +9,7 @@ interface ThemeData {
   loading: boolean;
 }
 
-const ThemeContext = createContext<ThemeData>({
-  companyName: "CMDB Platform",
-  logoUrl: null,
-  loading: true,
-});
+const ThemeContext = createContext<ThemeData | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [companyName, setCompanyName] = useState("CMDB Platform");
@@ -20,12 +17,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/settings/theme")
+    // Public endpoint — safe to call before auth is established
+    apiFetch("/api/settings/theme")
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { sidebarBg: string; accentColor: string; companyName: string; hasLogo: boolean } | null) => {
         if (!data) return;
         setCompanyName(data.companyName);
         setLogoUrl(data.hasLogo ? "/api/settings/logo" : null);
+
+        // Validate hex colors before CSS injection to prevent CSS injection attacks
+        const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+        const safeSidebarBg   = HEX_COLOR_RE.test(data.sidebarBg)   ? data.sidebarBg   : '#0f172a';
+        const safeAccentColor = HEX_COLOR_RE.test(data.accentColor) ? data.accentColor : '#3b82f6';
 
         const style = document.getElementById("theme-vars") ?? (() => {
           const s = document.createElement("style");
@@ -33,7 +36,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           document.head.appendChild(s);
           return s;
         })();
-        style.textContent = `:root { --sidebar-bg: ${data.sidebarBg}; --accent: ${data.accentColor}; }`;
+        style.textContent = `:root { --sidebar-bg: ${safeSidebarBg}; --accent: ${safeAccentColor}; }`;
       })
       .catch(() => { /* silently use CSS defaults */ })
       .finally(() => setLoading(false));
@@ -46,6 +49,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useTheme() {
-  return useContext(ThemeContext);
+export function useTheme(): ThemeData {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
+  return ctx;
 }

@@ -770,6 +770,29 @@ The **System Information** panel shows the platform's full technology stack with
 - **No Support** (red): end-of-life date has passed
 - **Community** (grey): maintained by community without a formal EOL policy
 
+### Tab: Appearance (ADMIN only)
+
+The **Appearance** tab lets you customise the platform's look and feel without restarting the application.
+
+**Company logo**
+- Supported formats: PNG, JPEG, WebP (max 2 MB)
+- Click the file field to select an image; a preview will appear
+- Click "Upload logo" to apply it
+- The logo appears in the sidebar and on the login screen
+- If a logo already exists, the "Remove logo" button removes it and reverts to the default icon
+
+**Colors**
+- **Sidebar color**: background of the left navigation bar
+- **Accent color**: color of active items, primary buttons, and focus borders
+- Changes are applied in real time when you click "Apply changes"
+- A live mini-preview shows the result before saving
+
+**Company name**
+- The name appears at the top of the sidebar and on the login screen
+- Saved together with the colors when you click "Apply changes"
+
+All changes are recorded in the Audit Log.
+
 ---
 
 ## 18. Master Data — CI Types

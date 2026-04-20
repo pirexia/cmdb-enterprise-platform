@@ -770,6 +770,29 @@ El panel de **Información del Sistema** muestra el stack tecnológico completo 
 - **Sin soporte** (rojo): fecha de fin de soporte superada
 - **Comunidad** (gris): mantenido por la comunidad sin política de EOL formal
 
+### Pestaña: Apariencia (solo ADMIN)
+
+La pestaña **Apariencia** permite personalizar el aspecto de la plataforma sin necesidad de reiniciar la aplicación.
+
+**Logo de empresa**
+- Formatos admitidos: PNG, JPEG, WebP (máx. 2 MB)
+- Haz clic en el campo de archivo para seleccionar la imagen; aparecerá una vista previa
+- Haz clic en "Subir logo" para aplicarlo
+- El logo aparece en la barra lateral y en la pantalla de inicio de sesión
+- Si ya existe un logo, el botón "Eliminar logo" lo elimina y vuelve al icono predeterminado
+
+**Colores**
+- **Color de sidebar**: fondo de la barra de navegación lateral
+- **Color de acento**: color de los elementos activos, botones primarios y bordes de enfoque
+- Los cambios se aplican en tiempo real al hacer clic en "Aplicar cambios"
+- Una mini vista previa muestra el resultado antes de guardar
+
+**Nombre de empresa**
+- El nombre aparece en la parte superior de la barra lateral y en la pantalla de inicio de sesión
+- Se guarda junto con los colores al hacer clic en "Aplicar cambios"
+
+Todos los cambios quedan registrados en el Registro de Auditoría.
+
 ---
 
 ## 18. Datos Maestros — Tipos de CI

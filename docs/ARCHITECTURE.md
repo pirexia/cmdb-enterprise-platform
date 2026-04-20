@@ -44,6 +44,13 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Export Excel | ExcelJS | 4.4.x |
 | i18n       | Custom Context (sin librería) | — |
 | Autenticación | JWT HttpOnly cookie + AuthContext | — |
+| Theming    | ThemeContext + CSS custom properties | — |
+
+**Contextos y componentes clave del frontend:**
+- `contexts/AuthContext.tsx` — estado de sesión, rehidratación del JWT en el montaje, comprobación periódica de caducidad cada 60 s.
+- `contexts/LanguageContext.tsx` — soporte de 6 idiomas (ES/EN/DE/PT/FR/IT). Todas las cadenas UI usan `t("clave")`.
+- `contexts/ThemeContext.tsx` — Obtiene `GET /api/settings/theme` en el montaje e inyecta las propiedades CSS `--sidebar-bg` y `--accent` en `<head>` mediante un `<style id="theme-vars">`. Expone `companyName` y `logoUrl` a todos los componentes.
+- `components/TopBar.tsx` — Barra superior solo móvil (`md:hidden`) con botón hamburguesa. Renderiza logo/nombre de empresa con el fondo temático.
 
 ### Backend
 | Componente | Tecnología | Versión |
@@ -376,6 +383,11 @@ audit_logs
   ├── user_email
   └── created_at
 
+app_settings                   (almacén clave-valor para configuración en runtime)
+  ├── key (TEXT, PK)             Claves: sidebar_bg, accent_color, company_name, logo_data, logo_mime
+  ├── value (TEXT)               Logo almacenado como base64
+  └── updated_at (TIMESTAMPTZ)
+
 document_types                documents
   ├── id (UUID)                 ├── id (UUID)
   ├── code (unique)             ├── name
@@ -495,7 +507,7 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Auditoría | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integraciones | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
-| Configuración | `/settings` | `GET/PATCH /api/users/*` |
+| Configuración | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo` |
 | Perfil | `/profile` | `GET/POST /api/users/me/mfa/*` |
 | Mapa | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relaciones | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
@@ -505,6 +517,14 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Contratos — CIs y Documentos | `/contracts` (fila expandida) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
 | Repositorio de Licencias | `/licenses` | `GET /api/licenses`, `POST /api/licenses`, `GET /api/licenses/:id`, `PATCH /api/licenses/:id`, `DELETE /api/licenses/:id`, `GET/POST/DELETE /api/licenses/:id/cis`, `GET/POST/DELETE /api/licenses/:id/documents`, `GET/POST/DELETE /api/licenses/:id/users` |
 | Datos Maestros — Licencias | `/admin/masters` (pestañas) | `GET/POST /api/masters/license-metric-categories`, `GET/POST/PATCH/DELETE /api/masters/license-metrics/:id`, `GET/POST /api/masters/license-type-categories`, `GET/POST/PATCH/DELETE /api/masters/license-types/:id` |
+
+### Endpoints de Configuración Visual (Branding)
+
+- `GET /api/settings/theme` — Público (sin autenticación). Devuelve `{ sidebarBg, accentColor, companyName, hasLogo }`. Usado por ThemeContext en el montaje y por la página de login.
+- `GET /api/settings/logo` — Público. Sirve el logo de la empresa como imagen binaria con `Content-Type` correcto. Devuelve 404 si no hay logo.
+- `PUT /api/settings/theme` — Solo ADMIN. Actualiza `sidebar_bg`, `accent_color` y/o `company_name` en `app_settings`. Registra en AuditLog.
+- `POST /api/settings/logo` — Solo ADMIN. Carga logo (PNG/JPEG/WebP, máx. 2 MB) con validación de magic bytes. Almacena en base64 en `app_settings`. Registra en AuditLog.
+- `DELETE /api/settings/logo` — Solo ADMIN. Elimina el logo. Registra en AuditLog.
 
 ### Asociaciones bidireccionales CI ↔ Documento ↔ Contrato
 

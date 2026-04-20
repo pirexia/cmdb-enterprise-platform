@@ -210,6 +210,8 @@ LDAP_BIND_DN=
 LDAP_BIND_PASSWORD=
 ```
 
+> **Nota (v2.2.0+):** El tema visual (colores de sidebar y acento, logo, nombre de empresa) se configura desde el panel de administración en **Ajustes → Apariencia**. La variable `NEXT_PUBLIC_COMPANY_NAME` sigue siendo el valor inicial usado durante la primera instalación, pero todos los cambios posteriores se realizan desde la interfaz sin necesidad de rebuild.
+
 ### Puertos de nginx (variables opcionales)
 
 Por defecto nginx escucha en los puertos estándar 443 (HTTPS) y 80 (HTTP→redirect). Si el servidor ya tiene otra aplicación en esos puertos, se pueden cambiar añadiendo estas variables al `.env`:
@@ -770,6 +772,7 @@ El script implementa cinco capas de protección antes y durante la actualizació
 > - **Esquema:** Constraints `UNIQUE` añadidos a `Vendor.name`, `CostCenter.name`, `Branch.name`; índices compuestos `(root_id, is_latest)` y `(root_id, version_number)` para consultas de versionado de documentos.
 > - **i18n:** Todas las cadenas hardcodeadas en la página de perfil, callback SSO y AppShell reemplazadas por llamadas `t()`; 25 nuevas claves añadidas a los 6 ficheros de localización.
 > - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` cableada como ARG de build para que el nombre de empresa configurado durante la instalación se muestre correctamente en el frontend.
+> - **Branding en runtime:** Los colores de sidebar (`sidebar_bg`), acento (`accent_color`), nombre de empresa (`company_name`) y logo (`logo_data`, `logo_mime`) se almacenan en la tabla `app_settings` de PostgreSQL y se sirven en tiempo real a través de `GET /api/settings/theme` y `GET /api/settings/logo` (endpoints públicos, sin autenticación).
 > - **Docs:** Usuario seed `auditor@cmdb.local` documentado correctamente como `AUDITOR` (no `VIEWER`); versiones y changelog actualizados.
 
 > **v1.7.0 — SSO Microsoft 365 + i18n 6 idiomas** *(sustituido por v1.7.1)*:

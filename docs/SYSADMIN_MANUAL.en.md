@@ -189,6 +189,9 @@ JWT_SECRET=<min-48-chars>             # Generate: openssl rand -base64 48
 FRONTEND_PORT=3001
 NEXT_PUBLIC_API_URL=https://cmdb.yourdomain.com:3000
 
+# ── Branding ───────────────────────────────────────────────────────────
+NEXT_PUBLIC_COMPANY_NAME=My Company
+
 # ── Security ───────────────────────────────────────────────────────────
 HTTPS_ENABLED=true
 CORS_ORIGINS=https://cmdb.yourdomain.com:3001
@@ -212,6 +215,8 @@ USE_LDAP=false
 # LDAP_SEARCH_BASE=DC=yourdomain,DC=com
 # LDAP_TLS_REJECT_UNAUTHORIZED=0    # Only if using an internal self-signed cert
 ```
+
+> **Note (v2.2.0+):** Visual theming (sidebar and accent colors, logo, company name) is configured from the admin panel at **Settings → Appearance**. The `NEXT_PUBLIC_COMPANY_NAME` variable is still the initial value used during first installation, but all subsequent changes are made from the UI without a rebuild.
 
 ### nginx ports (optional variables)
 
@@ -757,6 +762,7 @@ The script implements five layers of protection before and during the update:
 > - **Schema:** Unique constraints added to `Vendor.name`, `CostCenter.name`, `Branch.name`; compound indexes on `(root_id, is_latest)` and `(root_id, version_number)` for document versioning queries.
 > - **i18n:** All hardcoded strings in the profile page, SSO callback, and AppShell replaced with `t()` calls; 25 new keys added to all 6 locale files.
 > - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` wired as a build ARG so the company name set during installation is actually rendered by the frontend.
+> - **Runtime branding:** Sidebar color (`sidebar_bg`), accent color (`accent_color`), company name (`company_name`), and logo (`logo_data`, `logo_mime`) are stored in the PostgreSQL `app_settings` table and served in real time through `GET /api/settings/theme` and `GET /api/settings/logo` (public endpoints, no authentication required).
 > - **Docs:** `auditor@cmdb.local` seed user correctly documented as `AUDITOR` (not `VIEWER`); version numbers and changelog updated.
 
 > **v1.7.0 — Microsoft 365 SSO + 6-language i18n** *(superseded by v1.7.1)*:

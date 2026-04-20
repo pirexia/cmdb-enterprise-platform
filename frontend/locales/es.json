@@ -510,6 +510,22 @@
       "sys_loading": "Cargando información del sistema…",
       "sys_error": "No se pudo cargar la información del sistema.",
       "sys_retry": "Reintentar"
+    },
+    "branding": {
+      "tab": "Apariencia",
+      "logo_title": "Logo de la empresa",
+      "logo_hint": "PNG, JPEG o WebP · Máx. 2 MB",
+      "logo_upload_btn": "Subir logo",
+      "logo_remove_btn": "Eliminar logo",
+      "logo_preview": "Vista previa",
+      "colors_title": "Colores",
+      "sidebar_color": "Color de sidebar",
+      "accent_color": "Color de acento",
+      "preview_title": "Vista previa en vivo",
+      "company_name_title": "Nombre de la empresa",
+      "apply_btn": "Aplicar cambios",
+      "save_success": "Configuración guardada",
+      "save_error": "Error al guardar"
     }
   },
   "dashboard": {

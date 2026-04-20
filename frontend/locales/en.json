@@ -510,6 +510,22 @@
       "sys_loading": "Loading system information…",
       "sys_error": "Could not load system information.",
       "sys_retry": "Retry"
+    },
+    "branding": {
+      "tab": "Appearance",
+      "logo_title": "Company logo",
+      "logo_hint": "PNG, JPEG or WebP · Max 2 MB",
+      "logo_upload_btn": "Upload logo",
+      "logo_remove_btn": "Remove logo",
+      "logo_preview": "Preview",
+      "colors_title": "Colors",
+      "sidebar_color": "Sidebar color",
+      "accent_color": "Accent color",
+      "preview_title": "Live preview",
+      "company_name_title": "Company name",
+      "apply_btn": "Apply changes",
+      "save_success": "Settings saved",
+      "save_error": "Error saving settings"
     }
   },
   "dashboard": {

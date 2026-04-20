@@ -465,6 +465,22 @@
       "sys_loading": "Chargement des informations système…",
       "sys_error": "Impossible de charger les informations système.",
       "sys_retry": "Réessayer"
+    },
+    "branding": {
+      "tab": "Apparence",
+      "logo_title": "Logo de l'entreprise",
+      "logo_hint": "PNG, JPEG ou WebP · Max 2 Mo",
+      "logo_upload_btn": "Télécharger le logo",
+      "logo_remove_btn": "Supprimer le logo",
+      "logo_preview": "Aperçu",
+      "colors_title": "Couleurs",
+      "sidebar_color": "Couleur de la barre latérale",
+      "accent_color": "Couleur d'accentuation",
+      "preview_title": "Aperçu en direct",
+      "company_name_title": "Nom de l'entreprise",
+      "apply_btn": "Appliquer les modifications",
+      "save_success": "Paramètres enregistrés",
+      "save_error": "Erreur lors de l'enregistrement"
     }
   },
   "dashboard": {

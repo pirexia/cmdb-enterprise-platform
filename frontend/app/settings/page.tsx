@@ -23,7 +23,7 @@ interface User {
   created_at:       string;
 }
 
-type TabId = "users" | "integrations" | "certificates";
+type TabId = "users" | "integrations" | "certificates" | "branding";
 
 interface StackComponent {
   name:           string;
@@ -111,6 +111,16 @@ export default function SettingsPage() {
   const [sysInfo, setSysInfo]               = useState<SystemInfoData | null>(null);
   const [sysInfoLoading, setSysInfoLoading] = useState(false);
   const [sysInfoError, setSysInfoError]     = useState(false);
+
+  // Branding tab state
+  const [sidebarBg,      setSidebarBg]      = useState("#0f172a");
+  const [accentColorVal, setAccentColorVal] = useState("#3b82f6");
+  const [companyNameVal, setCompanyNameVal] = useState("CMDB Platform");
+  const [hasLogo,        setHasLogo]        = useState(false);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [brandingMsg,    setBrandingMsg]    = useState<{ ok: boolean; text: string } | null>(null);
+  const [savingBranding, setSavingBranding] = useState(false);
+  const [logoFile,       setLogoFile]       = useState<File | null>(null);
 
   const loadUsers = useCallback(async () => {
     setLoading(true); setError(null);
@@ -250,6 +260,74 @@ export default function SettingsPage() {
     reader.readAsText(file);
   };
 
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setLogoPreviewUrl(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoUpload = async () => {
+    if (!logoFile) return;
+    setSavingBranding(true); setBrandingMsg(null);
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const fd = new FormData();
+      fd.append("logo", logoFile);
+      const res = await fetch("/api/settings/logo", {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        body: fd,
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error ?? "Error");
+      setHasLogo(true);
+      setLogoFile(null);
+      setBrandingMsg({ ok: true, text: t("settings.branding.save_success") });
+    } catch (e) {
+      setBrandingMsg({ ok: false, text: e instanceof Error ? e.message : t("settings.branding.save_error") });
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const handleLogoDelete = async () => {
+    setSavingBranding(true); setBrandingMsg(null);
+    try {
+      const res = await apiFetch("/api/settings/logo", { method: "DELETE" });
+      if (!res.ok) throw new Error("Error");
+      setHasLogo(false);
+      setLogoPreviewUrl(null);
+      setLogoFile(null);
+      setBrandingMsg({ ok: true, text: t("settings.branding.save_success") });
+    } catch {
+      setBrandingMsg({ ok: false, text: t("settings.branding.save_error") });
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
+  const handleThemeApply = async () => {
+    setSavingBranding(true); setBrandingMsg(null);
+    try {
+      const res = await apiFetch("/api/settings/theme", {
+        method: "PUT",
+        body: JSON.stringify({ sidebarBg, accentColor: accentColorVal, companyName: companyNameVal }),
+      });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Error"); }
+      const style = document.getElementById("theme-vars");
+      if (style) style.textContent = `:root { --sidebar-bg: ${sidebarBg}; --accent: ${accentColorVal}; }`;
+      setBrandingMsg({ ok: true, text: t("settings.branding.save_success") });
+    } catch (e) {
+      setBrandingMsg({ ok: false, text: e instanceof Error ? e.message : t("settings.branding.save_error") });
+    } finally {
+      setSavingBranding(false);
+    }
+  };
+
   // ── Integration status (from env vars — read-only in frontend) ─────────────
   // We show placeholder status; real check comes from the backend health endpoint
   const [healthData, setHealthData] = useState<{ status: string } | null>(null);
@@ -268,10 +346,25 @@ export default function SettingsPage() {
       .finally(() => setSysInfoLoading(false));
   }, [tab, sysInfo]);
 
+  useEffect(() => {
+    if (tab !== "branding") return;
+    fetch("/api/settings/theme")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { sidebarBg: string; accentColor: string; companyName: string; hasLogo: boolean } | null) => {
+        if (!d) return;
+        setSidebarBg(d.sidebarBg);
+        setAccentColorVal(d.accentColor);
+        setCompanyNameVal(d.companyName);
+        setHasLogo(d.hasLogo);
+      })
+      .catch(() => {});
+  }, [tab]);
+
   const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "users",        label: t('settings.tabs.users'),        icon: <Users className="h-4 w-4" /> },
-    { id: "integrations", label: t('settings.tabs.integrations'), icon: <Plug  className="h-4 w-4" /> },
+    { id: "users",        label: t("settings.tabs.users"),        icon: <Users className="h-4 w-4" /> },
+    { id: "integrations", label: t("settings.tabs.integrations"), icon: <Plug  className="h-4 w-4" /> },
     { id: "certificates", label: "SSL/TLS Certificates",         icon: <Shield className="h-4 w-4" /> },
+    ...(isAdmin ? [{ id: "branding" as TabId, label: t("settings.branding.tab"), icon: <Settings className="h-4 w-4" /> }] : []),
   ];
 
   function SysStatusBadge({ c }: { c: StackComponent }) {
@@ -814,6 +907,149 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+            {tab === "branding" && isAdmin && (
+              <div className="space-y-8">
+                {/* Feedback message */}
+                {brandingMsg && (
+                  <div className={`flex items-center gap-2 px-4 py-3 text-sm border ${
+                    brandingMsg.ok
+                      ? "border-green-200 bg-green-50 text-green-700"
+                      : "border-red-200 bg-red-50 text-red-600"
+                  }`}>
+                    {brandingMsg.text}
+                  </div>
+                )}
+
+                {/* Logo block */}
+                <section>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4">{t("settings.branding.logo_title")}</h3>
+                  <div className="flex items-start gap-6">
+                    <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center border border-slate-200 bg-slate-50">
+                      {logoPreviewUrl
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src={logoPreviewUrl} alt="preview" className="h-16 w-16 object-contain" />
+                        : hasLogo
+                        // eslint-disable-next-line @next/next/no-img-element
+                        ? <img src="/api/settings/logo" alt="logo" className="h-16 w-16 object-contain" />
+                        : <span className="text-xs text-slate-400">{t("settings.branding.logo_preview")}</span>
+                      }
+                    </div>
+                    <div className="space-y-2">
+                      <label className="block">
+                        <span className="text-xs text-slate-500 block mb-1">{t("settings.branding.logo_hint")}</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={handleLogoFileChange}
+                          className="block text-xs text-slate-600 file:mr-3 file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-slate-700 cursor-pointer"
+                        />
+                      </label>
+                      {logoFile && (
+                        <button
+                          onClick={handleLogoUpload}
+                          disabled={savingBranding}
+                          className="px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                          style={{ backgroundColor: "var(--accent)" }}
+                        >
+                          {t("settings.branding.logo_upload_btn")}
+                        </button>
+                      )}
+                      {hasLogo && !logoFile && (
+                        <button
+                          onClick={handleLogoDelete}
+                          disabled={savingBranding}
+                          className="px-4 py-1.5 text-xs font-semibold text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {t("settings.branding.logo_remove_btn")}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                {/* Company name block */}
+                <section>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">{t("settings.branding.company_name_title")}</h3>
+                  <input
+                    type="text"
+                    value={companyNameVal}
+                    onChange={(e) => setCompanyNameVal(e.target.value)}
+                    maxLength={100}
+                    className="w-full max-w-xs border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none"
+                  />
+                </section>
+
+                {/* Colors block */}
+                <section>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-4">{t("settings.branding.colors_title")}</h3>
+                  <div className="flex flex-wrap gap-6 items-start">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-slate-600">{t("settings.branding.sidebar_color")}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={sidebarBg}
+                          onChange={(e) => setSidebarBg(e.target.value)}
+                          className="h-8 w-14 cursor-pointer border border-slate-300 p-0.5 bg-white"
+                        />
+                        <code className="text-xs text-slate-500 font-mono">{sidebarBg}</code>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-medium text-slate-600">{t("settings.branding.accent_color")}</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={accentColorVal}
+                          onChange={(e) => setAccentColorVal(e.target.value)}
+                          className="h-8 w-14 cursor-pointer border border-slate-300 p-0.5 bg-white"
+                        />
+                        <code className="text-xs text-slate-500 font-mono">{accentColorVal}</code>
+                      </div>
+                    </div>
+
+                    {/* Live mini-preview */}
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-slate-600">{t("settings.branding.preview_title")}</span>
+                      <div
+                        className="flex h-28 w-36 flex-col overflow-hidden border border-slate-200"
+                        style={{ backgroundColor: sidebarBg }}
+                      >
+                        <div className="flex items-center gap-1.5 border-b border-white/10 px-2 py-1.5">
+                          <div className="h-3.5 w-3.5 flex-shrink-0" style={{ backgroundColor: accentColorVal }} />
+                          <span className="text-[9px] font-bold text-slate-200 truncate">{companyNameVal || "CMDB"}</span>
+                        </div>
+                        <div className="flex-1 px-2 py-1.5 space-y-1">
+                          {["Dashboard","Inventario","Contratos"].map((label, i) => (
+                            <div
+                              key={label}
+                              className="flex items-center gap-1 px-1 py-0.5 text-[8px] border-l-2"
+                              style={i === 1
+                                ? { borderLeftColor: accentColorVal, backgroundColor: `${accentColorVal}20`, color: accentColorVal }
+                                : { borderLeftColor: "transparent", color: "#94a3b8" }
+                              }
+                            >
+                              <div className="h-1.5 w-1.5 rounded-sm bg-current opacity-60" />
+                              {label}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <button
+                  onClick={handleThemeApply}
+                  disabled={savingBranding}
+                  className="px-6 py-2 text-sm font-semibold text-white disabled:opacity-50 transition-colors"
+                  style={{ backgroundColor: "var(--accent)" }}
+                >
+                  {savingBranding ? "..." : t("settings.branding.apply_btn")}
+                </button>
+              </div>
+            )}
           </div>
         </main>
       </div>

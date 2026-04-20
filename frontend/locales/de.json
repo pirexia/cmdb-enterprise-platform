@@ -465,6 +465,22 @@
       "sys_loading": "Systeminformationen werden geladen…",
       "sys_error": "Systeminformationen konnten nicht geladen werden.",
       "sys_retry": "Erneut versuchen"
+    },
+    "branding": {
+      "tab": "Erscheinungsbild",
+      "logo_title": "Firmenlogo",
+      "logo_hint": "PNG, JPEG oder WebP · Max. 2 MB",
+      "logo_upload_btn": "Logo hochladen",
+      "logo_remove_btn": "Logo entfernen",
+      "logo_preview": "Vorschau",
+      "colors_title": "Farben",
+      "sidebar_color": "Seitenleistenfarbe",
+      "accent_color": "Akzentfarbe",
+      "preview_title": "Live-Vorschau",
+      "company_name_title": "Firmenname",
+      "apply_btn": "Änderungen übernehmen",
+      "save_success": "Einstellungen gespeichert",
+      "save_error": "Fehler beim Speichern"
     }
   },
   "dashboard": {

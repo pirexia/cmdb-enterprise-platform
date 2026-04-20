@@ -319,7 +319,10 @@ export default function SettingsPage() {
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? "Error"); }
       const style = document.getElementById("theme-vars");
-      if (style) style.textContent = `:root { --sidebar-bg: ${sidebarBg}; --accent: ${accentColorVal}; }`;
+      const hexRe = /^#[0-9a-fA-F]{6}$/;
+      if (style && hexRe.test(sidebarBg) && hexRe.test(accentColorVal)) {
+        style.textContent = `:root { --sidebar-bg: ${sidebarBg}; --accent: ${accentColorVal}; }`;
+      }
       setBrandingMsg({ ok: true, text: t("settings.branding.save_success") });
     } catch (e) {
       setBrandingMsg({ ok: false, text: e instanceof Error ? e.message : t("settings.branding.save_error") });

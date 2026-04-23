@@ -119,10 +119,10 @@ function SectionCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+    <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <span className="text-indigo-500">{icon}</span>
+          <span className="text-[var(--accent)]">{icon}</span>
           {title}
         </div>
         {action}
@@ -300,7 +300,7 @@ function AddVersionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.add_version")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -318,7 +318,7 @@ function AddVersionModal({
             <input
               type="file"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-700 focus:outline-none"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-none file:border-0 file:bg-[var(--accent)] file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-[var(--accent)]/90 focus:outline-none"
             />
             {file && (
               <p className="mt-1 text-xs text-slate-500">{file.name} ({formatFileSize(file.size)})</p>
@@ -332,7 +332,7 @@ function AddVersionModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {t("documents.add_version")}
@@ -387,7 +387,7 @@ function AddRelationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.add_relation")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -405,7 +405,7 @@ function AddRelationModal({
             <select
               value={relationType}
               onChange={(e) => setRelationType(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               <option value="RELATED_TO">{t("documents.relation_RELATED_TO")}</option>
               <option value="AMENDMENT_OF">{t("documents.relation_AMENDMENT_OF")}</option>
@@ -417,7 +417,7 @@ function AddRelationModal({
             <select
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               <option value="">— {t("documents.doc_title")} —</option>
               {availableDocs.map((d) => (
@@ -433,7 +433,7 @@ function AddRelationModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             {t("actions.add")}
@@ -522,7 +522,7 @@ function AddCIsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.associate_cis")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -540,7 +540,7 @@ function AddCIsModal({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("documents.search_cis")}
-            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
@@ -556,7 +556,7 @@ function AddCIsModal({
                     type="checkbox"
                     checked={selected.has(ci.id)}
                     onChange={() => toggle(ci.id)}
-                    className="accent-indigo-600 h-4 w-4"
+                    className="accent-[var(--accent)] h-4 w-4"
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{ci.name}</p>
@@ -577,7 +577,7 @@ function AddCIsModal({
           <button
             onClick={handleSubmit}
             disabled={submitting || selected.size === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("documents.associate_selected")}
@@ -664,7 +664,7 @@ function AddContractsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.associate_contracts")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -682,7 +682,7 @@ function AddContractsModal({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("documents.search_contracts")}
-            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
@@ -698,7 +698,7 @@ function AddContractsModal({
                     type="checkbox"
                     checked={selected.has(c.id)}
                     onChange={() => toggle(c.id)}
-                    className="accent-indigo-600 h-4 w-4"
+                    className="accent-[var(--accent)] h-4 w-4"
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800 font-mono truncate">{c.contractNumber}</p>
@@ -716,7 +716,7 @@ function AddContractsModal({
           <button
             onClick={handleSubmit}
             disabled={submitting || selected.size === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("documents.associate_selected")}
@@ -770,7 +770,7 @@ function EditMetadataModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("actions.edit")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -788,7 +788,7 @@ function EditMetadataModal({
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
           <div>
@@ -797,7 +797,7 @@ function EditMetadataModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
             />
           </div>
           <div>
@@ -805,7 +805,7 @@ function EditMetadataModal({
             <select
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               {docTypes.map((dt) => (
                 <option key={dt.id} value={dt.id}>{dt.name}</option>
@@ -820,7 +820,7 @@ function EditMetadataModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("actions.save")}
@@ -1047,11 +1047,11 @@ export default function DocumentDetailPage() {
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
-              <FolderOpen className="h-5 w-5 text-indigo-600" />
+              <FolderOpen className="h-5 w-5 text-[var(--accent)]" />
               <div>
                 <h1 className="text-lg font-bold text-slate-900">{doc.title}</h1>
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                  <span className="inline-flex items-center rounded-full bg-[var(--accent)]/5 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                     {doc.documentTypeName}
                   </span>
                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
@@ -1077,7 +1077,7 @@ export default function DocumentDetailPage() {
                 <>
                   <button
                     onClick={() => setShowAddVersion(true)}
-                    className="flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                    className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                   >
                     <Upload className="h-4 w-4" />
                     {t("documents.add_version")}
@@ -1105,10 +1105,10 @@ export default function DocumentDetailPage() {
         {/* Body */}
         <div className="px-8 py-6 space-y-6">
           {/* Metadata card */}
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <FileText className="h-4 w-4 text-indigo-500" />
+                <FileText className="h-4 w-4 text-[var(--accent)]" />
                 Metadatos
               </div>
             </div>
@@ -1178,7 +1178,7 @@ export default function DocumentDetailPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleDownload(v.id)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                        className="rounded-none p-1.5 text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                         title={t("documents.download")}
                       >
                         <Download className="h-4 w-4" />
@@ -1211,9 +1211,9 @@ export default function DocumentDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {doc.notes.map((note) => (
-                    <div key={note.id} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div key={note.id} className="border border-slate-100 bg-slate-50 px-4 py-3">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-xs font-semibold text-indigo-700">{note.createdBy}</span>
+                        <span className="text-xs font-semibold text-[var(--accent)]">{note.createdBy}</span>
                         <span className="text-xs text-slate-400">{formatDateTime(note.createdAt)}</span>
                       </div>
                       <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.content}</p>
@@ -1235,13 +1235,13 @@ export default function DocumentDetailPage() {
                   onChange={(e) => setNoteText(e.target.value)}
                   placeholder={t("documents.note_placeholder")}
                   rows={3}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
                 />
                 <div className="flex justify-end mt-2">
                   <button
                     onClick={handleAddNote}
                     disabled={noteSubmitting || !noteText.trim()}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
                   >
                     {noteSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                     {t("documents.add_note")}
@@ -1259,7 +1259,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddRelation(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.add_relation")}
                 </button>
@@ -1278,7 +1278,7 @@ export default function DocumentDetailPage() {
                       </span>
                       <button
                         onClick={() => router.push(`/documents/${rel.targetDocId}`)}
-                        className="text-sm text-indigo-700 hover:underline font-medium"
+                        className="text-sm text-[var(--accent)] hover:underline font-medium"
                       >
                         {rel.targetTitle}
                       </button>
@@ -1305,7 +1305,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddCIs(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.associate_cis")}
                 </button>
@@ -1320,7 +1320,7 @@ export default function DocumentDetailPage() {
                   <div key={ci.ciId} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors group">
                     <button
                       onClick={() => router.push(`/inventory`)}
-                      className="text-sm text-indigo-700 hover:underline font-medium"
+                      className="text-sm text-[var(--accent)] hover:underline font-medium"
                     >
                       {ci.ciName}
                     </button>
@@ -1349,7 +1349,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddContracts(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.associate_contracts")}
                 </button>
@@ -1364,7 +1364,7 @@ export default function DocumentDetailPage() {
                   <div key={c.contractId} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors group">
                     <button
                       onClick={() => router.push(`/contracts`)}
-                      className="text-sm text-indigo-700 hover:underline font-mono font-medium"
+                      className="text-sm text-[var(--accent)] hover:underline font-mono font-medium"
                     >
                       {c.contractNumber}
                     </button>

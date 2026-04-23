@@ -273,11 +273,11 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
 
   return (
     <>
-      <tr className="group cursor-pointer hover:bg-indigo-50/40 transition-colors" onClick={onExpand}>
+      <tr className="group cursor-pointer hover:bg-[var(--accent)]/5 transition-colors" onClick={onExpand}>
         <td className="px-6 py-4">
           <div className="flex items-center gap-2">
             <div>
-              <p className="font-semibold text-slate-800 group-hover:text-indigo-700 transition-colors">{license.name}</p>
+              <p className="font-semibold text-slate-800 group-hover:text-[var(--accent)] transition-colors">{license.name}</p>
               <p className="text-xs text-slate-400 font-mono">{license.licenseNumber}</p>
               {license.addendumCount > 0 && <p className="text-[11px] text-slate-400">{license.addendumCount} sub-licencia{license.addendumCount > 1 ? "s" : ""}</p>}
             </div>
@@ -292,7 +292,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
         <td className="px-6 py-4">
           <div className="space-y-0.5">
             {license.licenseTypeName && (
-              <span className="inline-block rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{license.licenseTypeName}</span>
+              <span className="inline-block rounded-full bg-[var(--accent)]/5 px-2 py-0.5 text-[10px] font-semibold text-[var(--accent)]">{license.licenseTypeName}</span>
             )}
             {license.licenseMetricName && (
               <p className="text-xs text-slate-500">
@@ -333,16 +333,16 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
 
       {expanded && (
         <tr>
-          <td colSpan={7} className="px-6 pb-4 bg-indigo-50/30">
+          <td colSpan={7} className="px-6 pb-4 bg-[var(--accent)]/5">
             <div className="space-y-3 pt-1">
 
               {/* ── CIs asociados ─────────────────────────────────────────── */}
-              <div className="rounded-xl border border-indigo-100 bg-white overflow-hidden">
+              <div className="border border-[var(--accent)]/20 bg-white overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">CIs asociados</p>
                   {isAdmin && (
                     <button onClick={(e) => { e.stopPropagation(); openCISelector(); }}
-                      className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors">
+                      className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors">
                       <Plus className="h-3 w-3" />Asociar CIs
                     </button>
                   )}
@@ -370,11 +370,11 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                   </div>
                 )}
                 {showCISelector && (
-                  <div className="border-t border-indigo-100 px-4 py-3 bg-indigo-50/40" onClick={(e) => e.stopPropagation()}>
+                  <div className="border-t border-[var(--accent)]/20 px-4 py-3 bg-[var(--accent)]/5" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2 mb-2">
                       <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                       <input type="text" placeholder="Buscar CI…" value={ciSearch} onChange={(e) => setCiSearch(e.target.value)}
-                        className="flex-1 text-sm border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                        className="flex-1 text-sm border border-slate-200 rounded-none px-2 py-1 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white" />
                       <button onClick={() => setShowCISelector(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                     </div>
                     {allCIsLoading ? (
@@ -386,8 +386,8 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                         ) : filteredAllCIs.map((ci) => {
                           const checked = selectedCiIds.has(ci.id);
                           return (
-                            <label key={ci.id} className="flex items-center gap-2 px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm">
-                              <input type="checkbox" checked={checked} onChange={() => setSelectedCiIds((prev) => { const s = new Set(prev); if (checked) s.delete(ci.id); else s.add(ci.id); return s; })} className="accent-indigo-600" />
+                            <label key={ci.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/10 cursor-pointer text-sm">
+                              <input type="checkbox" checked={checked} onChange={() => setSelectedCiIds((prev) => { const s = new Set(prev); if (checked) s.delete(ci.id); else s.add(ci.id); return s; })} className="accent-[var(--accent)]" />
                               <span className="font-medium text-slate-700">{ci.name}</span>
                               <span className="text-xs text-slate-400 truncate">{ci.apiSlug}</span>
                             </label>
@@ -398,7 +398,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                     <div className="flex items-center justify-end gap-2 mt-2">
                       <button onClick={() => setShowCISelector(false)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Cancelar</button>
                       <button onClick={confirmCIAssoc} disabled={selectedCiIds.size === 0 || ciAssocLoading}
-                        className="flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                        className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors">
                         {ciAssocLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                         Confirmar ({selectedCiIds.size})
                       </button>
@@ -408,7 +408,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
               </div>
 
               {/* ── Documentos adjuntos ────────────────────────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="border border-slate-200 bg-white overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 text-slate-400" />
@@ -416,7 +416,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                   </div>
                   {isAdmin && docsFetched && (
                     <button onClick={(e) => { e.stopPropagation(); openDocSelector(); }}
-                      className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                      className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors">
                       <Plus className="h-3 w-3" />Asociar Documentos
                     </button>
                   )}
@@ -434,9 +434,9 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                         <div key={doc.id}>
                           <div className="flex items-center justify-between px-4 py-2.5 gap-3">
                             <div className="flex items-start gap-2 min-w-0">
-                              <FileText className="h-4 w-4 flex-shrink-0 text-indigo-400 mt-0.5" />
+                              <FileText className="h-4 w-4 flex-shrink-0 text-[var(--accent)] mt-0.5" />
                               <div className="min-w-0">
-                                <Link href={`/documents/${doc.id}`} className="text-sm font-medium text-indigo-700 hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
+                                <Link href={`/documents/${doc.id}`} className="text-sm font-medium text-[var(--accent)] hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
                                   {doc.title}
                                 </Link>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -449,13 +449,13 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
                               <button onClick={(e) => { e.stopPropagation(); togglePreview(doc); }}
-                                className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/5 hover:text-[var(--accent)] transition-colors"
                                 title={previewOpen ? "Ocultar vista previa" : "Vista previa"}>
                                 {previewOpen ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                 {previewOpen ? "Ocultar" : "Vista previa"}
                               </button>
                               <button onClick={(e) => { e.stopPropagation(); handleDownload(doc.id, doc.originalName); }}
-                                className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">
+                                className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors">
                                 <Download className="h-3.5 w-3.5" />Descargar
                               </button>
                             </div>
@@ -487,7 +487,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                     <div className="flex items-center gap-2 mb-2">
                       <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                       <input type="text" placeholder="Buscar documento…" value={docSearch} onChange={(e) => setDocSearch(e.target.value)}
-                        className="flex-1 text-sm border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                        className="flex-1 text-sm border border-slate-200 rounded-none px-2 py-1 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white" />
                       <button onClick={() => setShowDocSelector(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                     </div>
                     {allDocsLoading ? (
@@ -500,7 +500,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                           const checked = selectedDocIds.has(d.id);
                           return (
                             <label key={d.id} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 cursor-pointer text-sm">
-                              <input type="checkbox" checked={checked} onChange={() => setSelectedDocIds((prev) => { const s = new Set(prev); if (checked) s.delete(d.id); else s.add(d.id); return s; })} className="accent-indigo-600" />
+                              <input type="checkbox" checked={checked} onChange={() => setSelectedDocIds((prev) => { const s = new Set(prev); if (checked) s.delete(d.id); else s.add(d.id); return s; })} className="accent-[var(--accent)]" />
                               <span className="font-medium text-slate-700 truncate">{d.title}</span>
                               <span className="text-xs text-slate-400 truncate flex-shrink-0">{d.documentTypeName}</span>
                             </label>
@@ -511,7 +511,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                     <div className="flex items-center justify-end gap-2 mt-2">
                       <button onClick={() => setShowDocSelector(false)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Cancelar</button>
                       <button onClick={confirmDocAssoc} disabled={selectedDocIds.size === 0 || docAssocLoading}
-                        className="flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+                        className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors">
                         {docAssocLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                         Confirmar ({selectedDocIds.size})
                       </button>
@@ -520,13 +520,13 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                 )}
                 {docsFetched && (
                   <div className="border-t border-slate-50 px-4 py-2 text-right">
-                    <Link href="/documents" className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline transition-colors">Ver todos los documentos →</Link>
+                    <Link href="/documents" className="text-xs text-[var(--accent)] hover:text-[var(--accent)] hover:underline transition-colors">Ver todos los documentos →</Link>
                   </div>
                 )}
               </div>
 
               {/* ── Usuarios de licencia ───────────────────────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="border border-slate-200 bg-white overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <User className="h-3.5 w-3.5 text-slate-400" />
@@ -550,8 +550,8 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                     {licenseUsers.map((u) => (
                       <div key={u.id} className="flex items-center justify-between px-4 py-2.5 group">
                         <div className="flex items-center gap-3">
-                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-indigo-100">
-                            <User className="h-3.5 w-3.5 text-indigo-600" />
+                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10">
+                            <User className="h-3.5 w-3.5 text-[var(--accent)]" />
                           </div>
                           <div>
                             <p className="text-sm font-medium text-slate-700">{u.name}</p>
@@ -581,11 +581,11 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Nuevo Usuario</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       <input type="text" placeholder="Nombre *" value={newUser.name} onChange={(e) => setNewUser((p) => ({ ...p, name: e.target.value }))}
-                        className="text-sm border border-slate-200 rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                        className="text-sm border border-slate-200 rounded-none px-2 py-1.5 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white" />
                       <input type="text" placeholder="DNI (opcional)" value={newUser.dni} onChange={(e) => setNewUser((p) => ({ ...p, dni: e.target.value }))}
-                        className="text-sm border border-slate-200 rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                        className="text-sm border border-slate-200 rounded-none px-2 py-1.5 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white" />
                       <input type="email" placeholder="Email (opcional)" value={newUser.email} onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))}
-                        className="text-sm border border-slate-200 rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-indigo-400 bg-white" />
+                        className="text-sm border border-slate-200 rounded-none px-2 py-1.5 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white" />
                     </div>
                     <div className="flex items-center justify-end gap-2 mt-2">
                       <button onClick={() => setShowAddUser(false)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">Cancelar</button>
@@ -693,7 +693,7 @@ export default function LicensesPage() {
             </div>
             {isAdmin && (
               <button onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
+                className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                 <Plus className="h-4 w-4" />Nueva Licencia
               </button>
             )}
@@ -704,12 +704,12 @@ export default function LicensesPage() {
           {!loading && !error && (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
-                { label: "Total",     value: total,         color: "bg-indigo-50 text-indigo-700" },
+                { label: "Total",     value: total,         color: "bg-[var(--accent)]/5 text-[var(--accent)]" },
                 { label: "Activas",   value: activeCount,   color: "bg-emerald-50 text-emerald-700" },
                 { label: "Expiradas", value: expiredCount,  color: "bg-red-50 text-red-700" },
                 { label: "Perpetuas", value: perpetualCount, color: "bg-slate-50 text-slate-700" },
               ].map(({ label, value, color }) => (
-                <div key={label} className={`rounded-xl ${color.split(" ")[0]} px-4 py-3 ring-1 ring-inset ring-current/10`}>
+                <div key={label} className={`${color.split(" ")[0]} px-4 py-3 ring-1 ring-inset ring-current/10`}>
                   <p className={`text-2xl font-bold ${color.split(" ")[1]}`}>{value}</p>
                   <p className="text-xs font-medium text-slate-500 mt-0.5">{label}</p>
                 </div>
@@ -717,26 +717,26 @@ export default function LicensesPage() {
             </div>
           )}
 
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2"><Key className="h-4 w-4 text-slate-400" />Listado de licencias</h2>
               <div className="flex items-center gap-2">
                 {activeFilterCount > 0 && (
                   <>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                       <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
                     </span>
-                    <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                    <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
                       <FilterX className="h-3.5 w-3.5" />Limpiar filtros
                     </button>
                   </>
                 )}
                 <button onClick={handleExportCSV} disabled={loading || licenses.length === 0}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50">
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50">
                   <Download className="h-3.5 w-3.5" />CSV
                 </button>
                 <button onClick={fetchLicenses}
-                  className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
+                  className="flex items-center justify-center rounded-none border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
                 </button>
               </div>
@@ -770,14 +770,14 @@ export default function LicensesPage() {
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">CIs</th>
                       <th className="px-4 py-3" />
                     </tr>
-                    <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                    <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                       {/* Licencia name/number search */}
                       <td className="px-3 py-2">
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder="Nombre o nº licencia…" value={filters.name}
                             onChange={(e) => setFilter("name", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Proveedor */}
@@ -786,7 +786,7 @@ export default function LicensesPage() {
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder="Proveedor…" value={filters.vendor}
                             onChange={(e) => setFilter("vendor", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Tipo — text search on type name */}
@@ -795,13 +795,13 @@ export default function LicensesPage() {
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder="Tipo…" value={filters.licenseType}
                             onChange={(e) => setFilter("licenseType", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Estado */}
                       <td className="px-3 py-2">
                         <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.status ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.status ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todos</option>
                           <option value="activa">Activa</option>
                           <option value="renueva">Renueva pronto</option>

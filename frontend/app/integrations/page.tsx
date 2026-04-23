@@ -97,7 +97,7 @@ function IntegrationCard({
   };
 
   return (
-    <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden flex flex-col">
+    <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden flex flex-col">
       {/* Header */}
       <div className={`${accent} px-6 py-5`}>
         <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ function IntegrationCard({
             placeholder={placeholder}
             value={json}
             onChange={(e) => setJson(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-y"
+            className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-mono text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-y"
           />
         </div>
 
@@ -134,7 +134,7 @@ function IntegrationCard({
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+            className="flex items-center gap-2 rounded-none border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <Upload className="h-4 w-4" />
             {t("integrations.load_file")}
@@ -145,7 +145,7 @@ function IntegrationCard({
             <a
               href={sampleFile}
               download
-              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors"
+              className="flex items-center gap-2 rounded-none border border-slate-300 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 transition-colors"
             >
               {t("integrations.example")}
             </a>
@@ -155,7 +155,7 @@ function IntegrationCard({
             type="button"
             onClick={handleProcess}
             disabled={state === "loading"}
-            className="ml-auto flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="ml-auto flex items-center gap-2 rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             {state === "loading" ? t("integrations.processing") : t("integrations.process_btn")}

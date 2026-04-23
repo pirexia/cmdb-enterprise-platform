@@ -60,7 +60,7 @@ function ActionBadge({ action }: { action: string }) {
 
 function EntityBadge({ entity }: { entity: string }) {
   const styles: Record<string, string> = {
-    CI:            "bg-indigo-50 text-indigo-700",
+    CI:            "bg-[var(--accent)]/5 text-[var(--accent)]",
     VULNERABILITY: "bg-red-50 text-red-700",
   };
   return (
@@ -168,7 +168,7 @@ export default function AuditPage() {
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className="h-5 w-5 text-indigo-500" />
+            <Shield className="h-5 w-5 text-[var(--accent)]" />
             <div>
               <h1 className="text-xl font-bold text-slate-900">{t("audit.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
@@ -197,14 +197,14 @@ export default function AuditPage() {
       </header>
 
       <div className="px-8 py-8 w-full">
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
             <ClipboardList className="h-4 w-4 text-slate-400 flex-shrink-0" />
             <h2 className="text-sm font-semibold text-slate-700 flex-1">{t("audit.event_registry")}</h2>
             {activeFilterCount > 0 && (
               <>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                   <FilterX className="h-3 w-3" />{filterBadgeLabel}
                 </span>
                 <button
@@ -254,7 +254,7 @@ export default function AuditPage() {
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">ID Afectado</th>
                   </tr>
                   {/* Filter row — 6 cells matching 6 columns */}
-                  <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                  <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                     {/* Cell 1 — Fecha/Hora: date range inputs */}
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5">
@@ -262,14 +262,14 @@ export default function AuditPage() {
                           type="date"
                           value={filters.dateFrom}
                           onChange={(e) => setFilter("dateFrom", e.target.value)}
-                          className="rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 w-36"
+                          className="rounded-none border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 w-36"
                         />
                         <span className="text-slate-400 text-xs">→</span>
                         <input
                           type="date"
                           value={filters.dateTo}
                           onChange={(e) => setFilter("dateTo", e.target.value)}
-                          className="rounded-md border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100 w-36"
+                          className="rounded-none border border-slate-200 bg-white py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 w-36"
                         />
                       </div>
                     </td>
@@ -282,7 +282,7 @@ export default function AuditPage() {
                           placeholder={t("audit.search_placeholder")}
                           value={filters.search}
                           onChange={(e) => setFilter("search", e.target.value)}
-                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-100"
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20"
                         />
                       </div>
                     </td>
@@ -291,7 +291,7 @@ export default function AuditPage() {
                       <select
                         value={filters.action}
                         onChange={(e) => setFilter("action", e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.action ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.action ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}
                       >
                         <option value="">{t("audit.all_actions")}</option>
                         <option value="CREATE_CI">CREATE_CI</option>
@@ -305,7 +305,7 @@ export default function AuditPage() {
                       <select
                         value={filters.entity}
                         onChange={(e) => setFilter("entity", e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-100 ${filters.entity ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.entity ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}
                       >
                         <option value="">{t("audit.all_entities")}</option>
                         <option value="CI">CI</option>
@@ -329,7 +329,7 @@ export default function AuditPage() {
                     </tr>
                   ) : (
                     filtered.map((log) => (
-                      <tr key={log.id} className="hover:bg-indigo-50/30 transition-colors">
+                      <tr key={log.id} className="hover:bg-[var(--accent)]/5 transition-colors">
                         {/* Date */}
                         <td className="px-6 py-3 text-xs text-slate-500 whitespace-nowrap font-mono">
                           {formatDateTime(log.created_at)}

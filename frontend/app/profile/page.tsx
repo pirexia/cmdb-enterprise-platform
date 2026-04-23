@@ -192,7 +192,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center gap-3">
-          <User className="h-5 w-5 text-indigo-500" />
+          <User className="h-5 w-5 text-[var(--accent)]" />
           <div>
             <h1 className="text-xl font-bold text-slate-900">{t("profile.title")}</h1>
             <p className="text-sm text-slate-500 mt-0.5">{t("profile.subtitle")}</p>
@@ -203,10 +203,10 @@ export default function ProfilePage() {
       <div className="px-8 py-8 max-w-2xl mx-auto space-y-6">
 
         {/* ── User info ── */}
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-6">
+        <div className="bg-white shadow-sm ring-1 ring-slate-200 p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100">
-              <User className="h-7 w-7 text-indigo-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)]/10">
+              <User className="h-7 w-7 text-[var(--accent)]" />
             </div>
             <div>
               <p className="text-lg font-bold text-slate-900">{user?.username ?? "—"}</p>
@@ -219,7 +219,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Change password ── */}
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
             <Lock className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-700">{t("profile.change_password_section")}</h2>
@@ -247,7 +247,7 @@ export default function ProfilePage() {
                       type={showCurrent ? "text" : "password"}
                       required autoComplete="current-password"
                       value={currentPwd} onChange={(e) => setCurrentPwd(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                       placeholder="••••••••••••"
                     />
                     <button type="button" onClick={() => setShowCurrent((v) => !v)}
@@ -267,7 +267,7 @@ export default function ProfilePage() {
                       type={showNew ? "text" : "password"}
                       required autoComplete="new-password"
                       value={newPwd} onChange={(e) => setNewPwd(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                       placeholder="••••••••••••"
                     />
                     <button type="button" onClick={() => setShowNew((v) => !v)}
@@ -293,12 +293,12 @@ export default function ProfilePage() {
                       type={showConfirm ? "text" : "password"}
                       required autoComplete="new-password"
                       value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)}
-                      className={`w-full rounded-lg border bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-100 ${
+                      className={`w-full rounded-none border bg-slate-50 px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 ${
                         confirmPwd.length > 0
                           ? passwordsMatch
                             ? "border-emerald-400 focus:border-emerald-400"
                             : "border-red-400 focus:border-red-400"
-                          : "border-slate-300 focus:border-indigo-400"
+                          : "border-slate-300 focus:border-[var(--accent)]"
                       }`}
                       placeholder="••••••••••••"
                     />
@@ -328,7 +328,7 @@ export default function ProfilePage() {
                 <button
                   type="submit"
                   disabled={pwdSaving || !currentPwd || !allRulesPassed || !passwordsMatch}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
                 >
                   {pwdSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
                   {pwdSaving ? t("profile.password_saving") : t("profile.change_password_button")}
@@ -339,7 +339,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── MFA card ── */}
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           <div className="border-b border-slate-200 px-6 py-4 flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-700">{t("profile.mfa_section")}</h2>
@@ -375,7 +375,7 @@ export default function ProfilePage() {
                   </div>
                 )}
                 <button onClick={handleSetup} disabled={mfaLoading}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 transition-colors">
+                  className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-60 transition-colors">
                   {mfaLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <QrCode className="h-4 w-4" />}
                   {mfaLoading ? t("profile.mfa_generating_qr") : t("profile.mfa_configure")}
                 </button>
@@ -394,7 +394,7 @@ export default function ProfilePage() {
                   <img src={qrDataUrl} alt="QR Code MFA" className="h-48 w-48 rounded-xl border border-slate-200" />
                   <div className="text-center">
                     <p className="text-xs text-slate-500">{t("profile.mfa_secret_label")}</p>
-                    <code className="text-xs font-mono text-indigo-700 bg-indigo-50 rounded px-2 py-0.5 break-all">
+                    <code className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/5 px-2 py-0.5 break-all">
                       {mfaSecret}
                     </code>
                   </div>
@@ -413,7 +413,7 @@ export default function ProfilePage() {
                       type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
                       required autoFocus placeholder="123456"
                       value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-center text-xl font-mono tracking-widest focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 text-center text-xl font-mono tracking-widest focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                     />
                   </div>
                   <button type="submit" disabled={mfaEnabling || mfaCode.length !== 6}
@@ -428,10 +428,10 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Language Preference ──────────────────────────────────────── */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4">
+        <section className="border border-slate-200 bg-white p-6 space-y-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50">
-              <svg className="h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="flex h-8 w-8 items-center justify-center bg-[var(--accent)]/5">
+              <svg className="h-4 w-4 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802" />
               </svg>
             </div>
@@ -444,7 +444,7 @@ export default function ProfilePage() {
             <select
               value={locale}
               onChange={(e) => handleLanguageChange(e.target.value as Locale)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               {(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (
                 <option key={code} value={code}>{name}</option>

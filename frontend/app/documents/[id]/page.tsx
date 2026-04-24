@@ -1058,13 +1058,11 @@ export default function DocumentDetailPage() {
                     {doc.documentTypeName}
                   </span>
                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    v{doc.versionNumber}
+                    v{doc.versions.find((v) => v.isLatest)?.versionNumber ?? doc.versionNumber}
                   </span>
-                  {doc.isLatest && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      latest
-                    </span>
-                  )}
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    latest
+                  </span>
                 </div>
               </div>
             </div>

@@ -759,6 +759,17 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
+> **v2.2.3 — Rediseño UI Corporate Dark, theming dinámico y navegación responsive:**
+> - **Theming dinámico en base de datos:** Nueva tabla `app_settings` almacena color de sidebar, color de acento, nombre de empresa y logo. Sin rebuild para cambiar la apariencia.
+> - **Panel de Apariencia (Admin):** Nueva pestaña "Apariencia" en Ajustes con selector de color en vivo, subida de logo (PNG/JPEG/WebP, máx. 2 MB, validación magic bytes) y nombre de empresa configurable.
+> - **CSS Custom Properties:** `--sidebar-bg` y `--accent` inyectados en `<head>` en tiempo de ejecución vía `ThemeContext`. El tema se aplica sin recarga de página.
+> - **Endpoints públicos de tema:** `GET /api/settings/theme` y `GET /api/settings/logo` no requieren autenticación (necesarios para la página de login).
+> - **Navegación responsive:** TopBar móvil con botón hamburguesa. Sidebar se despliega como overlay con backdrop a < 768px.
+> - **Eliminación de border-radius excesivo:** Esquinas cuadradas en cards, widgets, tablas, inputs y botones en toda la aplicación (estilo Corporate Dark).
+> - **Migración de colores:** Todos los colores `indigo-*` hardcodeados reemplazados por `var(--accent)` — el color de acento cambia globalmente al modificar el ajuste de branding.
+> - **Seguridad logo:** Validación de tipo MIME + magic bytes en backend; SVG rechazado (riesgo XSS); base64 en BD, sin rutas de fichero.
+> - **Auditoría:** Cada cambio de tema o logo genera un registro en `AuditLog` (`UPDATE_THEME`, `UPDATE_LOGO`, `DELETE_LOGO`).
+
 > **v2.0.1 — Upgrade del stack, panel de sistema dinámico, cabeceras fijas:**
 > - **nginx 1.30 (stable):** Actualización desde nginx 1.27; EOL abierta.
 > - **Panel de sistema dinámico:** Nuevo endpoint `GET /api/system-info` (solo ADMIN) con tabla de 5 columnas que muestra versiones del stack y fechas EOL via endoflife.date con caché 24h.

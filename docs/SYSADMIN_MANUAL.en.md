@@ -749,6 +749,17 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v2.2.3 — Corporate Dark UI redesign, dynamic theming, and responsive navigation:**
+> - **Database-driven theming:** New `app_settings` table stores sidebar color, accent color, company name, and logo. No rebuild required to change the appearance.
+> - **Branding panel (Admin):** New "Appearance" tab in Settings with live color pickers, logo upload (PNG/JPEG/WebP, max 2 MB, magic bytes validated), and company name configuration.
+> - **CSS Custom Properties:** `--sidebar-bg` and `--accent` injected into `<head>` at runtime via `ThemeContext`. Theme applies without page reload.
+> - **Public theme endpoints:** `GET /api/settings/theme` and `GET /api/settings/logo` require no authentication (needed by the login page before auth context is available).
+> - **Responsive navigation:** Mobile TopBar with hamburger button. Sidebar slides in as an overlay with backdrop at < 768px.
+> - **Border-radius removal:** Sharp corners on cards, widgets, tables, inputs, and buttons throughout the application (Corporate Dark aesthetic).
+> - **Color migration:** All hardcoded `indigo-*` colors replaced by `var(--accent)` — accent color changes globally when the branding setting is updated.
+> - **Logo security:** MIME type + magic bytes validation in backend; SVG rejected (XSS risk); stored as base64 in DB, no file paths.
+> - **Audit logging:** Every theme or logo change creates an `AuditLog` record (`UPDATE_THEME`, `UPDATE_LOGO`, `DELETE_LOGO`).
+
 > **v2.0.1 — Stack upgrade, dynamic system info panel, sticky headers:**
 > - **nginx 1.30 (stable):** Upgraded from nginx 1.27; EOL open.
 > - **Dynamic system info panel:** New `GET /api/system-info` endpoint (admin only) with a 5-column table showing stack versions and EOL dates via endoflife.date with 24h cache.

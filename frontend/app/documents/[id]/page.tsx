@@ -862,6 +862,7 @@ export default function DocumentDetailPage() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState<string>("");
   const [previewName, setPreviewName] = useState<string>("");
+  const [previewVersionNumber, setPreviewVersionNumber] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -889,11 +890,13 @@ export default function DocumentDetailPage() {
         setPreviewId(latestVersion.id);
         setPreviewMime(latestVersion.mimeType);
         setPreviewName(latestVersion.originalName);
+        setPreviewVersionNumber(latestVersion.versionNumber);
       } else {
         // root document with no version children — preview the root itself
         setPreviewId(d.id);
         setPreviewMime(d.mimeType);
         setPreviewName(d.originalName);
+        setPreviewVersionNumber(d.versionNumber);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.unknown_error"));
@@ -1104,6 +1107,68 @@ export default function DocumentDetailPage() {
 
         {/* Body */}
         <div className="px-8 py-6 space-y-6">
+          {/* Version History */}
+          <SectionCard
+            title={t("documents.version_history")}
+            icon={<Upload className="h-4 w-4" />}
+          >
+            {doc.versions.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">{t("common.no_data")}</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {doc.versions.map((v) => {
+                  const isActivePreview = v.id === previewId;
+                  return (
+                    <div
+                      key={v.id}
+                      className={`flex items-center justify-between px-5 py-3 group ${v.isLatest ? "bg-emerald-50/50" : ""} ${isActivePreview ? "ring-1 ring-inset ring-[var(--accent)]/30" : ""}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${v.isLatest ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          v{v.versionNumber}
+                        </span>
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 font-mono">{v.originalName}</p>
+                          <p className="text-xs text-slate-400">{v.uploadedBy} · {formatDate(v.createdAt)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setPreviewId(v.id);
+                            setPreviewMime(v.mimeType);
+                            setPreviewName(v.originalName);
+                            setPreviewVersionNumber(v.versionNumber);
+                          }}
+                          className={`rounded-none p-1.5 transition-colors ${isActivePreview ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)]"}`}
+                          title={t("documents.preview")}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(v.id)}
+                          className="rounded-none p-1.5 text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
+                          title={t("documents.download")}
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteVersion(v.id)}
+                            className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                            title={t("documents.delete_version")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+
           {/* Metadata card */}
           <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
@@ -1141,7 +1206,7 @@ export default function DocumentDetailPage() {
           {/* Document Viewer */}
           {previewId && (
             <SectionCard
-              title={t("documents.preview")}
+              title={`${t("documents.preview")}${previewVersionNumber !== null ? `: v${previewVersionNumber}` : ""}`}
               icon={<Eye className="h-4 w-4" />}
             >
               <DocumentViewer
@@ -1151,53 +1216,6 @@ export default function DocumentDetailPage() {
               />
             </SectionCard>
           )}
-
-          {/* Version History */}
-          <SectionCard
-            title={t("documents.version_history")}
-            icon={<Upload className="h-4 w-4" />}
-          >
-            {doc.versions.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">{t("common.no_data")}</p>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {doc.versions.map((v) => (
-                  <div
-                    key={v.id}
-                    className={`flex items-center justify-between px-5 py-3 group ${v.isLatest ? "bg-emerald-50/50" : ""}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${v.isLatest ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        v{v.versionNumber}
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 font-mono">{v.originalName}</p>
-                        <p className="text-xs text-slate-400">{v.uploadedBy} · {formatDate(v.createdAt)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDownload(v.id)}
-                        className="rounded-none p-1.5 text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
-                        title={t("documents.download")}
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleDeleteVersion(v.id)}
-                          className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                          title={t("documents.delete_version")}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
 
           {/* Notes */}
           <SectionCard

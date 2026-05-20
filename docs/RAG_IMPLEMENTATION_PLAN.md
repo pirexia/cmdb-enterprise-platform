@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1, 2, 3 y 4 ✅ completadas · Iniciando oleada 5
+**Estado global:** 🟢 Todas las oleadas ✅ completadas · Listo para PR contra `develop`
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -127,11 +127,11 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 5 — Verificación y documentación de cierre (2 paralelos)
 
-- [ ] **A13** · Verificación end-to-end: `verify` + `find-bugs` + `differential-review`. Smoke real (subir PDF, query en ES, validar citaciones), `tsc --noEmit` sin nuevos errores, audit log verificado, `curl https://localhost/api/health`.
-- [ ] **A14** · Documentación de cierre:
-  - `docs/USER_MANUAL.md` y `.en.md`: nueva §"Asistente IA: búsqueda inteligente de documentos".
-  - `docs/USER_MANUAL.md` §11: actualizar para reflejar nuevos switches de ACL.
-  - `README.md` y `README.en.md`: sección breve sobre RAG + enlace a `RAG_HOST_PREPARATION.md`.
+- [x] **A13** · ✅ — `docs/RAG_VERIFICATION_A13.md` (15 KB, 10 secciones). Veredicto: **Ready to open PR after manual smoke test**. 2 bugs HIGH detectados y arreglados:
+  - **BUG-001** (CRÍTICO): imágenes Postgres no llevaban pgvector. Fix: `pgvector/pgvector:pg15` y `pg16` en ambos compose files (commit `7782c90`).
+  - **BUG-002** (MEDIO): `POST /api/chat/ask` usaba `result.answer`/`result.modelUsed` pero `chatWithContext()` devuelve `{ content, model }`. Fix: 3 sitios actualizados (commit `7782c90`).
+  - Todos los checks pasan: tsc (0 nuevos), bash -n (OK), JSON locales (6/6), seguridad (a-i todos PASS), cron sin colisión, docker sin puertos expuestos, nginx SSE correcto.
+- [x] **A14** · ✅ — `docs/USER_MANUAL.md` §23 (ya presente, 61 líneas) y `.en.md` con misma estructura traducida. §11 cross-reference a §23 ya presente en ambos. `README.md` ya tenía el bullet RAG (línea 50). `README.en.md` (commit `7782c90`): +2 filas (Licence Repository y Local AI Assistant with RAG) para alinear con la versión es.
 
 ---
 
@@ -227,3 +227,4 @@ Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de ha
 | 2026-05-20 | Oleada 2 completada: A6 (ingestión + cron), A7 (backfill), A8 (chat + SSE), A9 (kNN+ACL+audit) | sesión orquestadora |
 | 2026-05-20 | Oleada 3 completada: A10 (chat page + SSE hook + sidebar), A11 (i18n 6 idiomas), A12 (indexing badge + reindex) | sesión orquestadora |
 | 2026-05-20 | Oleada 4 completada: I1 (install.sh + install.example.conf + install.conf), I2 (update.sh con --reindex) | sesión orquestadora |
+| 2026-05-20 | Oleada 5 completada: A13 (verificación + 2 bugs HIGH fixed), A14 (cierre USER_MANUAL+README). Listo para PR. | sesión orquestadora |

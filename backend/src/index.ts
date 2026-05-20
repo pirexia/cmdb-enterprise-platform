@@ -27,6 +27,13 @@ import { authenticator } from 'otplib';
 authenticator.options = { window: 1 }; // accept 1 step before/after current (30-sec clock drift)
 import QRCode from 'qrcode';
 import multer from 'multer';
+import { parseDocument } from './services/docParser';
+import { chunkSections } from './services/chunker';
+import {
+  getEmbedding, getEmbeddingsBatch, isOllamaHealthy, sanitizeQuery,
+  buildRagPrompt, chatWithContext, streamChatWithContext,
+  type RagChunkResult, type Citation,
+} from './services/ragService';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -219,6 +226,24 @@ const apiLimiter = rateLimit({
 
 app.use('/api/', apiLimiter);
 
+// Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
+const ragBackfillLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 1,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Rate limited. Try again in a minute.' },
+});
+
+// Chat ask limiter: 10 requests/min per IP (separate from global apiLimiter)
+const chatAskLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Demasiadas consultas al asistente. Inténtelo de nuevo en un minuto.' },
+});
+
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 
 const LoginSchema = z.object({
@@ -259,6 +284,16 @@ const ContractCreateSchema = z.object({
   vendorId:          z.string().uuid(),
   parentContractId:  z.string().uuid().optional(),
   ciIds:             z.array(z.string().uuid()).optional(),
+});
+
+const ChatSessionCreateSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+});
+
+const ChatAskSchema = z.object({
+  sessionId: z.string().uuid().optional(), // if omitted, a new session is created
+  question:  z.string().min(1).max(2000),
+  topK:      z.number().int().min(1).max(20).optional(),
 });
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -3001,6 +3036,182 @@ function docVisibilitySqlCol(role: string): string {
   return 'read_viewer';
 }
 
+// ─── RAG helpers ─────────────────────────────────────────────────────────────
+
+async function queueDocumentForIndexing(documentId: string, versionNumber: number): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "rag_document_index"(id, document_id, version_number, status, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${documentId}::uuid, ${versionNumber}, 'PENDING', now(), now())
+      ON CONFLICT (document_id, version_number) DO UPDATE SET status='PENDING', updated_at=now()`;
+  } catch (e) {
+    console.error('[RAG] queueDocumentForIndexing error:', e);
+  }
+}
+
+async function processRagQueue(): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  if (!(await isOllamaHealthy())) return;
+
+  const pending = await prisma.$queryRaw<{ id: string; document_id: string; version_number: number }[]>`
+    SELECT id::text AS id, document_id::text AS document_id, version_number
+    FROM "rag_document_index"
+    WHERE status = 'PENDING'
+    ORDER BY created_at
+    LIMIT 3`;
+
+  for (const row of pending) {
+    try {
+      await prisma.$executeRaw`
+        UPDATE "rag_document_index" SET status='INDEXING', updated_at=now() WHERE id=${row.id}::uuid`;
+
+      const docRows = await prisma.$queryRaw<{ id: string; file_name: string; mime_type: string; title: string; version_number: number }[]>`
+        SELECT id::text AS id, file_name, mime_type, title, version_number
+        FROM "documents"
+        WHERE id=${row.document_id}::uuid
+        LIMIT 1`;
+
+      if (!docRows.length) {
+        await prisma.$executeRaw`
+          UPDATE "rag_document_index" SET status='ERROR', error_message='Document not found', updated_at=now()
+          WHERE id=${row.id}::uuid`;
+        continue;
+      }
+
+      const doc = docRows[0];
+      const filePath = path.join(DOCUMENTS_DIR, doc.file_name);
+      const buffer = fs.readFileSync(filePath);
+      const parseResult = await parseDocument(buffer, doc.mime_type, doc.title);
+
+      if (parseResult.sections.length === 0) {
+        await prisma.$executeRaw`
+          UPDATE "rag_document_index" SET status='READY', chunk_count=0, indexed_at=now(), updated_at=now()
+          WHERE id=${row.id}::uuid`;
+        continue;
+      }
+
+      const chunks = chunkSections(parseResult.sections);
+
+      await prisma.$executeRaw`
+        DELETE FROM "rag_chunks"
+        WHERE document_id=${row.document_id}::uuid AND version_number=${row.version_number}`;
+
+      const texts = chunks.map((c) => c.content);
+      const embeddings = await getEmbeddingsBatch(texts);
+
+      for (let i = 0; i < chunks.length; i++) {
+        const embeddingStr = `[${embeddings[i].join(',')}]`;
+        const docId = row.document_id;
+        const versionNumber = row.version_number;
+        await prisma.$executeRaw`
+          INSERT INTO "rag_chunks"(id, document_id, version_number, chunk_index, section_path, page_start, page_end, token_count, content, embedding, metadata, created_at)
+          VALUES(gen_random_uuid(), ${docId}::uuid, ${versionNumber}, ${chunks[i].chunkIndex}, ${chunks[i].sectionPath ?? null}, ${chunks[i].pageStart ?? null}, ${chunks[i].pageEnd ?? null}, ${chunks[i].tokenCount}, ${chunks[i].content}, ${embeddingStr}::vector, '{}'::jsonb, now())`;
+      }
+
+      await prisma.$executeRaw`
+        UPDATE "rag_document_index" SET status='READY', chunk_count=${chunks.length}, indexed_at=now(), updated_at=now()
+        WHERE id=${row.id}::uuid`;
+
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'INDEX_DOC', 'Document', ${row.document_id}::uuid, 'system', now())`;
+    } catch (e) {
+      console.error('[RAG] processRagQueue doc error:', e);
+      const errMsg = String(e).slice(0, 500);
+      await prisma.$executeRaw`
+        UPDATE "rag_document_index" SET status='ERROR', error_message=${errMsg}, updated_at=now()
+        WHERE id=${row.id}::uuid`;
+    }
+  }
+}
+
+/**
+ * Retrieves the top-K most similar chunks for a query, filtered by the user's role ACL.
+ *
+ * Security: the ACL filter (read_admin/auditor/viewer) is applied BEFORE the kNN
+ * search in the same SQL statement — chunks from non-readable documents never
+ * leave the database. This prevents data leakage and embedding-membership inference.
+ *
+ * @param query  - User question (sanitized internally before embedding)
+ * @param role   - 'ADMIN' | 'AUDITOR' | 'VIEWER'
+ * @param topK   - Number of chunks to return (default 6)
+ */
+async function ragSearchChunks(query: string, role: string, topK = 6): Promise<RagChunkResult[]> {
+  const cleanQuery = sanitizeQuery(query);
+  const { embedding } = await getEmbedding(cleanQuery);
+  const embeddingStr = `[${embedding.join(',')}]`;
+
+  // Allowlisted column name from docVisibilitySqlCol — safe with Prisma.raw()
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(role)}"`);
+
+  const rows = await prisma.$queryRaw<{
+    id: string;
+    document_id: string;
+    document_title: string;
+    version_number: number;
+    section_path: string | null;
+    page_start: number | null;
+    content: string;
+    score: number;
+  }[]>`
+    SELECT
+      c.id::text                   AS id,
+      c.document_id::text          AS document_id,
+      d.title                      AS document_title,
+      c.version_number             AS version_number,
+      c.section_path               AS section_path,
+      c.page_start                 AS page_start,
+      c.content                    AS content,
+      1 - (c.embedding <=> ${embeddingStr}::vector) AS score
+    FROM "rag_chunks" c
+    JOIN "documents" d ON d.id = c.document_id
+    JOIN "documents" root ON root.id = COALESCE(d.root_id, d.id)
+    WHERE root.${visCol} = true
+      AND d.is_latest = true
+    ORDER BY c.embedding <=> ${embeddingStr}::vector
+    LIMIT ${topK}`;
+
+  return rows.map((r) => ({
+    id:             r.id,
+    documentId:     r.document_id,
+    documentTitle:  r.document_title,
+    versionNumber:  r.version_number,
+    sectionPath:    r.section_path ?? undefined,
+    pageStart:      r.page_start   ?? undefined,
+    content:        r.content,
+    score:          r.score,
+  }));
+}
+
+/**
+ * Audit-logs an ASK_RAG event. Stores only a SHA-256 hash of the query (no PII).
+ * Details include sessionId, citation count, and model used.
+ */
+async function logAskRag(opts: {
+  userEmail: string;
+  sessionId: string;
+  query: string;
+  citationCount: number;
+  modelUsed: string;
+  latencyMs: number;
+}): Promise<void> {
+  try {
+    const queryHash = crypto.createHash('sha256').update(opts.query).digest('hex');
+    const details = JSON.stringify({
+      queryHash,
+      citationCount: opts.citationCount,
+      modelUsed:     opts.modelUsed,
+      latencyMs:     opts.latencyMs,
+    });
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'ASK_RAG', 'RagChatSession', ${opts.sessionId}::uuid, ${opts.userEmail}, ${details}, now())`;
+  } catch (e) {
+    console.error('[RAG] logAskRag error:', e);
+  }
+}
+
 // Ensure documents directory exists
 if (!fs.existsSync(DOCUMENTS_DIR)) {
   fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
@@ -3232,6 +3443,7 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
     // Audit log
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Document',${docId},${req.user!.email},now())`;
 
+    void queueDocumentForIndexing(docId, 1);
     res.status(201).json({ id: docId });
   } catch (e) {
     // Clean up uploaded file on DB error
@@ -3302,6 +3514,56 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','Document',${req.params.id},${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/:id/reindex — force re-queue the latest version for RAG indexing (ADMIN only)
+app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; version_number: number }[]>`
+      SELECT id::text AS id, version_number FROM "documents"
+      WHERE (id=${req.params.id}::uuid OR root_id=${req.params.id}::uuid) AND is_latest=true
+      LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Document not found' }); return; }
+    await queueDocumentForIndexing(rows[0].id, rows[0].version_number);
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at)
+      VALUES(gen_random_uuid(),'REINDEX_DOC','Document',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true, queued: rows[0].id });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/admin/rag/backfill — re-queue all un-indexed latest document versions (ADMIN only)
+app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfillLimiter, async (req: Request, res: Response) => {
+  if (process.env.RAG_ENABLED !== 'true') {
+    res.status(503).json({ error: 'RAG subsystem is disabled' });
+    return;
+  }
+  try {
+    // Find latest versions of documents that are NOT already READY
+    const docs = await prisma.$queryRaw<{ id: string; version_number: number }[]>`
+      SELECT d.id::text AS id, d.version_number
+      FROM "documents" d
+      LEFT JOIN "rag_document_index" r
+        ON r.document_id = d.id AND r.version_number = d.version_number
+      WHERE d.is_latest = true
+        AND (r.status IS NULL OR r.status != 'READY')`;
+
+    // UPSERT each row to PENDING (idempotent)
+    for (const doc of docs) {
+      await prisma.$executeRaw`
+        INSERT INTO "rag_document_index"(id, document_id, version_number, status, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${doc.id}::uuid, ${doc.version_number}, 'PENDING', now(), now())
+        ON CONFLICT (document_id, version_number) DO UPDATE SET status='PENDING', updated_at=now()`;
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'RAG_BACKFILL', 'System', NULL, ${req.user!.email}, ${JSON.stringify({ queued: docs.length })}, now())`;
+
+    res.json({ ok: true, queued: docs.length });
+  } catch (e) {
+    console.error('[POST /api/admin/rag/backfill] Error:', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 // GET /api/documents/:id/download — authenticated file download
@@ -3390,6 +3652,7 @@ app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.
 
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'VERSION','Document',${newRows[0].id},${req.user!.email},now())`;
 
+    void queueDocumentForIndexing(newRows[0].id, nextVersion);
     res.status(201).json({ id: newRows[0].id, versionNumber: nextVersion });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3985,6 +4248,16 @@ cron.schedule('0 2 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ─── RAG Document Indexing Queue (every 30 s) ────────────────────────────────
+if (process.env.RAG_ENABLED === 'true') {
+  cron.schedule('*/30 * * * * *', () => {
+    processRagQueue().catch((e) => console.error('[RAG] processRagQueue error:', e));
+  }, { timezone: 'Europe/Madrid' });
+  console.log('[RAG] Indexing queue processor scheduled (every 30 s).');
+} else {
+  console.log('[RAG] RAG_ENABLED is not "true" — indexing queue disabled.');
+}
+
 // ─── License Repository API ──────────────────────────────────────────────────
 
 // ── Zod schemas ───────────────────────────────────────────────────────────────
@@ -4507,6 +4780,220 @@ app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, a
     await prisma.licenseUser.delete({ where: { id: userId } });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license user' }); }
+});
+
+// ─── Chat / RAG assistant endpoints ──────────────────────────────────────────
+
+// GET /api/chat/sessions — list current user's sessions
+app.get('/api/chat/sessions', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; title: string; created_at: Date; updated_at: Date; message_count: number }[]>`
+      SELECT s.id::text AS id, s.title, s.created_at, s.updated_at,
+             (SELECT COUNT(*)::int FROM "rag_chat_messages" m WHERE m.session_id = s.id) AS message_count
+      FROM "rag_chat_sessions" s
+      WHERE s.user_id = ${req.user!.id}::uuid
+      ORDER BY s.updated_at DESC
+      LIMIT 100`;
+    res.json(rows.map(r => ({
+      id: r.id, title: r.title, createdAt: r.created_at, updatedAt: r.updated_at, messageCount: Number(r.message_count),
+    })));
+  } catch (e) { console.error('[GET /api/chat/sessions]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/chat/sessions — create a new session
+app.post('/api/chat/sessions', authenticateToken, async (req: Request, res: Response) => {
+  const parsed = ChatSessionCreateSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
+  const title = parsed.data.title?.trim() || 'Nueva consulta';
+  try {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "rag_chat_sessions"(id, user_id, title, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${req.user!.id}::uuid, ${title}, now(), now())
+      RETURNING id::text AS id`;
+    res.status(201).json({ id: rows[0].id, title });
+  } catch (e) { console.error('[POST /api/chat/sessions]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/chat/sessions/:id — delete a session (and its messages via CASCADE)
+app.delete('/api/chat/sessions/:id', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      DELETE FROM "rag_chat_sessions"
+      WHERE id = ${req.params.id}::uuid AND user_id = ${req.user!.id}::uuid
+      RETURNING id::text AS id`;
+    if (!rows.length) { res.status(404).json({ error: 'Session not found' }); return; }
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/chat/sessions/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/chat/sessions/:id/messages — list messages of a session
+app.get('/api/chat/sessions/:id/messages', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    // Verify session belongs to user
+    const owner = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "rag_chat_sessions"
+      WHERE id = ${req.params.id}::uuid AND user_id = ${req.user!.id}::uuid LIMIT 1`;
+    if (!owner.length) { res.status(404).json({ error: 'Session not found' }); return; }
+    const msgs = await prisma.$queryRaw<{ id: string; role: string; content: string; citations: unknown; model_used: string | null; created_at: Date }[]>`
+      SELECT id::text AS id, role, content, citations, model_used, created_at
+      FROM "rag_chat_messages"
+      WHERE session_id = ${req.params.id}::uuid
+      ORDER BY created_at ASC`;
+    res.json(msgs.map(m => ({
+      id: m.id, role: m.role, content: m.content, citations: m.citations, modelUsed: m.model_used, createdAt: m.created_at,
+    })));
+  } catch (e) { console.error('[GET /api/chat/sessions/:id/messages]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/chat/ask — non-streaming ask
+app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request, res: Response) => {
+  if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
+  const parsed = ChatAskSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
+  const { question, topK } = parsed.data;
+  let { sessionId } = parsed.data;
+
+  try {
+    // 1. Create session if not provided
+    if (!sessionId) {
+      const sessionTitle = question.slice(0, 80);
+      const sRows = await prisma.$queryRaw<{ id: string }[]>`
+        INSERT INTO "rag_chat_sessions"(id, user_id, title, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${req.user!.id}::uuid, ${sessionTitle}, now(), now())
+        RETURNING id::text AS id`;
+      sessionId = sRows[0].id;
+    } else {
+      // Verify ownership
+      const owner = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "rag_chat_sessions"
+        WHERE id = ${sessionId}::uuid AND user_id = ${req.user!.id}::uuid LIMIT 1`;
+      if (!owner.length) { res.status(404).json({ error: 'Session not found' }); return; }
+    }
+
+    // 2. Retrieve chunks (ACL pre-filter + kNN)
+    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6);
+
+    // 3. Build prompt + call LLM
+    const messages = buildRagPrompt(question, chunks);
+    const start = Date.now();
+    const result = await chatWithContext(messages);
+    const latencyMs = Date.now() - start;
+
+    // 4. Build citations from chunks
+    const citations: Citation[] = chunks.map(c => ({
+      documentId:    c.documentId,
+      documentTitle: c.documentTitle,
+      versionNumber: c.versionNumber,
+      page:          c.pageStart,
+      section:       c.sectionPath,
+      snippet:       c.content.slice(0, 200),
+    }));
+
+    // 5. Persist messages (user + assistant)
+    const queryHash = crypto.createHash('sha256').update(question).digest('hex');
+    await prisma.$executeRaw`
+      INSERT INTO "rag_chat_messages"(id, session_id, role, content, citations, query_hash, created_at)
+      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
+    await prisma.$executeRaw`
+      INSERT INTO "rag_chat_messages"(id, session_id, role, content, citations, model_used, tokens_used, latency_ms, created_at)
+      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'assistant', ${result.answer}, ${JSON.stringify(citations)}::jsonb, ${result.modelUsed}, ${result.tokensUsed ?? null}, ${latencyMs}, now())`;
+    await prisma.$executeRaw`
+      UPDATE "rag_chat_sessions" SET updated_at = now() WHERE id = ${sessionId}::uuid`;
+
+    // 6. Audit log (no PII)
+    await logAskRag({ userEmail: req.user!.email, sessionId, query: question, citationCount: citations.length, modelUsed: result.modelUsed, latencyMs });
+
+    res.json({ sessionId, answer: result.answer, citations, modelUsed: result.modelUsed, latencyMs });
+  } catch (e) {
+    console.error('[POST /api/chat/ask]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/chat/ask/stream — SSE streaming ask
+app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: Request, res: Response) => {
+  if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
+  const parsed = ChatAskSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
+  const { question, topK } = parsed.data;
+  let { sessionId } = parsed.data;
+
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  const send = (event: string, data: unknown) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    // 1. Create or verify session
+    if (!sessionId) {
+      const sessionTitle = question.slice(0, 80);
+      const sRows = await prisma.$queryRaw<{ id: string }[]>`
+        INSERT INTO "rag_chat_sessions"(id, user_id, title, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${req.user!.id}::uuid, ${sessionTitle}, now(), now())
+        RETURNING id::text AS id`;
+      sessionId = sRows[0].id;
+    } else {
+      const owner = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "rag_chat_sessions"
+        WHERE id = ${sessionId}::uuid AND user_id = ${req.user!.id}::uuid LIMIT 1`;
+      if (!owner.length) { send('error', { message: 'Session not found' }); res.end(); return; }
+    }
+
+    send('session', { sessionId });
+
+    // 2. Retrieve chunks
+    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6);
+
+    const citations: Citation[] = chunks.map(c => ({
+      documentId:    c.documentId,
+      documentTitle: c.documentTitle,
+      versionNumber: c.versionNumber,
+      page:          c.pageStart,
+      section:       c.sectionPath,
+      snippet:       c.content.slice(0, 200),
+    }));
+    send('citations', citations);
+
+    // 3. Persist user message immediately
+    const queryHash = crypto.createHash('sha256').update(question).digest('hex');
+    await prisma.$executeRaw`
+      INSERT INTO "rag_chat_messages"(id, session_id, role, content, citations, query_hash, created_at)
+      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
+
+    // 4. Stream LLM tokens
+    const messages = buildRagPrompt(question, chunks);
+    const start = Date.now();
+    let assistantText = '';
+    const { model, tokensUsed } = await streamChatWithContext(messages, (token) => {
+      assistantText += token;
+      send('token', { t: token });
+    });
+    const latencyMs = Date.now() - start;
+
+    // 5. Persist assistant message
+    await prisma.$executeRaw`
+      INSERT INTO "rag_chat_messages"(id, session_id, role, content, citations, model_used, tokens_used, latency_ms, created_at)
+      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'assistant', ${assistantText}, ${JSON.stringify(citations)}::jsonb, ${model}, ${tokensUsed ?? null}, ${latencyMs}, now())`;
+    await prisma.$executeRaw`
+      UPDATE "rag_chat_sessions" SET updated_at = now() WHERE id = ${sessionId}::uuid`;
+
+    // 6. Audit
+    await logAskRag({ userEmail: req.user!.email, sessionId, query: question, citationCount: citations.length, modelUsed: model, latencyMs });
+
+    send('done', { modelUsed: model, latencyMs, tokensUsed });
+    res.end();
+  } catch (e) {
+    console.error('[POST /api/chat/ask/stream]', e);
+    try { send('error', { message: 'Internal server error' }); } catch {}
+    res.end();
+  }
 });
 
 // ─── Server ───────────────────────────────────────────────────────────────────

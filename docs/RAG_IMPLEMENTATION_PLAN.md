@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0 y 1 ✅ completadas · Iniciando oleada 2
+**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1 y 2 ✅ completadas · Iniciando oleada 3
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -109,10 +109,10 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 2 — API RAG (4 paralelos)
 
-- [ ] **A6** · Ingesta automática: hooks en `POST /api/documents` y `POST /api/documents/:id/versions`. Cola con `node-cron` cada 30 s + tabla `rag_document_index` con estados `PENDING/INDEXING/READY/ERROR`. Cascada de borrado. Audit log `INDEX_DOC`.
-- [ ] **A7** · `POST /api/admin/rag/backfill` (ADMIN, rate-limit estricto, audit log `RAG_BACKFILL`, idempotente).
-- [ ] **A8** · Endpoints chat: `GET/POST/DELETE /api/chat/sessions`, `GET /api/chat/sessions/:id/messages`, `POST /api/chat/ask`, `POST /api/chat/ask/stream` (SSE). Pipeline retrieval → MMR → prompt con citaciones obligatorias → llamada Ollama. Zod, helmet, `express-rate-limit` 10/min.
-- [ ] **A9** · Middleware `enforceDocAccess`: filtro SQL combinando `read_<role>` y kNN en una sola query. Sanitización prompt-injection (strip control chars, system prompt blindado). Audit log `ASK_RAG` con hash de la query (sin contenido PII).
+- [x] **A6** · ✅ — `queueDocumentForIndexing()` + `processRagQueue()` en index.ts (3009–3104). Hooks en `POST /api/documents` (3423), `POST /api/documents/:id/versions` (3632). Nueva ruta `POST /api/documents/:id/reindex` (3401). Cron `*/30 * * * * *` gateado por `RAG_ENABLED` (4231). Audit log `INDEX_DOC` / `REINDEX_DOC`. Cascada vía FK ON DELETE CASCADE. tsc: 0 errores nuevos.
+- [x] **A7** · ✅ — `POST /api/admin/rag/backfill` (3512) idempotente con UPSERT a PENDING, audit log `RAG_BACKFILL` con conteo en `details`. `ragBackfillLimiter` 1/min (226). 503 si `RAG_ENABLED!='true'`. tsc: 0 errores nuevos.
+- [x] **A8** · ✅ — 6 endpoints chat (4787–4996): `GET/POST/DELETE /api/chat/sessions`, `GET /api/chat/sessions/:id/messages`, `POST /api/chat/ask`, `POST /api/chat/ask/stream` (SSE con `text/event-stream`, `X-Accel-Buffering: no`, eventos `session/citations/token/done/error`). `chatAskLimiter` 10/min (239). Zod schemas (289). Verifica ownership de sesión. tsc: 0 errores nuevos.
+- [x] **A9** · ✅ — `ragSearchChunks(query, role, topK)` (3117) con ACL pre-filter + pgvector kNN en una sola query (HNSW `<=>`). `logAskRag()` (3168) con SHA-256 del query (sin PII). Import ampliado en ragService. tsc: 0 errores nuevos.
 
 ### Oleada 3 — Frontend chat (3 paralelos)
 
@@ -234,3 +234,4 @@ Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de ha
 | 2026-05-20 | Marcado B1 como completado (commit `093b1d9` previo) | sesión de planificación |
 | 2026-05-20 | Integrados 13 hallazgos pre-flight; ajustes derivados en A1/A6/A8/A10/A14 | sesión de planificación |
 | 2026-05-20 | Oleada 1 completada: A1–A5 ✅ (compose, pgvector, ragService, docParser, chunker) | sesión orquestadora |
+| 2026-05-20 | Oleada 2 completada: A6 (ingestión + cron), A7 (backfill), A8 (chat + SSE), A9 (kNN+ACL+audit) | sesión orquestadora |

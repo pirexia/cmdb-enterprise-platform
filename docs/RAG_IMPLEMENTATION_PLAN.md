@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleada -2 ✅ completada · Iniciando oleada -1
+**Estado global:** 🟡 En progreso · Oleadas -2 y -1 ✅ completadas · Iniciando oleada 0
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -91,13 +91,13 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada -1 — Control de visibilidad de documentos por rol (B1 → B2 + B3)
 
-- [x] **B1** · ✅ Completado en commit `093b1d9` — migración `20260520120000_add_document_role_acl` con `read_admin/auditor/viewer` (default true) **+ índice `idx_documents_read_acl` ya incluido**. Verificado contenido del `migration.sql` el 2026-05-20.
-- [ ] **B2** · Backend (`backend/src/index.ts`): helper `docVisibilityFilter(role)`, aplicar en todos los `GET /api/documents*`, `GET /api/documents/:id/download`, `GET /api/documents/:id/versions`, `GET /api/cis/:id/documents`, `GET /api/contracts/:id/documents`, `GET /api/licenses/:id/documents`. Nuevo `PATCH /api/documents/:id/acl` (ADMIN, Zod, audit log `UPDATE_DOC_ACL`). Bloquear `POST /api/cis/:id/documents` si el doc no es legible por el rol.
-- [ ] **B3** · Frontend: switches "Visible para ADMIN/AUDITOR/VIEWER" en `AddDocumentModal` y `EditDocumentModal` (editables solo si ADMIN; resto solo lectura). Badge en `DocumentDetailModal`. Claves i18n en los 6 idiomas (`es/en/de/pt/fr/it.json`).
+- [x] **B1** · ✅ Commit `093b1d9` — migración `20260520120000_add_document_role_acl` con `read_admin/auditor/viewer` (default true) + índice `idx_documents_read_acl`.
+- [x] **B2** · ✅ Commits `fb44974`+`162331d` — helpers `docVisibilityFilter`/`docVisibilitySqlCol`, filtro aplicado a 8 endpoints GET, `PATCH /api/documents/:id/acl` (ADMIN, Prisma.sql+join, audit log). tsc: 0 errores nuevos.
+- [x] **B3** · ✅ Commits `fb44974`+`162331d`+`601c3dd` — switches ACL en modal de subida y vista detalle (ADMIN only), badge de visibilidad, i18n en 6 idiomas.
 
 ### Oleada 0 — Diseño y seguridad (1 agente bloqueante)
 
-- [ ] **A0** · Crear `docs/security/rag-dpia.md` (DPIA + threat model STRIDE) + delta en `docs/security-audit/{iso27001,gdpr,nis2}.md`. Mapea cada riesgo a control y a fichero/línea donde se implementará. **Bloquea las oleadas 1-3.**
+- [ ] **A0** · 🟡 En progreso — Crear `docs/security/rag-dpia.md` (DPIA + threat model STRIDE) + delta en `docs/security-audit/{iso27001,gdpr,nis2}.md`. Mapea cada riesgo a control y a fichero/línea donde se implementará. **Bloquea las oleadas 1-3.**
 
 ### Oleada 1 — Cimientos del RAG (5 paralelos)
 

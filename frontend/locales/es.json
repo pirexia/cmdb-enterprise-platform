@@ -1119,5 +1119,18 @@
     "transfers_title": "6. Transferencias internacionales",
     "transfers_body": "Si se utiliza el inicio de sesión con Microsoft 365, parte del tratamiento de identidad se realiza por Microsoft Corporation (EE.UU.) bajo el Acuerdo de Procesamiento de Datos de Microsoft y las Cláusulas Contractuales Tipo.",
     "back": "← Volver al inicio"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilidad por rol",
+      "adminOnly": "Solo un administrador puede modificar la visibilidad",
+      "visible": "visible",
+      "hidden": "oculto",
+      "role": {
+        "admin": "Administrador (ADMIN)",
+        "auditor": "Auditor (AUDITOR)",
+        "viewer": "Lector (VIEWER)"
+      }
+    }
   }
 }

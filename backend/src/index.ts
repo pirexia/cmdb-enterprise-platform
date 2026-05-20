@@ -3256,6 +3256,36 @@ app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// PATCH /api/documents/:id/acl — update role-based visibility flags (ADMIN only)
+app.patch('/api/documents/:id/acl', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const { readAdmin, readAuditor, readViewer } = req.body as { readAdmin?: boolean; readAuditor?: boolean; readViewer?: boolean };
+  if (readAdmin === undefined && readAuditor === undefined && readViewer === undefined) {
+    res.status(400).json({ error: 'At least one ACL field required' }); return;
+  }
+  for (const [k, v] of Object.entries({ readAdmin, readAuditor, readViewer })) {
+    if (v !== undefined && typeof v !== 'boolean') {
+      res.status(400).json({ error: `${k} must be a boolean` }); return;
+    }
+  }
+  try {
+    const updates: Prisma.Sql[] = [];
+    if (readAdmin !== undefined)   updates.push(Prisma.sql`read_admin = ${readAdmin}`);
+    if (readAuditor !== undefined) updates.push(Prisma.sql`read_auditor = ${readAuditor}`);
+    if (readViewer !== undefined)  updates.push(Prisma.sql`read_viewer = ${readViewer}`);
+    const setClause = Prisma.join(updates, ', ');
+
+    const rows = await prisma.$queryRaw<{ id: string }[]>`
+      UPDATE "documents"
+      SET ${setClause}, updated_at = now()
+      WHERE id = ${req.params.id}::uuid AND root_id IS NULL
+      RETURNING id::text AS id`;
+    if (!rows.length) { res.status(404).json({ error: 'Document not found' }); return; }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at)
+      VALUES(gen_random_uuid(),'UPDATE_DOC_ACL','Document',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ id: rows[0].id, readAdmin: readAdmin ?? null, readAuditor: readAuditor ?? null, readViewer: readViewer ?? null });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // DELETE /api/documents/:id — delete document (and file from disk)
 app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
@@ -3459,6 +3489,7 @@ app.delete('/api/documents/:id/contract/:contractId', authenticateToken, require
 
 // GET /api/cis/:id/documents — get documents for a CI
 app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{ id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: Date; latestVersionId: string }[]>`
       SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
@@ -3471,7 +3502,7 @@ app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
       JOIN "documents" d ON dc.document_id = d.id
       JOIN "document_types" dt ON d.document_type_id = dt.id
       LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE dc.ci_id = ${req.params.id}::uuid AND d.root_id IS NULL
+      WHERE dc.ci_id = ${req.params.id}::uuid AND d.root_id IS NULL AND d.${visCol} = true
       ORDER BY d.created_at DESC`;
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
@@ -3479,6 +3510,7 @@ app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
 
 // GET /api/contracts/:id/documents — get documents for a contract
 app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{ id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: Date; latestVersionId: string; mimeType: string }[]>`
       SELECT d.id::text AS id, d.title, dt.name AS "documentTypeName", dt.code AS "documentTypeCode",
@@ -3492,7 +3524,7 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
       JOIN "documents" d ON dc.document_id = d.id
       JOIN "document_types" dt ON d.document_type_id = dt.id
       LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE dc.contract_id = ${req.params.id}::uuid AND d.root_id IS NULL
+      WHERE dc.contract_id = ${req.params.id}::uuid AND d.root_id IS NULL AND d.${visCol} = true
       ORDER BY d.created_at DESC`;
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
@@ -4376,6 +4408,7 @@ app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async
 // GET /api/licenses/:id/documents — list docs with latestVersionId + mimeType
 app.get('/api/licenses/:id/documents', authenticateToken, async (req, res) => {
   const licenseId = req.params.id as string;
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{
       id: string; title: string; documentTypeName: string; documentTypeCode: string;
@@ -4393,7 +4426,7 @@ app.get('/api/licenses/:id/documents', authenticateToken, async (req, res) => {
       JOIN "documents" d ON dl.document_id = d.id
       JOIN "document_types" dt ON d.document_type_id = dt.id
       LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-      WHERE dl.license_id = ${licenseId}::uuid AND d.root_id IS NULL
+      WHERE dl.license_id = ${licenseId}::uuid AND d.root_id IS NULL AND d.${visCol} = true
       ORDER BY d.created_at DESC`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Failed to fetch documents for license' }); }

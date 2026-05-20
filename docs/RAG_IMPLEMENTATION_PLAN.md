@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2 y -1 ✅ completadas · Iniciando oleada 0
+**Estado global:** 🟡 En progreso · Oleadas -2, -1 y 0 ✅ completadas · Iniciando oleada 1
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -97,7 +97,7 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 0 — Diseño y seguridad (1 agente bloqueante)
 
-- [ ] **A0** · 🟡 En progreso — Crear `docs/security/rag-dpia.md` (DPIA + threat model STRIDE) + delta en `docs/security-audit/{iso27001,gdpr,nis2}.md`. Mapea cada riesgo a control y a fichero/línea donde se implementará. **Bloquea las oleadas 1-3.**
+- [x] **A0** · ✅ Commit `a318212` — `docs/security/rag-dpia.md` (274 líneas, 13 secciones, STRIDE con 11 vectores) + deltas en `iso27001.md` (7 controles), `gdpr.md` (actividad de tratamiento Art.30), `nis2.md` (5 riesgos Art.21).
 
 ### Oleada 1 — Cimientos del RAG (5 paralelos)
 

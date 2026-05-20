@@ -91,7 +91,7 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada -1 — Control de visibilidad de documentos por rol (B1 → B2 + B3)
 
-- [x] **B1** · ✅ Completado en commit `093b1d9` — migración `add_document_role_acl` + 3 campos boolean en `schema.prisma`. **Pendiente añadir el índice** `@@index([readAdmin, readAuditor, readViewer], map: "idx_documents_read_acl")` (no entró en el commit original; B2 puede crearlo en su migración o en una nueva).
+- [x] **B1** · ✅ Completado en commit `093b1d9` — migración `20260520120000_add_document_role_acl` con `read_admin/auditor/viewer` (default true) **+ índice `idx_documents_read_acl` ya incluido**. Verificado contenido del `migration.sql` el 2026-05-20.
 - [ ] **B2** · Backend (`backend/src/index.ts`): helper `docVisibilityFilter(role)`, aplicar en todos los `GET /api/documents*`, `GET /api/documents/:id/download`, `GET /api/documents/:id/versions`, `GET /api/cis/:id/documents`, `GET /api/contracts/:id/documents`, `GET /api/licenses/:id/documents`. Nuevo `PATCH /api/documents/:id/acl` (ADMIN, Zod, audit log `UPDATE_DOC_ACL`). Bloquear `POST /api/cis/:id/documents` si el doc no es legible por el rol.
 - [ ] **B3** · Frontend: switches "Visible para ADMIN/AUDITOR/VIEWER" en `AddDocumentModal` y `EditDocumentModal` (editables solo si ADMIN; resto solo lectura). Badge en `DocumentDetailModal`. Claves i18n en los 6 idiomas (`es/en/de/pt/fr/it.json`).
 
@@ -175,11 +175,44 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ## 8. Pre-flight findings — revisión final del proyecto
 
-> Pendiente de integrar. Agente background `af7a42457eb411415` ejecutándose; al terminar se insertan aquí los hallazgos relevantes con `file_path:line` y la implicación sobre el plan.
+Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de hallazgos accionables:
+
+### 8.1 Cambios obligatorios en infraestructura
+
+| # | Hallazgo | Implicación / acción |
+|---|---|---|
+| F1 | Imagen Postgres actual: `postgres:15-alpine` (dev) y `postgres:16-alpine` (prod). **No incluye pgvector.** | **A1/A2:** Cambiar a `pgvector/pgvector:pg15` y `pgvector/pgvector:pg16` respectivamente. Mantener volúmenes y env vars. |
+| F2 | `nginx/conf.d/frontend.conf` no desactiva buffering en `/api/`. SSE quedaría retardado/buffereado. | **A1 + A8:** Añadir bajo `location /api/`: `proxy_buffering off;` y forzar response header `X-Accel-Buffering: no` en `/api/chat/ask/stream`. |
+| F3 | `frontend/lib/apiFetch.ts` no soporta SSE (solo fetch JSON). | **A10:** Crear hook nuevo `useChatStream()` usando `fetch` + `response.body.getReader()` con `credentials: "include"`. No tocar `apiFetch`. |
+
+### 8.2 Patrones existentes a respetar
 
 | # | Hallazgo | Implicación |
 |---|---|---|
-| _pendiente_ | _pendiente_ | _pendiente_ |
+| F4 | 24 endpoints existentes bajo `/documents` (líneas 3056–4394 de `backend/src/index.ts`). | **B2:** Aplicar `docVisibilityFilter(role)` a los GETs (`/api/documents`, `/api/documents/:id`, `/api/documents/:id/download`, `/api/documents/:id/versions`, `/api/cis/:id/documents`, `/api/contracts/:id/documents`, `/api/licenses/:id/documents`, `/api/documents/:id/notes`). Bloquear POSTs de asociación si el doc no es legible. |
+| F5 | Cron jobs actuales en `backend/src/index.ts`: línea ~3873 (CRON_SCHEDULE configurable, EOL/contratos/vulns), ~3891 (`0 3 * * *` purge audit_logs), ~3917 (`0 2 * * *` purge trusted_devices). Todos en `Europe/Madrid`. | **A6:** Programar reindexado RAG a `0 4 * * *` o procesar la cola cada 30 s con `*/30 * * * * *` (preferible). Sin colisión. |
+| F6 | Rate limiters actuales: `/api/auth/login` (15 min, 10 fallidos), `/api/auth/sso/*` (15 min, 20), global `/api/*` (60 s, 300). | **A8/A9:** Añadir limitador específico para `/api/chat/ask*` (10/min/usuario) que opera *encima* del global. Backfill y reindex con su propio rate-limit (1/min ADMIN). |
+| F7 | Vocabulario `action` de `audit_logs` (28 valores únicos, ej. `CREATE_CI`, `LINK_DOCUMENT`, `GDPR_ERASURE`). | **A6/A7/A8/A9 + B2:** Los nuevos `ASK_RAG`, `INDEX_DOC`, `REINDEX_DOC`, `UPDATE_DOC_ACL`, `RAG_BACKFILL` no colisionan. |
+| F8 | `backend/src/services/systemInfoService.ts` devuelve `{components: StackComponent[], generatedAt}`. | **A1/A3:** Añadir entrada `{ name: 'Ollama', category: 'AI/ML', version: ... }`. Para versión live, llamar a `GET ${OLLAMA_BASE_URL}/api/version`. |
+
+### 8.3 Constatación de estado
+
+| # | Hallazgo | Implicación |
+|---|---|---|
+| F9 | **No existe** ninguna integración LLM previa (`grep openai|anthropic|ollama|pgvector|embedding` = vacío). | Vía libre. |
+| F10 | **No existen tests automatizados** (`*.test.ts`, `*.spec.ts`, `jest.config`, `vitest.config` = 0 ficheros). | A13 mantiene verificación manual + `tsc --noEmit`. Tests automatizados quedan fuera de alcance. |
+| F11 | `backend/src/index.ts` = 4.462 líneas. Tras el RAG: estimado 4.800–4.850. Umbral seguro 5.500. | No extraer a módulos en esta fase; documentar en `ARCHITECTURE.md` que si se acerca a 5.500 conviene `backend/src/modules/`. |
+| F12 | Migración B1 (`20260520120000_add_document_role_acl/migration.sql`) verificada in situ: incluye los 3 campos **y el índice** `idx_documents_read_acl`. Backend NO la consume todavía (`grep readAdmin backend/src/index.ts` = vacío). | B1 ✅ completo. B2 sigue siendo necesario (consumir flags + nuevo `PATCH /api/documents/:id/acl`). |
+| F13 | Sidebar actual (13 enlaces, `frontend/components/Sidebar.tsx`): no hay sección Chat/IA. | **A10:** Añadir `sidebar.assistant` → `/chat` con icono `Sparkles` o `MessageSquareText`. Visible a todos los roles autenticados. |
+
+### 8.4 Ajustes derivados al plan
+
+1. **A1** debe cambiar las imágenes de Postgres a `pgvector/pgvector:pg15` (dev) y `pgvector/pgvector:pg16` (prod) **además** del nuevo servicio `ollama`.
+2. **A1** además debe editar `nginx/conf.d/frontend.conf` para añadir `proxy_buffering off;` en `location /api/`.
+3. **A6** usa cola con tick cada 30 s en lugar de horario fijo nocturno (más responsivo y evita conflicto con los 3 cron existentes).
+4. **A8** debe setear `X-Accel-Buffering: no` y `Cache-Control: no-cache` en cabeceras de la respuesta SSE.
+5. **A10** crea un hook nuevo `useChatStream.ts` en `frontend/lib/`, no toca `apiFetch.ts`.
+6. **A14** añade a `ARCHITECTURE.md` la nota sobre el tamaño del monolito (límite blando ~5.500 líneas; tras esto, considerar `backend/src/modules/`).
 
 ---
 
@@ -199,3 +232,4 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 |---|---|---|
 | 2026-05-20 | Creación del documento de plan | sesión de planificación |
 | 2026-05-20 | Marcado B1 como completado (commit `093b1d9` previo) | sesión de planificación |
+| 2026-05-20 | Integrados 13 hallazgos pre-flight; ajustes derivados en A1/A6/A8/A10/A14 | sesión de planificación |

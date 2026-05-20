@@ -1000,5 +1000,18 @@
     "transfers_title": "6. Transferts internationaux",
     "transfers_body": "Si la connexion Microsoft 365 est utilisée, une partie du traitement d'identité est effectuée par Microsoft Corporation (États-Unis) dans le cadre de l'Accord de traitement des données de Microsoft et des Clauses contractuelles types.",
     "back": "← Retour à la connexion"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilité par rôle",
+      "adminOnly": "Seul un administrateur peut modifier la visibilité",
+      "visible": "visible",
+      "hidden": "masqué",
+      "role": {
+        "admin": "Administrateur (ADMIN)",
+        "auditor": "Auditeur (AUDITOR)",
+        "viewer": "Lecteur (VIEWER)"
+      }
+    }
   }
 }

@@ -1119,5 +1119,18 @@
     "transfers_title": "6. International Transfers",
     "transfers_body": "If Microsoft 365 SSO is used, part of the identity processing is carried out by Microsoft Corporation (USA) under Microsoft's Data Processing Agreement and Standard Contractual Clauses.",
     "back": "← Back to login"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibility by role",
+      "adminOnly": "Only an administrator can modify visibility",
+      "visible": "visible",
+      "hidden": "hidden",
+      "role": {
+        "admin": "Administrator (ADMIN)",
+        "auditor": "Auditor (AUDITOR)",
+        "viewer": "Viewer (VIEWER)"
+      }
+    }
   }
 }

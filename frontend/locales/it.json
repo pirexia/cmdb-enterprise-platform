@@ -1000,5 +1000,18 @@
     "transfers_title": "6. Trasferimenti internazionali",
     "transfers_body": "Se viene utilizzato il login Microsoft 365, parte del trattamento dell'identità viene effettuato da Microsoft Corporation (USA) nell'ambito dell'Accordo sul trattamento dei dati di Microsoft e delle Clausole contrattuali standard.",
     "back": "← Torna al login"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilità per ruolo",
+      "adminOnly": "Solo un amministratore può modificare la visibilità",
+      "visible": "visibile",
+      "hidden": "nascosto",
+      "role": {
+        "admin": "Amministratore (ADMIN)",
+        "auditor": "Revisore (AUDITOR)",
+        "viewer": "Lettore (VIEWER)"
+      }
+    }
   }
 }

@@ -1000,5 +1000,18 @@
     "transfers_title": "6. Internationale Übermittlungen",
     "transfers_body": "Bei Verwendung von Microsoft 365 SSO wird ein Teil der Identitätsverarbeitung von der Microsoft Corporation (USA) im Rahmen des Microsoft-Datenverarbeitungsvertrags und der Standardvertragsklauseln durchgeführt.",
     "back": "← Zurück zur Anmeldung"
+  },
+  "document": {
+    "acl": {
+      "title": "Sichtbarkeit nach Rolle",
+      "adminOnly": "Nur ein Administrator kann die Sichtbarkeit ändern",
+      "visible": "sichtbar",
+      "hidden": "ausgeblendet",
+      "role": {
+        "admin": "Administrator (ADMIN)",
+        "auditor": "Prüfer (AUDITOR)",
+        "viewer": "Betrachter (VIEWER)"
+      }
+    }
   }
 }

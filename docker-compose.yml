@@ -21,7 +21,7 @@ services:
 
   # ── PostgreSQL 15 ────────────────────────────────────────────────────────────
   postgres:
-    image: docker.io/library/postgres:15-alpine
+    image: docker.io/pgvector/pgvector:pg15
     container_name: cmdb-postgres
     restart: always
     environment:

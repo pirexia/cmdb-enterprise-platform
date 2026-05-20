@@ -4919,14 +4919,14 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
       VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
     await prisma.$executeRaw`
       INSERT INTO "rag_chat_messages"(id, session_id, role, content, citations, model_used, tokens_used, latency_ms, created_at)
-      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'assistant', ${result.answer}, ${JSON.stringify(citations)}::jsonb, ${result.modelUsed}, ${result.tokensUsed ?? null}, ${latencyMs}, now())`;
+      VALUES(gen_random_uuid(), ${sessionId}::uuid, 'assistant', ${result.content}, ${JSON.stringify(citations)}::jsonb, ${result.model}, ${result.tokensUsed ?? null}, ${latencyMs}, now())`;
     await prisma.$executeRaw`
       UPDATE "rag_chat_sessions" SET updated_at = now() WHERE id = ${sessionId}::uuid`;
 
     // 6. Audit log (no PII)
-    await logAskRag({ userEmail: req.user!.email, sessionId, query: question, citationCount: citations.length, modelUsed: result.modelUsed, latencyMs });
+    await logAskRag({ userEmail: req.user!.email, sessionId, query: question, citationCount: citations.length, modelUsed: result.model, latencyMs });
 
-    res.json({ sessionId, answer: result.answer, citations, modelUsed: result.modelUsed, latencyMs });
+    res.json({ sessionId, answer: result.content, citations, modelUsed: result.model, latencyMs });
   } catch (e) {
     console.error('[POST /api/chat/ask]', e);
     res.status(500).json({ error: 'Internal server error' });

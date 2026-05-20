@@ -53,6 +53,8 @@ AUTO_YES=false
 NO_CACHE=false
 FORCE=false
 DRY_RUN=false
+REINDEX_FLAG=false
+RAG_PRESENT=false
 
 # ── ERR trap — catches unexpected failures not handled by explicit rollback ───
 trap 'err_handler $LINENO' ERR
@@ -493,18 +495,105 @@ check_new_env_vars() {
   warn "See Section 15 of the Sysadmin Manual for Azure Portal configuration steps."
 }
 
+# ── Step 9: Ensure Ollama models are present (RAG only) ──────────────────────
+ensure_ollama_models() {
+  if [[ "${RAG_PRESENT}" != "true" ]]; then
+    return 0
+  fi
+
+  step "Checking Ollama models"
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would verify Ollama embedding and chat models are pulled."
+    return 0
+  fi
+
+  local embed_model
+  local chat_model
+  embed_model=$(grep -E '^RAG_EMBED_MODEL=' "${INSTALL_DIR}/.env" | cut -d= -f2 | tr -d '"')
+  chat_model=$(grep -E '^RAG_CHAT_MODEL=' "${INSTALL_DIR}/.env" | cut -d= -f2 | tr -d '"')
+
+  if [ -z "${embed_model}" ] || [ -z "${chat_model}" ]; then
+    warn "RAG_EMBED_MODEL or RAG_CHAT_MODEL not set in .env — skipping model check."
+    return 0
+  fi
+
+  # Wait for ollama container to become healthy (max 60s)
+  info "Waiting for Ollama (max 60s)..."
+  local elapsed=0
+  until ${RUNTIME} exec cmdb-ollama curl -fs http://localhost:11434/api/version &>/dev/null; do
+    sleep 3; elapsed=$((elapsed + 3))
+    if [[ ${elapsed} -ge 60 ]]; then
+      warn "Ollama did not become healthy after 60s — skipping model check"
+      return 0
+    fi
+  done
+
+  # Check which models are currently installed
+  local installed_models
+  installed_models=$(${RUNTIME} exec cmdb-ollama ollama list 2>/dev/null | awk 'NR>1 {print $1}' || true)
+
+  if ! echo "${installed_models}" | grep -qF "${embed_model}"; then
+    info "Pulling embedding model: ${embed_model}"
+    ${RUNTIME} exec cmdb-ollama ollama pull "${embed_model}"
+  else
+    success "Embedding model already present: ${embed_model}"
+  fi
+
+  if ! echo "${installed_models}" | grep -qF "${chat_model}"; then
+    info "Pulling chat model: ${chat_model}"
+    ${RUNTIME} exec cmdb-ollama ollama pull "${chat_model}"
+  else
+    success "Chat model already present: ${chat_model}"
+  fi
+}
+
+# ── Step 10: Re-index all documents (--reindex flag, RAG only) ────────────────
+reindex_documents() {
+  if [[ "${REINDEX_FLAG}" != "true" ]] || [[ "${RAG_PRESENT}" != "true" ]]; then
+    return 0
+  fi
+
+  step "Re-indexing all documents (--reindex flag set)"
+  warn "This is a heavy operation; it will take ~30s per document."
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would mark all rag_document_index entries as PENDING."
+    info "[DRY RUN] Would insert PENDING entries for documents not yet indexed."
+    return 0
+  fi
+
+  local db_user="${POSTGRES_USER:-admin}"
+  local db_name="${POSTGRES_DB:-cmdb_db}"
+
+  # Mark existing index entries as PENDING so the cron worker re-processes them
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "UPDATE rag_document_index SET status='PENDING', updated_at=now();"
+
+  # Insert PENDING entries for latest document versions not yet indexed
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "INSERT INTO rag_document_index(id, document_id, version_number, status)
+       SELECT gen_random_uuid(), d.id, d.version_number, 'PENDING'
+       FROM documents d
+       LEFT JOIN rag_document_index r ON r.document_id = d.id AND r.version_number = d.version_number
+       WHERE d.is_latest = true AND r.id IS NULL;"
+
+  success "All documents queued for re-indexing — the cron worker will process them."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Parse flags
   for arg in "$@"; do
     case "${arg}" in
-      --yes)      AUTO_YES=true  ;;
-      --no-cache) NO_CACHE=true  ;;
-      --force)    FORCE=true     ;;
-      --dry-run)  DRY_RUN=true   ;;
+      --yes)      AUTO_YES=true     ;;
+      --no-cache) NO_CACHE=true     ;;
+      --force)    FORCE=true        ;;
+      --dry-run)  DRY_RUN=true      ;;
+      --reindex)  REINDEX_FLAG=true ;;
       *)
         error "Unknown flag: ${arg}"
-        echo "Usage: bash scripts/update.sh [--yes] [--no-cache] [--force] [--dry-run]" >&2
+        echo "Usage: bash scripts/update.sh [--yes] [--no-cache] [--force] [--dry-run] [--reindex]" >&2
         exit 1
         ;;
     esac
@@ -538,6 +627,17 @@ main() {
   version_guard         # exits cleanly if already up to date
 
   pre_update_backup
+
+  # ── RAG subsystem detection (requires .env sourced by pre_update_backup) ──────
+  local rag_detected
+  rag_detected=$(grep -E '^RAG_ENABLED=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d '"' || echo "false")
+  if [[ "${rag_detected}" == "true" ]]; then
+    info "RAG subsystem detected — additional steps will run during update"
+    RAG_PRESENT=true
+  else
+    RAG_PRESENT=false
+  fi
+
   tag_rollback
 
   # Final confirmation before destructive operations
@@ -552,11 +652,13 @@ main() {
 
   migrate_certs
   pull_and_detect
-  build_images  || rollback "Image build failed"
-  deploy        || rollback "Health check failed after deploy"
+  build_images          || rollback "Image build failed"
+  deploy                || rollback "Health check failed after deploy"
+  ensure_ollama_models
 
   if [ "${DRY_RUN}" = "true" ]; then
     check_new_env_vars
+    reindex_documents
     echo ""
     echo -e "${BOLD}${YELLOW}╔══════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${YELLOW}║  DRY RUN complete — no changes made      ║${NC}"
@@ -567,6 +669,7 @@ main() {
 
   # ── Step 8: Check for new env vars not present in existing .env ──────────────
   check_new_env_vars
+  reindex_documents
 
   # Success summary
   local new_version

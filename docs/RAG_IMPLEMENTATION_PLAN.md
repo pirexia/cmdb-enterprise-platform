@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1, 2 y 3 ✅ completadas · Iniciando oleada 4
+**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1, 2, 3 y 4 ✅ completadas · Iniciando oleada 5
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -122,18 +122,8 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 4 — Instalador desatendido y actualización (2 paralelos)
 
-- [ ] **I1** · Refactor `scripts/install.sh`:
-  - Flags CLI: `--unattended`, `--config-file <ruta>`, `--enable-rag`, `--rag-chat-model`, `--rag-embed-model`, `--data-path`, `--admin-email`, `--admin-password`, `--public-url`, `--company-name`, `--use-podman`, `--apply-host-tuning`.
-  - Fase 5b "Host tuning" opcional: sysctl, limits, firewalld, comprobación AMX/AVX-512.
-  - Fase 10b "RAG bootstrap": pull de Ollama, espera healthcheck, `ollama pull` de embed + chat models, `prisma migrate deploy`, smoke test `POST /api/chat/ask`.
-  - Detector de capacidad: si RAM < 16 GB o vCPU < 8 → warning + sugerencia `qwen2.5:3b`.
-  - Mantener compatibilidad macOS dev.
-  - Logs a `$INSTALL_DIR/install-<fecha>.log` con secciones.
-- [ ] **I2** · Refactor `scripts/update.sh`:
-  - Detección automática de RAG en `.env`.
-  - Re-pull de modelos Ollama si cambia el tag.
-  - Backup pre-update de la BD entera (incluye `rag_*`).
-  - Flag `--reindex` para reprocesar tras cambio de embed model.
+- [x] **I1** · ✅ — `scripts/install.sh` 962 → 1314 líneas (+352). Parser CLI completo (`--unattended`, `--config-file`, `--enable-rag`, `--apply-host-tuning`, etc.), helpers `prompt()`/`confirm()` con guard de modo unattended, fase 5b host tuning (sysctl, limits, firewalld, AMX/AVX-512 check, Linux-only), bloque RAG en .env (fase 6), fase 10b bootstrap (capacity check, Ollama healthcheck 90s, `ollama pull` embed+chat, `prisma migrate deploy`, smoke test `/api/embeddings`). `scripts/install.example.conf` (77 líneas) + `install.conf` para lx-gest01p.svc.int (40 líneas). `bash -n`: OK.
+- [x] **I2** · ✅ — `scripts/update.sh` 584 → 687 líneas (+103). Detección automática RAG vía `.env` (`RAG_PRESENT`), función `ensure_ollama_models()` con healthcheck 60s y pull condicional, flag `--reindex` con función `reindex_documents()` (UPDATE PENDING + INSERT faltantes vía psql). Backup verificado: `pg_dump` ya incluye todas las tablas `rag_*` (whole-DB dump). `bash -n`: OK.
 
 ### Oleada 5 — Verificación y documentación de cierre (2 paralelos)
 
@@ -236,3 +226,4 @@ Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de ha
 | 2026-05-20 | Oleada 1 completada: A1–A5 ✅ (compose, pgvector, ragService, docParser, chunker) | sesión orquestadora |
 | 2026-05-20 | Oleada 2 completada: A6 (ingestión + cron), A7 (backfill), A8 (chat + SSE), A9 (kNN+ACL+audit) | sesión orquestadora |
 | 2026-05-20 | Oleada 3 completada: A10 (chat page + SSE hook + sidebar), A11 (i18n 6 idiomas), A12 (indexing badge + reindex) | sesión orquestadora |
+| 2026-05-20 | Oleada 4 completada: I1 (install.sh + install.example.conf + install.conf), I2 (update.sh con --reindex) | sesión orquestadora |

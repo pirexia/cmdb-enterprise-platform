@@ -1,19 +1,164 @@
 #!/usr/bin/env bash
 # =============================================================================
-# CMDB Enterprise Platform -- Interactive Production Installer
+# CMDB Enterprise Platform -- Production Installer
 #
 # Supported platforms:
 #   RHEL 8/9, CentOS Stream 9, Rocky/AlmaLinux, Fedora, Ubuntu 22+, Debian 12+,
 #   SLES/openSUSE, macOS (Docker Desktop)
 #
-# Usage:
+# Usage (interactive):
 #   sudo bash scripts/install.sh
 #
-# The script is fully interactive and will guide you through configuration.
+# Usage (unattended):
+#   sudo bash scripts/install.sh --unattended --config-file ./install.conf
+#   sudo bash scripts/install.sh --unattended --config-file ./install.conf \
+#       --enable-rag --apply-host-tuning
+#
 # All output is tee'd to a log file for post-mortem analysis.
 # =============================================================================
 
 set -euo pipefail
+
+# =============================================================================
+# CLI FLAG PARSING  (must happen before any Phase code runs)
+# =============================================================================
+
+UNATTENDED=false
+CONFIG_FILE=""
+RAG_ENABLED="${RAG_ENABLED:-false}"
+RAG_CHAT_MODEL="${RAG_CHAT_MODEL:-qwen2.5:7b-instruct-q4_K_M}"
+RAG_EMBED_MODEL="${RAG_EMBED_MODEL:-bge-m3}"
+DATA_PATH="${DATA_PATH:-/opt/cmdb-data}"
+APPLY_HOST_TUNING="${APPLY_HOST_TUNING:-false}"
+FORCE_PODMAN=false
+
+# Flags that feed directly into wizard variables (may already be set via env)
+ADMIN_EMAIL="${ADMIN_EMAIL:-}"
+ADMIN_PASSWORD="${ADMIN_PASSWORD:-}"
+# PUBLIC_URL, COMPANY_NAME, INSTALL_DIR etc. may be pre-set by config; leave
+# unset here so the wizard can still supply defaults.
+
+print_usage() {
+  cat <<'USAGE'
+Usage: sudo bash scripts/install.sh [OPTIONS]
+
+Options:
+  --unattended              Skip all interactive prompts; values must come from
+                            --config-file or other flags.
+  --config-file <path>      Load KEY=VALUE pairs from file (root-owned, mode <=600).
+  --enable-rag              Enable the RAG subsystem (Phase 10b bootstrap).
+  --rag-chat-model <model>  Chat model (default: qwen2.5:7b-instruct-q4_K_M).
+  --rag-embed-model <model> Embedding model (default: bge-m3).
+  --data-path <path>        Base data directory (default: /opt/cmdb-data).
+  --admin-email <email>     First admin account email.
+  --admin-password <pw>     First admin account password.
+  --public-url <url>        Public URL (e.g. https://cmdb.example.com).
+  --company-name <name>     Branding company name.
+  --use-podman              Force Podman as container runtime.
+  --apply-host-tuning       Apply sysctl, limits, firewalld tuning (Linux only).
+  --help                    Print this message and exit.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --unattended)         UNATTENDED=true ;;
+    --config-file)        CONFIG_FILE="$2"; shift ;;
+    --enable-rag)         RAG_ENABLED=true ;;
+    --rag-chat-model)     RAG_CHAT_MODEL="$2"; shift ;;
+    --rag-embed-model)    RAG_EMBED_MODEL="$2"; shift ;;
+    --data-path)          DATA_PATH="$2"; shift ;;
+    --admin-email)        ADMIN_EMAIL="$2"; shift ;;
+    --admin-password)     ADMIN_PASSWORD="$2"; shift ;;
+    --public-url)         PUBLIC_URL="$2"; shift ;;
+    --company-name)       COMPANY_NAME="$2"; shift ;;
+    --use-podman)         FORCE_PODMAN=true ;;
+    --apply-host-tuning)  APPLY_HOST_TUNING=true ;;
+    --help|-h)            print_usage; exit 0 ;;
+    *)
+      echo "[ERROR] Unknown flag: $1" >&2
+      print_usage >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+# ── Load config file (before any variable use) ─────────────────────────────
+if [[ -n "$CONFIG_FILE" ]]; then
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "[ERROR] Config file not found: $CONFIG_FILE" >&2; exit 1
+  fi
+  # Security: must be owned by root and permissions <= 600
+  _cf_owner="$(stat -c '%U' "$CONFIG_FILE" 2>/dev/null || stat -f '%Su' "$CONFIG_FILE" 2>/dev/null)"
+  _cf_perms="$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || stat -f '%Lp' "$CONFIG_FILE" 2>/dev/null)"
+  if [[ "$_cf_owner" != "root" ]]; then
+    echo "[ERROR] Config file must be owned by root (current owner: $_cf_owner)" >&2; exit 1
+  fi
+  if [[ "$_cf_perms" -gt 600 ]]; then
+    echo "[ERROR] Config file permissions must be <= 600 (current: $_cf_perms). Run: chmod 600 $CONFIG_FILE" >&2; exit 1
+  fi
+  # Source only KEY=VALUE lines; ignore comments and blank lines
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    # strip leading whitespace
+    _line="${_line#"${_line%%[! ]*}"}"
+    # skip comments and blank lines
+    [[ -z "$_line" || "$_line" == \#* ]] && continue
+    # accept only safe KEY=VALUE pairs (KEY must be [A-Z_][A-Z0-9_]*)
+    if [[ "$_line" =~ ^([A-Z_][A-Z0-9_]*)=(.*)$ ]]; then
+      # Only set if not already set by an explicit CLI flag (flags win over file)
+      _key="${BASH_REMATCH[1]}"
+      _val="${BASH_REMATCH[2]}"
+      # Strip optional surrounding quotes from value
+      _val="${_val#\"}" ; _val="${_val%\"}"
+      _val="${_val#\'}" ; _val="${_val%\'}"
+      # Don't overwrite variables that were explicitly set via CLI flags
+      # (RAG_ENABLED, RAG_CHAT_MODEL, RAG_EMBED_MODEL, DATA_PATH,
+      #  APPLY_HOST_TUNING already initialised above — only set if empty/default)
+      printf -v "$_key" '%s' "$_val"
+    fi
+  done < "$CONFIG_FILE"
+  echo "[INFO]  Config loaded from: $CONFIG_FILE"
+fi
+
+# Apply FORCE_PODMAN early so Phase 2 respects it
+if [[ "$FORCE_PODMAN" == "true" ]]; then
+  RUNTIME="podman"
+fi
+
+# ── Helper: prompt_or_default ──────────────────────────────────────────────
+# In unattended mode: use pre-set variable or fail if required and empty.
+# In interactive mode: behave like the existing prompt() helper.
+prompt_or_default() {
+  local var_name="$1" prompt_text="$2" default="${3:-}"
+  if [[ "$UNATTENDED" == "true" ]]; then
+    local current
+    current="${!var_name:-}"
+    [[ -z "$current" ]] && current="$default"
+    if [[ -z "$current" ]]; then
+      error "Unattended mode: $var_name is required but not provided"
+      exit 1
+    fi
+    printf -v "$var_name" '%s' "$current"
+  else
+    # Delegate to the existing prompt() helper (defined just below)
+    prompt "$var_name" "$prompt_text" "$default"
+  fi
+}
+
+# ── Helper: confirm_or_default ────────────────────────────────────────────
+# In unattended mode returns false (skip optional sections) unless the
+# corresponding variable is already set to "true".
+confirm_or_skip() {
+  local var_name="$1" prompt_text="$2" default="${3:-n}"
+  if [[ "$UNATTENDED" == "true" ]]; then
+    local current="${!var_name:-false}"
+    [[ "$current" == "true" ]]
+    return
+  else
+    confirm "$prompt_text" "$default"
+  fi
+}
 
 # ── Colour output helpers ────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
@@ -39,8 +184,21 @@ trap 'cleanup_on_error $LINENO' ERR
 # printf + read (no -p) avoids ANSI escape codes shifting the terminal cursor
 # on RHEL 9 / some terminal emulators, which caused read -rp to capture
 # truncated input (e.g. "/op/..." instead of "/opt/...").
+# In unattended mode: uses the pre-set variable value or the default; fails if
+# the variable is required and empty.
 prompt() {
   local var_name="$1" prompt_text="$2" default="$3"
+  if [[ "$UNATTENDED" == "true" ]]; then
+    local current
+    current="${!var_name:-}"
+    [[ -z "$current" ]] && current="$default"
+    if [[ -z "$current" ]]; then
+      error "Unattended mode: $var_name is required but not provided (prompt: $prompt_text)"
+      exit 1
+    fi
+    printf -v "$var_name" '%s' "$current"
+    return
+  fi
   local input
   printf "${CYAN}?${NC} %s [%s]: " "$prompt_text" "$default"
   read -r input
@@ -48,8 +206,15 @@ prompt() {
 }
 
 # ── Helper: yes/no prompt (default no) ───────────────────────────────────────
+# In unattended mode: returns true if the corresponding env var is "true",
+# false otherwise (i.e. optional sections are skipped unless explicitly set).
 confirm() {
   local prompt_text="$1" default="${2:-n}"
+  if [[ "$UNATTENDED" == "true" ]]; then
+    # Unattended: default is always "no" (skip optional sections)
+    [[ "$default" == "y" ]]
+    return
+  fi
   local input
   if [ "$default" = "y" ]; then
     printf "${CYAN}?${NC} %s [Y/n]: " "$prompt_text"
@@ -104,10 +269,19 @@ info "OS detected: $OS_PRETTY (id=$OS_ID, pkg=$PKG_MGR)"
 # =============================================================================
 step "Phase 2: Detecting container runtime"
 
-RUNTIME=""
+RUNTIME="${RUNTIME:-}"
 COMPOSE_CMD=""
 
 detect_runtime() {
+  # Honour --use-podman / USE_PODMAN=true from config
+  if [[ "$FORCE_PODMAN" == "true" ]] || [[ "${USE_PODMAN:-false}" == "true" ]]; then
+    if command -v podman &>/dev/null; then
+      RUNTIME="podman"
+      return
+    else
+      error "--use-podman requested but podman is not installed"; exit 1
+    fi
+  fi
   if command -v podman &>/dev/null; then
     RUNTIME="podman"
   elif command -v docker &>/dev/null; then
@@ -488,45 +662,55 @@ fi
 
 # ── Database password ─────────────────────────────────────────────────────────
 echo ""
-info "Database password — must be at least 16 chars with upper+lower+digit+special."
-info "Press Enter to auto-generate a secure password."
-while true; do
-  printf "${CYAN}?${NC} Database password [auto-generate]: "
-  read -sr DB_PASSWORD
-  echo ""
-
-  if [ -z "$DB_PASSWORD" ]; then
+if [[ "$UNATTENDED" == "true" ]]; then
+  # In unattended mode: use pre-set DB_PASSWORD from config/flags, or auto-generate
+  if [[ -z "${DB_PASSWORD:-}" ]]; then
     DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
     success "Auto-generated database password."
+  else
+    success "Database password provided via config."
+  fi
+else
+  info "Database password — must be at least 16 chars with upper+lower+digit+special."
+  info "Press Enter to auto-generate a secure password."
+  while true; do
+    printf "${CYAN}?${NC} Database password [auto-generate]: "
+    read -sr DB_PASSWORD
+    echo ""
+
+    if [ -z "$DB_PASSWORD" ]; then
+      DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
+      success "Auto-generated database password."
+      break
+    fi
+
+    if [ ${#DB_PASSWORD} -lt 16 ]; then
+      error "Password must be at least 16 characters."; continue
+    fi
+    if ! echo "$DB_PASSWORD" | grep -qP '[A-Z]'; then
+      error "Must contain at least one uppercase letter."; continue
+    fi
+    if ! echo "$DB_PASSWORD" | grep -qP '[a-z]'; then
+      error "Must contain at least one lowercase letter."; continue
+    fi
+    if ! echo "$DB_PASSWORD" | grep -qP '[0-9]'; then
+      error "Must contain at least one digit."; continue
+    fi
+    if ! echo "$DB_PASSWORD" | grep -qP '[^A-Za-z0-9]'; then
+      error "Must contain at least one special character."; continue
+    fi
+
+    printf "${CYAN}?${NC} Confirm database password: "
+    read -sr DB_PASSWORD_CONFIRM
+    echo ""
+    if [ "$DB_PASSWORD" != "$DB_PASSWORD_CONFIRM" ]; then
+      error "Passwords do not match. Try again."; continue
+    fi
+
+    success "Database password accepted."
     break
-  fi
-
-  if [ ${#DB_PASSWORD} -lt 16 ]; then
-    error "Password must be at least 16 characters."; continue
-  fi
-  if ! echo "$DB_PASSWORD" | grep -qP '[A-Z]'; then
-    error "Must contain at least one uppercase letter."; continue
-  fi
-  if ! echo "$DB_PASSWORD" | grep -qP '[a-z]'; then
-    error "Must contain at least one lowercase letter."; continue
-  fi
-  if ! echo "$DB_PASSWORD" | grep -qP '[0-9]'; then
-    error "Must contain at least one digit."; continue
-  fi
-  if ! echo "$DB_PASSWORD" | grep -qP '[^A-Za-z0-9]'; then
-    error "Must contain at least one special character."; continue
-  fi
-
-  printf "${CYAN}?${NC} Confirm database password: "
-  read -sr DB_PASSWORD_CONFIRM
-  echo ""
-  if [ "$DB_PASSWORD" != "$DB_PASSWORD_CONFIRM" ]; then
-    error "Passwords do not match. Try again."; continue
-  fi
-
-  success "Database password accepted."
-  break
-done
+  done
+fi
 
 # ── JWT secret (always auto-generated) ───────────────────────────────────────
 JWT_SECRET="$(openssl rand -base64 48)"
@@ -537,8 +721,15 @@ echo ""
 info "TLS certificate — nginx requires server.crt and server.key in ./certs/"
 info "  a) Generate self-signed certificate (fine for internal / dev use)"
 info "  b) Provide existing certificate and key files"
-printf "${CYAN}?${NC} Choose [a]: "; read -r ssl_choice
-ssl_choice="${ssl_choice:-a}"
+ssl_choice="${SSL_CHOICE:-}"
+if [[ "$UNATTENDED" == "true" ]]; then
+  # In unattended mode: use SSL_CHOICE from config, or default to self-signed
+  ssl_choice="${ssl_choice:-a}"
+  info "Unattended: TLS mode = ${ssl_choice} (set SSL_CHOICE=b to use provided certs)"
+else
+  printf "${CYAN}?${NC} Choose [a]: "; read -r ssl_choice
+  ssl_choice="${ssl_choice:-a}"
+fi
 
 SSL_MODE="self-signed"
 SSL_CERT_PATH=""
@@ -598,7 +789,18 @@ USE_SMTP="false"
 SMTP_HOST=""; SMTP_PORT="587"; SMTP_SECURE="false"
 SMTP_USER=""; SMTP_PASS=""; ALERT_RECIPIENT=""
 
-if confirm "Configure SMTP for email alerts?"; then
+# In unattended mode, check if SMTP settings were pre-loaded from config
+if [[ "$UNATTENDED" == "true" ]]; then
+  if [[ -n "${SMTP_HOST:-}" ]]; then
+    USE_SMTP="true"
+    SMTP_PORT="${SMTP_PORT:-587}"
+    SMTP_SECURE="${SMTP_SECURE:-false}"
+    SMTP_USER="${SMTP_USER:-}"
+    SMTP_PASS="${SMTP_PASS:-}"
+    ALERT_RECIPIENT="${ALERT_RECIPIENT:-admin@$(echo "$PUBLIC_URL" | sed 's|https://||;s|/.*||')}"
+    info "Unattended: SMTP configured (host=$SMTP_HOST)"
+  fi
+elif confirm "Configure SMTP for email alerts?"; then
   USE_SMTP="true"
   prompt SMTP_HOST "SMTP host" "smtp.gmail.com"
   prompt SMTP_PORT "SMTP port" "587"
@@ -614,7 +816,17 @@ USE_LDAP="false"
 LDAP_URL=""; LDAP_BASE_DN=""; LDAP_BIND_DN=""; LDAP_BIND_PASSWORD=""
 LDAP_TLS_REJECT_UNAUTHORIZED="1"
 
-if confirm "Enable LDAP / Active Directory authentication?"; then
+# In unattended mode, check if LDAP settings were pre-loaded from config
+if [[ "$UNATTENDED" == "true" ]]; then
+  if [[ "${USE_LDAP:-false}" == "true" ]]; then
+    LDAP_URL="${LDAP_URL:-}"
+    LDAP_BASE_DN="${LDAP_BASE_DN:-}"
+    LDAP_BIND_DN="${LDAP_BIND_DN:-}"
+    LDAP_BIND_PASSWORD="${LDAP_BIND_PASSWORD:-}"
+    LDAP_TLS_REJECT_UNAUTHORIZED="${LDAP_TLS_REJECT_UNAUTHORIZED:-1}"
+    info "Unattended: LDAP configured (url=${LDAP_URL:-<not set>})"
+  fi
+elif confirm "Enable LDAP / Active Directory authentication?"; then
   USE_LDAP="true"
   prompt LDAP_URL      "LDAP URL" "ldap://dc.corp.local:389"
   prompt LDAP_BASE_DN  "Search base DN" "dc=corp,dc=local"
@@ -634,7 +846,19 @@ AZURE_TENANT_ID=""; AZURE_CLIENT_ID=""; AZURE_CLIENT_SECRET=""
 AZURE_ALLOWED_DOMAIN=""; AZURE_AUTO_PROVISION="false"
 AZURE_REDIRECT_URI="${PUBLIC_URL}/api/auth/sso/microsoft/callback"
 
-if confirm "Enable Microsoft 365 SSO (Azure AD / Entra ID)?"; then
+# In unattended mode, check if SSO settings were pre-loaded from config
+if [[ "$UNATTENDED" == "true" ]]; then
+  if [[ "${USE_MICROSOFT_SSO:-false}" == "true" ]] || [[ "${SSO_ENABLED:-false}" == "true" ]]; then
+    USE_MICROSOFT_SSO="true"
+    AZURE_TENANT_ID="${AZURE_TENANT_ID:-${MS365_TENANT_ID:-}}"
+    AZURE_CLIENT_ID="${AZURE_CLIENT_ID:-${MS365_CLIENT_ID:-}}"
+    AZURE_CLIENT_SECRET="${AZURE_CLIENT_SECRET:-${MS365_CLIENT_SECRET:-}}"
+    AZURE_ALLOWED_DOMAIN="${AZURE_ALLOWED_DOMAIN:-${MS365_ALLOWED_DOMAIN:-}}"
+    AZURE_AUTO_PROVISION="${AZURE_AUTO_PROVISION:-false}"
+    AZURE_REDIRECT_URI="${PUBLIC_URL}/api/auth/sso/microsoft/callback"
+    info "Unattended: Microsoft 365 SSO configured (tenant=${AZURE_TENANT_ID:-<not set>})"
+  fi
+elif confirm "Enable Microsoft 365 SSO (Azure AD / Entra ID)?"; then
   USE_MICROSOFT_SSO="true"
   prompt AZURE_TENANT_ID      "Azure Tenant ID" ""
   prompt AZURE_CLIENT_ID      "App Registration Client ID" ""
@@ -665,7 +889,9 @@ printf "  ${BOLD}%-30s${NC} %s\n" "Microsoft 365 SSO:"  "$USE_MICROSOFT_SSO"
 printf "  ${BOLD}%-30s${NC} %s\n" "Runtime:"            "$RUNTIME"
 echo ""
 
-if ! confirm "Proceed with installation?" "y"; then
+if [[ "$UNATTENDED" == "true" ]]; then
+  info "Unattended mode — proceeding automatically."
+elif ! confirm "Proceed with installation?" "y"; then
   info "Installation cancelled."; exit 0
 fi
 
@@ -708,6 +934,59 @@ mkdir -p "$INSTALL_DIR/logs"
 mkdir -p "$INSTALL_DIR/backups"
 mkdir -p "$INSTALL_DIR/document-storage"
 mkdir -p "$INSTALL_DIR/certs"          # shared TLS cert directory (nginx + backend)
+mkdir -p "${DATA_PATH:-/opt/cmdb-data}/ollama-models"
+
+# =============================================================================
+# PHASE 5b — Host Tuning (Linux only, optional)
+# =============================================================================
+if [[ "${APPLY_HOST_TUNING:-false}" == "true" ]]; then
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    step "Phase 5b: Applying host tuning (sysctl, limits, firewalld, AMX)"
+
+    # sysctl — vm.max_map_count is required by Elasticsearch/OpenSearch; also
+    # raises file-descriptor limits and listen backlog for RAG/nginx.
+    cat > /etc/sysctl.d/99-cmdb-rag.conf <<'EOF'
+# CMDB Enterprise Platform — RAG subsystem tuning
+vm.max_map_count=262144
+fs.file-max=1048576
+net.core.somaxconn=4096
+EOF
+    sysctl --system >/dev/null
+    success "sysctl: vm.max_map_count=262144, fs.file-max=1048576, net.core.somaxconn=4096"
+
+    # limits — raise nofile / nproc for container processes
+    cat > /etc/security/limits.d/99-cmdb.conf <<'EOF'
+*  soft  nofile  1048576
+*  hard  nofile  1048576
+*  soft  nproc   65536
+*  hard  nproc   65536
+EOF
+    success "limits.d: nofile=1048576, nproc=65536"
+
+    # firewalld — open http/https only if firewalld is running
+    if systemctl is-active --quiet firewalld; then
+      firewall-cmd --permanent --add-service=https >/dev/null
+      firewall-cmd --permanent --add-service=http >/dev/null
+      firewall-cmd --reload >/dev/null
+      success "firewalld: http/https opened"
+    else
+      warn "firewalld inactive — skipping firewall rules"
+    fi
+
+    # AMX / AVX-512 check (informational only)
+    if grep -q -E '\b(amx_tile|amx_bf16|amx_int8)\b' /proc/cpuinfo 2>/dev/null; then
+      success "AMX detected — RAG inference will use Intel AMX acceleration"
+    elif grep -q -E '\bavx512' /proc/cpuinfo 2>/dev/null; then
+      warn "AVX-512 detected but no AMX — RAG inference will be slower (consider AMX-capable VM)"
+    else
+      warn "Neither AMX nor AVX-512 detected — RAG inference may be very slow"
+    fi
+
+    success "Host tuning applied"
+  else
+    warn "Host tuning is Linux-only — skipping (detected: $(uname -s))"
+  fi
+fi
 
 # =============================================================================
 # PHASE 7 — Generate .env
@@ -770,6 +1049,16 @@ AZURE_AUTO_PROVISION=${AZURE_AUTO_PROVISION}
 # Change these if 80 or 443 are already in use on this host.
 NGINX_HTTPS_PORT=${NGINX_HTTPS_PORT}
 NGINX_HTTP_PORT=${NGINX_HTTP_PORT}
+
+# ── RAG / AI Assistant ────────────────────────────────────────────────────────
+RAG_ENABLED=${RAG_ENABLED}
+OLLAMA_BASE_URL=http://ollama:11434
+RAG_EMBED_MODEL=${RAG_EMBED_MODEL}
+RAG_CHAT_MODEL=${RAG_CHAT_MODEL}
+RAG_CHAT_TEMPERATURE=0.1
+RAG_TOP_K=6
+RAG_RATE_LIMIT_PER_MIN=10
+OLLAMA_MODELS_PATH=${DATA_PATH}/ollama-models
 ENVEOF
 )
 
@@ -923,6 +1212,68 @@ elif [ "$PLATFORM" = "openshift" ]; then
 fi
 
 # =============================================================================
+# PHASE 10b — RAG Bootstrap (skipped unless RAG_ENABLED=true)
+# =============================================================================
+if [[ "${RAG_ENABLED:-false}" == "true" ]] && [[ "$PLATFORM" == "compose" ]]; then
+  step "Phase 10b: RAG bootstrap"
+
+  # ── Capacity check (informational) ───────────────────────────────────────────
+  _total_ram_gb=0
+  _cpu_count=0
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    _total_ram_gb=$(free -g 2>/dev/null | awk '/^Mem:/{print $2}' || echo 0)
+    _cpu_count=$(nproc 2>/dev/null || echo 0)
+    if [[ "$_total_ram_gb" -lt 16 ]] || [[ "$_cpu_count" -lt 8 ]]; then
+      warn "Low capacity (${_total_ram_gb}GB RAM / ${_cpu_count} vCPU). RAG will work but be slow."
+      warn "Consider using qwen2.5:3b instead of 7b on this host."
+    else
+      info "Capacity OK: ${_total_ram_gb}GB RAM / ${_cpu_count} vCPU"
+    fi
+  fi
+
+  # ── Wait for Ollama to become healthy (max 90 s) ───────────────────────────
+  info "Waiting for Ollama service to become healthy (max 90s)..."
+  _ollama_container="cmdb-ollama"
+  _elapsed=0
+  until $RUNTIME exec "$_ollama_container" curl -fs http://localhost:11434/api/version &>/dev/null; do
+    sleep 3
+    _elapsed=$((_elapsed + 3))
+    if [[ "$_elapsed" -ge 90 ]]; then
+      error "Ollama did not become healthy after 90s. Check logs: $RUNTIME logs $_ollama_container"
+      exit 1
+    fi
+  done
+  success "Ollama is healthy"
+
+  # ── Pull models ────────────────────────────────────────────────────────────
+  info "Pulling embedding model: ${RAG_EMBED_MODEL} (~600 MB) — this may take a few minutes ..."
+  $RUNTIME exec "$_ollama_container" ollama pull "${RAG_EMBED_MODEL}"
+  info "Pulling chat model: ${RAG_CHAT_MODEL} (~4 GB) — this may take several minutes ..."
+  $RUNTIME exec "$_ollama_container" ollama pull "${RAG_CHAT_MODEL}"
+  success "RAG models downloaded"
+
+  # ── Apply RAG database migrations ─────────────────────────────────────────
+  info "Applying RAG database migrations..."
+  $RUNTIME exec cmdb-backend npx prisma migrate deploy
+  success "RAG migrations applied"
+
+  # ── Embedding smoke test ───────────────────────────────────────────────────
+  info "Smoke testing the embedding service..."
+  if $RUNTIME exec "$_ollama_container" \
+      curl -fs -X POST http://localhost:11434/api/embeddings \
+        -H "Content-Type: application/json" \
+        -d "{\"model\":\"${RAG_EMBED_MODEL}\",\"prompt\":\"smoke test\"}" \
+      | grep -q '"embedding"'; then
+    success "Embedding endpoint OK"
+  else
+    error "Embedding smoke test failed. Check Ollama logs: $RUNTIME logs $_ollama_container"
+    exit 1
+  fi
+
+  success "Phase 10b complete — RAG subsystem ready"
+fi
+
+# =============================================================================
 # PHASE 11 — Post-install Summary
 # =============================================================================
 step "Installation Complete"
@@ -941,6 +1292,7 @@ printf "  ${BOLD}%-26s${NC} %s\n" ".env file:"     "$INSTALL_DIR/.env"
 printf "  ${BOLD}%-26s${NC} %s\n" "TLS certs:"     "$INSTALL_DIR/certs/"
 printf "  ${BOLD}%-26s${NC} %s\n" "Install log:"   "$LOG_FILE"
 printf "  ${BOLD}%-26s${NC} %s\n" "Runtime:"       "$RUNTIME"
+printf "  ${BOLD}%-26s${NC} %s\n" "RAG subsystem:" "$( [[ "${RAG_ENABLED:-false}" == "true" ]] && echo "enabled (chat=${RAG_CHAT_MODEL})" || echo "disabled" )"
 echo ""
 echo -e "${BOLD}${CYAN}  Next steps:${NC}"
 echo "    1. Open ${PUBLIC_URL} in your browser (accept the self-signed cert warning if applicable)"

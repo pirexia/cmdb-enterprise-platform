@@ -13,6 +13,14 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface IndexStatus {
+  status: 'NOT_INDEXED' | 'PENDING' | 'INDEXING' | 'READY' | 'ERROR';
+  chunkCount: number;
+  indexedAt: string | null;
+  errorMessage: string | null;
+  updatedAt: string | null;
+}
+
 interface DocVersion {
   id: string;
   versionNumber: number;
@@ -901,6 +909,12 @@ export default function DocumentDetailPage() {
   const [showAddCIs, setShowAddCIs] = useState(false);
   const [showAddContracts, setShowAddContracts] = useState(false);
 
+  // RAG index status
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [reindexBanner, setReindexBanner] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Notes state
   const [noteText, setNoteText] = useState("");
   const [noteSubmitting, setNoteSubmitting] = useState(false);
@@ -955,6 +969,72 @@ export default function DocumentDetailPage() {
   }, [docId, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const fetchIndexStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/index-status`);
+      if (res.ok) {
+        const data = await res.json() as IndexStatus;
+        setIndexStatus(data);
+        return data;
+      }
+    } catch {
+      // silently ignore — index status is non-critical
+    }
+    return null;
+  }, [docId]);
+
+  // Fetch index status once on mount
+  useEffect(() => { void fetchIndexStatus(); }, [fetchIndexStatus]);
+
+  // Auto-poll while status is PENDING or INDEXING
+  useEffect(() => {
+    const isPending = indexStatus?.status === 'PENDING' || indexStatus?.status === 'INDEXING';
+    if (isPending) {
+      if (!pollIntervalRef.current) {
+        pollIntervalRef.current = setInterval(() => {
+          void fetchIndexStatus().then((s) => {
+            if (s && s.status !== 'PENDING' && s.status !== 'INDEXING') {
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+            }
+          });
+        }, 5000);
+      }
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [indexStatus?.status, fetchIndexStatus]);
+
+  const handleReindex = async () => {
+    if (!confirm(t("document.reindexConfirm"))) return;
+    setIsReindexing(true);
+    setReindexBanner(null);
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/reindex`, { method: 'POST' });
+      if (res.ok) {
+        setReindexBanner(t("document.reindexQueued"));
+        void fetchIndexStatus();
+      } else {
+        setReindexBanner(t("common.unknown_error"));
+      }
+    } catch {
+      setReindexBanner(t("common.unknown_error"));
+    } finally {
+      setIsReindexing(false);
+    }
+  };
 
   const handleDownload = async (versionId?: string) => {
     const id = versionId ?? docId;
@@ -1123,6 +1203,41 @@ export default function DocumentDetailPage() {
                       </span>
                     );
                   })}
+                  {/* RAG indexing status badge */}
+                  {indexStatus && (() => {
+                    const statusStyleMap: Record<IndexStatus['status'], string> = {
+                      READY:       'bg-green-500/15 text-green-400 border border-green-500/30',
+                      INDEXING:    'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+                      PENDING:     'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
+                      ERROR:       'bg-red-500/15 text-red-400 border border-red-500/30',
+                      NOT_INDEXED: 'bg-slate-500/15 text-slate-400 border border-slate-500/30',
+                    };
+                    const statusLabelMap: Record<IndexStatus['status'], string> = {
+                      READY:       t('document.indexing.ready'),
+                      INDEXING:    t('document.indexing.indexing'),
+                      PENDING:     t('document.indexing.pending'),
+                      ERROR:       t('document.indexing.error'),
+                      NOT_INDEXED: t('document.indexing.notIndexed'),
+                    };
+                    const pillClass = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusStyleMap[indexStatus.status]}`;
+                    const label = `${t('document.indexing.title')}: ${statusLabelMap[indexStatus.status]}`;
+                    const suffix = indexStatus.status === 'READY' && indexStatus.chunkCount > 0
+                      ? ` · ${indexStatus.chunkCount} ${t('document.indexing.chunkCount')}`
+                      : indexStatus.indexedAt
+                        ? ` · ${t('document.indexing.indexedAt')} ${formatDateTime(indexStatus.indexedAt)}`
+                        : '';
+                    return (
+                      <span
+                        className={pillClass}
+                        title={indexStatus.status === 'ERROR' && indexStatus.errorMessage ? indexStatus.errorMessage : undefined}
+                      >
+                        {indexStatus.status === 'PENDING' || indexStatus.status === 'INDEXING'
+                          ? <RefreshCw className="h-3 w-3 animate-spin" />
+                          : null}
+                        {label}{suffix}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1136,6 +1251,14 @@ export default function DocumentDetailPage() {
               </button>
               {isAdmin && (
                 <>
+                  <button
+                    onClick={handleReindex}
+                    disabled={isReindexing}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isReindexing ? 'animate-spin' : ''}`} />
+                    {t("document.reindex")}
+                  </button>
                   <button
                     onClick={() => setShowAddVersion(true)}
                     className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
@@ -1162,6 +1285,18 @@ export default function DocumentDetailPage() {
             </div>
           </div>
         </header>
+
+        {/* Reindex banner */}
+        {reindexBanner && (
+          <div className="px-8 pt-4">
+            <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
+              <span>{reindexBanner}</span>
+              <button onClick={() => setReindexBanner(null)} className="ml-4 rounded p-0.5 hover:bg-blue-100 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="px-8 py-6 space-y-6">

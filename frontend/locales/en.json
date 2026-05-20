@@ -21,7 +21,8 @@
     "masters": "Master Data",
     "certificates": "SSL Certificates",
     "audit": "Audit Log",
-    "settings": "Settings"
+    "settings": "Settings",
+    "assistant": "AI Assistant"
   },
   "actions": {
     "logout": "Sign out",
@@ -1120,6 +1121,28 @@
     "transfers_body": "If Microsoft 365 SSO is used, part of the identity processing is carried out by Microsoft Corporation (USA) under Microsoft's Data Processing Agreement and Standard Contractual Clauses.",
     "back": "← Back to login"
   },
+  "chat": {
+    "title": "AI Assistant",
+    "subtitle": "Query your documents in natural language",
+    "newSession": "New chat",
+    "placeholder": "Ask about your documents...",
+    "sendButton": "Send",
+    "thinking": "Thinking...",
+    "citations": "Citations",
+    "noSessions": "No chats yet. Start a new one.",
+    "deleteSession": "Delete session",
+    "confirmDelete": "Delete this chat?",
+    "disabled": "The AI assistant is disabled in this environment",
+    "user": "You",
+    "assistant": "Assistant",
+    "error": {
+      "generic": "Error processing the question",
+      "empty": "The question cannot be empty",
+      "rateLimit": "Too many requests. Wait a minute."
+    },
+    "modelLabel": "Model",
+    "latencyLabel": "Latency"
+  },
   "document": {
     "acl": {
       "title": "Visibility by role",
@@ -1131,6 +1154,19 @@
         "auditor": "Auditor (AUDITOR)",
         "viewer": "Viewer (VIEWER)"
       }
-    }
+    },
+    "indexing": {
+      "title": "Indexing status",
+      "pending": "Queued",
+      "indexing": "Indexing",
+      "ready": "Indexed",
+      "error": "Indexing error",
+      "notIndexed": "Not indexed",
+      "chunkCount": "Chunks",
+      "indexedAt": "Indexed on"
+    },
+    "reindex": "Reindex",
+    "reindexConfirm": "Reindex this document?",
+    "reindexQueued": "Document queued for reindexing"
   }
 }

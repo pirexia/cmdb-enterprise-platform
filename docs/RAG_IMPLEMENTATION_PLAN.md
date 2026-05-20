@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1 y 2 ✅ completadas · Iniciando oleada 3
+**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0, 1, 2 y 3 ✅ completadas · Iniciando oleada 4
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -116,9 +116,9 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 3 — Frontend chat (3 paralelos)
 
-- [ ] **A10** · `frontend/app/chat/page.tsx` (Client Component): lista de sesiones, hilo con bubbles, chips de filtro (tipo doc, CI, contrato, fechas), input multilinea, SSE consumer en `apiFetch.ts`, markdown render con `react-markdown` + `remark-gfm`, citaciones clicables a `/documents/:id`. Entrada en `Sidebar.tsx`.
-- [ ] **A11** · Claves i18n del chat en los 6 idiomas.
-- [ ] **A12** · `DocumentDetailModal`: badge "Indexado / En cola / Error / Sin indexar" + botón "Re-indexar" (ADMIN) → `POST /api/documents/:id/reindex`.
+- [x] **A10** · ✅ — `frontend/lib/useChatStream.ts` (245 líneas, SSE parser line-by-line, ChatStreamEvent tipado, AbortController), `frontend/app/chat/page.tsx` (560 líneas, layout 2 columnas, optimistic UI, citations chips → `/documents/:id`, banner 503 distinto), `Sidebar.tsx` +1 entrada `sidebar.assistant` con icono `Sparkles`. Markdown plano (sin react-markdown). 0 errores TS nuevos.
+- [x] **A11** · ✅ — `sidebar.assistant` + bloque `chat` (18 claves incl. error.{generic,empty,rateLimit}) + extensión `document` (indexing.{title,pending,indexing,ready,error,notIndexed,chunkCount,indexedAt} + reindex/reindexConfirm/reindexQueued) en los 6 idiomas (es/en/de/pt/fr/it). Validación JSON OK.
+- [x] **A12** · ✅ — Backend: `GET /api/documents/:id/index-status` (22 líneas, LEFT JOIN, devuelve NOT_INDEXED por defecto). Frontend: badge coloreado con i18n, botón Re-indexar (ADMIN only) con confirm, polling cada 5s mientras PENDING/INDEXING, cleanup en unmount. 0 errores TS nuevos.
 
 ### Oleada 4 — Instalador desatendido y actualización (2 paralelos)
 
@@ -235,3 +235,4 @@ Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de ha
 | 2026-05-20 | Integrados 13 hallazgos pre-flight; ajustes derivados en A1/A6/A8/A10/A14 | sesión de planificación |
 | 2026-05-20 | Oleada 1 completada: A1–A5 ✅ (compose, pgvector, ragService, docParser, chunker) | sesión orquestadora |
 | 2026-05-20 | Oleada 2 completada: A6 (ingestión + cron), A7 (backfill), A8 (chat + SSE), A9 (kNN+ACL+audit) | sesión orquestadora |
+| 2026-05-20 | Oleada 3 completada: A10 (chat page + SSE hook + sidebar), A11 (i18n 6 idiomas), A12 (indexing badge + reindex) | sesión orquestadora |

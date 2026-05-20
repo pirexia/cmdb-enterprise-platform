@@ -21,7 +21,8 @@
     "masters": "Dados Mestres",
     "certificates": "Certificados SSL",
     "audit": "Auditoria",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "assistant": "Assistente IA"
   },
   "actions": {
     "logout": "Sair",
@@ -1001,6 +1002,28 @@
     "transfers_body": "Se for utilizado o início de sessão com Microsoft 365, parte do tratamento de identidade é realizado pela Microsoft Corporation (EUA) ao abrigo do Contrato de Processamento de Dados da Microsoft e das Cláusulas Contratuais-Tipo.",
     "back": "← Voltar ao início de sessão"
   },
+  "chat": {
+    "title": "Assistente IA",
+    "subtitle": "Consulte os seus documentos em linguagem natural",
+    "newSession": "Nova consulta",
+    "placeholder": "Pergunte sobre os seus documentos...",
+    "sendButton": "Enviar",
+    "thinking": "A pensar...",
+    "citations": "Citações",
+    "noSessions": "Ainda sem consultas. Inicie uma nova.",
+    "deleteSession": "Eliminar sessão",
+    "confirmDelete": "Eliminar esta consulta?",
+    "disabled": "O assistente IA está desativado neste ambiente",
+    "user": "Você",
+    "assistant": "Assistente",
+    "error": {
+      "generic": "Erro ao processar a pergunta",
+      "empty": "A pergunta não pode estar vazia",
+      "rateLimit": "Demasiados pedidos. Aguarde um minuto."
+    },
+    "modelLabel": "Modelo",
+    "latencyLabel": "Latência"
+  },
   "document": {
     "acl": {
       "title": "Visibilidade por perfil",
@@ -1012,6 +1035,19 @@
         "auditor": "Auditor (AUDITOR)",
         "viewer": "Leitor (VIEWER)"
       }
-    }
+    },
+    "indexing": {
+      "title": "Estado de indexação",
+      "pending": "Em fila",
+      "indexing": "A indexar",
+      "ready": "Indexado",
+      "error": "Erro de indexação",
+      "notIndexed": "Não indexado",
+      "chunkCount": "Fragmentos",
+      "indexedAt": "Indexado em"
+    },
+    "reindex": "Reindexar",
+    "reindexConfirm": "Reindexar este documento?",
+    "reindexQueued": "Documento em fila para reindexação"
   }
 }

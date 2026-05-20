@@ -3531,6 +3531,29 @@ app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, async (r
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// GET /api/documents/:id/index-status — return the latest version's RAG indexing status
+app.get('/api/documents/:id/index-status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ status: string | null; chunk_count: number | null; indexed_at: Date | null; error_message: string | null; updated_at: Date | null }[]>`
+      SELECT r.status, r.chunk_count, r.indexed_at, r.error_message, r.updated_at
+      FROM "documents" d
+      LEFT JOIN "rag_document_index" r
+        ON r.document_id = d.id AND r.version_number = d.version_number
+      WHERE (d.id = ${req.params.id}::uuid OR d.root_id = ${req.params.id}::uuid)
+        AND d.is_latest = true
+      LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Document not found' }); return; }
+    const r = rows[0];
+    res.json({
+      status:        r.status ?? 'NOT_INDEXED',
+      chunkCount:    r.chunk_count   ?? 0,
+      indexedAt:     r.indexed_at,
+      errorMessage:  r.error_message,
+      updatedAt:     r.updated_at,
+    });
+  } catch (e) { console.error('[GET /api/documents/:id/index-status]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // POST /api/admin/rag/backfill — re-queue all un-indexed latest document versions (ADMIN only)
 app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfillLimiter, async (req: Request, res: Response) => {
   if (process.env.RAG_ENABLED !== 'true') {

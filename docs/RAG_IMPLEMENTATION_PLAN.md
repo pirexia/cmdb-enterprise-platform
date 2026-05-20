@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En progreso · Oleadas -2, -1 y 0 ✅ completadas · Iniciando oleada 1
+**Estado global:** 🟡 En progreso · Oleadas -2, -1, 0 y 1 ✅ completadas · Iniciando oleada 2
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -101,11 +101,11 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada 1 — Cimientos del RAG (5 paralelos)
 
-- [ ] **A1** · Compose: nuevo servicio `ollama` en `docker-compose.yml` y `docker-compose.prod.yml` (imagen `docker.io/ollama/ollama:latest`, bind-mount opcional a `/opt/cmdb-data/ollama-models`, healthcheck, sin exposición al host). Añadir variables `OLLAMA_BASE_URL`, `RAG_EMBED_MODEL`, `RAG_CHAT_MODEL`, `RAG_ENABLED`, `RAG_CHAT_TEMPERATURE`, `RAG_TOP_K`, `RAG_RATE_LIMIT_PER_MIN` en `.env.example`. Compatible con `podman-compose 1.5+`.
-- [ ] **A2** · Migración pgvector: `CREATE EXTENSION IF NOT EXISTS vector`, tablas `rag_document_index`, `rag_chunks` (FK doc, `embedding vector(1024)`, `section`, `page_start/end`, `token_count`, `metadata jsonb`), `rag_chat_sessions`, `rag_chat_messages`. Índice HNSW. Actualizar `schema.prisma` con `Unsupported("vector(1024)")`. **OJO**: validar que la imagen Postgres elegida lleva pgvector (ver hallazgos de revisión final).
-- [ ] **A3** · `backend/src/services/ragService.ts`: cliente Ollama (embed + chat) con allowlist de host (`OLLAMA_BASE_URL`), timeouts, errores enmascarados, retry exponencial.
-- [ ] **A4** · `backend/src/services/docParser.ts`: extracción de texto por extensión con re-validación de magic bytes. Devuelve `Array<{sectionPath, text, page?}>`. Límites duros (tiempo, tamaño).
-- [ ] **A5** · `backend/src/services/chunker.ts`: chunking heading-aware + cap 800 tok / overlap 120, metadata enriquecida.
+- [x] **A1** · ✅ — `docker-compose.yml` y `docker-compose.prod.yml`: servicio `ollama` (imagen `docker.io/ollama/ollama:latest`, postgres → `pgvector/pgvector:pg15/pg16`, bind-mount `/opt/cmdb-data/ollama-models`, healthcheck, sin puertos al host). `.env.example` con 7 vars RAG. `nginx/conf.d/frontend.conf`: `location /api/chat/` con `proxy_buffering off` + `proxy_cache off` + `proxy_read_timeout 300s`.
+- [x] **A2** · ✅ — Migración `20260520130000_add_pgvector_rag`: `CREATE EXTENSION vector`, tablas `rag_document_index`, `rag_chunks` (`embedding vector(1024)`), `rag_chat_sessions`, `rag_chat_messages`. Índice HNSW `m=16 ef_construction=64`. `schema.prisma` con 4 modelos + `Unsupported("vector(1024)")`. tsc: 0 errores nuevos.
+- [x] **A3** · ✅ — `backend/src/services/ragService.ts`: SSRF allowlist (`ALLOWED_OLLAMA_PATTERN`), `getEmbedding()`, `getEmbeddingsBatch()` (lotes de 32), `chatWithContext()`, `streamChatWithContext()` (NDJSON), `buildRagPrompt()` (system prompt fijo anti-inyección), `sanitizeQuery()`, `isOllamaHealthy()`. Timeouts 30s embed / 120s chat. tsc: 0 errores nuevos.
+- [x] **A4** · ✅ — `backend/src/services/docParser.ts`: PDF (`pdf-parse`), DOCX/DOC (`mammoth`), XLSX (`exceljs`, max 1000 filas/hoja), PPTX/ODT/ODS (`officeparser`), TXT/CSV. `package.json` actualizado. Timeout 60s/doc, límite 2M chars. tsc: 0 errores nuevos.
+- [x] **A5** · ✅ — `backend/src/services/chunker.ts`: `chunkSections()`, `chunkText()`, `splitAtSentenceBoundary()`. Defaults: maxTokens=800, overlap=120, minChunkTokens=50. Token heuristic word/0.75. tsc: 0 errores nuevos.
 
 ### Oleada 2 — API RAG (4 paralelos)
 
@@ -233,3 +233,4 @@ Revisión completada el 2026-05-20 (agente Explore en foreground). Resumen de ha
 | 2026-05-20 | Creación del documento de plan | sesión de planificación |
 | 2026-05-20 | Marcado B1 como completado (commit `093b1d9` previo) | sesión de planificación |
 | 2026-05-20 | Integrados 13 hallazgos pre-flight; ajustes derivados en A1/A6/A8/A10/A14 | sesión de planificación |
+| 2026-05-20 | Oleada 1 completada: A1–A5 ✅ (compose, pgvector, ragService, docParser, chunker) | sesión orquestadora |

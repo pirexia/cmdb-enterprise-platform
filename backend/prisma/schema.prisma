@@ -110,6 +110,7 @@ model User {
   technicalLedCIs  CI[]             @relation("TechnicalLead")
   trustedDevices   TrustedDevice[]
   passwordHistory  PasswordHistory[]
+  ragChatSessions  RagChatSession[]
 
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
@@ -473,6 +474,10 @@ model Document {
   contracts      DocumentContract[]
   licenses       DocumentLicense[]
 
+  // RAG subsystem
+  ragIndex       RagDocumentIndex[]
+  ragChunks      RagChunk[]
+
   // Relations between documents
   relationsFrom  DocumentRelation[] @relation("SourceDocument")
   relationsTo    DocumentRelation[] @relation("TargetDocument")
@@ -682,4 +687,79 @@ model AppSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+// ─── RAG Subsystem ────────────────────────────────────────────────────────────
+
+model RagDocumentIndex {
+  id            String    @id @default(uuid()) @db.Uuid
+  documentId    String    @db.Uuid @map("document_id")
+  versionNumber Int       @default(1) @map("version_number")
+  status        String    @default("PENDING")
+  errorMessage  String?   @map("error_message")
+  chunkCount    Int       @default(0) @map("chunk_count")
+  indexedAt     DateTime? @map("indexed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  document      Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, versionNumber])
+  @@index([status])
+  @@index([documentId])
+  @@map("rag_document_index")
+}
+
+model RagChunk {
+  id            String                        @id @default(uuid()) @db.Uuid
+  documentId    String                        @db.Uuid @map("document_id")
+  versionNumber Int                           @default(1) @map("version_number")
+  chunkIndex    Int                           @map("chunk_index")
+  sectionPath   String?                       @map("section_path")
+  pageStart     Int?                          @map("page_start")
+  pageEnd       Int?                          @map("page_end")
+  tokenCount    Int                           @default(0) @map("token_count")
+  content       String
+  embedding     Unsupported("vector(1024)")?
+  metadata      Json                          @default("{}")
+  createdAt     DateTime                      @default(now()) @map("created_at")
+
+  document      Document                      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@map("rag_chunks")
+}
+
+model RagChatSession {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid @map("user_id")
+  title     String           @default("Nueva consulta")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  RagChatMessage[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("rag_chat_sessions")
+}
+
+model RagChatMessage {
+  id         String         @id @default(uuid()) @db.Uuid
+  sessionId  String         @db.Uuid @map("session_id")
+  role       String
+  content    String
+  citations  Json           @default("[]")
+  queryHash  String?        @map("query_hash")
+  modelUsed  String?        @map("model_used")
+  tokensUsed Int?           @map("tokens_used")
+  latencyMs  Int?           @map("latency_ms")
+  createdAt  DateTime       @default(now()) @map("created_at")
+
+  session    RagChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("rag_chat_messages")
 }

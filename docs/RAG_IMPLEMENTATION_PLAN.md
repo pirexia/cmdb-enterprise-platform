@@ -1,6 +1,6 @@
 # Plan de implementación — Asistente IA con RAG local
 
-**Estado global:** 🟡 En preparación · Aún no se ha iniciado la oleada -2
+**Estado global:** 🟡 En progreso · Oleada -2 ✅ completada · Iniciando oleada -1
 **Rama de trabajo:** `claude/local-llm-document-search-wrlSq`
 **Destino final:** PR a `develop` (nunca a `main`)
 **Servidor de producción objetivo:** `lx-gest01p.svc.int` (RHEL 9, 12 vCPU AMX, 32 GiB RAM)
@@ -85,9 +85,9 @@ Verificado en vivo en `lx-gest01p.svc.int`:
 
 ### Oleada -2 — Documentación de host y arquitectura (3 paralelos)
 
-- [ ] **H1** · Crear `docs/RAG_HOST_PREPARATION.md` y `.en.md` con la guía paso a paso ya validada en vivo en `lx-gest01p`. Incluye: dimensionamiento, ajustes vCenter (AMX), LVM, dnf update, Podman, sysctl/limits, firewalld, SELinux como deuda, smoke test, troubleshooting.
-- [ ] **H2** · Actualizar `docs/ARCHITECTURE.md` y `.en.md`: añadir sección "9bis. Subsistema RAG / Asistente IA" con diagrama Mermaid (Browser → nginx → backend → pgvector / ollama), capacity planning, AMX, retención.
-- [ ] **H3** · Actualizar `docs/SYSADMIN_MANUAL.md` y `.en.md`: operación de Ollama (`ollama pull/list/ps`), backup de pgvector (`pg_dump --table=rag_*`), troubleshooting, integración con cron de EOL existente, métricas (`podman stats`).
+- [x] **H1** · ✅ Commit `797a270` — `docs/RAG_HOST_PREPARATION.md` + `.en.md` (514 líneas c/u, 11 secciones + 4 apéndices, validada en vivo en lx-gest01p.svc.int 2026-05-20).
+- [x] **H2** · ✅ Commit `ae4d2ea` — `docs/ARCHITECTURE.md` + `.en.md`, sección §12 RAG (144 líneas c/u, diagramas Mermaid ingesta+query, topology, capacity planning AMX).
+- [x] **H3** · ✅ Commit `ae4d2ea` — `docs/SYSADMIN_MANUAL.md` + `.en.md`, sección §19 Operación RAG (208 líneas c/u, backfill, backup pg_dump, monitorización, troubleshooting).
 
 ### Oleada -1 — Control de visibilidad de documentos por rol (B1 → B2 + B3)
 

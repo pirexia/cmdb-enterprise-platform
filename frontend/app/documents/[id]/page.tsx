@@ -64,6 +64,9 @@ interface DocumentDetail {
   rootId: string | null;
   isLatest: boolean;
   fileName: string;
+  readAdmin: boolean;
+  readAuditor: boolean;
+  readViewer: boolean;
   versions: DocVersion[];
   relations: DocRelation[];
   cis: DocCI[];
@@ -1053,7 +1056,7 @@ export default function DocumentDetailPage() {
               <FolderOpen className="h-5 w-5 text-[var(--accent)]" />
               <div>
                 <h1 className="text-lg font-bold text-slate-900">{doc.title}</h1>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="inline-flex items-center rounded-full bg-[var(--accent)]/5 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                     {doc.documentTypeName}
                   </span>
@@ -1063,6 +1066,17 @@ export default function DocumentDetailPage() {
                   <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                     latest
                   </span>
+                  {(['admin', 'auditor', 'viewer'] as const).map((r) => {
+                    const key = `read${r.charAt(0).toUpperCase() + r.slice(1)}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+                    const visible = doc[key] ?? true;
+                    return (
+                      <span key={r} className={`text-xs px-2 py-0.5 rounded-full font-medium
+                        ${visible ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
+                        {r.toUpperCase()}: {visible ? t('document.acl.visible') : t('document.acl.hidden')}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             </div>

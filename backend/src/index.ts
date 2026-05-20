@@ -2982,6 +2982,25 @@ function validateMagicBytes(buffer: Buffer, ext: string): boolean {
   });
 }
 
+// ── Document ACL visibility helpers ──────────────────────────────────────────
+
+/** Returns the Prisma where-clause field that gates read access for this role. */
+function docVisibilityFilter(role: string): { readAdmin: boolean } | { readAuditor: boolean } | { readViewer: boolean } {
+  if (role === 'ADMIN')   return { readAdmin: true };
+  if (role === 'AUDITOR') return { readAuditor: true };
+  return { readViewer: true };
+}
+
+/**
+ * Returns the SQL column name (in snake_case) that gates read access for this role.
+ * Values come from an internal allowlist — safe to use with Prisma.raw().
+ */
+function docVisibilitySqlCol(role: string): string {
+  if (role === 'ADMIN')   return 'read_admin';
+  if (role === 'AUDITOR') return 'read_auditor';
+  return 'read_viewer';
+}
+
 // Ensure documents directory exists
 if (!fs.existsSync(DOCUMENTS_DIR)) {
   fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
@@ -3059,9 +3078,10 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
   const rawPage  = parseInt(String(req.query.page  ?? '1'),   10);
   const page     = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
   const offset   = (page - 1) * limit;
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const [countRows, rows] = await Promise.all([
-      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "documents" WHERE root_id IS NULL`,
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "documents" WHERE root_id IS NULL AND ${visCol} = true`,
       prisma.$queryRaw<{
         id: string; title: string; description: string | null;
         documentTypeId: string; documentTypeName: string; documentTypeCode: string;
@@ -3082,7 +3102,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
         FROM "documents" d
         JOIN "document_types" dt ON d.document_type_id = dt.id
         LEFT JOIN "documents" v ON v.root_id = d.id AND v.is_latest = true
-        WHERE d.root_id IS NULL
+        WHERE d.root_id IS NULL AND d.${visCol} = true
         ORDER BY d.created_at DESC
         LIMIT ${limit} OFFSET ${offset}`,
     ]);
@@ -3092,6 +3112,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 
 // GET /api/documents/:id — document detail with versions, relations, associations
 app.get('/api/documents/:id', authenticateToken, async (req, res) => {
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{
       id: string; title: string; description: string | null;
@@ -3110,7 +3131,8 @@ app.get('/api/documents/:id', authenticateToken, async (req, res) => {
              d.created_at AS "createdAt"
       FROM "documents" d
       JOIN "document_types" dt ON d.document_type_id = dt.id
-      WHERE d.id = ${req.params.id}::uuid`;
+      JOIN "documents" root ON root.id = COALESCE(d.root_id, d.id)
+      WHERE d.id = ${req.params.id}::uuid AND root.${visCol} = true`;
     if (!rows.length) { res.status(404).json({ error: 'Document not found' }); return; }
     const doc = rows[0];
 
@@ -3270,9 +3292,13 @@ app.get('/api/documents/:id/download', authenticateToken, async (req: Request, r
     'image/webp',
   ]);
 
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{ file_name: string; original_name: string; mime_type: string }[]>`
-      SELECT file_name, original_name, mime_type FROM "documents" WHERE id=${req.params.id}::uuid`;
+      SELECT d.file_name, d.original_name, d.mime_type
+      FROM "documents" d
+      JOIN "documents" root ON root.id = COALESCE(d.root_id, d.id)
+      WHERE d.id = ${req.params.id}::uuid AND root.${visCol} = true`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     const { file_name, original_name, mime_type } = rows[0];
     const filePath = path.join(DOCUMENTS_DIR, file_name);
@@ -3632,9 +3658,13 @@ app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, asyn
 
 // GET /api/documents/:id/notes — get all notes for a document (resolves to root)
 app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
+  const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const docRows = await prisma.$queryRaw<{ id: string; root_id: string | null }[]>`
-      SELECT id::text AS id, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
+      SELECT d.id::text AS id, d.root_id::text AS root_id
+      FROM "documents" d
+      JOIN "documents" root ON root.id = COALESCE(d.root_id, d.id)
+      WHERE d.id = ${req.params.id}::uuid AND root.${visCol} = true`;
     if (!docRows.length) { res.status(404).json({ error: 'Not found' }); return; }
     const rootId = docRows[0].root_id ?? docRows[0].id;
     const rows = await prisma.$queryRaw<{ id: string; content: string; createdBy: string; createdAt: Date }[]>`

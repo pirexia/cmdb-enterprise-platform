@@ -1130,4 +1130,15 @@ Para volver a poner en cola todos los documentos en bloque (por ejemplo, tras un
 - **Duración de la respuesta completa:** entre 10 y 18 segundos para una respuesta de unos 250 tokens, dependiendo de la carga del servidor.
 - **Modelo local:** el sistema utiliza un modelo de lenguaje local (Ollama). No se realiza ninguna transferencia de datos a Internet ni a servicios de terceros.
 
+### Filtrar las fuentes de búsqueda
+
+Bajo el cuadro de pregunta se muestran cinco "chips" de tipo de fuente: **Documentos**, **CIs**, **Contratos**, **Licencias** y **Vulnerabilidades**. El asistente puede consultar cualquiera de ellas además de los documentos textuales tradicionales.
+
+- Sin ningún chip seleccionado, el asistente busca en **todas** las fuentes disponibles.
+- Al pulsar uno o varios chips, la consulta se limita a esos tipos. La selección es multi-respuesta (puedes activar varios) y se conserva durante la sesión del navegador (al cerrar la pestaña, vuelve al estado por defecto).
+- El botón **Limpiar** restablece la selección a "todas las fuentes".
+- Si recientemente se ha activado el subsistema RAG por primera vez, algunas categorías pueden aparecer vacías hasta que el proceso de indexación en segundo plano las procese. El administrador puede acelerarlo con un reindex completo (ver Manual del Administrador §19.10).
+
+Las citas que devuelve el asistente incluyen un icono identificativo del tipo de fuente (documento, CI, contrato, licencia o vulnerabilidad) y, al hacer clic, abren la página correspondiente del inventario, contratos, licencias o vulnerabilidades, ya filtrada por el elemento citado.
+
 > Para los requisitos de hardware del servidor, la configuración de Ollama, la gestión del modelo y los procedimientos de mantenimiento del subsistema RAG, consulta el **Manual del Administrador de Sistemas, §19 — Subsistema RAG**.

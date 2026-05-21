@@ -1022,7 +1022,17 @@
       "rateLimit": "Trop de requêtes. Attendez une minute."
     },
     "modelLabel": "Modèle",
-    "latencyLabel": "Latence"
+    "latencyLabel": "Latence",
+    "filter": {
+      "label": "Filtrer les sources",
+      "documents": "Documents",
+      "cis": "CIs",
+      "contracts": "Contrats",
+      "licenses": "Licences",
+      "vulnerabilities": "Vulnérabilités",
+      "all": "Toutes",
+      "clear": "Effacer"
+    }
   },
   "document": {
     "acl": {

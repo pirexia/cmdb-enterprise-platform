@@ -4,10 +4,14 @@ import { useCallback, useRef, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export type ChatEntityType = 'document' | 'ci' | 'contract' | 'license' | 'vulnerability';
+
 export interface ChatCitation {
-  documentId: string;
+  entityType: ChatEntityType;
+  entityId: string;
+  documentId?: string;
   documentTitle: string;
-  versionNumber: number;
+  versionNumber?: number;
   page?: number;
   section?: string;
   snippet: string;
@@ -24,6 +28,7 @@ interface AskOptions {
   question: string;
   sessionId?: string;
   topK?: number;
+  entityTypes?: ChatEntityType[];
   onEvent: (e: ChatStreamEvent) => void;
 }
 
@@ -88,7 +93,7 @@ export function useChatStream(): UseChatStreamResult {
   }, []);
 
   const ask = useCallback(async (opts: AskOptions): Promise<void> => {
-    const { question, sessionId, topK, onEvent } = opts;
+    const { question, sessionId, topK, entityTypes, onEvent } = opts;
 
     // Abort any in-flight stream
     if (abortRef.current) {
@@ -106,6 +111,7 @@ export function useChatStream(): UseChatStreamResult {
       const body: Record<string, unknown> = { question };
       if (sessionId) body.sessionId = sessionId;
       if (topK !== undefined) body.topK = topK;
+      if (entityTypes && entityTypes.length > 0) body.entityTypes = entityTypes;
 
       const res = await fetch(`${apiBase}/api/chat/ask/stream`, {
         method: "POST",
@@ -179,10 +185,15 @@ export function useChatStream(): UseChatStreamResult {
               if (Array.isArray(payload)) {
                 const citations: ChatCitation[] = (payload as unknown[]).map((item) => {
                   const c = item as Record<string, unknown>;
+                  const entityType = (typeof c.entityType === "string" &&
+                    ['document','ci','contract','license','vulnerability'].includes(c.entityType))
+                    ? (c.entityType as ChatEntityType) : 'document';
                   return {
-                    documentId:    typeof c.documentId    === "string" ? c.documentId    : "",
+                    entityType,
+                    entityId:      typeof c.entityId      === "string" ? c.entityId      : "",
+                    documentId:    typeof c.documentId    === "string" ? c.documentId    : undefined,
                     documentTitle: typeof c.documentTitle === "string" ? c.documentTitle : "",
-                    versionNumber: typeof c.versionNumber === "number" ? c.versionNumber : 1,
+                    versionNumber: typeof c.versionNumber === "number" ? c.versionNumber : undefined,
                     page:          typeof c.page          === "number" ? c.page          : undefined,
                     section:       typeof c.section       === "string" ? c.section       : undefined,
                     snippet:       typeof c.snippet       === "string" ? c.snippet       : "",

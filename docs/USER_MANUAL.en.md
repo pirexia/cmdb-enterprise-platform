@@ -1130,4 +1130,15 @@ To re-queue all documents in bulk (for example after a model update), an adminis
 - **Full response time:** between 10 and 18 seconds for a response of around 250 tokens, depending on server load.
 - **Local model:** the system uses a local language model (Ollama). No data is transferred to the Internet or to third-party services.
 
+### Filtering search sources
+
+Below the question box you'll see five source-type "chips": **Documents**, **CIs**, **Contracts**, **Licenses** and **Vulnerabilities**. The assistant can search any of these alongside traditional document text.
+
+- With no chip selected, the assistant searches **all** available sources.
+- Clicking one or more chips restricts the query to those types. The selection is multi-select (you can activate several) and is preserved across the current browser tab (closing the tab resets it).
+- The **Clear** button restores the selection to "all sources".
+- If the RAG subsystem has just been enabled for the first time, some categories may be empty until the background indexer processes them. An administrator can speed this up with a full reindex (see System Administrator Manual §19.10).
+
+The citations returned by the assistant include an icon indicating the source type (document, CI, contract, license or vulnerability). Clicking a citation opens the corresponding listing in the inventory, contracts, licenses or vulnerabilities page, already focused on the cited item.
+
 > For server hardware requirements, Ollama configuration, model management, and RAG subsystem maintenance procedures, refer to the **System Administrator Manual, §19 — RAG Subsystem**.

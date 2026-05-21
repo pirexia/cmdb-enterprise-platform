@@ -1022,7 +1022,17 @@
       "rateLimit": "Zu viele Anfragen. Bitte warten Sie."
     },
     "modelLabel": "Modell",
-    "latencyLabel": "Latenz"
+    "latencyLabel": "Latenz",
+    "filter": {
+      "label": "Quellen filtern",
+      "documents": "Dokumente",
+      "cis": "CIs",
+      "contracts": "Verträge",
+      "licenses": "Lizenzen",
+      "vulnerabilities": "Schwachstellen",
+      "all": "Alle",
+      "clear": "Zurücksetzen"
+    }
   },
   "document": {
     "acl": {

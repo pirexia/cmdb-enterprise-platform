@@ -1141,7 +1141,17 @@
       "rateLimit": "Too many requests. Wait a minute."
     },
     "modelLabel": "Model",
-    "latencyLabel": "Latency"
+    "latencyLabel": "Latency",
+    "filter": {
+      "label": "Filter sources",
+      "documents": "Documents",
+      "cis": "CIs",
+      "contracts": "Contracts",
+      "licenses": "Licenses",
+      "vulnerabilities": "Vulnerabilities",
+      "all": "All",
+      "clear": "Clear"
+    }
   },
   "document": {
     "acl": {

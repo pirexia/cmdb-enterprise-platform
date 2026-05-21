@@ -868,23 +868,31 @@ Browser ──HTTPS:443──▶ nginx ──/──▶ frontend (Next.js :3001)
                                               └──▶ ollama (:11434)  [red interna]
 ```
 
-### 12.6 Modelo de datos RAG (nuevas tablas)
+### 12.6 Modelo de datos RAG (tablas)
 
 | Tabla | Descripción |
 |-------|-------------|
 | `rag_document_index` | Estado de indexación por documento/versión: `PENDING`, `INDEXING`, `READY`, `ERROR`. Una fila por cada combinación documento+versión. |
-| `rag_chunks` | Fragmentos de texto con embedding `vector(1024)`, campos `section`, `page`, y `metadata` (jsonb). Índice HNSW sobre `embedding` con `vector_cosine_ops` para búsqueda aproximada eficiente. |
+| `rag_chunks` | Fragmentos de texto con embedding `vector(1024)`, campos `section`, `page`, `metadata` (jsonb). Desde v2 incluye `entity_type` (`document` \| `ci` \| `contract` \| `license` \| `vulnerability`) y `entity_id` (uuid); para chunks de documento `document_id` se mantiene poblado, para chunks de entidad es `NULL`. Índice HNSW sobre `embedding` con `vector_cosine_ops` y un índice B-tree compuesto sobre `(entity_type, entity_id)` para el lookup por entidad y los DELETE en hooks. |
+| `rag_entity_index` *(v2)* | Estado de indexación por entidad no-documento. Clave única `(entity_type, entity_id)`. Separada de `rag_document_index` porque las entidades son mutables y no versionadas en el pipeline. CHECK constraint sobre `entity_type` en `('ci','contract','license','vulnerability')`. |
 | `rag_chat_sessions` | Sesiones de chat por usuario: id, user_id, título, timestamps de creación y última actividad. |
-| `rag_chat_messages` | Mensajes por sesión: pregunta del usuario, respuesta del modelo, `citations` (jsonb con los chunk_ids y fragmentos usados como contexto). |
+| `rag_chat_messages` | Mensajes por sesión: pregunta del usuario, respuesta del modelo, `citations` (jsonb con `entityType`, `entityId`, título, sección y snippet de cada fragmento usado). |
 
-**Índice clave:**
+**Índices clave:**
 
 ```sql
+-- Búsqueda aproximada de vectores (cosine similarity)
 CREATE INDEX rag_chunks_embedding_hnsw
     ON rag_chunks
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+
+-- Lookup por entidad (v2): re-index, DELETE en hooks, listing por tipo
+CREATE INDEX idx_rag_chunks_entity
+    ON rag_chunks (entity_type, entity_id);
 ```
+
+Para las vulnerabilidades, que no son una tabla sino entradas JSON dentro de `configuration_items.vulnerabilities`, `entity_id` se calcula como `uuid_v5(namespace, ciId || ':' || cve)` con un namespace fijo e inmutable definido en `backend/src/services/entitySerializer.ts`. Esto permite la idempotencia del UPSERT y la trazabilidad estable de citaciones a lo largo del tiempo.
 
 ### 12.7 Control de acceso (ACL documentos)
 

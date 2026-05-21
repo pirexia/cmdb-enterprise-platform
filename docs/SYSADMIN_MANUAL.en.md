@@ -29,6 +29,7 @@
 17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
 18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
 19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
+20. [Backups — RAG encryption considerations](#20-backups--rag-encryption-considerations)
 
 ---
 

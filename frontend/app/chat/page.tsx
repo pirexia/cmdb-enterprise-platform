@@ -54,7 +54,10 @@ interface ChatMessage {
 /**
  * Resolves a citation to its destination URL. Documents go to their dedicated
  * detail page; other entity types deep-link to their listing with ?focus=<id>
- * so the listing can auto-open the corresponding modal (v2.N6).
+ * so the listing can auto-open the corresponding modal (v2.N6). For
+ * vulnerabilities the backend's entityId is a synthetic UUID v5 that the
+ * frontend can't reverse, so we pass the human-readable CVE-ID (carried in
+ * documentTitle) as ?cve= — the listing matches rows by that.
  */
 function citationHref(c: ChatCitation): string {
   switch (c.entityType) {
@@ -62,7 +65,7 @@ function citationHref(c: ChatCitation): string {
     case 'ci':            return `/inventory?focus=${c.entityId}`;
     case 'contract':      return `/contracts?focus=${c.entityId}`;
     case 'license':       return `/licenses?focus=${c.entityId}`;
-    case 'vulnerability': return `/vulnerabilities?focus=${c.entityId}`;
+    case 'vulnerability': return `/vulnerabilities?cve=${encodeURIComponent(c.documentTitle)}`;
   }
 }
 

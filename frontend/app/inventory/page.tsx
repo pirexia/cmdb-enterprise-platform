@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
@@ -282,6 +283,19 @@ export default function InventoryPage() {
       .then((d) => { if (Array.isArray(d)) setCiTypeCategories(d); })
       .catch(() => {});
   }, []);
+
+  // RAG chat deep-link: ?focus=<ciId> opens the detail modal once cis are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || cis.length === 0) return;
+    const target = cis.find((c) => c.id === focusId);
+    if (target) {
+      setDetailCI(target);
+      router.replace("/inventory", { scroll: false });
+    }
+  }, [searchParams, cis, router]);
 
   const filtered = useMemo(() => {
     const CRIT_ORDER: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, MISSION_CRITICAL: 4 };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -118,6 +119,16 @@ export default function VulnerabilitiesPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // RAG chat deep-link: ?cve=<cve-id> pre-fills the CVE filter once rows are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const cve = searchParams.get("cve");
+    if (!cve || allRows.length === 0) return;
+    setFilters((prev) => ({ ...prev, cve }));
+    router.replace("/vulnerabilities", { scroll: false });
+  }, [searchParams, allRows, router]);
 
   const handleStatusChange = async (ciId: string, cve: string, newStatus: VulnStatus) => {
     const key = `${ciId}:${cve}`;

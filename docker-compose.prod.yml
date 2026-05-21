@@ -25,7 +25,7 @@ services:
 
   # ── PostgreSQL 16 ────────────────────────────────────────────────────────────
   postgres:
-    image: docker.io/library/postgres:16-alpine
+    image: docker.io/pgvector/pgvector:pg16
     container_name: cmdb-postgres-prod
     restart: unless-stopped
     environment:
@@ -86,6 +86,14 @@ services:
       AZURE_REDIRECT_URI:   ${AZURE_REDIRECT_URI:-}
       AZURE_ALLOWED_DOMAIN: ${AZURE_ALLOWED_DOMAIN:-}
       AZURE_AUTO_PROVISION: ${AZURE_AUTO_PROVISION:-false}
+      # ── RAG / Ollama ──────────────────────────────────────────────────────────
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      RAG_ENABLED:     ${RAG_ENABLED:-true}
+      RAG_EMBED_MODEL: ${RAG_EMBED_MODEL:-bge-m3}
+      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen2.5:7b-instruct-q4_K_M}
+      RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
+      RAG_TOP_K:       ${RAG_TOP_K:-6}
+      RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z
@@ -96,6 +104,8 @@ services:
       - cmdb-public
     depends_on:
       postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
@@ -149,6 +159,26 @@ services:
     depends_on:
       - frontend
       - backend
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Ollama — Local LLM inference (embeddings + chat) ────────────────────────
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: cmdb-ollama-prod
+    restart: unless-stopped
+    environment:
+      OLLAMA_MODELS: /root/.ollama/models
+    volumes:
+      - ${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models}:/root/.ollama/models:Z
+    networks:
+      - cmdb-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     security_opt:
       - no-new-privileges:true
 

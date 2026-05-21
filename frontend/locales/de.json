@@ -21,7 +21,8 @@
     "masters": "Stammdaten",
     "certificates": "SSL-Zertifikate",
     "audit": "Audit",
-    "settings": "Einstellungen"
+    "settings": "Einstellungen",
+    "assistant": "KI-Assistent"
   },
   "actions": {
     "logout": "Abmelden",
@@ -1000,5 +1001,53 @@
     "transfers_title": "6. Internationale Übermittlungen",
     "transfers_body": "Bei Verwendung von Microsoft 365 SSO wird ein Teil der Identitätsverarbeitung von der Microsoft Corporation (USA) im Rahmen des Microsoft-Datenverarbeitungsvertrags und der Standardvertragsklauseln durchgeführt.",
     "back": "← Zurück zur Anmeldung"
+  },
+  "chat": {
+    "title": "KI-Assistent",
+    "subtitle": "Befragen Sie Ihre Dokumente in natürlicher Sprache",
+    "newSession": "Neue Anfrage",
+    "placeholder": "Fragen Sie etwas zu Ihren Dokumenten...",
+    "sendButton": "Senden",
+    "thinking": "Denke nach...",
+    "citations": "Quellen",
+    "noSessions": "Noch keine Anfragen. Starten Sie eine neue.",
+    "deleteSession": "Sitzung löschen",
+    "confirmDelete": "Diese Anfrage löschen?",
+    "disabled": "Der KI-Assistent ist in dieser Umgebung deaktiviert",
+    "user": "Sie",
+    "assistant": "Assistent",
+    "error": {
+      "generic": "Fehler bei der Verarbeitung der Frage",
+      "empty": "Die Frage darf nicht leer sein",
+      "rateLimit": "Zu viele Anfragen. Bitte warten Sie."
+    },
+    "modelLabel": "Modell",
+    "latencyLabel": "Latenz"
+  },
+  "document": {
+    "acl": {
+      "title": "Sichtbarkeit nach Rolle",
+      "adminOnly": "Nur ein Administrator kann die Sichtbarkeit ändern",
+      "visible": "sichtbar",
+      "hidden": "ausgeblendet",
+      "role": {
+        "admin": "Administrator (ADMIN)",
+        "auditor": "Prüfer (AUDITOR)",
+        "viewer": "Betrachter (VIEWER)"
+      }
+    },
+    "indexing": {
+      "title": "Indexierungsstatus",
+      "pending": "In Warteschlange",
+      "indexing": "Indexiere",
+      "ready": "Indexiert",
+      "error": "Indexierungsfehler",
+      "notIndexed": "Nicht indexiert",
+      "chunkCount": "Fragmente",
+      "indexedAt": "Indexiert am"
+    },
+    "reindex": "Neu indexieren",
+    "reindexConfirm": "Dieses Dokument neu indexieren?",
+    "reindexQueued": "Dokument zur Neuindexierung in Warteschlange"
   }
 }

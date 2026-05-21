@@ -46,6 +46,8 @@
 | 🗂️ **Master Data** | Full CRUD for auxiliary tables: **CI Types** (with configurable categories), Support Areas, Sites, Manufacturers, Device Models, Vendors. Vertical navigation in the sidebar. |
 | 🕵️ **Audit Log** | Complete traceability of all administrative actions with automatic purging of old records (configurable retention). |
 | 📁 **Document Repository** | Secure document management with version control, configurable types, document relationships, and bidirectional associations between CIs, documents, and contracts. Embedded viewer (PDF, image, plain text), immutable per-document notes, magic bytes validation, UUID storage, and authenticated download. Configurable storage via bind mount or NFS (`DOCUMENTS_STORAGE_PATH`). |
+| 🔑 **Licence Repository** | Centralised software licence inventory with configurable catalogues of types (14 predefined) and metrics (25 predefined). Each licence records vendor, type, usage metric, cost, validity period and automatic status (Active / Expiring / Expired / Draft). M:N associations with CIs and documents. Licence user management (name, ID, email) independent of the system user directory. Hierarchy support (parent licence / sub-licence). |
+| 🤖 **Local AI Assistant with RAG** | Conversational chat to search information across documents (contracts, procedures, etc.) using a local language model (Ollama + pgvector). No data is transferred to external services. Every answer includes mandatory source citations. Respects per-role document visibility permissions. See `docs/RAG_HOST_PREPARATION.md` for server requirements. |
 
 ### Security & Operations
 

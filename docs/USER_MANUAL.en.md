@@ -30,6 +30,7 @@
 20. [Dependency Map](#20-dependency-map)
 21. [Audit Log](#21-audit-log)
 22. [NIS2 / GDPR Resilience Fields](#22-nis2--gdpr-resilience-fields)
+23. [AI Assistant — intelligent document search](#23-ai-assistant--intelligent-document-search)
 
 ---
 
@@ -543,6 +544,10 @@ You can filter the document list by:
 - **Uploaded by** — search by the email of the user who uploaded the document
 
 The three filters are independent and can be combined freely. When any filter is active, a **"Clear filters"** button appears. All table columns are sortable: click a header to sort, and click again to reverse the order.
+
+### Document visibility in the AI Assistant
+
+Each document has three visibility switches that control which roles can query it through the AI Assistant. See [§23 — AI Assistant](#23-ai-assistant--intelligent-document-search) for a full description.
 
 ---
 
@@ -1062,3 +1067,67 @@ The RTO and RPO fields feed directly into the Disaster Recovery Plan. The SPOF f
 
 **GDPR (General Data Protection Regulation):**
 Data classification lets you inventory personal data processing activities, fulfilling GDPR art. 30. The PII flag facilitates compliance with the Record of Processing Activities.
+
+---
+
+## 23. AI Assistant — intelligent document search
+
+### What is it and what is it for?
+
+The AI Assistant is a conversational chat interface built into the platform that lets you ask questions in natural language about the content of stored documents — contracts, procedures, technical sheets, policies, and more — and receive answers grounded in cited source material. All processing takes place on the platform's own server infrastructure: no documents or personal data are sent to external services or to the Internet.
+
+### How to access
+
+In the sidebar, click the **"AI Assistant"** entry. This opens the chat interface at `/chat`.
+
+### Asking a question
+
+1. Click **"New query"** to start an empty conversation session.
+2. Type your question in the text field (maximum 2,000 characters) and press **Enter** or click **"Send"**.
+3. The answer appears progressively: tokens arrive one by one as the model generates the response (streaming).
+4. Below the answer you will find numbered citations (`[1]`, `[2]`…) that link directly to the detail page of the source documents.
+5. Each conversation session is saved automatically. The left panel lists all your previous sessions; click any of them to resume.
+
+### Assistant rules
+
+- The assistant answers **only** from the documents your role has access to. It does not use external knowledge or the Internet.
+- If it cannot find sufficient information in the available documents, it says so explicitly rather than fabricating an answer.
+- Citations `[1]`, `[2]`… correspond to the retrieved text fragments shown below the response.
+- The assistant ignores instructions embedded in document content to protect against prompt-injection attacks.
+
+### Document visibility by role
+
+Each document has three visibility switches that only the **ADMIN** role can edit, accessible from the document detail view:
+
+| Switch | What it controls |
+|--------|-----------------|
+| **Visible to ADMIN** | Users with the ADMIN role can find this document in the AI Assistant |
+| **Visible to AUDITOR** | Users with the AUDITOR role can find this document in the AI Assistant |
+| **Visible to VIEWER** | Users with the VIEWER role can find this document in the AI Assistant |
+
+All three switches are enabled by default for all documents that existed at the time of the update. The assistant enforces these flags at retrieval time: a VIEWER user will never receive fragments from a document with "Visible to VIEWER" disabled, even if the document is accessible for direct download in the document repository.
+
+### Indexing status
+
+For the AI Assistant to answer questions about a document, its content must be indexed in the local knowledge base. Each document shows a status indicator on its detail page:
+
+| Status | Meaning |
+|--------|---------|
+| **Queued** | The document is waiting to be processed |
+| **Indexing** | The document is being processed right now |
+| **Indexed** | The content is available to the AI Assistant |
+| **Error** | A problem occurred during indexing (see document notes) |
+| **Not indexed** | The document has not yet been submitted for indexing |
+
+Documents are indexed automatically in the background when they are uploaded. A user with the **ADMIN** role can force reprocessing of any document by clicking **"Re-index"** on the detail view.
+
+To re-queue all documents in bulk (for example after a model update), an administrator can use the bulk re-indexing operation available in the administration section (`POST /api/admin/rag/backfill`). See the System Administrator Manual §19 for details.
+
+### Limitations
+
+- **No OCR:** scanned PDF files that do not contain an extractable text layer cannot be indexed. Only documents with embedded digital text are processed.
+- **Time to first token (TTFT):** approximately 1–2 seconds from when the question is sent to when the first token appears.
+- **Full response time:** between 10 and 18 seconds for a response of around 250 tokens, depending on server load.
+- **Local model:** the system uses a local language model (Ollama). No data is transferred to the Internet or to third-party services.
+
+> For server hardware requirements, Ollama configuration, model management, and RAG subsystem maintenance procedures, refer to the **System Administrator Manual, §19 — RAG Subsystem**.

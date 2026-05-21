@@ -21,7 +21,8 @@
     "masters": "Datos Maestros",
     "certificates": "Certificados SSL",
     "audit": "Auditoría",
-    "settings": "Configuración"
+    "settings": "Configuración",
+    "assistant": "Asistente IA"
   },
   "actions": {
     "logout": "Cerrar sesión",
@@ -1119,5 +1120,53 @@
     "transfers_title": "6. Transferencias internacionales",
     "transfers_body": "Si se utiliza el inicio de sesión con Microsoft 365, parte del tratamiento de identidad se realiza por Microsoft Corporation (EE.UU.) bajo el Acuerdo de Procesamiento de Datos de Microsoft y las Cláusulas Contractuales Tipo.",
     "back": "← Volver al inicio"
+  },
+  "chat": {
+    "title": "Asistente IA",
+    "subtitle": "Consulta tus documentos en lenguaje natural",
+    "newSession": "Nueva consulta",
+    "placeholder": "Pregunta sobre tus documentos...",
+    "sendButton": "Enviar",
+    "thinking": "Pensando...",
+    "citations": "Citaciones",
+    "noSessions": "Aún no hay consultas. Empieza una nueva.",
+    "deleteSession": "Eliminar sesión",
+    "confirmDelete": "¿Eliminar esta consulta?",
+    "disabled": "El asistente IA está deshabilitado en este entorno",
+    "user": "Tú",
+    "assistant": "Asistente",
+    "error": {
+      "generic": "Error al procesar la pregunta",
+      "empty": "La pregunta no puede estar vacía",
+      "rateLimit": "Demasiadas consultas. Espera un minuto."
+    },
+    "modelLabel": "Modelo",
+    "latencyLabel": "Latencia"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilidad por rol",
+      "adminOnly": "Solo un administrador puede modificar la visibilidad",
+      "visible": "visible",
+      "hidden": "oculto",
+      "role": {
+        "admin": "Administrador (ADMIN)",
+        "auditor": "Auditor (AUDITOR)",
+        "viewer": "Lector (VIEWER)"
+      }
+    },
+    "indexing": {
+      "title": "Estado de indexación",
+      "pending": "En cola",
+      "indexing": "Indexando",
+      "ready": "Indexado",
+      "error": "Error de indexación",
+      "notIndexed": "Sin indexar",
+      "chunkCount": "Fragmentos",
+      "indexedAt": "Indexado el"
+    },
+    "reindex": "Re-indexar",
+    "reindexConfirm": "¿Volver a indexar este documento?",
+    "reindexQueued": "Documento puesto en cola para re-indexar"
   }
 }

@@ -30,6 +30,7 @@
 20. [Mapa de Dependencias](#20-mapa-de-dependencias)
 21. [Registro de Auditoría](#21-registro-de-auditoría)
 22. [Campos de Resiliencia NIS2 / GDPR](#22-campos-de-resiliencia-nis2--gdpr)
+23. [Asistente IA — búsqueda inteligente de documentos](#23-asistente-ia--búsqueda-inteligente-de-documentos)
 
 ---
 
@@ -543,6 +544,10 @@ Puedes filtrar la lista de documentos por:
 - **Subido por** — búsqueda por el email del usuario que subió el documento
 
 Los tres filtros son independientes entre sí y se pueden combinar libremente. Cuando algún filtro está activo, aparece el botón **"Limpiar filtros"**. Todas las columnas de la tabla son ordenables: haz clic en el encabezado para ordenar, y de nuevo para invertir el orden.
+
+### Visibilidad de documentos en el Asistente IA
+
+Cada documento dispone de tres conmutadores de visibilidad que controlan qué roles pueden consultarlo a través del Asistente IA. Consulta la sección [§23 — Asistente IA](#23-asistente-ia--búsqueda-inteligente-de-documentos) para una descripción completa de su funcionamiento.
 
 ---
 
@@ -1062,3 +1067,67 @@ Los campos RTO y RPO alimentan directamente el Plan de Recuperación ante Desast
 
 **GDPR (Reglamento General de Protección de Datos):**
 La clasificación de datos permite inventariar los tratamientos de datos personales, cumpliendo con el artículo 30 del RGPD. El flag PII facilita el mantenimiento del Registro de Actividades de Tratamiento.
+
+---
+
+## 23. Asistente IA — búsqueda inteligente de documentos
+
+### ¿Qué es y para qué sirve?
+
+El Asistente IA es un chat conversacional integrado en la plataforma que permite realizar preguntas en lenguaje natural sobre el contenido de los documentos almacenados — contratos, procedimientos, fichas técnicas, políticas, etc. — y obtener respuestas fundamentadas con citas a las fuentes originales. Todo el procesamiento se realiza en la infraestructura propia del servidor: no se envía ningún documento ni dato personal a servicios externos o a Internet.
+
+### Cómo acceder
+
+En el menú lateral, haz clic en la entrada **"Asistente IA"**. Esto abre la interfaz de chat en `/chat`.
+
+### Hacer una pregunta
+
+1. Haz clic en **"Nueva consulta"** para iniciar una sesión de conversación vacía.
+2. Escribe tu pregunta en el campo de texto (máximo 2 000 caracteres) y pulsa **Intro** o haz clic en **"Enviar"**.
+3. La respuesta aparece de forma progresiva: los tokens llegan uno a uno mientras el modelo genera la respuesta (streaming).
+4. Al final de la respuesta encontrarás citas numeradas (`[1]`, `[2]`…) que enlazan directamente a la página de detalle de los documentos fuente.
+5. Cada sesión de conversación queda guardada automáticamente. En el panel izquierdo aparecen todas tus sesiones anteriores; haz clic en cualquiera de ellas para retomarla.
+
+### Reglas del asistente
+
+- El asistente responde **únicamente** a partir de los documentos a los que tu rol tiene acceso. No utiliza conocimiento externo ni Internet.
+- Si no encuentra información suficiente en los documentos disponibles, lo indica explícitamente en lugar de inventar una respuesta.
+- Las citas `[1]`, `[2]`… corresponden a los fragmentos de texto recuperados que se muestran debajo de la respuesta.
+- El asistente ignora instrucciones embebidas en el contenido de los documentos para proteger contra ataques de inyección de prompts.
+
+### Visibilidad de documentos por rol
+
+Cada documento dispone de tres conmutadores de visibilidad que solo el rol **ADMIN** puede editar, accesibles desde la vista de detalle del documento:
+
+| Conmutador | Qué controla |
+|------------|-------------|
+| **Visible para ADMIN** | Los usuarios con rol ADMIN pueden encontrar este documento en el Asistente IA |
+| **Visible para AUDITOR** | Los usuarios con rol AUDITOR pueden encontrar este documento en el Asistente IA |
+| **Visible para VIEWER** | Los usuarios con rol VIEWER pueden encontrar este documento en el Asistente IA |
+
+Los tres conmutadores están activos por defecto para todos los documentos existentes en el momento de la actualización. El asistente aplica estos flags en la recuperación: un usuario con rol VIEWER nunca recibirá fragmentos de un documento que tenga el conmutador "Visible para VIEWER" desactivado, aunque el documento sea visible en el repositorio documental para descarga directa.
+
+### Estado de indexación
+
+Para que el Asistente IA pueda responder preguntas sobre un documento, su contenido debe estar indexado en la base de conocimiento local. Cada documento muestra un indicador de estado en su página de detalle:
+
+| Estado | Significado |
+|--------|-------------|
+| **En cola** | El documento está en espera de procesamiento |
+| **Indexando** | El documento se está procesando en este momento |
+| **Indexado** | El contenido está disponible para el Asistente IA |
+| **Error** | Ocurrió un problema durante la indexación (ver notas del documento) |
+| **Sin indexar** | El documento todavía no ha sido enviado al proceso de indexación |
+
+Los documentos se indexan automáticamente en segundo plano al ser subidos. Un usuario con rol **ADMIN** puede forzar el reproceso de cualquier documento haciendo clic en **"Re-indexar"** en la vista de detalle.
+
+Para volver a poner en cola todos los documentos en bloque (por ejemplo, tras una actualización del modelo), un administrador puede usar la operación de reindexación masiva disponible en la sección de administración (`POST /api/admin/rag/backfill`). Consulta el Manual del Administrador §19 para más detalles.
+
+### Limitaciones
+
+- **Sin OCR:** los archivos PDF escaneados que no contengan una capa de texto extraíble no se indexan. Solo se procesan los documentos con texto digital incorporado.
+- **Tiempo de primera respuesta (TTFT):** aproximadamente 1–2 segundos desde que se envía la pregunta hasta que aparece el primer token.
+- **Duración de la respuesta completa:** entre 10 y 18 segundos para una respuesta de unos 250 tokens, dependiendo de la carga del servidor.
+- **Modelo local:** el sistema utiliza un modelo de lenguaje local (Ollama). No se realiza ninguna transferencia de datos a Internet ni a servicios de terceros.
+
+> Para los requisitos de hardware del servidor, la configuración de Ollama, la gestión del modelo y los procedimientos de mantenimiento del subsistema RAG, consulta el **Manual del Administrador de Sistemas, §19 — Subsistema RAG**.

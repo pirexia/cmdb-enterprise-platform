@@ -13,6 +13,14 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface IndexStatus {
+  status: 'NOT_INDEXED' | 'PENDING' | 'INDEXING' | 'READY' | 'ERROR';
+  chunkCount: number;
+  indexedAt: string | null;
+  errorMessage: string | null;
+  updatedAt: string | null;
+}
+
 interface DocVersion {
   id: string;
   versionNumber: number;
@@ -64,6 +72,9 @@ interface DocumentDetail {
   rootId: string | null;
   isLatest: boolean;
   fileName: string;
+  readAdmin: boolean;
+  readAuditor: boolean;
+  readViewer: boolean;
   versions: DocVersion[];
   relations: DocRelation[];
   cis: DocCI[];
@@ -741,9 +752,15 @@ function EditMetadataModal({
   onSuccess: () => void;
 }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [title, setTitle] = useState(doc.title);
   const [description, setDescription] = useState(doc.description ?? "");
   const [typeId, setTypeId] = useState(doc.documentTypeId);
+  const [acl, setAcl] = useState({
+    readAdmin: doc.readAdmin ?? true,
+    readAuditor: doc.readAuditor ?? true,
+    readViewer: doc.readViewer ?? true,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -752,13 +769,23 @@ function EditMetadataModal({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/documents/${doc.id}`, {
+      const metaRes = await apiFetch(`/api/documents/${doc.id}`, {
         method: "PATCH",
         body: JSON.stringify({ title: title.trim(), description: description.trim() || null, documentTypeId: typeId }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(d.error ?? `Error ${res.status}`);
+      if (!metaRes.ok) {
+        const d = await metaRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? `Error ${metaRes.status}`);
+      }
+      if (user?.role === 'ADMIN') {
+        const aclRes = await apiFetch(`/api/documents/${doc.id}/acl`, {
+          method: "PATCH",
+          body: JSON.stringify({ readAdmin: acl.readAdmin, readAuditor: acl.readAuditor, readViewer: acl.readViewer }),
+        });
+        if (!aclRes.ok) {
+          const d = await aclRes.json().catch(() => ({})) as { error?: string };
+          throw new Error(d.error ?? `Error ${aclRes.status}`);
+        }
       }
       onSuccess();
     } catch (e) {
@@ -812,6 +839,36 @@ function EditMetadataModal({
               ))}
             </select>
           </div>
+          {/* Visibility ACL — only editable by ADMIN */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('document.acl.title')}
+            </label>
+            {(['ADMIN', 'AUDITOR', 'VIEWER'] as const).map((role) => {
+              const key = `read${role.charAt(0) + role.slice(1).toLowerCase()}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+              return (
+                <div key={role} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {t(`document.acl.role.${role.toLowerCase()}`)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={user?.role !== 'ADMIN'}
+                    onClick={() => setAcl(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                      ${acl[key] ? 'bg-[var(--accent)]' : 'bg-gray-300 dark:bg-gray-600'}
+                      ${user?.role !== 'ADMIN' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform
+                      ${acl[key] ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              );
+            })}
+            {user?.role !== 'ADMIN' && (
+              <p className="text-xs text-gray-400">{t('document.acl.adminOnly')}</p>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
@@ -851,6 +908,12 @@ export default function DocumentDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [showAddCIs, setShowAddCIs] = useState(false);
   const [showAddContracts, setShowAddContracts] = useState(false);
+
+  // RAG index status
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [reindexBanner, setReindexBanner] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Notes state
   const [noteText, setNoteText] = useState("");
@@ -906,6 +969,72 @@ export default function DocumentDetailPage() {
   }, [docId, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const fetchIndexStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/index-status`);
+      if (res.ok) {
+        const data = await res.json() as IndexStatus;
+        setIndexStatus(data);
+        return data;
+      }
+    } catch {
+      // silently ignore — index status is non-critical
+    }
+    return null;
+  }, [docId]);
+
+  // Fetch index status once on mount
+  useEffect(() => { void fetchIndexStatus(); }, [fetchIndexStatus]);
+
+  // Auto-poll while status is PENDING or INDEXING
+  useEffect(() => {
+    const isPending = indexStatus?.status === 'PENDING' || indexStatus?.status === 'INDEXING';
+    if (isPending) {
+      if (!pollIntervalRef.current) {
+        pollIntervalRef.current = setInterval(() => {
+          void fetchIndexStatus().then((s) => {
+            if (s && s.status !== 'PENDING' && s.status !== 'INDEXING') {
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+            }
+          });
+        }, 5000);
+      }
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [indexStatus?.status, fetchIndexStatus]);
+
+  const handleReindex = async () => {
+    if (!confirm(t("document.reindexConfirm"))) return;
+    setIsReindexing(true);
+    setReindexBanner(null);
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/reindex`, { method: 'POST' });
+      if (res.ok) {
+        setReindexBanner(t("document.reindexQueued"));
+        void fetchIndexStatus();
+      } else {
+        setReindexBanner(t("common.unknown_error"));
+      }
+    } catch {
+      setReindexBanner(t("common.unknown_error"));
+    } finally {
+      setIsReindexing(false);
+    }
+  };
 
   const handleDownload = async (versionId?: string) => {
     const id = versionId ?? docId;
@@ -1053,7 +1182,7 @@ export default function DocumentDetailPage() {
               <FolderOpen className="h-5 w-5 text-[var(--accent)]" />
               <div>
                 <h1 className="text-lg font-bold text-slate-900">{doc.title}</h1>
-                <div className="flex items-center gap-2 mt-0.5">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                   <span className="inline-flex items-center rounded-full bg-[var(--accent)]/5 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                     {doc.documentTypeName}
                   </span>
@@ -1063,6 +1192,52 @@ export default function DocumentDetailPage() {
                   <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
                     latest
                   </span>
+                  {(['admin', 'auditor', 'viewer'] as const).map((r) => {
+                    const key = `read${r.charAt(0).toUpperCase() + r.slice(1)}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+                    const visible = doc[key] ?? true;
+                    return (
+                      <span key={r} className={`text-xs px-2 py-0.5 rounded-full font-medium
+                        ${visible ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
+                        {r.toUpperCase()}: {visible ? t('document.acl.visible') : t('document.acl.hidden')}
+                      </span>
+                    );
+                  })}
+                  {/* RAG indexing status badge */}
+                  {indexStatus && (() => {
+                    const statusStyleMap: Record<IndexStatus['status'], string> = {
+                      READY:       'bg-green-500/15 text-green-400 border border-green-500/30',
+                      INDEXING:    'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+                      PENDING:     'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
+                      ERROR:       'bg-red-500/15 text-red-400 border border-red-500/30',
+                      NOT_INDEXED: 'bg-slate-500/15 text-slate-400 border border-slate-500/30',
+                    };
+                    const statusLabelMap: Record<IndexStatus['status'], string> = {
+                      READY:       t('document.indexing.ready'),
+                      INDEXING:    t('document.indexing.indexing'),
+                      PENDING:     t('document.indexing.pending'),
+                      ERROR:       t('document.indexing.error'),
+                      NOT_INDEXED: t('document.indexing.notIndexed'),
+                    };
+                    const pillClass = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusStyleMap[indexStatus.status]}`;
+                    const label = `${t('document.indexing.title')}: ${statusLabelMap[indexStatus.status]}`;
+                    const suffix = indexStatus.status === 'READY' && indexStatus.chunkCount > 0
+                      ? ` · ${indexStatus.chunkCount} ${t('document.indexing.chunkCount')}`
+                      : indexStatus.indexedAt
+                        ? ` · ${t('document.indexing.indexedAt')} ${formatDateTime(indexStatus.indexedAt)}`
+                        : '';
+                    return (
+                      <span
+                        className={pillClass}
+                        title={indexStatus.status === 'ERROR' && indexStatus.errorMessage ? indexStatus.errorMessage : undefined}
+                      >
+                        {indexStatus.status === 'PENDING' || indexStatus.status === 'INDEXING'
+                          ? <RefreshCw className="h-3 w-3 animate-spin" />
+                          : null}
+                        {label}{suffix}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1076,6 +1251,14 @@ export default function DocumentDetailPage() {
               </button>
               {isAdmin && (
                 <>
+                  <button
+                    onClick={handleReindex}
+                    disabled={isReindexing}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isReindexing ? 'animate-spin' : ''}`} />
+                    {t("document.reindex")}
+                  </button>
                   <button
                     onClick={() => setShowAddVersion(true)}
                     className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
@@ -1102,6 +1285,18 @@ export default function DocumentDetailPage() {
             </div>
           </div>
         </header>
+
+        {/* Reindex banner */}
+        {reindexBanner && (
+          <div className="px-8 pt-4">
+            <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
+              <span>{reindexBanner}</span>
+              <button onClick={() => setReindexBanner(null)} className="ml-4 rounded p-0.5 hover:bg-blue-100 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Body */}
         <div className="px-8 py-6 space-y-6">

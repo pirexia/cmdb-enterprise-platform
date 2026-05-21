@@ -97,12 +97,14 @@ function UploadModal({
   onClose: () => void; onSuccess: () => void;
 }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [typeId, setTypeId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [selectedCIs, setSelectedCIs] = useState<string[]>([]);
   const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
+  const [acl, setAcl] = useState({ readAdmin: true, readAuditor: true, readViewer: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +126,9 @@ function UploadModal({
       formData.append("file", file);
       if (selectedCIs.length) formData.append("ciIds", JSON.stringify(selectedCIs));
       if (selectedContracts.length) formData.append("contractIds", JSON.stringify(selectedContracts));
+      formData.append("readAdmin", String(acl.readAdmin));
+      formData.append("readAuditor", String(acl.readAuditor));
+      formData.append("readViewer", String(acl.readViewer));
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
       const res = await fetch(`${apiBase}/api/documents`, {
         method: "POST",
@@ -209,6 +214,36 @@ function UploadModal({
               </div>
             </div>
           )}
+          {/* Visibility ACL — only editable by ADMIN */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('document.acl.title')}
+            </label>
+            {(['ADMIN', 'AUDITOR', 'VIEWER'] as const).map((role) => {
+              const key = `read${role.charAt(0) + role.slice(1).toLowerCase()}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+              return (
+                <div key={role} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {t(`document.acl.role.${role.toLowerCase()}`)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={user?.role !== 'ADMIN'}
+                    onClick={() => setAcl(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                      ${acl[key] ? 'bg-[var(--accent)]' : 'bg-gray-300 dark:bg-gray-600'}
+                      ${user?.role !== 'ADMIN' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform
+                      ${acl[key] ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              );
+            })}
+            {user?.role !== 'ADMIN' && (
+              <p className="text-xs text-gray-400">{t('document.acl.adminOnly')}</p>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>

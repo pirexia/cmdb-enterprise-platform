@@ -24,6 +24,11 @@
 12. [Security and Hardening](#12-security-and-hardening)
 13. [Periodic Maintenance Tasks](#13-periodic-maintenance-tasks)
 14. [OpenShift / Kubernetes Deployment](#14-openshift--kubernetes-deployment)
+15. [Microsoft 365 SSO Configuration (Azure AD)](#15-microsoft-365-sso-configuration-azure-ad--entra-id)
+16. [User Erasure (GDPR Art. 17)](#16-user-erasure-gdpr-art-17)
+17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
+18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
+19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
 
 ---
 
@@ -1818,3 +1823,207 @@ The platform includes a privacy notice page at `/privacy`. Fields marked `[REPLA
 - **Contact email for data subject rights requests**
 
 **Auto-provisioned users (SSO/LDAP):** The platform automatically creates accounts for Microsoft Azure AD and LDAP users without direct interaction. This triggers the Art. 14 GDPR obligation (indirect collection notice). The organisation must inform these users via internal communication (HR, corporate email) as the application does not send welcome emails.
+
+---
+
+## 19. RAG Subsystem — Operation and Maintenance
+
+### 19.1 RAG subsystem environment variables
+
+All new variables added to `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_ENABLED` | `true` | Enables or disables the entire RAG subsystem |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | Internal URL of the Ollama service (do not expose externally) |
+| `RAG_EMBED_MODEL` | `bge-m3` | Embeddings model (multilingual, 1024 dimensions) |
+| `RAG_CHAT_MODEL` | `qwen2.5:7b-instruct-q4_K_M` | LLM used for answer generation |
+| `RAG_CHAT_TEMPERATURE` | `0.1` | LLM temperature (lower = more deterministic and faithful to the document) |
+| `RAG_TOP_K` | `6` | Number of document chunks retrieved per query |
+| `RAG_RATE_LIMIT_PER_MIN` | `10` | Chat requests per user per minute |
+| `OLLAMA_MODELS_PATH` | `/opt/cmdb-data/ollama-models` | Path where downloaded models are stored |
+
+### 19.2 Initial model download
+
+```bash
+# Verify the ollama service is running
+podman ps | grep ollama
+
+# Download models (first time; approximately 7 GB total)
+podman exec cmdb-ollama ollama pull bge-m3
+podman exec cmdb-ollama ollama pull qwen2.5:7b-instruct-q4_K_M
+
+# List available models
+podman exec cmdb-ollama ollama list
+```
+
+Note: models are stored in the `ollama-models` volume (bind-mounted at `/opt/cmdb-data/ollama-models`). They persist across container restarts.
+
+### 19.3 Service verification
+
+```bash
+# Ollama container status
+podman ps --filter name=cmdb-ollama
+
+# Real-time resource usage
+podman stats cmdb-ollama --no-stream
+
+# Service logs
+podman logs --tail 50 cmdb-ollama
+
+# Model currently loaded in memory
+podman exec cmdb-ollama ollama ps
+
+# Connectivity test backend → Ollama
+podman exec cmdb-backend curl -s http://ollama:11434/api/version
+```
+
+### 19.4 Document corpus indexing
+
+#### First-time indexing (backfill)
+After the first deployment, index all existing documents:
+
+```bash
+# Obtain an ADMIN token
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@cmdb.local","password":"<ADMIN_PASSWORD>"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# Start backfill (asynchronous process; may take several minutes depending on corpus size)
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+
+# Monitor progress in the database
+podman exec cmdb-postgres psql -U admin -d cmdb_db \
+  -c "SELECT status, COUNT(*) FROM rag_document_index GROUP BY status;"
+```
+
+#### Re-index a specific document
+```bash
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/documents/<DOCUMENT_ID>/reindex
+```
+
+#### Index status
+```bash
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    status,
+    COUNT(*) as count,
+    MIN(updated_at) as oldest,
+    MAX(updated_at) as newest
+  FROM rag_document_index
+  GROUP BY status
+  ORDER BY status;"
+```
+
+### 19.5 Backup and restore
+
+#### Backup (include RAG tables in the standard dump)
+```bash
+# Full backup including pgvector and RAG tables
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  > /opt/cmdb-data/backups/backup_$(date +%F_%H%M).sql
+
+# RAG-only backup (lightweight, useful for model migrations)
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  --table=rag_document_index \
+  --table=rag_chunks \
+  --table=rag_chat_sessions \
+  --table=rag_chat_messages \
+  > /opt/cmdb-data/backups/rag_only_$(date +%F_%H%M).sql
+```
+
+#### Restoring RAG tables
+```bash
+podman exec -i cmdb-postgres psql -U admin -d cmdb_db \
+  < /opt/cmdb-data/backups/rag_only_<DATE>.sql
+```
+
+#### Ollama model backup
+Models are stored at `/opt/cmdb-data/ollama-models`. They can be archived as follows:
+```bash
+tar -czf /opt/cmdb-data/backups/ollama_models_$(date +%F).tar.gz \
+  -C /opt/cmdb-data ollama-models
+```
+Alternatively, re-download them with `ollama pull` (simpler when internet access is available).
+
+### 19.6 Model updates
+
+To change the LLM (for example, to a newer version):
+```bash
+# 1. Download the new model
+podman exec cmdb-ollama ollama pull qwen2.5:14b-instruct-q4_K_M
+
+# 2. Update .env
+sed -i 's/RAG_CHAT_MODEL=.*/RAG_CHAT_MODEL=qwen2.5:14b-instruct-q4_K_M/' .env
+
+# 3. Restart the backend (reloads environment variables)
+podman-compose -f docker-compose.prod.yml restart backend
+
+# 4. Verify
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"test"}' \
+  https://localhost/api/chat/ask | python3 -m json.tool
+```
+
+Changing the embeddings model requires **re-indexing the entire corpus** (vectors are incompatible across models):
+```bash
+sed -i 's/RAG_EMBED_MODEL=.*/RAG_EMBED_MODEL=nomic-embed-text/' .env
+podman-compose -f docker-compose.prod.yml restart backend
+# Start a full backfill
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+```
+
+### 19.7 Monitoring and metrics
+
+```bash
+# RAM/CPU usage for all containers
+podman stats --no-stream
+
+# Disk space used by models
+du -sh /opt/cmdb-data/ollama-models/
+
+# Disk space used by vectors in PostgreSQL
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size
+  FROM pg_tables
+  WHERE tablename LIKE 'rag_%'
+  ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
+
+# Most recent AI assistant queries (audit log)
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT user_email, created_at
+  FROM audit_logs
+  WHERE action = 'ASK_RAG'
+  ORDER BY created_at DESC
+  LIMIT 20;"
+```
+
+### 19.8 Disabling and re-enabling the RAG subsystem
+
+To disable the subsystem temporarily without deleting data:
+```bash
+# In .env
+RAG_ENABLED=false
+# Restart the backend
+podman-compose -f docker-compose.prod.yml restart backend
+```
+When RAG is disabled, the `/api/chat/*` endpoints return HTTP 503. The rest of the application continues to operate normally.
+
+### 19.9 Troubleshooting
+
+| Symptom | Diagnosis | Resolution |
+|---|---|---|
+| `/api/chat/ask` returns 503 | `RAG_ENABLED=false` or Ollama is down | Check `.env` and `podman ps` |
+| Very slow responses (> 60 s) | Model not loaded in RAM / AMX inactive | Run `ollama ps`; verify `grep amx_tile /proc/cpuinfo` |
+| `rag_document_index` rows in ERROR status | Parsing failure in the document | `podman logs cmdb-backend \| grep INDEX_DOC` |
+| Incorrect responses / hallucinations | High temperature or stale index | Verify `RAG_CHAT_TEMPERATURE=0.1`; trigger a reindex |
+| "no space left on device" | Logical volume full | `df -h /var/lib/containers /opt/cmdb-data` |
+| Slow embeddings during indexing | bge-m3 model not loaded | `ollama pull bge-m3`; restart backend |

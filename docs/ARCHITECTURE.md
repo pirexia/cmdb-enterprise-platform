@@ -19,6 +19,7 @@
 9. [Seguridad](#9-seguridad)
 10. [Decisiones de Diseño](#10-decisiones-de-diseño)
 11. [Capacity Planning y Dimensionamiento de Hardware](#11-capacity-planning-y-dimensionamiento-de-hardware)
+12. [Subsistema RAG — Asistente IA](#12-subsistema-rag--asistente-ia)
 
 ---
 
@@ -779,3 +780,147 @@ df -h /home
 ---
 
 *Para consultar la documentación de despliegue completa, revisa [`DEPLOY.md - Sección 1.3`](../DEPLOY.md#13-verificar-dimensionamiento-de-almacenamiento-lvm).*
+
+---
+
+## 12. Subsistema RAG — Asistente IA
+
+### 12.1 Visión general
+
+El asistente inteligente de CMDB utiliza RAG (Retrieval-Augmented Generation) para responder preguntas en lenguaje natural citando documentos del corpus almacenado en la plataforma. El usuario formula una pregunta; el sistema recupera los fragmentos de texto más relevantes de los documentos a los que tiene acceso según su rol, los incluye como contexto en el prompt y obtiene una respuesta del modelo de lenguaje. Todo el procesamiento de IA es local: no se envía ningún dato a servicios externos de IA en la nube.
+
+### 12.2 Componentes añadidos
+
+| Componente | Tecnología | Versión | Rol |
+|------------|-----------|---------|-----|
+| LLM local | Ollama | latest | Embeddings (bge-m3) y chat (qwen2.5:7b-instruct) |
+| BD vectorial | pgvector | 0.7+ | Vector store dentro del PostgreSQL existente |
+| Parsing docs | pdf-parse, mammoth, exceljs, officeparser | varias | Extracción de texto de PDF/DOCX/XLSX/PPTX/ODT |
+| Chat API | Express SSE | — | Streaming de respuestas via text/event-stream |
+
+### 12.3 Flujo de datos (Ingesta)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant API as POST /api/documents
+    participant BE as Backend
+    participant IDX as rag_document_index
+    participant CRON as Cron 30s
+    participant P as docParser
+    participant C as Chunker
+    participant RS as ragService.embed()
+    participant OL as Ollama (bge-m3)
+    participant DB as rag_chunks
+
+    U->>API: Sube documento
+    API->>BE: multipart/form-data
+    BE->>IDX: INSERT estado=PENDING
+    CRON->>IDX: Consulta documentos PENDING
+    IDX-->>CRON: Documento pendiente
+    CRON->>P: extrae texto (por tipo MIME)
+    P->>C: texto plano
+    C->>RS: chunks semánticos 800 tok
+    RS->>OL: texto del chunk
+    OL-->>RS: vector float[1024]
+    RS->>DB: INSERT rag_chunks (embedding + metadata)
+    DB-->>IDX: estado=READY
+```
+
+### 12.4 Flujo de datos (Query)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant API as POST /api/chat/ask
+    participant BE as Backend
+    participant ACL as docVisibilityFilter(role)
+    participant PG as kNN HNSW pgvector
+    participant RE as Reranking MMR
+    participant PR as Prompt Builder
+    participant OL as Ollama (qwen2.5:7b)
+    participant FE as Frontend
+    participant AL as AuditLog
+
+    U->>API: Pregunta (JWT + rol)
+    API->>BE: autenticación y autorización
+    BE->>ACL: obtiene IDs accesibles por rol
+    ACL-->>BE: lista de document_ids
+    BE->>PG: kNN HNSW top-30 (filtrado por IDs)
+    PG-->>BE: 30 chunks candidatos
+    BE->>RE: reranking MMR top-6
+    RE-->>BE: 6 chunks seleccionados
+    BE->>PR: system prompt fijo + chunks + pregunta
+    PR->>OL: prompt completo
+    OL-->>FE: tokens SSE (stream)
+    FE-->>U: respuesta renderizada + citaciones
+    BE->>AL: INSERT AuditLog (ASK_RAG, hash query)
+```
+
+### 12.5 Topología de contenedores (actualizada)
+
+Se añade el servicio `cmdb-ollama` a la red interna `cmdb-net`. Este contenedor nunca se expone al host. El backend accede a Ollama exclusivamente en `http://ollama:11434`. Nginx sigue siendo la única puerta de entrada para el tráfico externo; Ollama es completamente opaco desde el exterior.
+
+```
+Browser ──HTTPS:443──▶ nginx ──/──▶ frontend (Next.js :3001)
+                              └──/api/──▶ backend (Express :3000)
+                                              ├──▶ postgres+pgvector (:5432)
+                                              └──▶ ollama (:11434)  [red interna]
+```
+
+### 12.6 Modelo de datos RAG (nuevas tablas)
+
+| Tabla | Descripción |
+|-------|-------------|
+| `rag_document_index` | Estado de indexación por documento/versión: `PENDING`, `INDEXING`, `READY`, `ERROR`. Una fila por cada combinación documento+versión. |
+| `rag_chunks` | Fragmentos de texto con embedding `vector(1024)`, campos `section`, `page`, y `metadata` (jsonb). Índice HNSW sobre `embedding` con `vector_cosine_ops` para búsqueda aproximada eficiente. |
+| `rag_chat_sessions` | Sesiones de chat por usuario: id, user_id, título, timestamps de creación y última actividad. |
+| `rag_chat_messages` | Mensajes por sesión: pregunta del usuario, respuesta del modelo, `citations` (jsonb con los chunk_ids y fragmentos usados como contexto). |
+
+**Índice clave:**
+
+```sql
+CREATE INDEX rag_chunks_embedding_hnsw
+    ON rag_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+```
+
+### 12.7 Control de acceso (ACL documentos)
+
+Los campos `read_admin`, `read_auditor` y `read_viewer` (Boolean, por defecto `true`) en la tabla `documents` determinan si un fragmento procedente de ese documento es recuperable para cada rol. El filtro se aplica **antes** del kNN mediante una subconsulta SQL que restringe los `document_id` elegibles, garantizando que ningún chunk de un documento restringido se incluya jamás en el contexto del modelo. El filtrado post-recuperación no se utiliza para evitar fugas de información.
+
+```sql
+-- Subconsulta de visibilidad aplicada ANTES del kNN
+SELECT id FROM documents
+WHERE
+  (role = 'ADMIN'   AND read_admin   = true) OR
+  (role = 'AUDITOR' AND read_auditor = true) OR
+  (role = 'VIEWER'  AND read_viewer  = true)
+```
+
+### 12.8 Seguridad y cumplimiento
+
+| Área | Medida |
+|------|--------|
+| SSRF | Ollama solo es accesible dentro de la red interna Docker; el backend nunca acepta URLs proporcionadas por el cliente para realizar llamadas salientes. |
+| Prompt injection | El system prompt es fijo y no sobrescribible por el usuario. Se aplica una denylist de patrones de control (p. ej. secuencias de escape de roles) antes de enviar el prompt al modelo. |
+| GDPR | El `AuditLog` registra un hash SHA-256 de la query, nunca el texto literal. Las sesiones de chat son purgables por el propio usuario. No se almacena PII en `rag_chunks`. |
+| ISO 27001 A.8.15 | Se inserta un registro en `AuditLog` por cada operación `ASK_RAG` e `INDEX_DOC`. |
+| ISO 22301 | Ollama es stateless entre llamadas. Un fallo del servicio Ollama degrada el asistente a "IA no disponible" sin afectar al resto de la aplicación (degradación controlada). |
+
+### 12.9 Capacity planning (host CPU-only con AMX)
+
+El modelo `qwen2.5:7b-instruct` ejecutado en CPU con extensiones Intel AMX (Sapphire Rapids o posterior) ofrece el siguiente perfil de rendimiento aproximado:
+
+| Usuarios concurrentes | RAM Ollama en uso | Velocidad (tok/s por llamada) | Tiempo de respuesta medio |
+|-----------------------|-------------------|-------------------------------|---------------------------|
+| 1 | 6 GB | 12–18 tok/s | 10–18 s |
+| 5 (cola FIFO) | 6 GB | 12–18 tok/s por llamada | 50–90 s |
+| 10 (cola FIFO) | 6 GB | 12–18 tok/s por llamada | > 90 s (degradación visible) |
+
+El límite práctico sin GPU es de 2–3 peticiones simultáneas con latencia aceptable. A partir de 5 usuarios concurrentes se forma cola FIFO; el tiempo total escala linealmente.
+
+> **Nota de escaldo:** Cambiar al modelo `qwen2.5:3b-instruct` aproximadamente duplica la concurrencia efectiva y reduce la latencia media a la mitad, a costa de menor precisión en preguntas técnicas complejas.
+
+> **Nota de arquitectura:** Si `backend/src/index.ts` supera ~5.500 líneas tras añadir el subsistema RAG, planificar la migración a `backend/src/modules/` como siguiente refactor de arquitectura.

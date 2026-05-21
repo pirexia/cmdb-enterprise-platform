@@ -21,7 +21,8 @@
     "masters": "Dati anagrafici",
     "certificates": "Certificati SSL",
     "audit": "Audit",
-    "settings": "Impostazioni"
+    "settings": "Impostazioni",
+    "assistant": "Assistente IA"
   },
   "actions": {
     "logout": "Esci",
@@ -1000,5 +1001,53 @@
     "transfers_title": "6. Trasferimenti internazionali",
     "transfers_body": "Se viene utilizzato il login Microsoft 365, parte del trattamento dell'identità viene effettuato da Microsoft Corporation (USA) nell'ambito dell'Accordo sul trattamento dei dati di Microsoft e delle Clausole contrattuali standard.",
     "back": "← Torna al login"
+  },
+  "chat": {
+    "title": "Assistente IA",
+    "subtitle": "Consulta i tuoi documenti in linguaggio naturale",
+    "newSession": "Nuova richiesta",
+    "placeholder": "Chiedi qualcosa sui tuoi documenti...",
+    "sendButton": "Invia",
+    "thinking": "Sto pensando...",
+    "citations": "Citazioni",
+    "noSessions": "Nessuna richiesta. Iniziane una nuova.",
+    "deleteSession": "Elimina sessione",
+    "confirmDelete": "Eliminare questa richiesta?",
+    "disabled": "L'assistente IA è disabilitato in questo ambiente",
+    "user": "Tu",
+    "assistant": "Assistente",
+    "error": {
+      "generic": "Errore nell'elaborazione della domanda",
+      "empty": "La domanda non può essere vuota",
+      "rateLimit": "Troppe richieste. Attendi un minuto."
+    },
+    "modelLabel": "Modello",
+    "latencyLabel": "Latenza"
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilità per ruolo",
+      "adminOnly": "Solo un amministratore può modificare la visibilità",
+      "visible": "visibile",
+      "hidden": "nascosto",
+      "role": {
+        "admin": "Amministratore (ADMIN)",
+        "auditor": "Revisore (AUDITOR)",
+        "viewer": "Lettore (VIEWER)"
+      }
+    },
+    "indexing": {
+      "title": "Stato di indicizzazione",
+      "pending": "In coda",
+      "indexing": "Indicizzazione",
+      "ready": "Indicizzato",
+      "error": "Errore di indicizzazione",
+      "notIndexed": "Non indicizzato",
+      "chunkCount": "Frammenti",
+      "indexedAt": "Indicizzato il"
+    },
+    "reindex": "Reindicizza",
+    "reindexConfirm": "Reindicizzare questo documento?",
+    "reindexQueued": "Documento accodato per la reindicizzazione"
   }
 }

@@ -24,6 +24,12 @@
 12. [Seguridad y Hardening](#12-seguridad-y-hardening)
 13. [Tareas de Mantenimiento Periódico](#13-tareas-de-mantenimiento-periódico)
 14. [Despliegue en OpenShift / Kubernetes](#14-despliegue-en-openshift--kubernetes)
+15. [Configuración de SSO con Microsoft 365 (Azure AD)](#15-configuración-de-sso-con-microsoft-365-azure-ad)
+16. [Borrado de Usuarios (GDPR Art. 17)](#16-borrado-de-usuarios-gdpr-art-17)
+17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
+18. [Aviso de Privacidad y Obligaciones GDPR Art. 13/14](#18-aviso-de-privacidad-y-obligaciones-gdpr-art-1314)
+19. [Subsistema RAG — Operación y mantenimiento](#19-subsistema-rag--operación-y-mantenimiento)
+20. [Backups — consideraciones de cifrado para RAG](#20-backups--consideraciones-de-cifrado-para-rag)
 
 ---
 
@@ -209,6 +215,8 @@ LDAP_BASE_DN=
 LDAP_BIND_DN=
 LDAP_BIND_PASSWORD=
 ```
+
+> **Nota (v2.2.0+):** El tema visual (colores de sidebar y acento, logo, nombre de empresa) se configura desde el panel de administración en **Ajustes → Apariencia**. La variable `NEXT_PUBLIC_COMPANY_NAME` sigue siendo el valor inicial usado durante la primera instalación, pero todos los cambios posteriores se realizan desde la interfaz sin necesidad de rebuild.
 
 ### Puertos de nginx (variables opcionales)
 
@@ -757,6 +765,28 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
+> **v2.3.0 — RAG sobre entidades estructuradas (CIs, contratos, licencias, vulnerabilidades):**
+> - **Indexación de entidades:** El subsistema RAG ya no se limita a documentos. Los CIs, contratos (raíz, los anexos se serializan dentro), licencias (mismo patrón raíz/anexos) y vulnerabilidades (identificadas por UUID v5 sintético sobre `(ciId, cve)`) se indexan automáticamente. La activación es transparente cuando `RAG_ENABLED=true`.
+> - **Chips de filtro en el chat:** Cinco chips (Documentos, CIs, Contratos, Licencias, Vulnerabilidades) permiten acotar las fuentes consultadas. Persistencia por sesión del navegador. Selección vacía = todas las fuentes.
+> - **Citaciones enlazables:** Cada cita devuelta por el asistente lleva ahora `entityType` + `entityId`. Hacer clic en una cita abre el ítem citado en su listado (`/inventory?focus=<id>` abre el modal del CI; `/contracts?focus=<id>` despliega la fila; igual con licencias; `/vulnerabilities?cve=<CVE-ID>` pre-filtra la lista).
+> - **Worker priorizado:** El cron de 30 s usa un presupuesto de 3 huecos por tick con prioridad vulnerabilidad > contrato/licencia > CI. Preserva la latencia de subida de documentos y prioriza la señal de seguridad.
+> - **Backfill multi-tipo:** `POST /api/admin/rag/backfill` ahora acepta `{ "entityTypes": [...] }`. Body vacío indexa todos los tipos.
+> - **Auditoría agregada:** Nueva acción `INDEX_BATCH` (un evento por tick del worker, no por entidad) y `ASK_RAG_VULN` (trazabilidad fina para queries que incluyen vulnerabilidades). `audit_logs.details` formalizada como `jsonb` con índice `(action, created_at DESC)`.
+> - **Mitigaciones anti-injection:** Bloques `<ENTITY_DATA>` en el prompt + REGLAS 5–7 reforzadas + `stripInjectionTokens()` en el serializador. `scrubPII()` (email, DNI/NIE, teléfono) sobre todo el texto libre antes de embedding. Allowlist estricto en serializador de vulnerabilidades (CVE-ID + severity + CVSS band + status + importedAt — sin description, sin source).
+> - **Compliance:** DPIA v1.1 con 8 entradas STRIDE adicionales (ENT-01..08) y checklist de sign-off DPO+CISO (10 ítems). Mandato de cifrado de backups para `rag_chunks` (NIS2 Art.21.2.h / ISO 22301).
+> - **Operaciones:** `scripts/update.sh --reindex` ahora también encola CIs / contratos / licencias para reindexación. Nuevo runbook `docs/RAG_V2_DEPLOY_RUNBOOK.md` con smoke checklist copy-paste, rollback, sign-off worksheet y monitoring post-deploy.
+
+> **v2.2.3 — Rediseño UI Corporate Dark, theming dinámico y navegación responsive:**
+> - **Theming dinámico en base de datos:** Nueva tabla `app_settings` almacena color de sidebar, color de acento, nombre de empresa y logo. Sin rebuild para cambiar la apariencia.
+> - **Panel de Apariencia (Admin):** Nueva pestaña "Apariencia" en Ajustes con selector de color en vivo, subida de logo (PNG/JPEG/WebP, máx. 2 MB, validación magic bytes) y nombre de empresa configurable.
+> - **CSS Custom Properties:** `--sidebar-bg` y `--accent` inyectados en `<head>` en tiempo de ejecución vía `ThemeContext`. El tema se aplica sin recarga de página.
+> - **Endpoints públicos de tema:** `GET /api/settings/theme` y `GET /api/settings/logo` no requieren autenticación (necesarios para la página de login).
+> - **Navegación responsive:** TopBar móvil con botón hamburguesa. Sidebar se despliega como overlay con backdrop a < 768px.
+> - **Eliminación de border-radius excesivo:** Esquinas cuadradas en cards, widgets, tablas, inputs y botones en toda la aplicación (estilo Corporate Dark).
+> - **Migración de colores:** Todos los colores `indigo-*` hardcodeados reemplazados por `var(--accent)` — el color de acento cambia globalmente al modificar el ajuste de branding.
+> - **Seguridad logo:** Validación de tipo MIME + magic bytes en backend; SVG rechazado (riesgo XSS); base64 en BD, sin rutas de fichero.
+> - **Auditoría:** Cada cambio de tema o logo genera un registro en `AuditLog` (`UPDATE_THEME`, `UPDATE_LOGO`, `DELETE_LOGO`).
+
 > **v2.0.1 — Upgrade del stack, panel de sistema dinámico, cabeceras fijas:**
 > - **nginx 1.30 (stable):** Actualización desde nginx 1.27; EOL abierta.
 > - **Panel de sistema dinámico:** Nuevo endpoint `GET /api/system-info` (solo ADMIN) con tabla de 5 columnas que muestra versiones del stack y fechas EOL via endoflife.date con caché 24h.
@@ -770,6 +800,7 @@ El script implementa cinco capas de protección antes y durante la actualizació
 > - **Esquema:** Constraints `UNIQUE` añadidos a `Vendor.name`, `CostCenter.name`, `Branch.name`; índices compuestos `(root_id, is_latest)` y `(root_id, version_number)` para consultas de versionado de documentos.
 > - **i18n:** Todas las cadenas hardcodeadas en la página de perfil, callback SSO y AppShell reemplazadas por llamadas `t()`; 25 nuevas claves añadidas a los 6 ficheros de localización.
 > - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` cableada como ARG de build para que el nombre de empresa configurado durante la instalación se muestre correctamente en el frontend.
+> - **Branding en runtime:** Los colores de sidebar (`sidebar_bg`), acento (`accent_color`), nombre de empresa (`company_name`) y logo (`logo_data`, `logo_mime`) se almacenan en la tabla `app_settings` de PostgreSQL y se sirven en tiempo real a través de `GET /api/settings/theme` y `GET /api/settings/logo` (endpoints públicos, sin autenticación).
 > - **Docs:** Usuario seed `auditor@cmdb.local` documentado correctamente como `AUDITOR` (no `VIEWER`); versiones y changelog actualizados.
 
 > **v1.7.0 — SSO Microsoft 365 + i18n 6 idiomas** *(sustituido por v1.7.1)*:
@@ -1826,3 +1857,283 @@ La plataforma incluye una página de aviso de privacidad en `/privacy`. Los camp
 - **Email de contacto para ejercicio de derechos**
 
 **Usuarios auto-provisionados (SSO/LDAP):** La plataforma crea cuentas automáticamente para usuarios de Microsoft Azure AD y LDAP sin interacción directa. Esto activa la obligación del Art. 14 RGPD (información indirecta). La organización debe informar a estos usuarios mediante comunicación interna (RRHH, correo corporativo) ya que la aplicación no envía correos de bienvenida.
+
+---
+
+## 19. Subsistema RAG — Operación y mantenimiento
+
+### 19.1 Variables de entorno del subsistema RAG
+
+Tabla de todas las variables nuevas en `.env`:
+
+| Variable | Defecto | Descripción |
+|---|---|---|
+| `RAG_ENABLED` | `true` | Activa/desactiva el subsistema RAG completo |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | URL interna del servicio Ollama (no exponer al exterior) |
+| `RAG_EMBED_MODEL` | `bge-m3` | Modelo de embeddings (multilingüe, 1024 dimensiones) |
+| `RAG_CHAT_MODEL` | `qwen2.5:7b-instruct-q4_K_M` | Modelo LLM para generación de respuestas |
+| `RAG_CHAT_TEMPERATURE` | `0.1` | Temperatura del LLM (bajo = más determinista y fiel al documento) |
+| `RAG_TOP_K` | `6` | Número de fragmentos recuperados por consulta |
+| `RAG_RATE_LIMIT_PER_MIN` | `10` | Peticiones de chat por usuario por minuto |
+| `OLLAMA_MODELS_PATH` | `/opt/cmdb-data/ollama-models` | Ruta donde se almacenan los modelos descargados |
+
+### 19.2 Descarga inicial de modelos
+
+```bash
+# Verificar que el servicio ollama está corriendo
+podman ps | grep ollama
+
+# Descargar modelos (primera vez; ~7 GB en total)
+podman exec cmdb-ollama ollama pull bge-m3
+podman exec cmdb-ollama ollama pull qwen2.5:7b-instruct-q4_K_M
+
+# Verificar modelos disponibles
+podman exec cmdb-ollama ollama list
+```
+
+Nota: los modelos se almacenan en el volumen `ollama-models` (bind-mount en `/opt/cmdb-data/ollama-models`). Persisten entre reinicios del contenedor.
+
+### 19.3 Verificación del servicio
+
+```bash
+# Estado del contenedor Ollama
+podman ps --filter name=cmdb-ollama
+
+# Uso de recursos en tiempo real
+podman stats cmdb-ollama --no-stream
+
+# Logs del servicio
+podman logs --tail 50 cmdb-ollama
+
+# Modelo actualmente cargado en memoria
+podman exec cmdb-ollama ollama ps
+
+# Test de conectividad backend → Ollama
+podman exec cmdb-backend curl -s http://ollama:11434/api/version
+```
+
+### 19.4 Indexación del corpus documental
+
+#### Primera indexación (backfill)
+Tras el primer despliegue, indexar todos los documentos existentes:
+
+```bash
+# Obtener token de ADMIN
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@cmdb.local","password":"<ADMIN_PASSWORD>"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# Lanzar backfill (proceso asíncrono; puede tardar minutos según corpus)
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+
+# Monitorizar progreso en la BD
+podman exec cmdb-postgres psql -U admin -d cmdb_db \
+  -c "SELECT status, COUNT(*) FROM rag_document_index GROUP BY status;"
+```
+
+#### Reindexar un documento concreto
+```bash
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/documents/<DOCUMENT_ID>/reindex
+```
+
+#### Estado del índice
+```bash
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    status,
+    COUNT(*) as count,
+    MIN(updated_at) as oldest,
+    MAX(updated_at) as newest
+  FROM rag_document_index
+  GROUP BY status
+  ORDER BY status;"
+```
+
+### 19.5 Backup y restauración
+
+#### Backup (incluir tablas RAG en el dump habitual)
+```bash
+# Backup completo incluyendo pgvector y tablas RAG
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  > /opt/cmdb-data/backups/backup_$(date +%F_%H%M).sql
+
+# Backup solo tablas RAG (ligero, para migraciones de modelo)
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  --table=rag_document_index \
+  --table=rag_chunks \
+  --table=rag_chat_sessions \
+  --table=rag_chat_messages \
+  > /opt/cmdb-data/backups/rag_only_$(date +%F_%H%M).sql
+```
+
+#### Restauración de tablas RAG
+```bash
+podman exec -i cmdb-postgres psql -U admin -d cmdb_db \
+  < /opt/cmdb-data/backups/rag_only_<FECHA>.sql
+```
+
+#### Backup de modelos Ollama
+Los modelos están en `/opt/cmdb-data/ollama-models`. Se pueden archivar:
+```bash
+tar -czf /opt/cmdb-data/backups/ollama_models_$(date +%F).tar.gz \
+  -C /opt/cmdb-data ollama-models
+```
+O bien volver a descargarlos con `ollama pull` (más sencillo si hay acceso a internet).
+
+### 19.6 Actualización de modelos
+
+Para cambiar el modelo LLM (por ejemplo, a una versión nueva):
+```bash
+# 1. Descargar nuevo modelo
+podman exec cmdb-ollama ollama pull qwen2.5:14b-instruct-q4_K_M
+
+# 2. Actualizar .env
+sed -i 's/RAG_CHAT_MODEL=.*/RAG_CHAT_MODEL=qwen2.5:14b-instruct-q4_K_M/' .env
+
+# 3. Reiniciar backend (recarga variables de entorno)
+podman-compose -f docker-compose.prod.yml restart backend
+
+# 4. Verificar
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"test"}' \
+  https://localhost/api/chat/ask | python3 -m json.tool
+```
+
+Para cambiar el modelo de embeddings se requiere **reindexar todo el corpus** (los vectores son incompatibles entre modelos):
+```bash
+sed -i 's/RAG_EMBED_MODEL=.*/RAG_EMBED_MODEL=nomic-embed-text/' .env
+podman-compose -f docker-compose.prod.yml restart backend
+# Lanzar backfill completo
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+```
+
+### 19.7 Monitorización y métricas
+
+```bash
+# Uso de RAM/CPU de todos los contenedores
+podman stats --no-stream
+
+# Espacio ocupado por modelos
+du -sh /opt/cmdb-data/ollama-models/
+
+# Espacio ocupado por vectores en PostgreSQL
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size
+  FROM pg_tables
+  WHERE tablename LIKE 'rag_%'
+  ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
+
+# Últimas consultas al asistente IA (audit log)
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT user_email, created_at
+  FROM audit_logs
+  WHERE action = 'ASK_RAG'
+  ORDER BY created_at DESC
+  LIMIT 20;"
+```
+
+### 19.8 Desactivar/activar el subsistema RAG
+
+Para deshabilitar temporalmente sin eliminar datos:
+```bash
+# En .env
+RAG_ENABLED=false
+# Reiniciar backend
+podman-compose -f docker-compose.prod.yml restart backend
+```
+Con RAG desactivado, los endpoints `/api/chat/*` devuelven HTTP 503. El resto de la aplicación funciona con normalidad.
+
+### 19.9 Troubleshooting
+
+| Síntoma | Diagnóstico | Solución |
+|---|---|---|
+| `/api/chat/ask` devuelve 503 | `RAG_ENABLED=false` o Ollama caído | Verificar `.env` y `podman ps` |
+| Respuestas muy lentas (>60 s) | Modelo no cargado en RAM / AMX inactivo | `ollama ps`; verificar `grep amx_tile /proc/cpuinfo` |
+| `rag_document_index` con estado ERROR | Error de parsing en el documento | `podman logs cmdb-backend \| grep INDEX_DOC` |
+| Respuestas incorrectas / alucinaciones | Temperatura alta o corpus indexado desactualizado | Verificar `RAG_CHAT_TEMPERATURE=0.1`; lanzar reindex |
+| "no space left on device" | LV llena | `df -h /var/lib/containers /opt/cmdb-data` |
+| Embeddings lentos al indexar | Modelo bge-m3 no cargado | `ollama pull bge-m3`; reiniciar backend |
+
+### 19.10 Indexación de entidades (CIs, contratos, licencias, vulnerabilidades)
+
+> Para el procedimiento operativo completo (smoke checklist + sign-off DPO/CISO + reindex post-update de corpus pre-existente), consulta `docs/RAG_V2_DEPLOY_RUNBOOK.md`. Esta sección documenta sólo el comportamiento estable; el runbook cubre la ejecución one-off al pasar de v1 a v2.
+
+A partir de v2.3, el subsistema RAG indexa también entidades estructuradas además de documentos. No requiere una variable adicional: se activa automáticamente cuando `RAG_ENABLED=true`.
+
+**Worker de indexación.** El cron de 30 s reparte un presupuesto de 3 huecos por tick entre entidades, con prioridad vulnerabilidad > contrato/licencia > CI. Si hay 3 vulns en cola, consumen todo el presupuesto y los contratos / CIs esperan al siguiente ciclo. Esto preserva la latencia de subida de documentos y prioriza la seguridad operativa. Ver `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 para el detalle.
+
+**Reindex completo.** Para reindexar todas las entidades sin reiniciar:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"...","password":"..."}' | jq -r .token)
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document","ci","contract","license","vulnerability"]}'
+```
+
+Body vacío `{}` o sin body equivale a indexar todos los tipos.
+
+**Observabilidad.** Estado de cola por tipo:
+
+```sql
+SELECT entity_type, status, COUNT(*) FROM rag_entity_index GROUP BY 1,2 ORDER BY 1,2;
+```
+
+Auditoría agregada (1 evento por tick del worker, no por entidad):
+
+```sql
+SELECT created_at, details->>'cycle_at' AS cycle, details
+FROM audit_logs WHERE action = 'INDEX_BATCH' ORDER BY created_at DESC LIMIT 10;
+```
+
+Otros eventos relevantes: `RAG_BACKFILL_ENTITIES` (reindex manual) y `ASK_RAG_VULN` (queries que incluyen vulnerabilidades).
+
+**Troubleshooting de filas atascadas.** Una fila puede quedar en `INDEXING` si el worker cae mientras procesa. Reiniciar el backend NO la libera (el guard ARCH-3 protege contra carrera). Liberar manualmente:
+
+```sql
+UPDATE rag_entity_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE status = 'INDEXING' AND updated_at < now() - interval '5 minutes';
+```
+
+**Lock-in de UUID de vulnerabilidades.** El namespace `RAG_VULN_NAMESPACE` en `backend/src/services/entitySerializer.ts` (`6c8b1a3e-9d4f-4a2b-8c7d-1e2f3a4b5c6d`) es inmutable. Cambiarlo invalidaría todos los chunks de vulnerabilidades existentes y requeriría un reindex completo, además de romper la trazabilidad histórica de las citaciones.
+
+---
+
+## 20. Backups — consideraciones de cifrado para RAG
+
+Las tablas `rag_chunks` y `rag_entity_index` almacenan en texto plano fragmentos de documentos y entidades indexadas. Aunque el serializador aplica `scrubPII()` (email, DNI/NIE, teléfono) antes de generar embeddings, **siempre puede quedar PII residual** en notas libres y descripciones. Esto eleva la sensibilidad de los backups que incluyan estas tablas.
+
+El cifrado de backups en producción es **obligatorio**. Recomendado: cifrar con `openssl` (AES-256-CBC con clave en KMS o HSM) directamente en la pipe de `pg_dump`, nunca en disco:
+
+```bash
+pg_dump -U admin -h localhost cmdb_db \
+  | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/secure/backup.key \
+  > backup_$(date +%F).sql.enc
+```
+
+Restauración:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/secure/backup.key \
+  -in backup_2026-05-21.sql.enc \
+  | psql -U admin -d cmdb_db_restore
+```
+
+Política operativa:
+
+- La clave de cifrado y los backups deben residir en sistemas con ACL separadas.
+- Rotación de la clave: cada 12 meses o tras incidente con sospecha de exposición.
+- Verificar restore con un sample mensual (test `pg_restore --list`).
+
+Referencia: ENT-08 en `docs/security/rag-dpia.md` §A1.4.

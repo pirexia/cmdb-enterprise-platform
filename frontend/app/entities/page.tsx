@@ -47,7 +47,7 @@ export default function EntitiesPage() {
           {categories.map(({ label, desc, color, border }) => (
             <div
               key={label}
-              className={`rounded-2xl border ${border} ${color.split(" ")[0]} p-5`}
+              className={`border ${border} ${color.split(" ")[0]} p-5`}
             >
               <p className={`text-sm font-semibold ${color.split(" ")[1]}`}>{label}</p>
               <p className="mt-1 text-xs text-slate-500">{desc}</p>
@@ -56,7 +56,7 @@ export default function EntitiesPage() {
         </div>
 
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 mb-6">
+          <div className="flex h-16 w-16 items-center justify-center bg-amber-100 mb-6">
             <Construction className="h-8 w-8 text-amber-500" />
           </div>
           <h2 className="text-lg font-semibold text-slate-700 mb-2">{t("entities.coming_soon_title")}</h2>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -118,6 +119,16 @@ export default function VulnerabilitiesPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // RAG chat deep-link: ?cve=<cve-id> pre-fills the CVE filter once rows are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const cve = searchParams.get("cve");
+    if (!cve || allRows.length === 0) return;
+    setFilters((prev) => ({ ...prev, cve }));
+    router.replace("/vulnerabilities", { scroll: false });
+  }, [searchParams, allRows, router]);
 
   const handleStatusChange = async (ciId: string, cve: string, newStatus: VulnStatus) => {
     const key = `${ciId}:${cve}`;
@@ -250,7 +261,7 @@ export default function VulnerabilitiesPage() {
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Shield className="h-5 w-5 text-indigo-500" />
+            <Shield className="h-5 w-5 text-[var(--accent)]" />
             <div>
               <h1 className="text-xl font-bold text-slate-900">{t("vulnerabilities.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
@@ -275,10 +286,10 @@ export default function VulnerabilitiesPage() {
               { label: "HIGH",     value: counts.high,     color: "bg-orange-50 text-orange-700 ring-orange-200" },
               { label: "MEDIUM",   value: counts.medium,   color: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
               { label: "LOW",      value: counts.low,      color: "bg-slate-50 text-slate-600 ring-slate-200" },
-              { label: t("vulnerabilities.open_label"),     value: counts.open,     color: "bg-indigo-50 text-indigo-700 ring-indigo-200" },
+              { label: t("vulnerabilities.open_label"),     value: counts.open,     color: "bg-[var(--accent)]/5 text-[var(--accent)] ring-[var(--accent)]/20" },
               { label: t("vulnerabilities.resolved_label"), value: counts.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
             ].map(({ label, value, color }) => (
-              <div key={label} className={`rounded-xl px-4 py-3 ring-1 ring-inset ${color}`}>
+              <div key={label} className={`px-4 py-3 ring-1 ring-inset ${color}`}>
                 <p className="text-2xl font-bold">{value}</p>
                 <p className="text-xs font-medium mt-0.5 text-slate-500">{label}</p>
               </div>
@@ -287,13 +298,13 @@ export default function VulnerabilitiesPage() {
         )}
 
         {/* Table card */}
-        <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+        <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-6 py-4">
             {/* Active filter badge + clear button */}
             {activeFilterCount > 0 && (
               <>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                   <Search className="h-3 w-3" />
                   {activeFilterCount > 1
                     ? t("vulnerabilities.active_filter_plural", { count: activeFilterCount })
@@ -349,7 +360,7 @@ export default function VulnerabilitiesPage() {
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.col_imported")}</th>
                   </tr>
                   {/* Inline filter row */}
-                  <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                  <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                     {/* CI search */}
                     <td className="px-3 py-2">
                       <div className="relative">
@@ -359,7 +370,7 @@ export default function VulnerabilitiesPage() {
                           placeholder={t("vulnerabilities.search_ci_placeholder")}
                           value={filters.search}
                           onChange={(e) => setFilter("search", e.target.value)}
-                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20"
                         />
                       </div>
                     </td>
@@ -372,7 +383,7 @@ export default function VulnerabilitiesPage() {
                           placeholder={t("vulnerabilities.cve_placeholder")}
                           value={filters.cve}
                           onChange={(e) => setFilter("cve", e.target.value)}
-                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200"
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20"
                         />
                       </div>
                     </td>
@@ -381,9 +392,9 @@ export default function VulnerabilitiesPage() {
                       <select
                         value={filters.severity}
                         onChange={(e) => setFilter("severity", e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${
                           filters.severity !== "ALL"
-                            ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium"
+                            ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium"
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
@@ -401,9 +412,9 @@ export default function VulnerabilitiesPage() {
                       <select
                         value={filters.source}
                         onChange={(e) => setFilter("source", e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${
                           filters.source
-                            ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium"
+                            ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium"
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
@@ -417,9 +428,9 @@ export default function VulnerabilitiesPage() {
                       <select
                         value={filters.status}
                         onChange={(e) => setFilter("status", e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${
                           filters.status !== "ALL"
-                            ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium"
+                            ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium"
                             : "border-slate-200 bg-white text-slate-600"
                         }`}
                       >
@@ -449,7 +460,7 @@ export default function VulnerabilitiesPage() {
                       const pillClass = STATUS_PILL[row.status] ?? STATUS_PILL["NUEVO"];
 
                       return (
-                        <tr key={`${row.ciId}-${row.cve}-${i}`} className="hover:bg-indigo-50/30 transition-colors">
+                        <tr key={`${row.ciId}-${row.cve}-${i}`} className="hover:bg-[var(--accent)]/5 transition-colors">
                           {/* CI */}
                           <td className="px-6 py-3">
                             <p className="font-medium text-slate-800">{row.ciName}</p>
@@ -458,7 +469,7 @@ export default function VulnerabilitiesPage() {
 
                           {/* CVE */}
                           <td className="px-6 py-3">
-                            <code className="text-xs font-mono text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">
+                            <code className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/5 px-1.5 py-0.5">
                               {row.cve}
                             </code>
                             {row.cvss_score != null && (
@@ -495,7 +506,7 @@ export default function VulnerabilitiesPage() {
                                   value={row.status}
                                   disabled={isUpdating}
                                   onChange={(e) => handleStatusChange(row.ciId, row.cve, e.target.value as VulnStatus)}
-                                  className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-indigo-400 focus:outline-none disabled:opacity-50 disabled:cursor-wait"
+                                  className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
                                 >
                                   {ALL_STATUSES.map((s) => (
                                     <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
@@ -503,7 +514,7 @@ export default function VulnerabilitiesPage() {
                                 </select>
                                 {isUpdating && (
                                   <RefreshCw
-                                    className="absolute -right-5 h-3.5 w-3.5 animate-spin text-indigo-500"
+                                    className="absolute -right-5 h-3.5 w-3.5 animate-spin text-[var(--accent)]"
                                     aria-label={t("common.saving")}
                                   />
                                 )}

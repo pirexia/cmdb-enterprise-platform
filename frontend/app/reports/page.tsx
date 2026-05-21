@@ -469,7 +469,7 @@ export default function ReportsPage() {
       ],
       stats: [
         { label: t("reports.eol_stat_total"),      value: cs.total,     color: "text-slate-700" },
-        { label: t("reports.eol_stat_with_dates"),  value: cs.withDates, color: "text-indigo-600" },
+        { label: t("reports.eol_stat_with_dates"),  value: cs.withDates, color: "text-[var(--accent)]" },
         { label: t("reports.eol_stat_critical"),    value: cs.urgent,    color: cs.urgent > 0 ? "text-red-600" : "text-emerald-600" },
       ],
       onPDF: () => runReport("eol", () => generateEolReport(cis)),
@@ -477,9 +477,9 @@ export default function ReportsPage() {
     },
     {
       id: "contracts",
-      icon: <FileText className="h-7 w-7 text-indigo-500" />,
-      color: "ring-indigo-200 bg-indigo-50",
-      iconBg: "bg-indigo-100",
+      icon: <FileText className="h-7 w-7 text-[var(--accent)]" />,
+      color: "ring-[var(--accent)]/20 bg-[var(--accent)]/5",
+      iconBg: "bg-[var(--accent)]/10",
       title: t("reports.contracts_card_title"),
       subtitle: t("reports.contracts_card_subtitle"),
       description: t("reports.contracts_card_desc"),
@@ -527,7 +527,7 @@ export default function ReportsPage() {
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <BarChart3 className="h-6 w-6 text-indigo-500" />
+            <BarChart3 className="h-6 w-6 text-[var(--accent)]" />
             <div>
               <h1 className="text-xl font-bold text-slate-900">{t("reports.title")}</h1>
               <p className="text-sm text-slate-500 mt-0.5">
@@ -557,11 +557,11 @@ export default function ReportsPage() {
         )}
 
         {/* Info Banner */}
-        <div className="rounded-2xl border border-indigo-100 bg-indigo-50 px-6 py-4 flex items-start gap-3">
-          <Printer className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-500" />
+        <div className="border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-6 py-4 flex items-start gap-3">
+          <Printer className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--accent)]" />
           <div>
-            <p className="text-sm font-semibold text-indigo-800">{t("reports.how_it_works")}</p>
-            <p className="text-sm text-indigo-600 mt-0.5">
+            <p className="text-sm font-semibold text-slate-800">{t("reports.how_it_works")}</p>
+            <p className="text-sm text-[var(--accent)] mt-0.5">
               {t("reports.how_it_works_desc")}
             </p>
           </div>
@@ -572,11 +572,11 @@ export default function ReportsPage() {
           {reports.map((rpt) => (
             <div
               key={rpt.id}
-              className="flex flex-col rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden"
+              className="flex flex-col bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden"
             >
               {/* Card Header */}
               <div className={`flex items-start gap-4 px-6 py-5 ring-1 ${rpt.color}`}>
-                <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl ${rpt.iconBg}`}>
+                <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center ${rpt.iconBg}`}>
                   {rpt.icon}
                 </div>
                 <div className="min-w-0">
@@ -601,7 +601,7 @@ export default function ReportsPage() {
 
                 {/* Live stats */}
                 {!loading && (
-                  <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3">
+                  <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3">
                     {rpt.stats.map((s) => (
                       <div key={s.label} className="text-center">
                         <p className={`text-lg font-bold ${s.color}`}>{s.value}</p>
@@ -611,7 +611,7 @@ export default function ReportsPage() {
                   </div>
                 )}
                 {loading && (
-                  <div className="h-16 animate-pulse rounded-xl bg-slate-100" />
+                  <div className="h-16 animate-pulse bg-slate-100" />
                 )}
 
                 {/* Actions */}
@@ -619,7 +619,7 @@ export default function ReportsPage() {
                   <button
                     onClick={rpt.onPDF}
                     disabled={loading || generating === rpt.id}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-wait"
+                    className="flex items-center justify-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-wait"
                   >
                     {generating === rpt.id
                       ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("reports.generating")}</>
@@ -630,7 +630,7 @@ export default function ReportsPage() {
                     <button
                       onClick={rpt.onCSV}
                       disabled={loading}
-                      className="flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 rounded-none border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                     >
                       <Download className="h-4 w-4" />
                       {t("reports.export_csv")}
@@ -643,7 +643,7 @@ export default function ReportsPage() {
         </div>
 
         {/* Quick tips */}
-        <section className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 p-6">
+        <section className="bg-white shadow-sm ring-1 ring-slate-200 p-6">
           <h2 className="mb-4 text-sm font-semibold text-slate-700 flex items-center gap-2">
             <Clock className="h-4 w-4 text-slate-400" />
             {t("reports.quick_exports_title")}
@@ -652,14 +652,14 @@ export default function ReportsPage() {
             {[
               { href: "/inventory",       icon: <ServerCrash className="h-4 w-4 text-emerald-600" />, label: t("reports.quick_link_inventory_label"), desc: t("reports.quick_link_inventory_desc") },
               { href: "/vulnerabilities", icon: <Shield className="h-4 w-4 text-red-600" />,          label: t("reports.quick_link_vulns_label"),     desc: t("reports.quick_link_vulns_desc") },
-              { href: "/contracts",       icon: <FileText className="h-4 w-4 text-indigo-600" />,     label: t("reports.quick_link_contracts_label"), desc: t("reports.quick_link_contracts_desc") },
+              { href: "/contracts",       icon: <FileText className="h-4 w-4 text-[var(--accent)]" />,     label: t("reports.quick_link_contracts_label"), desc: t("reports.quick_link_contracts_desc") },
             ].map(({ href, icon, label, desc }) => (
               <a
                 key={href}
                 href={href}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-indigo-50 hover:border-indigo-200 transition-colors"
+                className="flex items-center gap-3 border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-[var(--accent)]/5 hover:border-[var(--accent)]/20 transition-colors"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
+                <div className="flex h-8 w-8 items-center justify-center bg-white shadow-sm">
                   {icon}
                 </div>
                 <div>

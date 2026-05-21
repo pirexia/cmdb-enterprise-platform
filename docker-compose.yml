@@ -21,7 +21,7 @@ services:
 
   # ── PostgreSQL 15 ────────────────────────────────────────────────────────────
   postgres:
-    image: docker.io/library/postgres:15-alpine
+    image: docker.io/pgvector/pgvector:pg15
     container_name: cmdb-postgres
     restart: always
     environment:
@@ -88,6 +88,14 @@ services:
       AZURE_REDIRECT_URI:   ${AZURE_REDIRECT_URI:-}
       AZURE_ALLOWED_DOMAIN: ${AZURE_ALLOWED_DOMAIN:-}
       AZURE_AUTO_PROVISION: ${AZURE_AUTO_PROVISION:-false}
+      # ── RAG / Ollama ──────────────────────────────────────────────────────────
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      RAG_ENABLED:     ${RAG_ENABLED:-true}
+      RAG_EMBED_MODEL: ${RAG_EMBED_MODEL:-bge-m3}
+      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen2.5:7b-instruct-q4_K_M}
+      RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
+      RAG_TOP_K:       ${RAG_TOP_K:-6}
+      RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z
@@ -95,6 +103,8 @@ services:
     # Backend NOT exposed to host — reachable only via nginx (/api/*)
     depends_on:
       postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
 
   # ── Frontend — Next.js standalone ────────────────────────────────────────────
@@ -137,10 +147,29 @@ services:
       - frontend
       - backend
 
+  # ── Ollama — Local LLM inference (embeddings + chat) ────────────────────────
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: cmdb-ollama
+    restart: always
+    environment:
+      OLLAMA_MODELS: /root/.ollama/models
+    volumes:
+      - ollama-models:/root/.ollama/models:Z
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres-data:
     name: cmdb-postgres-data
+  ollama-models:
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 networks:

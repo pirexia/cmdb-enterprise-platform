@@ -341,8 +341,23 @@ This is the strongest area of compliance. Mandatory TOTP-based MFA (RFC 6238, `s
 
 ---
 
+## Nuevos riesgos — Subsistema RAG (v2.3)
+
+Actualizacion: 2026-05-20. Los riesgos y medidas siguientes corresponden a la incorporacion del subsistema RAG / Asistente IA. El threat model STRIDE completo y la DPIA se encuentran en `docs/security/rag-dpia.md`.
+
+| Riesgo NIS2 | Medida implementada |
+|---|---|
+| Art. 21.2.a — Politicas de seguridad de sistemas de informacion | Threat model STRIDE documentado en `docs/security/rag-dpia.md`; system prompt fijo anti-injection configurable solo via variable de entorno; denylist de patrones de inyeccion en funcion `sanitizeRagQuery` |
+| Art. 21.2.b — Gestion de incidentes | Filtracion del corpus de documentos indexados clasificada como incidente significativo sujeto a notificacion en 24h (alerta temprana) y 72h (informe detallado) segun IRP en `docs/security/isms/04-incident-response-plan.md`; AuditLog ASK_RAG permite trazabilidad forense |
+| Art. 21.2.e — Seguridad en la cadena de suministro | Ollama local sin dependencia de proveedor cloud de IA; modelos bge-m3 y qwen2.5:7b-instruct descargados del repositorio oficial de Ollama en el momento del despliegue y servidos localmente sin conectividad externa en ejecucion |
+| Art. 21.2.h — Cifrado | TLS 1.2+ en nginx para todas las comunicaciones externas; comunicacion backend a Ollama realizada en red Docker interna (`cmdb-internal`, cifrada por overlay de Docker) sin exposicion al host |
+| Art. 21.2.i — Seguridad de recursos humanos y control de acceso | ACL por rol (`read_admin`, `read_auditor`, `read_viewer`) aplicada antes del kNN; rate-limit de 10 req/min/usuario en `/api/chat/ask`; registro en AuditLog de todas las consultas con identificacion del usuario |
+
+---
+
 ## Revision History
 
 | Date | Version | Author | Notes |
 |---|---|---|---|
 | 2026-04-17 | 1.0.0 | Compliance Review — DevSecOps | Initial NIS2 audit against v2.0.1 |
+| 2026-05-20 | 1.1.0 | Compliance Review — DevSecOps | Delta RAG subsystem — nuevos riesgos NIS2 Art. 21 |

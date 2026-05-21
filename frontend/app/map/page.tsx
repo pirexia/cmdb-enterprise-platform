@@ -70,7 +70,7 @@ type ViewMode = "graph" | "table";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const RELATION_COLORS: Record<string, { stroke: string; label: string; bg: string; text: string }> = {
-  HOSTS:            { stroke: "#6366f1", label: "HOSTS",            bg: "#eef2ff", text: "text-indigo-700" },
+  HOSTS:            { stroke: "var(--accent)", label: "HOSTS",            bg: "color-mix(in srgb, var(--accent) 10%, white)", text: "text-[var(--accent)]" },
   DEPENDS_ON:       { stroke: "#f97316", label: "DEPENDS_ON",       bg: "#fff7ed", text: "text-orange-700" },
   CONNECTED_TO:     { stroke: "#0d9488", label: "CONNECTED_TO",     bg: "#f0fdfa", text: "text-teal-700"   },
   PROVIDES_SERVICE: { stroke: "#10b981", label: "PROVIDES_SERVICE", bg: "#f0fdf4", text: "text-emerald-700"},
@@ -91,7 +91,7 @@ const TYPE_BADGE: Record<string, { bg: string; text: string; labelKey: string }>
   NETWORK_EQUIPMENT: { bg: "bg-cyan-100",    text: "text-cyan-700",    labelKey: "map.type_badge_network"         },
   STORAGE:           { bg: "bg-amber-100",   text: "text-amber-700",   labelKey: "map.type_badge_storage"         },
   BACKUP:            { bg: "bg-purple-100",  text: "text-purple-700",  labelKey: "map.type_badge_backup"          },
-  BASE_SOFTWARE:     { bg: "bg-indigo-100",  text: "text-indigo-700",  labelKey: "map.type_badge_base_software"   },
+  BASE_SOFTWARE:     { bg: "bg-[var(--accent)]/10", text: "text-[var(--accent)]", labelKey: "map.type_badge_base_software"   },
   OTHER:             { bg: "bg-slate-100",   text: "text-slate-600",   labelKey: "map.type_badge_other"           },
 };
 
@@ -109,11 +109,11 @@ function CINode({ data }: NodeProps<CINodeData>) {
   const dot   = CRIT_DOT[data.criticality] ?? "bg-slate-300";
 
   return (
-    <div className={`relative w-52 rounded-xl border-2 shadow-md bg-white ${
+    <div className={`relative w-52 border-2 shadow-md bg-white ${
       data.spofRisk
         ? "border-red-400 ring-2 ring-red-100"
         : data.isCenter
-          ? "border-indigo-500 ring-4 ring-indigo-100 shadow-indigo-100"
+          ? "border-[var(--accent)] ring-4 ring-[var(--accent)]/20"
           : "border-slate-200 hover:border-slate-300"
     }`}>
       <span className={`absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full border-2 border-white ${dot}`} />
@@ -129,7 +129,7 @@ function CINode({ data }: NodeProps<CINodeData>) {
               </span>
             )}
             {data.isCenter && (
-              <span className="inline-block rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+              <span className="inline-block rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] font-semibold text-white">
                 {t("map.origin_badge")}
               </span>
             )}
@@ -373,14 +373,14 @@ function TableView({
                   {/* Direction */}
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
-                      isSaliente ? "bg-indigo-50 text-indigo-700" : "bg-slate-100 text-slate-600"
+                      isSaliente ? "bg-[var(--accent)]/5 text-[var(--accent)]" : "bg-slate-100 text-slate-600"
                     }`}>
                       {isSaliente ? t("map.dir_outgoing") : t("map.dir_incoming")}
                     </span>
                   </td>
                   {/* Source CI */}
                   <td className="px-4 py-3">
-                    <span className={`font-medium ${r.source_ci_id === center.id ? "text-indigo-700" : "text-slate-800"}`}>
+                    <span className={`font-medium ${r.source_ci_id === center.id ? "text-[var(--accent)]" : "text-slate-800"}`}>
                       {r.source_name}
                     </span>
                     <span className="ml-1.5 font-mono text-xs text-slate-400">{r.source_slug}</span>
@@ -396,7 +396,7 @@ function TableView({
                   </td>
                   {/* Target CI */}
                   <td className="px-4 py-3">
-                    <span className={`font-medium ${r.target_ci_id === center.id ? "text-indigo-700" : "text-slate-800"}`}>
+                    <span className={`font-medium ${r.target_ci_id === center.id ? "text-[var(--accent)]" : "text-slate-800"}`}>
                       {r.target_name}
                     </span>
                     <span className="ml-1.5 font-mono text-xs text-slate-400">{r.target_slug}</span>
@@ -405,7 +405,7 @@ function TableView({
                   {depth > 1 && (
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
-                        rowDepth === 1 ? "bg-indigo-600 text-white" : "bg-slate-200 text-slate-600"
+                        rowDepth === 1 ? "bg-[var(--accent)] text-white" : "bg-slate-200 text-slate-600"
                       }`}>
                         {rowDepth}
                       </span>
@@ -466,10 +466,10 @@ function CISelector({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-xl ring-1 ring-slate-200">
+      <div className="w-full max-w-lg bg-white p-8 shadow-xl ring-1 ring-slate-200">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
-            <Network className="h-5 w-5 text-indigo-600" />
+          <div className="flex h-10 w-10 items-center justify-center bg-[var(--accent)]/10">
+            <Network className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-slate-900">{t("map.title")}</h1>
@@ -482,7 +482,7 @@ function CISelector({
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="flex w-full items-center justify-between rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-left text-sm hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 transition-colors"
+            className="flex w-full items-center justify-between border border-slate-300 bg-slate-50 px-4 py-3 text-left text-sm hover:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 transition-colors"
           >
             {selected ? (
               <span className="flex items-center gap-2 min-w-0">
@@ -499,7 +499,7 @@ function CISelector({
           </button>
 
           {open && (
-            <div className="absolute z-50 mt-2 w-full rounded-xl border border-slate-200 bg-white shadow-2xl">
+            <div className="absolute z-50 mt-2 w-full border border-slate-200 bg-white shadow-2xl">
               <div className="border-b border-slate-100 p-3">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -507,7 +507,7 @@ function CISelector({
                     autoFocus type="text" value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder={t("map.filter_placeholder")}
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                    className="w-full rounded-none border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   />
                 </div>
               </div>
@@ -522,7 +522,7 @@ function CISelector({
                         <button
                           type="button"
                           onClick={() => { setSelected(ci); setOpen(false); setSearch(""); }}
-                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-indigo-50 transition-colors ${selected?.id === ci.id ? "bg-indigo-50" : ""}`}
+                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-[var(--accent)]/5 transition-colors ${selected?.id === ci.id ? "bg-[var(--accent)]/5" : ""}`}
                         >
                           <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg} ${badge.text}`}>
                             {t(badge.labelKey)}
@@ -552,13 +552,13 @@ function CISelector({
                 key={opt.value}
                 type="button"
                 onClick={() => setDepthChoice(opt.value)}
-                className={`flex-1 rounded-xl border-2 px-3 py-2.5 text-center transition-all ${
+                className={`flex-1 border-2 px-3 py-2.5 text-center transition-all ${
                   depthChoice === opt.value
-                    ? "border-indigo-500 bg-indigo-50"
+                    ? "border-[var(--accent)] bg-[var(--accent)]/5"
                     : "border-slate-200 bg-white hover:border-slate-300"
                 }`}
               >
-                <p className={`text-sm font-bold ${depthChoice === opt.value ? "text-indigo-700" : "text-slate-700"}`}>
+                <p className={`text-sm font-bold ${depthChoice === opt.value ? "text-[var(--accent)]" : "text-slate-700"}`}>
                   {t(opt.labelKey)}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">{t(opt.descKey)}</p>
@@ -571,7 +571,7 @@ function CISelector({
           type="button"
           disabled={!selected}
           onClick={() => selected && onSelect(selected, depthChoice)}
-          className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="w-full rounded-none bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {selected
             ? t("map.view_deps_of").replace("{name}", selected.name)
@@ -728,13 +728,13 @@ export default function MapPage() {
 
           <div className="ml-auto flex items-center gap-2">
             {/* View toggle */}
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <div className="flex border border-slate-200 overflow-hidden">
               <button
                 onClick={() => setViewMode("graph")}
                 title={t("map.graph_view_title")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
                   viewMode === "graph"
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-[var(--accent)] text-white"
                     : "bg-white text-slate-500 hover:bg-slate-50"
                 }`}
               >
@@ -746,7 +746,7 @@ export default function MapPage() {
                 title={t("map.table_view_title")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors border-l border-slate-200 ${
                   viewMode === "table"
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-[var(--accent)] text-white"
                     : "bg-white text-slate-500 hover:bg-slate-50"
                 }`}
               >
@@ -759,7 +759,7 @@ export default function MapPage() {
             <button
               onClick={() => loadRelations(selectedCI, depth)}
               disabled={loadingRels}
-              className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-50 disabled:opacity-50 transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loadingRels ? "animate-spin" : ""}`} />
             </button>
@@ -767,7 +767,7 @@ export default function MapPage() {
             {/* New relation */}
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+              className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
             >
               <Link2 className="h-4 w-4" />
               <span className="hidden sm:inline">{t("map.new_relation")}</span>
@@ -793,7 +793,7 @@ export default function MapPage() {
             <p className="text-sm font-medium text-red-600">{error}</p>
             <button
               onClick={() => loadRelations(selectedCI, depth)}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700"
+              className="rounded-none bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent)]/90"
             >
               {t("map.retry")}
             </button>
@@ -807,7 +807,7 @@ export default function MapPage() {
             <p className="text-sm font-medium text-slate-500">{t("map.no_relations")}</p>
             <button
               onClick={() => setShowModal(true)}
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90"
             >
               <Link2 className="h-4 w-4" /> {t("map.create_first_relation")}
             </button>

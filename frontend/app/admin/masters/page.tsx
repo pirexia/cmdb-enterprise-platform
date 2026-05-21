@@ -40,10 +40,10 @@ type EditState =
 // ─── Reusable input components ────────────────────────────────────────────────
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 ${props.className ?? ""}`} />;
+  return <input {...props} className={`w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 ${props.className ?? ""}`} />;
 }
 function Sel(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 ${props.className ?? ""}`} />;
+  return <select {...props} className={`w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 ${props.className ?? ""}`} />;
 }
 
 // ─── Editable list row (name-only) ───────────────────────────────────────────
@@ -62,7 +62,7 @@ function EditableRow({ id, label, sublabel, editState, onStartEdit, onSaveEdit, 
 
   if (isEditing) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border-b border-indigo-100">
+      <div className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
         <Input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") onSaveEdit(val); if (e.key === "Escape") onCancelEdit(); }} autoFocus className="flex-1" />
         <button onClick={() => onSaveEdit(val)} className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"><Check className="h-4 w-4" /></button>
         <button onClick={onCancelEdit} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
@@ -76,7 +76,7 @@ function EditableRow({ id, label, sublabel, editState, onStartEdit, onSaveEdit, 
         {sublabel && <p className="text-xs text-slate-400">{sublabel}</p>}
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-        <button onClick={onStartEdit} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+        <button onClick={onStartEdit} className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"><Pencil className="h-4 w-4" /></button>
         <button onClick={onDelete} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
       </div>
     </div>
@@ -243,14 +243,14 @@ export default function MastersPage() {
                   onClick={() => setTab(item.id)}
                   className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm font-medium transition-colors text-left ${
                     active
-                      ? "bg-indigo-50 text-indigo-700 border-r-2 border-indigo-600"
+                      ? "bg-[var(--accent)]/5 text-[var(--accent)] border-r-2 border-[var(--accent)]"
                       : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                   }`}
                 >
-                  <span className={active ? "text-indigo-600" : "text-slate-400"}>{item.icon}</span>
+                  <span className={active ? "text-[var(--accent)]" : "text-slate-400"}>{item.icon}</span>
                   <span className="flex-1 truncate">{item.label}</span>
                   <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                    active ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500"
+                    active ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-slate-100 text-slate-500"
                   }`}>{item.count}</span>
                 </button>
               );
@@ -269,13 +269,13 @@ export default function MastersPage() {
 
         {/* ── Support Areas ── */}
         {tab === "support-areas" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nueva Área de Soporte</p>
               <div className="flex gap-2 mt-2">
                 <Input placeholder="Ej: Zona Centro" value={newSA} onChange={(e) => setNewSA(e.target.value)} />
                 <button onClick={async () => { try { await post("/api/masters/support-areas", { name: newSA }); setNewSA(""); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
               </div>
@@ -295,7 +295,7 @@ export default function MastersPage() {
 
         {/* ── Branches ── */}
         {tab === "branches" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nueva Sede</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -308,7 +308,7 @@ export default function MastersPage() {
                 </Sel>
               </div>
               <button onClick={async () => { try { await post("/api/masters/branches", { name: newBranch.name, branchCode: newBranch.code, physicalAddress: newBranch.address, supportAreaId: newBranch.supportAreaId }); setNewBranch({ name: "", code: "", address: "", supportAreaId: "" }); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
-                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                 <Plus className="h-4 w-4" />Añadir Sede
               </button>
             </div>
@@ -318,7 +318,7 @@ export default function MastersPage() {
                   const isEditing = editState?.kind === "branch" && editState.id === b.id;
                   if (isEditing && editState?.kind === "branch") {
                     return (
-                      <div key={b.id} className="grid grid-cols-1 gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100 sm:grid-cols-2">
+                      <div key={b.id} className="grid grid-cols-1 gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20 sm:grid-cols-2">
                         <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre" />
                         <Input value={editState.code} onChange={(e) => setEditState({ ...editState, code: e.target.value })} placeholder="Código" maxLength={10} />
                         <Input value={editState.address} onChange={(e) => setEditState({ ...editState, address: e.target.value })} placeholder="Dirección (opcional)" />
@@ -340,7 +340,7 @@ export default function MastersPage() {
                         <p className="text-xs text-slate-400">{b.support_area_name}{b.physical_address ? " · " + b.physical_address : ""}</p>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => setEditState({ kind: "branch", id: b.id, name: b.name, code: b.branch_code, address: b.physical_address ?? "", supportAreaId: b.support_area_id })} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => setEditState({ kind: "branch", id: b.id, name: b.name, code: b.branch_code, address: b.physical_address ?? "", supportAreaId: b.support_area_id })} className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"><Pencil className="h-4 w-4" /></button>
                         <button onClick={() => del(`/api/masters/branches/${b.id}`, load)} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
@@ -352,13 +352,13 @@ export default function MastersPage() {
 
         {/* ── Manufacturers ── */}
         {tab === "manufacturers" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Fabricante</p>
               <div className="flex gap-2 mt-2">
                 <Input placeholder="Ej: Dell, HP, Cisco" value={newMfr} onChange={(e) => setNewMfr(e.target.value)} />
                 <button onClick={async () => { try { await post("/api/masters/manufacturers", { name: newMfr }); setNewMfr(""); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
                 <button
@@ -428,7 +428,7 @@ export default function MastersPage() {
           <div className="space-y-4">
 
             {/* ── Add Model Form ── */}
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Modelo</p>
 
@@ -464,7 +464,7 @@ export default function MastersPage() {
                         load();
                       } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
                     }}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                    className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                     <Plus className="h-4 w-4" />Añadir
                   </button>
 
@@ -587,19 +587,19 @@ export default function MastersPage() {
 
             {/* ── Life Cycle Consultation Center (Tarea 1) ── */}
             {consultModel && (
-              <div className="rounded-2xl border-2 border-indigo-300 bg-gradient-to-br from-indigo-50 to-violet-50 shadow-md overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-3 bg-indigo-600">
+              <div className="border-2 border-[var(--accent)]/40 bg-[var(--accent)]/5 shadow-md overflow-hidden">
+                <div className="flex items-center justify-between px-6 py-3 bg-[var(--accent)]">
                   <div className="flex items-center gap-2">
                     <span className="text-lg"></span>
                     <div>
                       <p className="text-sm font-bold text-white">Centro de Consulta de Ciclo de Vida</p>
-                      <p className="text-xs text-indigo-200">{consultModel.name} · {consultModel.manufacturer_name}</p>
+                      <p className="text-xs text-white/70">{consultModel.name} · {consultModel.manufacturer_name}</p>
                     </div>
                   </div>
-                  <button onClick={() => setConsultModel(null)} className="rounded-lg p-1.5 text-indigo-200 hover:bg-indigo-500 transition-colors">✕</button>
+                  <button onClick={() => setConsultModel(null)} className="rounded-none p-1.5 text-white/70 hover:bg-[var(--accent)]/80 transition-colors">✕</button>
                 </div>
                 <div className="px-6 py-4 space-y-3">
-                  <p className="text-xs text-indigo-700 font-medium">Consulta las fuentes de referencia para validar las fechas de fin de vida/soporte de este modelo:</p>
+                  <p className="text-xs text-[var(--accent)] font-medium">Consulta las fuentes de referencia para validar las fechas de fin de vida/soporte de este modelo:</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
                     {/* Source 1: endoflife.date (internal API) */}
@@ -683,8 +683,8 @@ export default function MastersPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 flex items-center justify-between gap-4">
-                    <p className="text-xs text-indigo-700">
+                  <div className="border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-4 py-2 flex items-center justify-between gap-4">
+                    <p className="text-xs text-[var(--accent)]">
                       <strong>Fuente verificada:</strong> Tras consultar las fuentes, usa "Sincronizar EOL" en el modelo para actualizar los CIs.
                     </p>
                     <button
@@ -695,7 +695,7 @@ export default function MastersPage() {
                           alert(d.message ?? "Sincronización completada");
                         } catch { alert("Error al sincronizar EOL"); }
                       }}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors">
+                      className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                       Sincronizar EOL ahora
                     </button>
                   </div>
@@ -704,14 +704,14 @@ export default function MastersPage() {
             )}
 
             {/* ── Models list ── */}
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="divide-y divide-slate-50">
                 {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin modelos registrados.</p> :
                   models.map((m) => {
                     const isEditing = editState?.kind === "model" && editState.id === m.id;
                     if (isEditing && editState?.kind === "model") {
                       return (
-                        <div key={m.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                        <div key={m.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
                           <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre del modelo" className="flex-1 min-w-[160px]" />
                           <Sel value={editState.manufacturerId} onChange={(e) => setEditState({ ...editState, manufacturerId: e.target.value })} className="flex-1 min-w-[140px]">
                             <option value="">— Fabricante —</option>
@@ -725,13 +725,13 @@ export default function MastersPage() {
                     return (
                       <div
                         key={m.id}
-                        className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-indigo-50 ring-1 ring-indigo-200" : "hover:bg-slate-50"}`}
+                        className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20" : "hover:bg-slate-50"}`}
                         onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
                         title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
                       >
                         <div>
                           <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                            {consultModel?.id === m.id && <span className="text-indigo-500 text-xs">Ver</span>}
+                            {consultModel?.id === m.id && <span className="text-[var(--accent)] text-xs">Ver</span>}
                             {m.name}
                           </p>
                           <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
@@ -745,7 +745,7 @@ export default function MastersPage() {
                                 alert(d.message ?? "Sincronización completada");
                               } catch { alert("Error al sincronizar EOL"); }
                             }}
-                            className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+                            className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                             title="Sincronizar EOL desde endoflife.date"
                           >
                             EOL
@@ -758,7 +758,7 @@ export default function MastersPage() {
                             Consultar
                           </button>
                           <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id })}
-                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors" title="Editar modelo">
+                            className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors" title="Editar modelo">
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
@@ -776,7 +776,7 @@ export default function MastersPage() {
 
         {/* ── Cost Centers ── */}
         {tab === "cost-centers" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Centro de Coste</p>
               <div className="flex gap-2 mt-2">
@@ -787,7 +787,7 @@ export default function MastersPage() {
                     try { await post("/api/masters/cost-centers", { code: newCC.code, name: newCC.name }); setNewCC({ code: "", name: "" }); load(); }
                     catch (e) { alert(e instanceof Error ? e.message : "Error"); }
                   }}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
               </div>
@@ -798,7 +798,7 @@ export default function MastersPage() {
                   const isEditing = editState?.kind === "cc" && editState.id === cc.id;
                   if (isEditing && editState?.kind === "cc") {
                     return (
-                      <div key={cc.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                      <div key={cc.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
                         <Input value={editState.code} onChange={(e) => setEditState({ ...editState, code: e.target.value })} placeholder="Código" className="w-32" />
                         <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre" className="flex-1" />
                         <button onClick={async () => { try { await patch(`/api/masters/cost-centers/${cc.id}`, { code: editState.code, name: editState.name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
@@ -813,7 +813,7 @@ export default function MastersPage() {
                         <p className="text-xs text-slate-400 font-mono">{cc.code}</p>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => setEditState({ kind: "cc", id: cc.id, code: cc.code, name: cc.name })} className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"><Pencil className="h-4 w-4" /></button>
+                        <button onClick={() => setEditState({ kind: "cc", id: cc.id, code: cc.code, name: cc.name })} className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"><Pencil className="h-4 w-4" /></button>
                         <button onClick={() => del(`/api/masters/cost-centers/${cc.id}`, load)} className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </div>
@@ -827,7 +827,7 @@ export default function MastersPage() {
         {tab === "ci-types" && (
           <div className="space-y-6">
             {/* Add new type form */}
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Tipo de CI</p>
                 <p className="text-[11px] text-slate-400 mt-0.5">Las categorías principales son fijas. Solo puedes añadir subcategorías.</p>
@@ -846,7 +846,7 @@ export default function MastersPage() {
                         load();
                       } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
                     }}
-                    className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                    className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                     <Plus className="h-4 w-4" />Añadir
                   </button>
                 </div>
@@ -855,9 +855,9 @@ export default function MastersPage() {
 
             {/* Categories with their types */}
             {ciTypeCategories.map((cat) => (
-              <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+              <div key={cat.code} className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
                 <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
-                  <Tags className="h-4 w-4 text-indigo-500" />
+                  <Tags className="h-4 w-4 text-[var(--accent)]" />
                   <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
                   <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.ciTypes.length}</span>
                   <span className="ml-auto text-[10px] font-mono text-slate-400">{cat.code}</span>
@@ -869,7 +869,7 @@ export default function MastersPage() {
                     const isEditing = editState?.kind === "citype" && editState.id === t.id;
                     if (isEditing && editState?.kind === "citype") {
                       return (
-                        <div key={t.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-indigo-50 border-b border-indigo-100">
+                        <div key={t.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
                           <Sel value={editState.categoryCode} onChange={(e) => setEditState({ ...editState, categoryCode: e.target.value })} className="w-44">
                             {ciTypeCategories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
                           </Sel>
@@ -898,7 +898,7 @@ export default function MastersPage() {
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
                             onClick={() => setEditState({ kind: "citype", id: t.id, name: t.name, categoryCode: t.categoryCode })}
-                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                             title="Editar nombre o categoría">
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -920,13 +920,13 @@ export default function MastersPage() {
 
         {/* ── Providers ── */}
         {tab === "providers" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Proveedor</p>
               <div className="flex gap-2 mt-2">
                 <Input placeholder="Ej: Telefónica, AWS, Microsoft" value={newProv} onChange={(e) => setNewProv(e.target.value)} />
                 <button onClick={async () => { try { await post("/api/masters/providers", { name: newProv }); setNewProv(""); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
               </div>
@@ -946,7 +946,7 @@ export default function MastersPage() {
 
         {/* ── Document Types ── */}
         {tab === "doc-types" && (
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Tipo de Documento</p>
               <div className="flex gap-2 mt-2">
@@ -970,7 +970,7 @@ export default function MastersPage() {
                       load();
                     } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
                   }}
-                  className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
                 >
                   <Plus className="h-4 w-4" />Añadir
                 </button>
@@ -984,7 +984,7 @@ export default function MastersPage() {
                   const isEditing = editState?.kind === "doctype" && editState.id === dt.id;
                   if (isEditing && editState?.kind === "doctype") {
                     return (
-                      <div key={dt.id} className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border-b border-indigo-100">
+                      <div key={dt.id} className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
                         <Input
                           value={editState.name}
                           onChange={(e) => setEditState({ ...editState, name: e.target.value })}
@@ -1032,7 +1032,7 @@ export default function MastersPage() {
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
                             onClick={() => setEditState({ kind: "doctype", id: dt.id, name: dt.name })}
-                            className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                            className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
@@ -1068,16 +1068,16 @@ export default function MastersPage() {
             {licenseMetricCats.map((cat) => {
               const isAddingHere = newLicMetric?.catCode === cat.code;
               return (
-                <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div key={cat.code} className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
                   {/* Category header */}
                   <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
-                    <Key className="h-4 w-4 text-indigo-500" />
+                    <Key className="h-4 w-4 text-[var(--accent)]" />
                     <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
                     <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.metrics.length}</span>
                     <span className="text-[10px] font-mono text-slate-400">{cat.code}</span>
                     <button
                       onClick={() => setNewLicMetric(isAddingHere ? null : { catCode: cat.code, code: "", name: "", description: "" })}
-                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                      className="ml-auto flex items-center gap-1.5 rounded-none border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-3 py-1 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                     >
                       <Plus className="h-3.5 w-3.5" />{isAddingHere ? "Cancelar" : "Nueva métrica"}
                     </button>
@@ -1092,7 +1092,7 @@ export default function MastersPage() {
                       const isEditing = editState?.kind === "licmetric" && editState.id === m.id;
                       if (isEditing && editState?.kind === "licmetric") {
                         return (
-                          <div key={m.id} className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 space-y-2">
+                          <div key={m.id} className="px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20 space-y-2">
                             <Input
                               value={editState.name}
                               onChange={(e) => setEditState({ ...editState, name: e.target.value })}
@@ -1135,7 +1135,7 @@ export default function MastersPage() {
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
                             <button
                               onClick={() => setEditState({ kind: "licmetric", id: m.id, name: m.name, description: m.description ?? "" })}
-                              className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                             ><Pencil className="h-4 w-4" /></button>
                             <button
                               onClick={async () => {
@@ -1206,16 +1206,16 @@ export default function MastersPage() {
             {licenseTypeCats.map((cat) => {
               const isAddingHere = newLicType?.catCode === cat.code;
               return (
-                <div key={cat.code} className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+                <div key={cat.code} className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
                   {/* Category header */}
                   <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50 px-6 py-3">
-                    <FileText className="h-4 w-4 text-indigo-500" />
+                    <FileText className="h-4 w-4 text-[var(--accent)]" />
                     <p className="text-sm font-semibold text-slate-700">{cat.name}</p>
                     <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">{cat.types.length}</span>
                     <span className="text-[10px] font-mono text-slate-400">{cat.code}</span>
                     <button
                       onClick={() => setNewLicType(isAddingHere ? null : { catCode: cat.code, code: "", name: "", description: "" })}
-                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 transition-colors"
+                      className="ml-auto flex items-center gap-1.5 rounded-none border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-3 py-1 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                     >
                       <Plus className="h-3.5 w-3.5" />{isAddingHere ? "Cancelar" : "Nuevo tipo"}
                     </button>
@@ -1230,7 +1230,7 @@ export default function MastersPage() {
                       const isEditing = editState?.kind === "lictype" && editState.id === tp.id;
                       if (isEditing && editState?.kind === "lictype") {
                         return (
-                          <div key={tp.id} className="px-4 py-3 bg-indigo-50 border-b border-indigo-100 space-y-2">
+                          <div key={tp.id} className="px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20 space-y-2">
                             <Input
                               value={editState.name}
                               onChange={(e) => setEditState({ ...editState, name: e.target.value })}
@@ -1273,7 +1273,7 @@ export default function MastersPage() {
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
                             <button
                               onClick={() => setEditState({ kind: "lictype", id: tp.id, name: tp.name, description: tp.description ?? "" })}
-                              className="rounded-lg p-1.5 text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                             ><Pencil className="h-4 w-4" /></button>
                             <button
                               onClick={async () => {

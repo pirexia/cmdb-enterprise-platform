@@ -22,6 +22,8 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/mammoth": "^1.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
@@ -50,6 +52,10 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.5",
     "qrcode": "^1.5.4",
-    "otplib": "^12.0.1"
+    "otplib": "^12.0.1",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.8.0",
+    "officeparser": "^4.1.2",
+    "exceljs": "^4.4.0"
   }
 }

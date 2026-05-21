@@ -40,9 +40,12 @@ export default function LoginPage() {
   const { locale, setLocale, t } = useLanguage();
   const router = useRouter();
 
-  const companyName = process.env.NEXT_PUBLIC_COMPANY_NAME || "CMDB Platform";
-  const themeColor  = process.env.NEXT_PUBLIC_THEME_COLOR  || "#4f46e5";
-  const ttlDays     = process.env.NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS || "30";
+  const ttlDays = process.env.NEXT_PUBLIC_TRUSTED_DEVICE_TTL_DAYS || "30";
+
+  const [themeColor,  setThemeColor]  = useState("#0f172a");
+  const [accentColor, setAccentColor] = useState("#3b82f6");
+  const [companyName, setCompanyName] = useState("CMDB Platform");
+  const [hasLogo,     setHasLogo]     = useState(false);
 
   // ── SSO status ────────────────────────────────────────────────────────────
   const [ssoEnabled,   setSsoEnabled]   = useState(false);
@@ -90,6 +93,21 @@ export default function LoginPage() {
     if (urlError) {
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Load theme settings from API ───────────────────────────────────────
+  useEffect(() => {
+    fetch(`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/settings/theme`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { sidebarBg: string; accentColor: string; companyName: string; hasLogo: boolean } | null) => {
+        if (!d) return;
+        setThemeColor(d.sidebarBg);
+        setAccentColor(d.accentColor);
+        setCompanyName(d.companyName);
+        setHasLogo(d.hasLogo);
+      })
+      .catch(() => { /* use defaults */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -226,12 +244,16 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
         {/* Card */}
-        <div className="rounded-2xl bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
+        <div className="rounded-none bg-white shadow-xl ring-1 ring-slate-200 overflow-hidden">
 
           {/* Header band */}
           <div className="px-8 py-7 text-center" style={{ backgroundColor: themeColor }}>
-            <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-sm mb-3">
-              {meta.icon}
+            <div className="inline-flex h-14 w-14 items-center justify-center bg-white/20 mb-3 mx-auto">
+              {hasLogo
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={`${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/settings/logo`} alt={companyName} className="h-10 w-10 object-contain" />
+                : meta.icon
+              }
             </div>
             <h1 className="text-xl font-bold text-white">{companyName}</h1>
             <p className="text-xs text-white/70 mt-1">{meta.subtitle}</p>
@@ -245,7 +267,7 @@ export default function LoginPage() {
             <select
               value={locale}
               onChange={(e) => setLocale(e.target.value as Locale)}
-              className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-500 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 cursor-pointer"
+              className="rounded-none border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-500 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 cursor-pointer"
             >
               {(Object.entries(LOCALE_NAMES) as [Locale, string][]).map(([code, name]) => (
                 <option key={code} value={code}>{name}</option>
@@ -258,7 +280,7 @@ export default function LoginPage() {
 
             {/* ── Error banner ─────────────────────────────────────────────── */}
             {error && (
-              <div className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 mb-5">
+              <div className="flex items-center gap-2 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 mb-5">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                 {error}
               </div>
@@ -275,7 +297,7 @@ export default function LoginPage() {
                   <input
                     type="email" required autoComplete="email" placeholder={t("login.email_placeholder")}
                     value={email} onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   />
                 </div>
                 <div>
@@ -284,7 +306,7 @@ export default function LoginPage() {
                     <input
                       type={showPwd ? "text" : "password"} required autoComplete="current-password" placeholder={t("login.password_placeholder")}
                       value={password} onChange={(e) => setPassword(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 pr-10 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                     />
                     <button type="button" onClick={() => setShowPwd((v) => !v)}
                       title={showPwd ? t("login.hide_password") : t("login.show_password")}
@@ -294,7 +316,8 @@ export default function LoginPage() {
                   </div>
                 </div>
                 <button type="submit" disabled={loading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.verifying") : t("login.submit")}
                 </button>
@@ -314,7 +337,7 @@ export default function LoginPage() {
                         setSsoLoading(true);
                         window.location.href = `${process.env.NEXT_PUBLIC_API_URL ?? ""}/api/auth/sso/microsoft`;
                       }}
-                      className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      className="flex w-full items-center justify-center gap-2.5 rounded-none border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
                     >
                       {ssoLoading
                         ? <><Loader2 className="h-4 w-4 animate-spin" />{t("login.sso_loading")}</>
@@ -340,7 +363,7 @@ export default function LoginPage() {
                     type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
                     required autoFocus placeholder="123456"
                     value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ""))}
-                    className="w-full rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] text-indigo-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   />
                 </div>
                 {/* Trust device */}
@@ -348,7 +371,7 @@ export default function LoginPage() {
                   <input
                     type="checkbox" checked={trustDevice}
                     onChange={(e) => setTrustDevice(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--accent)] focus:ring-[var(--accent)]/30"
                   />
                   <span className="text-xs text-slate-600 group-hover:text-slate-800 leading-relaxed">
                     {t("login.trust_device", { days: ttlDays })}
@@ -356,7 +379,8 @@ export default function LoginPage() {
                   </span>
                 </label>
                 <button type="submit" disabled={loading || mfaCode.length !== 6}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.verifying") : t("login.verify_code")}
                 </button>
@@ -370,7 +394,7 @@ export default function LoginPage() {
             {/* ── Step: mfa_suggest ─────────────────────────────────────────── */}
             {step === "mfa_suggest" && (
               <div className="space-y-5">
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="rounded-none border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                   <p className="font-semibold mb-1">{t("login.mfa_suggest_recommend")}</p>
                   <p className="text-amber-700 text-xs leading-relaxed">
                     {t("login.mfa_suggest_body")}
@@ -378,12 +402,13 @@ export default function LoginPage() {
                 </div>
                 <button
                   onClick={() => { setIsAdminSetup(false); setStep("mfa_setup_qr"); }}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold text-white transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   <ShieldCheck className="h-4 w-4" /> {t("login.setup_mfa_now")}
                 </button>
                 <button
                   onClick={handleSkipSuggestion}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  className="w-full rounded-none border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                   {t("login.skip_for_now")}
                 </button>
               </div>
@@ -393,7 +418,7 @@ export default function LoginPage() {
             {step === "mfa_setup_qr" && (
               <div className="space-y-4">
                 {isAdminSetup && (
-                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700 leading-relaxed">
+                  <div className="rounded-none border border-red-200 bg-red-50 p-3 text-xs text-red-700 leading-relaxed">
                     <span className="font-semibold block mb-0.5">{t("login.mandatory_mfa_title")}</span>
                     {t("login.mandatory_mfa_body")}
                   </div>
@@ -406,18 +431,18 @@ export default function LoginPage() {
                 {/* QR code */}
                 <div className="flex justify-center">
                   {qrLoading ? (
-                    <div className="flex h-40 w-40 items-center justify-center rounded-xl border border-slate-200">
+                    <div className="flex h-40 w-40 items-center justify-center rounded-none border border-slate-200">
                       <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
                     </div>
                   ) : qrDataUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={qrDataUrl} alt="TOTP QR code" className="h-44 w-44 rounded-xl border border-slate-200 p-1" />
+                    <img src={qrDataUrl} alt="TOTP QR code" className="h-44 w-44 rounded-none border border-slate-200 p-1" />
                   ) : null}
                 </div>
 
                 {/* Manual secret entry */}
                 {mfaSecret && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="rounded-none border border-slate-200 bg-slate-50 px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
                       {t("login.manual_key_label")}
                     </p>
@@ -436,7 +461,8 @@ export default function LoginPage() {
                 <button
                   onClick={() => setStep("mfa_setup_verify")}
                   disabled={!qrDataUrl || qrLoading}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  style={{ backgroundColor: accentColor }}>
                   {t("login.scanned_continue")}
                 </button>
                 {!isAdminSetup && (
@@ -463,7 +489,7 @@ export default function LoginPage() {
                     type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6}
                     required autoFocus placeholder="123456"
                     value={setupCode} onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, ""))}
-                    className="w-full rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] text-indigo-800 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                    className="w-full rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-3 text-center text-2xl font-mono tracking-[0.5em] text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   />
                 </div>
                 {/* Trust device */}
@@ -471,7 +497,7 @@ export default function LoginPage() {
                   <input
                     type="checkbox" checked={setupTrustDevice}
                     onChange={(e) => setSetupTrustDevice(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[var(--accent)] focus:ring-[var(--accent)]/30"
                   />
                   <span className="text-xs text-slate-600 group-hover:text-slate-800 leading-relaxed">
                     {t("login.trust_device", { days: ttlDays })}
@@ -479,7 +505,7 @@ export default function LoginPage() {
                   </span>
                 </label>
                 <button type="submit" disabled={loading || setupCode.length !== 6}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                  className="flex w-full items-center justify-center gap-2 rounded-none bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                   {loading && <Loader2 className="h-4 w-4 animate-spin" />}
                   {loading ? t("login.activating") : t("login.enable_mfa_btn")}
                 </button>

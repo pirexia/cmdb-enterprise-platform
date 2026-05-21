@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
   ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX,
@@ -272,12 +273,12 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <>
-      <tr className="group cursor-pointer hover:bg-indigo-50/40 transition-colors" onClick={onExpand}>
+      <tr className="group cursor-pointer hover:bg-[var(--accent)]/5 transition-colors" onClick={onExpand}>
         <td className="px-6 py-4">
           <div className="flex items-center gap-2">
             {isAddendum && <span title={t("contracts.addendum_badge")}><GitBranch className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" /></span>}
             <div>
-              <p className="font-semibold text-slate-800 group-hover:text-indigo-700 transition-colors">{contract.contractNumber}</p>
+              <p className="font-semibold text-slate-800 group-hover:text-[var(--accent)] transition-colors">{contract.contractNumber}</p>
               {isAddendum && <p className="text-[11px] text-amber-600">{t("contracts.addendum_of").replace("{number}", contract.parentContract!.contractNumber)}</p>}
               {contract.addendums.length > 0 && <p className="text-[11px] text-slate-400">{contract.addendums.length > 1 ? t("contracts.addendum_count_plural").replace("{count}", String(contract.addendums.length)) : t("contracts.addendum_count").replace("{count}", String(contract.addendums.length))}</p>}
             </div>
@@ -307,17 +308,17 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
 
       {expanded && (
         <tr>
-          <td colSpan={5} className="px-6 pb-4 bg-indigo-50/30">
+          <td colSpan={5} className="px-6 pb-4 bg-[var(--accent)]/5">
             <div className="space-y-3 pt-1">
 
               {/* ── CIs cubiertos ─────────────────────────────────────────── */}
-              <div className="rounded-xl border border-indigo-100 bg-white overflow-hidden">
+              <div className="border border-[var(--accent)]/20 bg-white overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t("contracts.cis_covered")}</p>
                   {isAdmin && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openCISelector(); }}
-                      className="flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors"
+                      className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2 py-1 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                     >
                       <Plus className="h-3 w-3" />{t("contracts.associate_cis")}
                     </button>
@@ -352,7 +353,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
 
                 {/* CI inline selector */}
                 {showCISelector && (
-                  <div className="border-t border-indigo-100 px-4 py-3 bg-indigo-50/40" onClick={(e) => e.stopPropagation()}>
+                  <div className="border-t border-[var(--accent)]/20 px-4 py-3 bg-[var(--accent)]/5" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center gap-2 mb-2">
                       <Search className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
                       <input
@@ -360,7 +361,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                         placeholder={t("common.search_ci")}
                         value={ciSearch}
                         onChange={(e) => setCiSearch(e.target.value)}
-                        className="flex-1 text-sm border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                        className="flex-1 text-sm border border-slate-200 rounded-none px-2 py-1 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white"
                       />
                       <button onClick={() => setShowCISelector(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                     </div>
@@ -373,7 +374,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                         ) : filteredAllCIs.map((ci) => {
                           const checked = selectedCiIds.has(ci.id);
                           return (
-                            <label key={ci.id} className="flex items-center gap-2 px-3 py-2 hover:bg-indigo-50 cursor-pointer text-sm">
+                            <label key={ci.id} className="flex items-center gap-2 px-3 py-2 hover:bg-[var(--accent)]/10 cursor-pointer text-sm">
                               <input
                                 type="checkbox"
                                 checked={checked}
@@ -382,7 +383,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                                   if (checked) s.delete(ci.id); else s.add(ci.id);
                                   return s;
                                 })}
-                                className="accent-indigo-600"
+                                className="accent-[var(--accent)]"
                               />
                               <span className="font-medium text-slate-700">{ci.name}</span>
                               <span className="text-xs text-slate-400 truncate">{ci.apiSlug}</span>
@@ -396,7 +397,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                       <button
                         onClick={confirmCIAssoc}
                         disabled={selectedCiIds.size === 0 || ciAssocLoading}
-                        className="flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
                       >
                         {ciAssocLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                         {t("contracts.confirm_selected").replace("{count}", String(selectedCiIds.size))}
@@ -407,7 +408,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
               </div>
 
               {/* ── Documentos adjuntos ────────────────────────────────────── */}
-              <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+              <div className="border border-slate-200 bg-white overflow-hidden">
                 <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <FileText className="h-3.5 w-3.5 text-slate-400" />
@@ -416,7 +417,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                   {isAdmin && docsFetched && (
                     <button
                       onClick={(e) => { e.stopPropagation(); openDocSelector(); }}
-                      className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                      className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                     >
                       <Plus className="h-3 w-3" />{t("contracts.associate_documents")}
                     </button>
@@ -441,9 +442,9 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                           {/* Document row */}
                           <div className="flex items-center justify-between px-4 py-2.5 gap-3">
                             <div className="flex items-start gap-2 min-w-0">
-                              <FileText className="h-4 w-4 flex-shrink-0 text-indigo-400 mt-0.5" />
+                              <FileText className="h-4 w-4 flex-shrink-0 text-[var(--accent)] mt-0.5" />
                               <div className="min-w-0">
-                                <Link href={`/documents/${doc.id}`} className="text-sm font-medium text-indigo-700 hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
+                                <Link href={`/documents/${doc.id}`} className="text-sm font-medium text-[var(--accent)] hover:underline truncate block" onClick={(e) => e.stopPropagation()}>
                                   {doc.title}
                                 </Link>
                                 <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -460,7 +461,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                               {/* Preview toggle */}
                               <button
                                 onClick={(e) => { e.stopPropagation(); togglePreview(doc); }}
-                                className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                                 title={previewOpen ? t("contracts.hide_preview") : t("contracts.show_preview")}
                               >
                                 {previewOpen ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -469,7 +470,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                               {/* Download */}
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDownload(doc.id, doc.originalName); }}
-                                className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                                className="flex items-center gap-1 rounded-none bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
                                 title={t("documents.download")}
                               >
                                 <Download className="h-3.5 w-3.5" />
@@ -529,7 +530,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                         placeholder={t("documents.search_documents")}
                         value={docSearch}
                         onChange={(e) => setDocSearch(e.target.value)}
-                        className="flex-1 text-sm border border-slate-200 rounded-md px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-400 bg-white"
+                        className="flex-1 text-sm border border-slate-200 rounded-none px-2 py-1 outline-none focus:ring-1 focus:ring-[var(--accent)] bg-white"
                       />
                       <button onClick={() => setShowDocSelector(false)} className="text-slate-400 hover:text-slate-600"><X className="h-4 w-4" /></button>
                     </div>
@@ -551,7 +552,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                                   if (checked) s.delete(d.id); else s.add(d.id);
                                   return s;
                                 })}
-                                className="accent-indigo-600"
+                                className="accent-[var(--accent)]"
                               />
                               <span className="font-medium text-slate-700 truncate">{d.title}</span>
                               <span className="text-xs text-slate-400 truncate flex-shrink-0">{d.documentTypeName}</span>
@@ -565,7 +566,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
                       <button
                         onClick={confirmDocAssoc}
                         disabled={selectedDocIds.size === 0 || docAssocLoading}
-                        className="flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                        className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
                       >
                         {docAssocLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
                         {t("contracts.confirm_selected").replace("{count}", String(selectedDocIds.size))}
@@ -576,7 +577,7 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
 
                 {docsFetched && (
                   <div className="border-t border-slate-50 px-4 py-2 text-right">
-                    <Link href="/documents" className="text-xs text-indigo-500 hover:text-indigo-700 hover:underline transition-colors">
+                    <Link href="/documents" className="text-xs text-[var(--accent)] hover:text-[var(--accent)] hover:underline transition-colors">
                       {t("contracts.view_all_docs")}
                     </Link>
                   </div>
@@ -619,6 +620,18 @@ export default function ContractsPage() {
   };
 
   useEffect(() => { fetchContracts(); }, []);
+
+  // RAG chat deep-link: ?focus=<contractId> expands the row once contracts are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || contracts.length === 0) return;
+    if (contracts.some((c) => c.id === focusId)) {
+      setExpanded(focusId);
+      router.replace("/contracts", { scroll: false });
+    }
+  }, [searchParams, contracts, router]);
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {
@@ -674,7 +687,7 @@ export default function ContractsPage() {
               <p className="text-sm text-slate-500 mt-0.5">{loading ? t("common.loading") : t("contracts.subtitle_stats").replace("{total}", String(total)).replace("{addendums}", String(addendums)).replace("{expired}", String(expiredCount))}</p>
             </div>
             {isAdmin && (
-              <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
+              <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                 <Plus className="h-4 w-4" />{t("contracts.add_contract")}
               </button>
             )}
@@ -685,12 +698,12 @@ export default function ContractsPage() {
           {!loading && !error && (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {[
-                { label: t("contracts.stat_total"),    value: total,        color: "bg-indigo-50 text-indigo-700" },
+                { label: t("contracts.stat_total"),    value: total,        color: "bg-[var(--accent)]/5 text-[var(--accent)]" },
                 { label: t("contracts.stat_addendums"),value: addendums,    color: "bg-amber-50 text-amber-700" },
                 { label: t("contracts.stat_expired"),  value: expiredCount, color: "bg-red-50 text-red-700" },
                 { label: t("contracts.stat_with_cis"), value: contracts.filter((c) => c.cis.length > 0).length, color: "bg-emerald-50 text-emerald-700" },
               ].map(({ label, value, color }) => (
-                <div key={label} className={`rounded-xl ${color.split(" ")[0]} px-4 py-3 ring-1 ring-inset ring-current/10`}>
+                <div key={label} className={`${color.split(" ")[0]} px-4 py-3 ring-1 ring-inset ring-current/10`}>
                   <p className={`text-2xl font-bold ${color.split(" ")[1]}`}>{value}</p>
                   <p className="text-xs font-medium text-slate-500 mt-0.5">{label}</p>
                 </div>
@@ -698,16 +711,16 @@ export default function ContractsPage() {
             </div>
           )}
 
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
               <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2"><FileText className="h-4 w-4 text-slate-400" />{t("contracts.list_title")}</h2>
               <div className="flex items-center gap-2">
                 {activeFilterCount > 0 && (
                   <>
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                       <Search className="h-3 w-3" />{activeFilterCount > 1 ? t("contracts.active_filters_plural").replace("{count}", String(activeFilterCount)) : t("contracts.active_filters").replace("{count}", String(activeFilterCount))}
                     </span>
-                    <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                    <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
                       <FilterX className="h-3.5 w-3.5" />{t("contracts.clear_filters")}
                     </button>
                   </>
@@ -715,11 +728,11 @@ export default function ContractsPage() {
                 <button
                   onClick={handleExportCSV}
                   disabled={loading || contracts.length === 0}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
                 >
                   <Download className="h-3.5 w-3.5" />CSV
                 </button>
-                <button onClick={fetchContracts} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors"><RefreshCw className="h-4 w-4" /></button>
+                <button onClick={fetchContracts} className="flex items-center justify-center rounded-none border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors"><RefreshCw className="h-4 w-4" /></button>
               </div>
             </div>
 
@@ -745,14 +758,14 @@ export default function ContractsPage() {
                       <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("contracts.columns.cis_covered")}</th>
                       <th className="px-4 py-3" />
                     </tr>
-                    <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                    <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                       {/* Nº Contrato */}
                       <td className="px-3 py-2">
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder={t("contracts.filter_contract")} value={filters.contractNumber}
                             onChange={(e) => setFilter("contractNumber", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Proveedor */}
@@ -761,13 +774,13 @@ export default function ContractsPage() {
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder={t("contracts.filter_vendor")} value={filters.vendor}
                             onChange={(e) => setFilter("vendor", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Status */}
                       <td className="px-3 py-2">
                         <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.status ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.status ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">{t("contracts.filter_all")}</option>
                           <option value="activo">{t("contracts.status.active")}</option>
                           <option value="vence_pronto">{t("contracts.status.expiring_soon")}</option>
@@ -778,7 +791,7 @@ export default function ContractsPage() {
                       {/* CIs — type filter */}
                       <td className="px-3 py-2">
                         <select value={filters.type} onChange={(e) => setFilter("type", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.type ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.type ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">{t("contracts.filter_all")}</option>
                           <option value="principal">{t("contracts.principal_badge")}</option>
                           <option value="adenda">{t("contracts.addendum_badge")}</option>

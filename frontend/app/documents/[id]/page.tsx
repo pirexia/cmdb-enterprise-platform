@@ -13,6 +13,14 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface IndexStatus {
+  status: 'NOT_INDEXED' | 'PENDING' | 'INDEXING' | 'READY' | 'ERROR';
+  chunkCount: number;
+  indexedAt: string | null;
+  errorMessage: string | null;
+  updatedAt: string | null;
+}
+
 interface DocVersion {
   id: string;
   versionNumber: number;
@@ -64,6 +72,9 @@ interface DocumentDetail {
   rootId: string | null;
   isLatest: boolean;
   fileName: string;
+  readAdmin: boolean;
+  readAuditor: boolean;
+  readViewer: boolean;
   versions: DocVersion[];
   relations: DocRelation[];
   cis: DocCI[];
@@ -119,10 +130,10 @@ function SectionCard({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+    <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <span className="text-indigo-500">{icon}</span>
+          <span className="text-[var(--accent)]">{icon}</span>
           {title}
         </div>
         {action}
@@ -300,7 +311,7 @@ function AddVersionModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.add_version")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -318,7 +329,7 @@ function AddVersionModal({
             <input
               type="file"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-700 focus:outline-none"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-none file:border-0 file:bg-[var(--accent)] file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-[var(--accent)]/90 focus:outline-none"
             />
             {file && (
               <p className="mt-1 text-xs text-slate-500">{file.name} ({formatFileSize(file.size)})</p>
@@ -332,7 +343,7 @@ function AddVersionModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             {t("documents.add_version")}
@@ -387,7 +398,7 @@ function AddRelationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.add_relation")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -405,7 +416,7 @@ function AddRelationModal({
             <select
               value={relationType}
               onChange={(e) => setRelationType(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               <option value="RELATED_TO">{t("documents.relation_RELATED_TO")}</option>
               <option value="AMENDMENT_OF">{t("documents.relation_AMENDMENT_OF")}</option>
@@ -417,7 +428,7 @@ function AddRelationModal({
             <select
               value={targetId}
               onChange={(e) => setTargetId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               <option value="">— {t("documents.doc_title")} —</option>
               {availableDocs.map((d) => (
@@ -433,7 +444,7 @@ function AddRelationModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             {t("actions.add")}
@@ -522,7 +533,7 @@ function AddCIsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.associate_cis")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -540,7 +551,7 @@ function AddCIsModal({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("documents.search_cis")}
-            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
@@ -556,7 +567,7 @@ function AddCIsModal({
                     type="checkbox"
                     checked={selected.has(ci.id)}
                     onChange={() => toggle(ci.id)}
-                    className="accent-indigo-600 h-4 w-4"
+                    className="accent-[var(--accent)] h-4 w-4"
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{ci.name}</p>
@@ -577,7 +588,7 @@ function AddCIsModal({
           <button
             onClick={handleSubmit}
             disabled={submitting || selected.size === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("documents.associate_selected")}
@@ -664,7 +675,7 @@ function AddContractsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("documents.associate_contracts")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -682,7 +693,7 @@ function AddContractsModal({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("documents.search_contracts")}
-            className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
           />
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-6 text-slate-400 text-sm">
@@ -698,7 +709,7 @@ function AddContractsModal({
                     type="checkbox"
                     checked={selected.has(c.id)}
                     onChange={() => toggle(c.id)}
-                    className="accent-indigo-600 h-4 w-4"
+                    className="accent-[var(--accent)] h-4 w-4"
                   />
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800 font-mono truncate">{c.contractNumber}</p>
@@ -716,7 +727,7 @@ function AddContractsModal({
           <button
             onClick={handleSubmit}
             disabled={submitting || selected.size === 0}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("documents.associate_selected")}
@@ -741,9 +752,15 @@ function EditMetadataModal({
   onSuccess: () => void;
 }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [title, setTitle] = useState(doc.title);
   const [description, setDescription] = useState(doc.description ?? "");
   const [typeId, setTypeId] = useState(doc.documentTypeId);
+  const [acl, setAcl] = useState({
+    readAdmin: doc.readAdmin ?? true,
+    readAuditor: doc.readAuditor ?? true,
+    readViewer: doc.readViewer ?? true,
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -752,13 +769,23 @@ function EditMetadataModal({
     setSubmitting(true);
     setError(null);
     try {
-      const res = await apiFetch(`/api/documents/${doc.id}`, {
+      const metaRes = await apiFetch(`/api/documents/${doc.id}`, {
         method: "PATCH",
         body: JSON.stringify({ title: title.trim(), description: description.trim() || null, documentTypeId: typeId }),
       });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(d.error ?? `Error ${res.status}`);
+      if (!metaRes.ok) {
+        const d = await metaRes.json().catch(() => ({})) as { error?: string };
+        throw new Error(d.error ?? `Error ${metaRes.status}`);
+      }
+      if (user?.role === 'ADMIN') {
+        const aclRes = await apiFetch(`/api/documents/${doc.id}/acl`, {
+          method: "PATCH",
+          body: JSON.stringify({ readAdmin: acl.readAdmin, readAuditor: acl.readAuditor, readViewer: acl.readViewer }),
+        });
+        if (!aclRes.ok) {
+          const d = await aclRes.json().catch(() => ({})) as { error?: string };
+          throw new Error(d.error ?? `Error ${aclRes.status}`);
+        }
       }
       onSuccess();
     } catch (e) {
@@ -770,7 +797,7 @@ function EditMetadataModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-md bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">{t("actions.edit")}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
@@ -788,7 +815,7 @@ function EditMetadataModal({
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             />
           </div>
           <div>
@@ -797,7 +824,7 @@ function EditMetadataModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
             />
           </div>
           <div>
@@ -805,12 +832,42 @@ function EditMetadataModal({
             <select
               value={typeId}
               onChange={(e) => setTypeId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
             >
               {docTypes.map((dt) => (
                 <option key={dt.id} value={dt.id}>{dt.name}</option>
               ))}
             </select>
+          </div>
+          {/* Visibility ACL — only editable by ADMIN */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('document.acl.title')}
+            </label>
+            {(['ADMIN', 'AUDITOR', 'VIEWER'] as const).map((role) => {
+              const key = `read${role.charAt(0) + role.slice(1).toLowerCase()}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+              return (
+                <div key={role} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {t(`document.acl.role.${role.toLowerCase()}`)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={user?.role !== 'ADMIN'}
+                    onClick={() => setAcl(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                      ${acl[key] ? 'bg-[var(--accent)]' : 'bg-gray-300 dark:bg-gray-600'}
+                      ${user?.role !== 'ADMIN' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform
+                      ${acl[key] ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              );
+            })}
+            {user?.role !== 'ADMIN' && (
+              <p className="text-xs text-gray-400">{t('document.acl.adminOnly')}</p>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
@@ -820,7 +877,7 @@ function EditMetadataModal({
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
           >
             {submitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("actions.save")}
@@ -852,6 +909,12 @@ export default function DocumentDetailPage() {
   const [showAddCIs, setShowAddCIs] = useState(false);
   const [showAddContracts, setShowAddContracts] = useState(false);
 
+  // RAG index status
+  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
+  const [isReindexing, setIsReindexing] = useState(false);
+  const [reindexBanner, setReindexBanner] = useState<string | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // Notes state
   const [noteText, setNoteText] = useState("");
   const [noteSubmitting, setNoteSubmitting] = useState(false);
@@ -862,6 +925,7 @@ export default function DocumentDetailPage() {
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [previewMime, setPreviewMime] = useState<string>("");
   const [previewName, setPreviewName] = useState<string>("");
+  const [previewVersionNumber, setPreviewVersionNumber] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -889,11 +953,13 @@ export default function DocumentDetailPage() {
         setPreviewId(latestVersion.id);
         setPreviewMime(latestVersion.mimeType);
         setPreviewName(latestVersion.originalName);
+        setPreviewVersionNumber(latestVersion.versionNumber);
       } else {
         // root document with no version children — preview the root itself
         setPreviewId(d.id);
         setPreviewMime(d.mimeType);
         setPreviewName(d.originalName);
+        setPreviewVersionNumber(d.versionNumber);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.unknown_error"));
@@ -903,6 +969,72 @@ export default function DocumentDetailPage() {
   }, [docId, t]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const fetchIndexStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/index-status`);
+      if (res.ok) {
+        const data = await res.json() as IndexStatus;
+        setIndexStatus(data);
+        return data;
+      }
+    } catch {
+      // silently ignore — index status is non-critical
+    }
+    return null;
+  }, [docId]);
+
+  // Fetch index status once on mount
+  useEffect(() => { void fetchIndexStatus(); }, [fetchIndexStatus]);
+
+  // Auto-poll while status is PENDING or INDEXING
+  useEffect(() => {
+    const isPending = indexStatus?.status === 'PENDING' || indexStatus?.status === 'INDEXING';
+    if (isPending) {
+      if (!pollIntervalRef.current) {
+        pollIntervalRef.current = setInterval(() => {
+          void fetchIndexStatus().then((s) => {
+            if (s && s.status !== 'PENDING' && s.status !== 'INDEXING') {
+              if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+              }
+            }
+          });
+        }, 5000);
+      }
+    } else {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [indexStatus?.status, fetchIndexStatus]);
+
+  const handleReindex = async () => {
+    if (!confirm(t("document.reindexConfirm"))) return;
+    setIsReindexing(true);
+    setReindexBanner(null);
+    try {
+      const res = await apiFetch(`/api/documents/${docId}/reindex`, { method: 'POST' });
+      if (res.ok) {
+        setReindexBanner(t("document.reindexQueued"));
+        void fetchIndexStatus();
+      } else {
+        setReindexBanner(t("common.unknown_error"));
+      }
+    } catch {
+      setReindexBanner(t("common.unknown_error"));
+    } finally {
+      setIsReindexing(false);
+    }
+  };
 
   const handleDownload = async (versionId?: string) => {
     const id = versionId ?? docId;
@@ -1047,21 +1179,65 @@ export default function DocumentDetailPage() {
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
-              <FolderOpen className="h-5 w-5 text-indigo-600" />
+              <FolderOpen className="h-5 w-5 text-[var(--accent)]" />
               <div>
                 <h1 className="text-lg font-bold text-slate-900">{doc.title}</h1>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  <span className="inline-flex items-center rounded-full bg-[var(--accent)]/5 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                     {doc.documentTypeName}
                   </span>
                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                    v{doc.versionNumber}
+                    v{doc.versions.find((v) => v.isLatest)?.versionNumber ?? doc.versionNumber}
                   </span>
-                  {doc.isLatest && (
-                    <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      latest
-                    </span>
-                  )}
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                    latest
+                  </span>
+                  {(['admin', 'auditor', 'viewer'] as const).map((r) => {
+                    const key = `read${r.charAt(0).toUpperCase() + r.slice(1)}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+                    const visible = doc[key] ?? true;
+                    return (
+                      <span key={r} className={`text-xs px-2 py-0.5 rounded-full font-medium
+                        ${visible ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                  : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>
+                        {r.toUpperCase()}: {visible ? t('document.acl.visible') : t('document.acl.hidden')}
+                      </span>
+                    );
+                  })}
+                  {/* RAG indexing status badge */}
+                  {indexStatus && (() => {
+                    const statusStyleMap: Record<IndexStatus['status'], string> = {
+                      READY:       'bg-green-500/15 text-green-400 border border-green-500/30',
+                      INDEXING:    'bg-blue-500/15 text-blue-400 border border-blue-500/30',
+                      PENDING:     'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30',
+                      ERROR:       'bg-red-500/15 text-red-400 border border-red-500/30',
+                      NOT_INDEXED: 'bg-slate-500/15 text-slate-400 border border-slate-500/30',
+                    };
+                    const statusLabelMap: Record<IndexStatus['status'], string> = {
+                      READY:       t('document.indexing.ready'),
+                      INDEXING:    t('document.indexing.indexing'),
+                      PENDING:     t('document.indexing.pending'),
+                      ERROR:       t('document.indexing.error'),
+                      NOT_INDEXED: t('document.indexing.notIndexed'),
+                    };
+                    const pillClass = `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${statusStyleMap[indexStatus.status]}`;
+                    const label = `${t('document.indexing.title')}: ${statusLabelMap[indexStatus.status]}`;
+                    const suffix = indexStatus.status === 'READY' && indexStatus.chunkCount > 0
+                      ? ` · ${indexStatus.chunkCount} ${t('document.indexing.chunkCount')}`
+                      : indexStatus.indexedAt
+                        ? ` · ${t('document.indexing.indexedAt')} ${formatDateTime(indexStatus.indexedAt)}`
+                        : '';
+                    return (
+                      <span
+                        className={pillClass}
+                        title={indexStatus.status === 'ERROR' && indexStatus.errorMessage ? indexStatus.errorMessage : undefined}
+                      >
+                        {indexStatus.status === 'PENDING' || indexStatus.status === 'INDEXING'
+                          ? <RefreshCw className="h-3 w-3 animate-spin" />
+                          : null}
+                        {label}{suffix}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -1076,8 +1252,16 @@ export default function DocumentDetailPage() {
               {isAdmin && (
                 <>
                   <button
+                    onClick={handleReindex}
+                    disabled={isReindexing}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isReindexing ? 'animate-spin' : ''}`} />
+                    {t("document.reindex")}
+                  </button>
+                  <button
                     onClick={() => setShowAddVersion(true)}
-                    className="flex items-center gap-1.5 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                    className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                   >
                     <Upload className="h-4 w-4" />
                     {t("documents.add_version")}
@@ -1102,13 +1286,87 @@ export default function DocumentDetailPage() {
           </div>
         </header>
 
+        {/* Reindex banner */}
+        {reindexBanner && (
+          <div className="px-8 pt-4">
+            <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
+              <span>{reindexBanner}</span>
+              <button onClick={() => setReindexBanner(null)} className="ml-4 rounded p-0.5 hover:bg-blue-100 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Body */}
         <div className="px-8 py-6 space-y-6">
+          {/* Version History */}
+          <SectionCard
+            title={t("documents.version_history")}
+            icon={<Upload className="h-4 w-4" />}
+          >
+            {doc.versions.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-400">{t("common.no_data")}</p>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {doc.versions.map((v) => {
+                  const isActivePreview = v.id === previewId;
+                  return (
+                    <div
+                      key={v.id}
+                      className={`flex items-center justify-between px-5 py-3 group ${v.isLatest ? "bg-emerald-50/50" : ""} ${isActivePreview ? "ring-1 ring-inset ring-[var(--accent)]/30" : ""}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${v.isLatest ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                          v{v.versionNumber}
+                        </span>
+                        <div>
+                          <p className="text-sm font-medium text-slate-700 font-mono">{v.originalName}</p>
+                          <p className="text-xs text-slate-400">{v.uploadedBy} · {formatDate(v.createdAt)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setPreviewId(v.id);
+                            setPreviewMime(v.mimeType);
+                            setPreviewName(v.originalName);
+                            setPreviewVersionNumber(v.versionNumber);
+                          }}
+                          className={`rounded-none p-1.5 transition-colors ${isActivePreview ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)]"}`}
+                          title={t("documents.preview")}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(v.id)}
+                          className="rounded-none p-1.5 text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
+                          title={t("documents.download")}
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleDeleteVersion(v.id)}
+                            className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                            title={t("documents.delete_version")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+
           {/* Metadata card */}
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="border-b border-slate-100 bg-slate-50 px-5 py-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <FileText className="h-4 w-4 text-indigo-500" />
+                <FileText className="h-4 w-4 text-[var(--accent)]" />
                 Metadatos
               </div>
             </div>
@@ -1141,7 +1399,7 @@ export default function DocumentDetailPage() {
           {/* Document Viewer */}
           {previewId && (
             <SectionCard
-              title={t("documents.preview")}
+              title={`${t("documents.preview")}${previewVersionNumber !== null ? `: v${previewVersionNumber}` : ""}`}
               icon={<Eye className="h-4 w-4" />}
             >
               <DocumentViewer
@@ -1151,53 +1409,6 @@ export default function DocumentDetailPage() {
               />
             </SectionCard>
           )}
-
-          {/* Version History */}
-          <SectionCard
-            title={t("documents.version_history")}
-            icon={<Upload className="h-4 w-4" />}
-          >
-            {doc.versions.length === 0 ? (
-              <p className="py-6 text-center text-sm text-slate-400">{t("common.no_data")}</p>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {doc.versions.map((v) => (
-                  <div
-                    key={v.id}
-                    className={`flex items-center justify-between px-5 py-3 group ${v.isLatest ? "bg-emerald-50/50" : ""}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${v.isLatest ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                        v{v.versionNumber}
-                      </span>
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 font-mono">{v.originalName}</p>
-                        <p className="text-xs text-slate-400">{v.uploadedBy} · {formatDate(v.createdAt)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDownload(v.id)}
-                        className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
-                        title={t("documents.download")}
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => handleDeleteVersion(v.id)}
-                          className="rounded-lg p-1.5 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                          title={t("documents.delete_version")}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
 
           {/* Notes */}
           <SectionCard
@@ -1211,9 +1422,9 @@ export default function DocumentDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {doc.notes.map((note) => (
-                    <div key={note.id} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                    <div key={note.id} className="border border-slate-100 bg-slate-50 px-4 py-3">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-xs font-semibold text-indigo-700">{note.createdBy}</span>
+                        <span className="text-xs font-semibold text-[var(--accent)]">{note.createdBy}</span>
                         <span className="text-xs text-slate-400">{formatDateTime(note.createdAt)}</span>
                       </div>
                       <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.content}</p>
@@ -1235,13 +1446,13 @@ export default function DocumentDetailPage() {
                   onChange={(e) => setNoteText(e.target.value)}
                   placeholder={t("documents.note_placeholder")}
                   rows={3}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
                 />
                 <div className="flex justify-end mt-2">
                   <button
                     onClick={handleAddNote}
                     disabled={noteSubmitting || !noteText.trim()}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
                   >
                     {noteSubmitting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                     {t("documents.add_note")}
@@ -1259,7 +1470,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddRelation(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.add_relation")}
                 </button>
@@ -1278,7 +1489,7 @@ export default function DocumentDetailPage() {
                       </span>
                       <button
                         onClick={() => router.push(`/documents/${rel.targetDocId}`)}
-                        className="text-sm text-indigo-700 hover:underline font-medium"
+                        className="text-sm text-[var(--accent)] hover:underline font-medium"
                       >
                         {rel.targetTitle}
                       </button>
@@ -1305,7 +1516,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddCIs(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.associate_cis")}
                 </button>
@@ -1320,7 +1531,7 @@ export default function DocumentDetailPage() {
                   <div key={ci.ciId} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors group">
                     <button
                       onClick={() => router.push(`/inventory`)}
-                      className="text-sm text-indigo-700 hover:underline font-medium"
+                      className="text-sm text-[var(--accent)] hover:underline font-medium"
                     >
                       {ci.ciName}
                     </button>
@@ -1349,7 +1560,7 @@ export default function DocumentDetailPage() {
               isAdmin ? (
                 <button
                   onClick={() => setShowAddContracts(true)}
-                  className="flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
+                  className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />{t("documents.associate_contracts")}
                 </button>
@@ -1364,7 +1575,7 @@ export default function DocumentDetailPage() {
                   <div key={c.contractId} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 transition-colors group">
                     <button
                       onClick={() => router.push(`/contracts`)}
-                      className="text-sm text-indigo-700 hover:underline font-mono font-medium"
+                      className="text-sm text-[var(--accent)] hover:underline font-mono font-medium"
                     >
                       {c.contractNumber}
                     </button>

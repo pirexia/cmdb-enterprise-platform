@@ -82,7 +82,7 @@ function SortTh({
     >
       <span className="flex items-center gap-1">
         {label}
-        <Icon className={`h-3.5 w-3.5 ${active ? "text-indigo-600" : "text-slate-300"}`} />
+        <Icon className={`h-3.5 w-3.5 ${active ? "text-[var(--accent)]" : "text-slate-300"}`} />
       </span>
     </th>
   );
@@ -97,12 +97,14 @@ function UploadModal({
   onClose: () => void; onSuccess: () => void;
 }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [typeId, setTypeId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [selectedCIs, setSelectedCIs] = useState<string[]>([]);
   const [selectedContracts, setSelectedContracts] = useState<string[]>([]);
+  const [acl, setAcl] = useState({ readAdmin: true, readAuditor: true, readViewer: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +126,9 @@ function UploadModal({
       formData.append("file", file);
       if (selectedCIs.length) formData.append("ciIds", JSON.stringify(selectedCIs));
       if (selectedContracts.length) formData.append("contractIds", JSON.stringify(selectedContracts));
+      formData.append("readAdmin", String(acl.readAdmin));
+      formData.append("readAuditor", String(acl.readAuditor));
+      formData.append("readViewer", String(acl.readViewer));
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
       const res = await fetch(`${apiBase}/api/documents`, {
         method: "POST",
@@ -142,10 +147,10 @@ function UploadModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-lg bg-white shadow-xl flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-2">
-            <Upload className="h-5 w-5 text-indigo-600" />
+            <Upload className="h-5 w-5 text-[var(--accent)]" />
             <h2 className="text-base font-semibold text-slate-900">{t("documents.upload")}</h2>
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
@@ -159,19 +164,19 @@ function UploadModal({
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t("documents.form_title")} *</label>
             <input value={title} onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
               placeholder={t("documents.form_title")} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t("documents.form_description")}</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 resize-none"
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 resize-none"
               placeholder={t("documents.form_description")} />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t("documents.form_type")} *</label>
             <select value={typeId} onChange={(e) => setTypeId(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20">
               <option value="">— {t("documents.form_type")} —</option>
               {docTypes.map((dt) => <option key={dt.id} value={dt.id}>{dt.name}</option>)}
             </select>
@@ -179,7 +184,7 @@ function UploadModal({
           <div>
             <label className="block text-xs font-semibold text-slate-600 mb-1">{t("documents.form_file")} *</label>
             <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-600 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-indigo-700 focus:outline-none" />
+              className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 file:mr-3 file:rounded-none file:border-0 file:bg-[var(--accent)] file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white hover:file:bg-[var(--accent)]/90 focus:outline-none" />
             {file && <p className="mt-1 text-xs text-slate-500">{file.name} ({formatFileSize(file.size)})</p>}
           </div>
           {cis.length > 0 && (
@@ -188,7 +193,7 @@ function UploadModal({
               <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
                 {cis.map((ci) => (
                   <label key={ci.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" checked={selectedCIs.includes(ci.id)} onChange={() => toggleCI(ci.id)} className="h-3.5 w-3.5 accent-indigo-600" />
+                    <input type="checkbox" checked={selectedCIs.includes(ci.id)} onChange={() => toggleCI(ci.id)} className="h-3.5 w-3.5 accent-[var(--accent)]" />
                     <span className="text-xs text-slate-700">{ci.name}</span>
                     <span className="text-xs text-slate-400 font-mono">{ci.apiSlug}</span>
                   </label>
@@ -202,18 +207,48 @@ function UploadModal({
               <div className="max-h-32 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
                 {contracts.map((c) => (
                   <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
-                    <input type="checkbox" checked={selectedContracts.includes(c.id)} onChange={() => toggleContract(c.id)} className="h-3.5 w-3.5 accent-indigo-600" />
+                    <input type="checkbox" checked={selectedContracts.includes(c.id)} onChange={() => toggleContract(c.id)} className="h-3.5 w-3.5 accent-[var(--accent)]" />
                     <span className="text-xs text-slate-700 font-mono">{c.contractNumber}</span>
                   </label>
                 ))}
               </div>
             </div>
           )}
+          {/* Visibility ACL — only editable by ADMIN */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              {t('document.acl.title')}
+            </label>
+            {(['ADMIN', 'AUDITOR', 'VIEWER'] as const).map((role) => {
+              const key = `read${role.charAt(0) + role.slice(1).toLowerCase()}` as 'readAdmin' | 'readAuditor' | 'readViewer';
+              return (
+                <div key={role} className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">
+                    {t(`document.acl.role.${role.toLowerCase()}`)}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={user?.role !== 'ADMIN'}
+                    onClick={() => setAcl(prev => ({ ...prev, [key]: !prev[key] }))}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                      ${acl[key] ? 'bg-[var(--accent)]' : 'bg-gray-300 dark:bg-gray-600'}
+                      ${user?.role !== 'ADMIN' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  >
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform
+                      ${acl[key] ? 'translate-x-5' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              );
+            })}
+            {user?.role !== 'ADMIN' && (
+              <p className="text-xs text-gray-400">{t('document.acl.adminOnly')}</p>
+            )}
+          </div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
           <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>
           <button onClick={handleSubmit} disabled={submitting}
-            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors">
             {submitting ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("common.loading")}</> : <><Upload className="h-4 w-4" />{t("documents.upload")}</>}
           </button>
         </div>
@@ -331,7 +366,7 @@ export default function DocumentsPage() {
         <header className="sticky top-0 z-10 flex-shrink-0 border-b border-slate-200 bg-white px-8 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <FolderOpen className="h-6 w-6 text-indigo-600" />
+              <FolderOpen className="h-6 w-6 text-[var(--accent)]" />
               <div>
                 <h1 className="text-xl font-bold text-slate-900">{t("documents.title")}</h1>
                 <p className="text-sm text-slate-500 mt-0.5">{t("documents.subtitle")}</p>
@@ -340,10 +375,10 @@ export default function DocumentsPage() {
             <div className="flex items-center gap-2">
               {activeFilterCount > 0 && (
                 <>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                     <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
                   </span>
-                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
                     <FilterX className="h-3.5 w-3.5" />Limpiar filtros
                   </button>
                 </>
@@ -355,7 +390,7 @@ export default function DocumentsPage() {
               </button>
               {isAdmin && (
                 <button onClick={handleOpenUpload}
-                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
+                  className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Upload className="h-4 w-4" />{t("documents.upload")}
                 </button>
               )}
@@ -384,7 +419,7 @@ export default function DocumentsPage() {
               <p className="text-sm">{activeFilterCount > 0 ? "No hay documentos que coincidan con los filtros." : t("documents.no_documents")}</p>
             </div>
           ) : (
-            <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50">
@@ -397,20 +432,20 @@ export default function DocumentsPage() {
                     <SortTh field="createdAt"       label={t("documents.doc_date")}       {...sortProps} />
                     <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("common.actions")}</th>
                   </tr>
-                  <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                  <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                     {/* Título */}
                     <td className="px-3 py-2">
                       <div className="relative">
                         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input type="text" placeholder="Buscar título…" value={filterTitle}
                           onChange={(e) => setFilterTitle(e.target.value)}
-                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                       </div>
                     </td>
                     {/* Tipo */}
                     <td className="px-3 py-2">
                       <select value={filterType} onChange={(e) => setFilterType(e.target.value)}
-                        className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filterType ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filterType ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                         <option value="">Todos los tipos</option>
                         {docTypes.map((dt) => (
                           <option key={dt.code} value={dt.code}>{dt.name}</option>
@@ -429,7 +464,7 @@ export default function DocumentsPage() {
                         <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                         <input type="text" placeholder="Usuario…" value={filterUser}
                           onChange={(e) => setFilterUser(e.target.value)}
-                          className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                       </div>
                     </td>
                     {/* Fecha — no filter */}
@@ -442,18 +477,18 @@ export default function DocumentsPage() {
                   {filtered.map((doc) => (
                     <tr
                       key={doc.id}
-                      className="group cursor-pointer hover:bg-indigo-50/40 transition-colors"
+                      className="group cursor-pointer hover:bg-[var(--accent)]/5 transition-colors"
                       onClick={() => router.push(`/documents/${doc.id}`)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-slate-400 flex-shrink-0" />
-                          <span className="font-medium text-slate-800 group-hover:text-indigo-700 transition-colors">{doc.title}</span>
+                          <span className="font-medium text-slate-800 group-hover:text-[var(--accent)] transition-colors">{doc.title}</span>
                         </div>
                         {doc.description && <p className="ml-6 mt-0.5 text-xs text-slate-400 line-clamp-1">{doc.description}</p>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                        <span className="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">
                           {doc.documentTypeName}
                         </span>
                       </td>
@@ -469,7 +504,7 @@ export default function DocumentsPage() {
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                           <button onClick={(e) => handleDownload(doc, e)} title={t("documents.download")}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                            className="rounded-none p-1.5 text-slate-400 hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors">
                             <Download className="h-4 w-4" />
                           </button>
                           {isAdmin && (

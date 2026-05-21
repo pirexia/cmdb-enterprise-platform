@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
@@ -283,6 +284,19 @@ export default function InventoryPage() {
       .catch(() => {});
   }, []);
 
+  // RAG chat deep-link: ?focus=<ciId> opens the detail modal once cis are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || cis.length === 0) return;
+    const target = cis.find((c) => c.id === focusId);
+    if (target) {
+      setDetailCI(target);
+      router.replace("/inventory", { scroll: false });
+    }
+  }, [searchParams, cis, router]);
+
   const filtered = useMemo(() => {
     const CRIT_ORDER: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, MISSION_CRITICAL: 4 };
     let result = cis.filter((ci) => {
@@ -431,18 +445,18 @@ export default function InventoryPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadTemplate}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
                   title="Descargar plantilla CSV para importación masiva"
                 >
                   <FileDown className="h-3.5 w-3.5" />{t('inventory.download_template')}
                 </button>
-                <label className={`flex items-center gap-1.5 cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${importing ? "opacity-50 pointer-events-none" : ""}`}
+                <label className={`flex items-center gap-1.5 cursor-pointer rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${importing ? "opacity-50 pointer-events-none" : ""}`}
                   title={t('inventory.import_csv')}>
                   {importing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
                   {importing ? t('common.loading') : t('inventory.import_csv')}
                   <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
                 </label>
-                <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors shadow-sm">
+                <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                   <Plus className="h-4 w-4" />{t('inventory.add_ci')}
                 </button>
               </div>
@@ -451,29 +465,29 @@ export default function InventoryPage() {
         </header>
 
         <div className="px-4 py-6">
-          <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-slate-200 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-sm font-semibold text-slate-700">Todos los activos</h2>
                 {activeFilterCount > 0 && (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-semibold text-indigo-700">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--accent)]">
                     <Search className="h-3 w-3" />{activeFilterCount} filtro{activeFilterCount > 1 ? "s" : ""} activo{activeFilterCount > 1 ? "s" : ""}
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
                 {activeFilterCount > 0 && (
-                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
+                  <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
                     <FilterX className="h-3.5 w-3.5" />Limpiar filtros
                   </button>
                 )}
-                <button onClick={fetchCIs} className="flex items-center justify-center rounded-lg border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
+                <button onClick={fetchCIs} className="flex items-center justify-center rounded-none border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
                 </button>
                 <button
                   onClick={handleExportCSV}
                   disabled={loading || filtered.length === 0}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
                 >
                   <Download className="h-3.5 w-3.5" />CSV
                 </button>
@@ -498,7 +512,7 @@ export default function InventoryPage() {
                 <AlertTriangle className="h-8 w-8" />
                 <p className="text-sm font-medium">{t('common.error')}</p>
                 <p className="text-xs text-slate-400">{error}</p>
-                <button onClick={fetchCIs} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t('actions.retry')}</button>
+                <button onClick={fetchCIs} className="mt-2 rounded-none bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t('actions.retry')}</button>
               </div>
             )}
 
@@ -510,30 +524,30 @@ export default function InventoryPage() {
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
                       {/* Name */}
                       <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("name")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                        <button onClick={() => toggleSort("name")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
                           {t('common.name')}
-                          {sort.col === "name" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                          {sort.col === "name" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
                       {/* Type */}
                       <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("ciType")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                        <button onClick={() => toggleSort("ciType")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
                           {t('inventory.columns.type')}
-                          {sort.col === "ciType" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                          {sort.col === "ciType" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
                       {/* Environment */}
                       <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("environment")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                        <button onClick={() => toggleSort("environment")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
                           {t('inventory.columns.environment')}
-                          {sort.col === "environment" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                          {sort.col === "environment" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
                       {/* Criticality */}
                       <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("criticality")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-indigo-600 transition-colors">
+                        <button onClick={() => toggleSort("criticality")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
                           {t('inventory.columns.criticality')}
-                          {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-indigo-500" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-500" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                          {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
                       <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div></th>
@@ -542,19 +556,19 @@ export default function InventoryPage() {
                       {isAdmin && <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
                     </tr>
                     {/* ── Filter row ── */}
-                    <tr className="border-b-2 border-indigo-100 bg-indigo-50/60">
+                    <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
                       {/* Name filter */}
                       <td className="px-3 py-2">
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                           <input type="text" placeholder="Buscar nombre…" value={filters.name} onChange={(e) => setFilter("name", e.target.value)}
-                            className="w-full rounded-md border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200" />
+                            className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
                       {/* Type filter */}
                       <td className="px-3 py-2">
                         <select value={filters.ciType} onChange={(e) => setFilter("ciType", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.ciType ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.ciType ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todos los tipos</option>
                           {ciTypeCategories.map((cat) => (
                             <optgroup key={cat.code} label={cat.name}>
@@ -568,7 +582,7 @@ export default function InventoryPage() {
                       {/* Environment filter */}
                       <td className="px-3 py-2">
                         <select value={filters.environment} onChange={(e) => setFilter("environment", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.environment ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.environment ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todos</option>
                           <option value="PRODUCTION">Production</option>
                           <option value="STAGING">Staging</option>
@@ -579,7 +593,7 @@ export default function InventoryPage() {
                       {/* Criticality filter */}
                       <td className="px-3 py-2">
                         <select value={filters.criticality} onChange={(e) => setFilter("criticality", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.criticality ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.criticality ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todas</option>
                           <option value="MISSION_CRITICAL">Mission Critical</option>
                           <option value="HIGH">High</option>
@@ -590,7 +604,7 @@ export default function InventoryPage() {
                       {/* Vulns filter */}
                       <td className="px-3 py-2">
                         <select value={filters.vulns} onChange={(e) => setFilter("vulns", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.vulns ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.vulns ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todos</option>
                           <option value="no_data">Sin datos escáner</option>
                           <option value="clean">Sin vulns abiertas</option>
@@ -602,7 +616,7 @@ export default function InventoryPage() {
                       {/* Agent filter */}
                       <td className="px-3 py-2">
                         <select value={filters.agent} onChange={(e) => setFilter("agent", e.target.value)}
-                          className={`w-full rounded-md border py-1.5 px-2 text-xs focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-200 ${filters.agent ? "border-indigo-400 bg-indigo-50 text-indigo-700 font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.agent ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
                           <option value="">Todos</option>
                           <option value="no_agent">Sin agente</option>
                           <option value="protected">Protegido (activo)</option>
@@ -626,11 +640,11 @@ export default function InventoryPage() {
                         const typeMeta = CI_TYPE_META[resolvedType] ?? CI_TYPE_META["OTHER"];
 
                         return (
-                          <tr key={ci.id} className="group hover:bg-indigo-50/40 transition-colors">
+                          <tr key={ci.id} className="group hover:bg-[var(--accent)]/5 transition-colors">
                             <td className="px-4 py-3 font-medium text-slate-800">
                               <button
                                 onClick={() => setDetailCI(ci)}
-                                className="text-left hover:text-indigo-700 transition-colors font-medium text-slate-800 group-hover:text-indigo-700"
+                                className="text-left hover:text-[var(--accent)] transition-colors font-medium text-slate-800 group-hover:text-[var(--accent)]"
                               >{ci.name}</button>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
                               <div className="flex flex-wrap gap-1 mt-1">
@@ -677,14 +691,14 @@ export default function InventoryPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => setRelatingCI(ci)}
-                                    className="rounded-lg p-2 text-violet-600 hover:bg-violet-50 transition-colors"
+                                    className="rounded-none p-2 text-violet-600 hover:bg-violet-50 transition-colors"
                                     title="Crear relación"
                                   >
                                     <Link2 className="h-4 w-4" />
                                   </button>
                                   <button
                                     onClick={() => setEditingCI(ci)}
-                                    className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                    className="rounded-none p-2 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                                     title="Editar CI"
                                   >
                                     <Pencil className="h-4 w-4" />
@@ -692,7 +706,7 @@ export default function InventoryPage() {
                                   <button
                                     onClick={() => handleDelete(ci.id, ci.name)}
                                     disabled={deletingCI === ci.id}
-                                    className="rounded-lg p-2 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                    className="rounded-none p-2 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
                                     title="Eliminar CI"
                                   >
                                     <Trash2 className="h-4 w-4" />

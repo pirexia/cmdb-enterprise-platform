@@ -19,6 +19,7 @@
 9. [Security](#9-security)
 10. [Design Decisions](#10-design-decisions)
 11. [Capacity Planning and Hardware Sizing](#11-capacity-planning-and-hardware-sizing)
+12. [RAG Subsystem — AI Assistant](#12-rag-subsystem--ai-assistant)
 
 ---
 
@@ -44,6 +45,13 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 | Excel Export | ExcelJS | 4.4.x |
 | i18n       | Custom Context (no library) | — |
 | Authentication | JWT HttpOnly cookie + AuthContext | — |
+| Theming    | ThemeContext + CSS custom properties | — |
+
+**Key frontend contexts and components:**
+- `contexts/AuthContext.tsx` — session state, JWT rehydration on mount, 60-second periodic expiry check.
+- `contexts/LanguageContext.tsx` — 6-language support (ES/EN/DE/PT/FR/IT). All UI strings use `t("key")`.
+- `contexts/ThemeContext.tsx` — Fetches `GET /api/settings/theme` on mount and injects `--sidebar-bg` and `--accent` CSS custom properties into `<head>` via `<style id="theme-vars">`. Exposes `companyName` and `logoUrl` to all components.
+- `components/TopBar.tsx` — Mobile-only topbar (`md:hidden`) with a hamburger button. Renders company logo/name with the themed background.
 
 ### Backend
 | Component | Technology | Version |
@@ -375,6 +383,11 @@ audit_logs
   ├── user_email
   └── created_at
 
+app_settings                   (key-value store for runtime configuration)
+  ├── key (TEXT, PK)             Keys: sidebar_bg, accent_color, company_name, logo_data, logo_mime
+  ├── value (TEXT)               Logo stored as base64
+  └── updated_at (TIMESTAMPTZ)
+
 document_types                documents
   ├── id (UUID)                 ├── id (UUID)
   ├── code (unique)             ├── name
@@ -494,7 +507,7 @@ The storage directory (whether a bind mount or a named volume) must be included 
 | Audit | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integrations | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reports | `/reports` | (client-side PDF/CSV generation) |
-| Settings | `/settings` | `GET/PATCH /api/users/*` |
+| Settings | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo` |
 | Profile | `/profile` | `GET/POST /api/users/me/mfa/*` |
 | Map | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relations | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
@@ -504,6 +517,14 @@ The storage directory (whether a bind mount or a named volume) must be included 
 | Contracts — CIs & Documents | `/contracts` (expanded row) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
 | License Repository | `/licenses` | `GET /api/licenses`, `POST /api/licenses`, `GET /api/licenses/:id`, `PATCH /api/licenses/:id`, `DELETE /api/licenses/:id`, `GET/POST/DELETE /api/licenses/:id/cis`, `GET/POST/DELETE /api/licenses/:id/documents`, `GET/POST/DELETE /api/licenses/:id/users` |
 | Master Data — Licences | `/admin/masters` (tabs) | `GET/POST /api/masters/license-metric-categories`, `GET/POST/PATCH/DELETE /api/masters/license-metrics/:id`, `GET/POST /api/masters/license-type-categories`, `GET/POST/PATCH/DELETE /api/masters/license-types/:id` |
+
+### Visual Configuration Endpoints (Branding)
+
+- `GET /api/settings/theme` — Public (no authentication). Returns `{ sidebarBg, accentColor, companyName, hasLogo }`. Used by ThemeContext on mount and by the login page.
+- `GET /api/settings/logo` — Public. Serves the company logo as a binary image with the correct `Content-Type`. Returns 404 if no logo is configured.
+- `PUT /api/settings/theme` — ADMIN only. Updates `sidebar_bg`, `accent_color`, and/or `company_name` in `app_settings`. Writes an AuditLog record.
+- `POST /api/settings/logo` — ADMIN only. Uploads a logo (PNG/JPEG/WebP, max 2 MB) with magic bytes validation. Stored as base64 in `app_settings`. Writes an AuditLog record.
+- `DELETE /api/settings/logo` — ADMIN only. Removes the logo. Writes an AuditLog record.
 
 ### Bidirectional associations: CI ↔ Document ↔ Contract
 
@@ -758,3 +779,161 @@ df -h /home
 ---
 
 *For the complete deployment documentation, refer to [`DEPLOY.md - Section 1.3`](../DEPLOY.md#13-verificar-dimensionamiento-de-almacenamiento-lvm).*
+
+---
+
+## 12. RAG Subsystem — AI Assistant
+
+### 12.1 Overview
+
+The CMDB intelligent assistant uses RAG (Retrieval-Augmented Generation) to answer questions in natural language by citing documents stored in the platform. The user asks a question; the system retrieves the most relevant text fragments from the documents the user is authorised to access based on their role, includes them as context in the prompt, and obtains a response from the language model. All AI processing is local: no data is sent to external cloud AI services.
+
+### 12.2 Added Components
+
+| Component | Technology | Version | Role |
+|-----------|-----------|---------|------|
+| Local LLM | Ollama | latest | Embeddings (bge-m3) and chat (qwen2.5:7b-instruct) |
+| Vector DB | pgvector | 0.7+ | Vector store within the existing PostgreSQL instance |
+| Doc parsing | pdf-parse, mammoth, exceljs, officeparser | various | Text extraction from PDF/DOCX/XLSX/PPTX/ODT |
+| Chat API | Express SSE | — | Streaming responses via text/event-stream |
+
+### 12.3 Data Flow (Ingestion)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as POST /api/documents
+    participant BE as Backend
+    participant IDX as rag_document_index
+    participant CRON as Cron 30s
+    participant P as docParser
+    participant C as Chunker
+    participant RS as ragService.embed()
+    participant OL as Ollama (bge-m3)
+    participant DB as rag_chunks
+
+    U->>API: Uploads document
+    API->>BE: multipart/form-data
+    BE->>IDX: INSERT status=PENDING
+    CRON->>IDX: Query PENDING documents
+    IDX-->>CRON: Pending document
+    CRON->>P: extract text (by MIME type)
+    P->>C: plain text
+    C->>RS: semantic chunks 800 tok
+    RS->>OL: chunk text
+    OL-->>RS: vector float[1024]
+    RS->>DB: INSERT rag_chunks (embedding + metadata)
+    DB-->>IDX: status=READY
+```
+
+### 12.4 Data Flow (Query)
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant API as POST /api/chat/ask
+    participant BE as Backend
+    participant ACL as docVisibilityFilter(role)
+    participant PG as kNN HNSW pgvector
+    participant RE as MMR Reranking
+    participant PR as Prompt Builder
+    participant OL as Ollama (qwen2.5:7b)
+    participant FE as Frontend
+    participant AL as AuditLog
+
+    U->>API: Question (JWT + role)
+    API->>BE: authentication and authorisation
+    BE->>ACL: retrieve IDs accessible by role
+    ACL-->>BE: list of document_ids
+    BE->>PG: kNN HNSW top-30 (filtered by IDs)
+    PG-->>BE: 30 candidate chunks
+    BE->>RE: MMR reranking top-6
+    RE-->>BE: 6 selected chunks
+    BE->>PR: fixed system prompt + chunks + question
+    PR->>OL: full prompt
+    OL-->>FE: SSE tokens (stream)
+    FE-->>U: rendered response + citations
+    BE->>AL: INSERT AuditLog (ASK_RAG, query hash)
+```
+
+### 12.5 Container Topology (updated)
+
+The `cmdb-ollama` service is added to the internal `cmdb-net` network. This container is never exposed to the host. The backend accesses Ollama exclusively at `http://ollama:11434`. Nginx remains the sole entry point for external traffic; Ollama is completely opaque from outside the host.
+
+```
+Browser ──HTTPS:443──▶ nginx ──/──▶ frontend (Next.js :3001)
+                              └──/api/──▶ backend (Express :3000)
+                                              ├──▶ postgres+pgvector (:5432)
+                                              └──▶ ollama (:11434)  [internal network]
+```
+
+### 12.6 RAG Data Model (tables)
+
+| Table | Description |
+|-------|-------------|
+| `rag_document_index` | Indexing status per document/version: `PENDING`, `INDEXING`, `READY`, `ERROR`. One row per document+version combination. |
+| `rag_chunks` | Text fragments with an `embedding vector(1024)` column, `section`, `page`, `metadata` (jsonb). From v2 the table also carries `entity_type` (`document` \| `ci` \| `contract` \| `license` \| `vulnerability`) and `entity_id` (uuid); for document chunks `document_id` stays populated, for entity chunks it is `NULL`. HNSW index on `embedding` using `vector_cosine_ops` plus a composite B-tree index on `(entity_type, entity_id)` for entity lookups and DELETEs from hooks. |
+| `rag_entity_index` *(v2)* | Indexing status per non-document entity. Unique key `(entity_type, entity_id)`. Kept separate from `rag_document_index` because entities are mutable and not version-rooted in the pipeline. CHECK constraint on `entity_type` ∈ `('ci','contract','license','vulnerability')`. |
+| `rag_chat_sessions` | Chat sessions per user: id, user_id, title, creation and last-activity timestamps. |
+| `rag_chat_messages` | Messages per session: user question, model response, `citations` (jsonb with `entityType`, `entityId`, title, section and snippet for each fragment used). |
+
+**Key indexes:**
+
+```sql
+-- Approximate nearest-neighbour search (cosine similarity)
+CREATE INDEX rag_chunks_embedding_hnsw
+    ON rag_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+-- Entity lookup (v2): re-index, DELETEs from hooks, listing by type
+CREATE INDEX idx_rag_chunks_entity
+    ON rag_chunks (entity_type, entity_id);
+```
+
+For vulnerabilities — which are JSON entries inside `configuration_items.vulnerabilities` rather than their own table — `entity_id` is derived as `uuid_v5(namespace, ciId || ':' || cve)` with an immutable namespace constant defined in `backend/src/services/entitySerializer.ts`. This guarantees UPSERT idempotence and stable citation traceability over time.
+
+### 12.7 Access Control (Document ACL)
+
+The fields `read_admin`, `read_auditor`, and `read_viewer` (Boolean, default `true`) on the `documents` table determine whether a fragment originating from that document is retrievable for each role. The filter is applied **before** the kNN step via a SQL subquery that restricts the eligible `document_id` set, ensuring that no chunk from a restricted document is ever included in the model's context. Post-retrieval filtering is not used, to prevent information leakage.
+
+```sql
+-- Visibility subquery applied BEFORE kNN
+SELECT id FROM documents
+WHERE
+  (role = 'ADMIN'   AND read_admin   = true) OR
+  (role = 'AUDITOR' AND read_auditor = true) OR
+  (role = 'VIEWER'  AND read_viewer  = true)
+```
+
+### 12.8 Security and Compliance
+
+| Area | Measure |
+|------|---------|
+| SSRF | Ollama is only accessible within the internal Docker network; the backend never accepts client-supplied URLs for outbound calls. |
+| Prompt injection | The system prompt is fixed and cannot be overridden by the user. A denylist of control patterns (e.g. role-escape sequences) is applied before the prompt is sent to the model. |
+| GDPR | The `AuditLog` records a SHA-256 hash of the query, never the literal text. Chat sessions can be purged by the user themselves. No PII is stored in `rag_chunks`. |
+| ISO 27001 A.8.15 | An `AuditLog` record is inserted for every `ASK_RAG` and `INDEX_DOC` operation. |
+| ISO 22301 | Ollama is stateless between calls. An Ollama service failure degrades the assistant to "AI unavailable" without affecting the rest of the application (controlled degradation). |
+
+### 12.9 Capacity Planning (CPU-only host with AMX)
+
+The `qwen2.5:7b-instruct` model running on CPU with Intel AMX extensions (Sapphire Rapids or later) delivers the following approximate performance profile:
+
+| Concurrent Users | Ollama RAM in Use | Speed (tok/s per call) | Mean Response Time |
+|-----------------|-------------------|------------------------|---------------------|
+| 1 | 6 GB | 12–18 tok/s | 10–18 s |
+| 5 (FIFO queue) | 6 GB | 12–18 tok/s per call | 50–90 s |
+| 10 (FIFO queue) | 6 GB | 12–18 tok/s per call | > 90 s (visible degradation) |
+
+The practical limit without a GPU is 2–3 simultaneous requests with acceptable latency. Beyond 5 concurrent users a FIFO queue forms; total elapsed time scales linearly.
+
+> **Scaling note:** Switching to the `qwen2.5:3b-instruct` model approximately doubles effective concurrency and halves mean latency, at the cost of lower accuracy on complex technical questions.
+
+> **Architecture note:** If `backend/src/index.ts` exceeds ~5,500 lines after adding the RAG subsystem, plan the migration to `backend/src/modules/` as the next architecture refactor.
+
+### 12.10 v2 — Structured entity indexing
+
+Starting with v2.3 the RAG subsystem indexes four structured entity types in addition to the document corpus: **CIs**, **contracts** (root only — addenda are serialised inside the root's text), **licenses** (same root/addenda pattern) and **vulnerabilities** (identified by a synthetic UUID v5 derived from `(ciId, cve)`). The `rag_chunks` table is extended with `entity_type` and `entity_id` columns, and a separate state table `rag_entity_index` is added — kept apart from `rag_document_index` because entities are mutable and not versioned through the pipeline.
+
+Access control in the search path uses a single `WHERE` clause with a conditional `LEFT JOIN`: document chunks still flow through the existing per-role ACL; entity chunks are visible to every authenticated user. Worker priorities (vulnerability > contract/license > CI, 3 slots per tick) and the complete ACL SQL are documented in `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 and §10. The DPIA updated with the eight additional STRIDE risks lives in `docs/security/rag-dpia.md` (AMENDMENT v1.1).

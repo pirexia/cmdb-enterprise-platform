@@ -484,3 +484,23 @@ Ordered by risk level and regulatory urgency:
 *End of GDPR Compliance Audit — CMDB Enterprise Platform v2.0.1*
 
 *This document contains legally sensitive compliance findings. Distribution should be restricted to the Data Protection Officer, Legal team, and platform engineering leads.*
+
+---
+
+## Nuevos tratamientos — Subsistema RAG (v2.3)
+
+Actualizacion: 2026-05-20. Esta seccion documenta la actividad de tratamiento introducida por el subsistema RAG / Asistente IA. La DPIA completa se encuentra en `docs/security/rag-dpia.md`.
+
+### Actividad de tratamiento: Asistente IA con RAG
+
+| Campo | Valor |
+|---|---|
+| Finalidad | Respuesta a consultas sobre documentos corporativos mediante recuperacion semantica con modelos de lenguaje y embeddings locales |
+| Base juridica | Art. 6.1.f — interes legitimo (mejora de productividad interna); Art. 6.1.c — obligacion legal para el registro de auditoria ASK_RAG |
+| Datos tratados | Chunks de texto de documentos (puede contener datos personales indirectos); historial de consultas del usuario identificado por email via JWT; identificadores de sesion (UUID) |
+| Destinatarios | Sin transferencia a terceros. Procesamiento local mediante Ollama en contenedor Docker interno de la propia organizacion |
+| Transferencias internacionales | Ninguna. Ollama se ejecuta en infraestructura local; los modelos se descargan del repositorio oficial en el momento del despliegue y no realizan llamadas externas en tiempo de ejecucion |
+| Retension | Sesiones y mensajes de chat: 90 dias (cron diario). Chunks de documentos: vida del documento (cascade delete). AuditLog ASK_RAG: 1 año (cron existente configurable via `AUDIT_RETENTION_DAYS`) |
+| Medidas tecnicas | ACL pre-kNN (`docVisibilitySqlCol`); hash SHA-256 de la query en AuditLog; `DELETE /api/chat/sessions/:id` para ejercicio del derecho de supresion; rate-limit 10 req/min/usuario; TLS 1.2+ en nginx; system prompt fijo anti-injection |
+| DPIA realizada | Si — `docs/security/rag-dpia.md` (ISMS-DPIA-002, version 1.0, 2026-05-20) |
+| Riesgo residual | Bajo |

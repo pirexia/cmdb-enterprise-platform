@@ -4,7 +4,7 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.0.1"
+    "copyright": "© {year} CMDB Platform v2.2.3"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -21,7 +21,8 @@
     "masters": "Dados Mestres",
     "certificates": "Certificados SSL",
     "audit": "Auditoria",
-    "settings": "Configurações"
+    "settings": "Configurações",
+    "assistant": "Assistente IA"
   },
   "actions": {
     "logout": "Sair",
@@ -465,6 +466,22 @@
       "sys_loading": "Carregando informações do sistema…",
       "sys_error": "Não foi possível carregar as informações do sistema.",
       "sys_retry": "Tentar novamente"
+    },
+    "branding": {
+      "tab": "Aparência",
+      "logo_title": "Logotipo da empresa",
+      "logo_hint": "PNG, JPEG ou WebP · Máx. 2 MB",
+      "logo_upload_btn": "Enviar logotipo",
+      "logo_remove_btn": "Remover logotipo",
+      "logo_preview": "Pré-visualização",
+      "colors_title": "Cores",
+      "sidebar_color": "Cor da barra lateral",
+      "accent_color": "Cor de destaque",
+      "preview_title": "Pré-visualização em tempo real",
+      "company_name_title": "Nome da empresa",
+      "apply_btn": "Aplicar alterações",
+      "save_success": "Configurações guardadas",
+      "save_error": "Erro ao guardar"
     }
   },
   "dashboard": {
@@ -984,5 +1001,63 @@
     "transfers_title": "6. Transferências internacionais",
     "transfers_body": "Se for utilizado o início de sessão com Microsoft 365, parte do tratamento de identidade é realizado pela Microsoft Corporation (EUA) ao abrigo do Contrato de Processamento de Dados da Microsoft e das Cláusulas Contratuais-Tipo.",
     "back": "← Voltar ao início de sessão"
+  },
+  "chat": {
+    "title": "Assistente IA",
+    "subtitle": "Consulte os seus documentos em linguagem natural",
+    "newSession": "Nova consulta",
+    "placeholder": "Pergunte sobre os seus documentos...",
+    "sendButton": "Enviar",
+    "thinking": "A pensar...",
+    "citations": "Citações",
+    "noSessions": "Ainda sem consultas. Inicie uma nova.",
+    "deleteSession": "Eliminar sessão",
+    "confirmDelete": "Eliminar esta consulta?",
+    "disabled": "O assistente IA está desativado neste ambiente",
+    "user": "Você",
+    "assistant": "Assistente",
+    "error": {
+      "generic": "Erro ao processar a pergunta",
+      "empty": "A pergunta não pode estar vazia",
+      "rateLimit": "Demasiados pedidos. Aguarde um minuto."
+    },
+    "modelLabel": "Modelo",
+    "latencyLabel": "Latência",
+    "filter": {
+      "label": "Filtrar fontes",
+      "documents": "Documentos",
+      "cis": "CIs",
+      "contracts": "Contratos",
+      "licenses": "Licenças",
+      "vulnerabilities": "Vulnerabilidades",
+      "all": "Todas",
+      "clear": "Limpar"
+    }
+  },
+  "document": {
+    "acl": {
+      "title": "Visibilidade por perfil",
+      "adminOnly": "Apenas um administrador pode modificar a visibilidade",
+      "visible": "visível",
+      "hidden": "oculto",
+      "role": {
+        "admin": "Administrador (ADMIN)",
+        "auditor": "Auditor (AUDITOR)",
+        "viewer": "Leitor (VIEWER)"
+      }
+    },
+    "indexing": {
+      "title": "Estado de indexação",
+      "pending": "Em fila",
+      "indexing": "A indexar",
+      "ready": "Indexado",
+      "error": "Erro de indexação",
+      "notIndexed": "Não indexado",
+      "chunkCount": "Fragmentos",
+      "indexedAt": "Indexado em"
+    },
+    "reindex": "Reindexar",
+    "reindexConfirm": "Reindexar este documento?",
+    "reindexQueued": "Documento em fila para reindexação"
   }
 }

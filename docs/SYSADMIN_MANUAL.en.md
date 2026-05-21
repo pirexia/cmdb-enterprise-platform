@@ -24,6 +24,12 @@
 12. [Security and Hardening](#12-security-and-hardening)
 13. [Periodic Maintenance Tasks](#13-periodic-maintenance-tasks)
 14. [OpenShift / Kubernetes Deployment](#14-openshift--kubernetes-deployment)
+15. [Microsoft 365 SSO Configuration (Azure AD)](#15-microsoft-365-sso-configuration-azure-ad--entra-id)
+16. [User Erasure (GDPR Art. 17)](#16-user-erasure-gdpr-art-17)
+17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
+18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
+19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
+20. [Backups — RAG encryption considerations](#20-backups--rag-encryption-considerations)
 
 ---
 
@@ -189,6 +195,9 @@ JWT_SECRET=<min-48-chars>             # Generate: openssl rand -base64 48
 FRONTEND_PORT=3001
 NEXT_PUBLIC_API_URL=https://cmdb.yourdomain.com:3000
 
+# ── Branding ───────────────────────────────────────────────────────────
+NEXT_PUBLIC_COMPANY_NAME=My Company
+
 # ── Security ───────────────────────────────────────────────────────────
 HTTPS_ENABLED=true
 CORS_ORIGINS=https://cmdb.yourdomain.com:3001
@@ -212,6 +221,8 @@ USE_LDAP=false
 # LDAP_SEARCH_BASE=DC=yourdomain,DC=com
 # LDAP_TLS_REJECT_UNAUTHORIZED=0    # Only if using an internal self-signed cert
 ```
+
+> **Note (v2.2.0+):** Visual theming (sidebar and accent colors, logo, company name) is configured from the admin panel at **Settings → Appearance**. The `NEXT_PUBLIC_COMPANY_NAME` variable is still the initial value used during first installation, but all subsequent changes are made from the UI without a rebuild.
 
 ### nginx ports (optional variables)
 
@@ -744,6 +755,28 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v2.3.0 — RAG over structured entities (CIs, contracts, licenses, vulnerabilities):**
+> - **Entity indexing:** The RAG subsystem no longer covers documents only. CIs, contracts (roots — addenda are serialised inside the root's text), licenses (same root/addenda pattern) and vulnerabilities (identified by a synthetic UUID v5 derived from `(ciId, cve)`) are indexed automatically. Activation is transparent when `RAG_ENABLED=true`.
+> - **Source filter chips in chat:** Five chips (Documents, CIs, Contracts, Licenses, Vulnerabilities) let users narrow the assistant's sources. Session-scoped persistence in the browser. Empty selection = all sources.
+> - **Deep-linkable citations:** Every citation now carries `entityType` + `entityId`. Clicking a citation opens the cited item in its listing (`/inventory?focus=<id>` opens the CI detail modal; `/contracts?focus=<id>` expands the row; same for licenses; `/vulnerabilities?cve=<CVE-ID>` pre-fills the filter).
+> - **Priority worker:** The 30-second cron uses a 3-slot budget per tick with vulnerability > contract/license > CI priority. Preserves document upload latency and prioritises security signal.
+> - **Multi-type backfill:** `POST /api/admin/rag/backfill` now accepts `{ "entityTypes": [...] }`. An empty body reindexes all types.
+> - **Aggregated audit:** New `INDEX_BATCH` action (one event per worker tick, not per entity) and `ASK_RAG_VULN` (fine-grained traceability for queries that include vulnerabilities). `audit_logs.details` formalised as `jsonb` with an index on `(action, created_at DESC)`.
+> - **Anti-injection mitigations:** `<ENTITY_DATA>` blocks in the prompt + reinforced REGLAS 5–7 + `stripInjectionTokens()` in the serializer. `scrubPII()` (email, ES-DNI/NIE, phone) runs over all free text before embedding. Strict allowlist in the vulnerability serializer (CVE-ID + severity + CVSS band + status + importedAt — no description, no source).
+> - **Compliance:** DPIA v1.1 with 8 additional STRIDE entries (ENT-01..08) and a 10-item DPO+CISO sign-off checklist. Backup-encryption mandate for `rag_chunks` (NIS2 Art.21.2.h / ISO 22301).
+> - **Operations:** `scripts/update.sh --reindex` now also queues CIs / contracts / licenses for re-indexing. New runbook `docs/RAG_V2_DEPLOY_RUNBOOK.md` with copy-paste smoke checklist, rollback matrix, sign-off worksheet and post-deploy monitoring.
+
+> **v2.2.3 — Corporate Dark UI redesign, dynamic theming, and responsive navigation:**
+> - **Database-driven theming:** New `app_settings` table stores sidebar color, accent color, company name, and logo. No rebuild required to change the appearance.
+> - **Branding panel (Admin):** New "Appearance" tab in Settings with live color pickers, logo upload (PNG/JPEG/WebP, max 2 MB, magic bytes validated), and company name configuration.
+> - **CSS Custom Properties:** `--sidebar-bg` and `--accent` injected into `<head>` at runtime via `ThemeContext`. Theme applies without page reload.
+> - **Public theme endpoints:** `GET /api/settings/theme` and `GET /api/settings/logo` require no authentication (needed by the login page before auth context is available).
+> - **Responsive navigation:** Mobile TopBar with hamburger button. Sidebar slides in as an overlay with backdrop at < 768px.
+> - **Border-radius removal:** Sharp corners on cards, widgets, tables, inputs, and buttons throughout the application (Corporate Dark aesthetic).
+> - **Color migration:** All hardcoded `indigo-*` colors replaced by `var(--accent)` — accent color changes globally when the branding setting is updated.
+> - **Logo security:** MIME type + magic bytes validation in backend; SVG rejected (XSS risk); stored as base64 in DB, no file paths.
+> - **Audit logging:** Every theme or logo change creates an `AuditLog` record (`UPDATE_THEME`, `UPDATE_LOGO`, `DELETE_LOGO`).
+
 > **v2.0.1 — Stack upgrade, dynamic system info panel, sticky headers:**
 > - **nginx 1.30 (stable):** Upgraded from nginx 1.27; EOL open.
 > - **Dynamic system info panel:** New `GET /api/system-info` endpoint (admin only) with a 5-column table showing stack versions and EOL dates via endoflife.date with 24h cache.
@@ -757,6 +790,7 @@ The script implements five layers of protection before and during the update:
 > - **Schema:** Unique constraints added to `Vendor.name`, `CostCenter.name`, `Branch.name`; compound indexes on `(root_id, is_latest)` and `(root_id, version_number)` for document versioning queries.
 > - **i18n:** All hardcoded strings in the profile page, SSO callback, and AppShell replaced with `t()` calls; 25 new keys added to all 6 locale files.
 > - **Docker:** `NEXT_PUBLIC_COMPANY_NAME` wired as a build ARG so the company name set during installation is actually rendered by the frontend.
+> - **Runtime branding:** Sidebar color (`sidebar_bg`), accent color (`accent_color`), company name (`company_name`), and logo (`logo_data`, `logo_mime`) are stored in the PostgreSQL `app_settings` table and served in real time through `GET /api/settings/theme` and `GET /api/settings/logo` (public endpoints, no authentication required).
 > - **Docs:** `auditor@cmdb.local` seed user correctly documented as `AUDITOR` (not `VIEWER`); version numbers and changelog updated.
 
 > **v1.7.0 — Microsoft 365 SSO + 6-language i18n** *(superseded by v1.7.1)*:
@@ -1801,3 +1835,283 @@ The platform includes a privacy notice page at `/privacy`. Fields marked `[REPLA
 - **Contact email for data subject rights requests**
 
 **Auto-provisioned users (SSO/LDAP):** The platform automatically creates accounts for Microsoft Azure AD and LDAP users without direct interaction. This triggers the Art. 14 GDPR obligation (indirect collection notice). The organisation must inform these users via internal communication (HR, corporate email) as the application does not send welcome emails.
+
+---
+
+## 19. RAG Subsystem — Operation and Maintenance
+
+### 19.1 RAG subsystem environment variables
+
+All new variables added to `.env`:
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_ENABLED` | `true` | Enables or disables the entire RAG subsystem |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | Internal URL of the Ollama service (do not expose externally) |
+| `RAG_EMBED_MODEL` | `bge-m3` | Embeddings model (multilingual, 1024 dimensions) |
+| `RAG_CHAT_MODEL` | `qwen2.5:7b-instruct-q4_K_M` | LLM used for answer generation |
+| `RAG_CHAT_TEMPERATURE` | `0.1` | LLM temperature (lower = more deterministic and faithful to the document) |
+| `RAG_TOP_K` | `6` | Number of document chunks retrieved per query |
+| `RAG_RATE_LIMIT_PER_MIN` | `10` | Chat requests per user per minute |
+| `OLLAMA_MODELS_PATH` | `/opt/cmdb-data/ollama-models` | Path where downloaded models are stored |
+
+### 19.2 Initial model download
+
+```bash
+# Verify the ollama service is running
+podman ps | grep ollama
+
+# Download models (first time; approximately 7 GB total)
+podman exec cmdb-ollama ollama pull bge-m3
+podman exec cmdb-ollama ollama pull qwen2.5:7b-instruct-q4_K_M
+
+# List available models
+podman exec cmdb-ollama ollama list
+```
+
+Note: models are stored in the `ollama-models` volume (bind-mounted at `/opt/cmdb-data/ollama-models`). They persist across container restarts.
+
+### 19.3 Service verification
+
+```bash
+# Ollama container status
+podman ps --filter name=cmdb-ollama
+
+# Real-time resource usage
+podman stats cmdb-ollama --no-stream
+
+# Service logs
+podman logs --tail 50 cmdb-ollama
+
+# Model currently loaded in memory
+podman exec cmdb-ollama ollama ps
+
+# Connectivity test backend → Ollama
+podman exec cmdb-backend curl -s http://ollama:11434/api/version
+```
+
+### 19.4 Document corpus indexing
+
+#### First-time indexing (backfill)
+After the first deployment, index all existing documents:
+
+```bash
+# Obtain an ADMIN token
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@cmdb.local","password":"<ADMIN_PASSWORD>"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# Start backfill (asynchronous process; may take several minutes depending on corpus size)
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+
+# Monitor progress in the database
+podman exec cmdb-postgres psql -U admin -d cmdb_db \
+  -c "SELECT status, COUNT(*) FROM rag_document_index GROUP BY status;"
+```
+
+#### Re-index a specific document
+```bash
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/documents/<DOCUMENT_ID>/reindex
+```
+
+#### Index status
+```bash
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    status,
+    COUNT(*) as count,
+    MIN(updated_at) as oldest,
+    MAX(updated_at) as newest
+  FROM rag_document_index
+  GROUP BY status
+  ORDER BY status;"
+```
+
+### 19.5 Backup and restore
+
+#### Backup (include RAG tables in the standard dump)
+```bash
+# Full backup including pgvector and RAG tables
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  > /opt/cmdb-data/backups/backup_$(date +%F_%H%M).sql
+
+# RAG-only backup (lightweight, useful for model migrations)
+podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+  --table=rag_document_index \
+  --table=rag_chunks \
+  --table=rag_chat_sessions \
+  --table=rag_chat_messages \
+  > /opt/cmdb-data/backups/rag_only_$(date +%F_%H%M).sql
+```
+
+#### Restoring RAG tables
+```bash
+podman exec -i cmdb-postgres psql -U admin -d cmdb_db \
+  < /opt/cmdb-data/backups/rag_only_<DATE>.sql
+```
+
+#### Ollama model backup
+Models are stored at `/opt/cmdb-data/ollama-models`. They can be archived as follows:
+```bash
+tar -czf /opt/cmdb-data/backups/ollama_models_$(date +%F).tar.gz \
+  -C /opt/cmdb-data ollama-models
+```
+Alternatively, re-download them with `ollama pull` (simpler when internet access is available).
+
+### 19.6 Model updates
+
+To change the LLM (for example, to a newer version):
+```bash
+# 1. Download the new model
+podman exec cmdb-ollama ollama pull qwen2.5:14b-instruct-q4_K_M
+
+# 2. Update .env
+sed -i 's/RAG_CHAT_MODEL=.*/RAG_CHAT_MODEL=qwen2.5:14b-instruct-q4_K_M/' .env
+
+# 3. Restart the backend (reloads environment variables)
+podman-compose -f docker-compose.prod.yml restart backend
+
+# 4. Verify
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"test"}' \
+  https://localhost/api/chat/ask | python3 -m json.tool
+```
+
+Changing the embeddings model requires **re-indexing the entire corpus** (vectors are incompatible across models):
+```bash
+sed -i 's/RAG_EMBED_MODEL=.*/RAG_EMBED_MODEL=nomic-embed-text/' .env
+podman-compose -f docker-compose.prod.yml restart backend
+# Start a full backfill
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/admin/rag/backfill
+```
+
+### 19.7 Monitoring and metrics
+
+```bash
+# RAM/CPU usage for all containers
+podman stats --no-stream
+
+# Disk space used by models
+du -sh /opt/cmdb-data/ollama-models/
+
+# Disk space used by vectors in PostgreSQL
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT
+    schemaname,
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size
+  FROM pg_tables
+  WHERE tablename LIKE 'rag_%'
+  ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
+
+# Most recent AI assistant queries (audit log)
+podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+  SELECT user_email, created_at
+  FROM audit_logs
+  WHERE action = 'ASK_RAG'
+  ORDER BY created_at DESC
+  LIMIT 20;"
+```
+
+### 19.8 Disabling and re-enabling the RAG subsystem
+
+To disable the subsystem temporarily without deleting data:
+```bash
+# In .env
+RAG_ENABLED=false
+# Restart the backend
+podman-compose -f docker-compose.prod.yml restart backend
+```
+When RAG is disabled, the `/api/chat/*` endpoints return HTTP 503. The rest of the application continues to operate normally.
+
+### 19.9 Troubleshooting
+
+| Symptom | Diagnosis | Resolution |
+|---|---|---|
+| `/api/chat/ask` returns 503 | `RAG_ENABLED=false` or Ollama is down | Check `.env` and `podman ps` |
+| Very slow responses (> 60 s) | Model not loaded in RAM / AMX inactive | Run `ollama ps`; verify `grep amx_tile /proc/cpuinfo` |
+| `rag_document_index` rows in ERROR status | Parsing failure in the document | `podman logs cmdb-backend \| grep INDEX_DOC` |
+| Incorrect responses / hallucinations | High temperature or stale index | Verify `RAG_CHAT_TEMPERATURE=0.1`; trigger a reindex |
+| "no space left on device" | Logical volume full | `df -h /var/lib/containers /opt/cmdb-data` |
+| Slow embeddings during indexing | bge-m3 model not loaded | `ollama pull bge-m3`; restart backend |
+
+### 19.10 Entity indexing (CIs, contracts, licenses, vulnerabilities)
+
+> For the full operational procedure (smoke checklist + DPO/CISO sign-off + re-indexing of pre-existing corpora when upgrading from v1), see `docs/RAG_V2_DEPLOY_RUNBOOK.md`. This section documents the steady-state behaviour only; the runbook covers the one-off execution when moving from v1 to v2.
+
+Starting with v2.3, the RAG subsystem indexes structured entities in addition to documents. No extra flag is needed — it activates automatically when `RAG_ENABLED=true`.
+
+**Indexing worker.** The 30 s cron splits a 3-slot budget per tick across entities with priority vulnerability > contract/license > CI. If three vulnerabilities are pending, they consume the whole budget and contracts / CIs wait for the next cycle. This preserves document upload latency and prioritises security signal. See `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 for full details.
+
+**Full reindex.** To reindex every entity type without restarting:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"...","password":"..."}' | jq -r .token)
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document","ci","contract","license","vulnerability"]}'
+```
+
+An empty body `{}` (or no body) is equivalent to reindexing all types.
+
+**Observability.** Queue state per type:
+
+```sql
+SELECT entity_type, status, COUNT(*) FROM rag_entity_index GROUP BY 1,2 ORDER BY 1,2;
+```
+
+Aggregated audit (one event per worker tick — not per entity):
+
+```sql
+SELECT created_at, details->>'cycle_at' AS cycle, details
+FROM audit_logs WHERE action = 'INDEX_BATCH' ORDER BY created_at DESC LIMIT 10;
+```
+
+Other relevant events: `RAG_BACKFILL_ENTITIES` (manual reindex) and `ASK_RAG_VULN` (queries including vulnerabilities).
+
+**Stuck-row troubleshooting.** A row may stay in `INDEXING` if the worker crashes mid-processing. Restarting the backend does NOT release it (the ARCH-3 guard prevents accidental overwrites). Release manually:
+
+```sql
+UPDATE rag_entity_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE status = 'INDEXING' AND updated_at < now() - interval '5 minutes';
+```
+
+**Vulnerability UUID lock-in.** The `RAG_VULN_NAMESPACE` constant in `backend/src/services/entitySerializer.ts` (`6c8b1a3e-9d4f-4a2b-8c7d-1e2f3a4b5c6d`) is immutable. Changing it would invalidate every existing vulnerability chunk and require a full reindex, in addition to breaking the historical traceability of citations.
+
+---
+
+## 20. Backups — RAG encryption considerations
+
+The `rag_chunks` and `rag_entity_index` tables store plaintext fragments of indexed documents and entities. Even though the serializer applies `scrubPII()` (email, Spanish DNI/NIE, phone) before embeddings are computed, **residual PII can always remain** in free-text notes and descriptions. This raises the sensitivity of any backup that includes these tables.
+
+Encrypted backups are **mandatory in production**. Recommended approach: encrypt with `openssl` (AES-256-CBC, key in KMS or HSM) directly in the `pg_dump` pipe — never write plaintext to disk:
+
+```bash
+pg_dump -U admin -h localhost cmdb_db \
+  | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/secure/backup.key \
+  > backup_$(date +%F).sql.enc
+```
+
+Restore:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/secure/backup.key \
+  -in backup_2026-05-21.sql.enc \
+  | psql -U admin -d cmdb_db_restore
+```
+
+Operational policy:
+
+- The encryption key and the backup files must live on systems with separate ACLs.
+- Key rotation: every 12 months, or immediately after any incident with suspected key exposure.
+- Monthly restore sample test (`pg_restore --list`).
+
+Reference: ENT-08 in `docs/security/rag-dpia.md` §A1.4.

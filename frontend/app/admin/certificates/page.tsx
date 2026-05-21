@@ -112,7 +112,7 @@ export default function CertificatesPage() {
     reader.readAsText(file);
   };
 
-  const inputCls = "w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100";
+  const inputCls = "w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20";
   const labelCls = "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5";
 
   return (
@@ -120,14 +120,14 @@ export default function CertificatesPage() {
       <div className="p-8">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <Shield className="h-7 w-7 text-indigo-600" />
+            <Shield className="h-7 w-7 text-[var(--accent)]" />
             <h1 className="text-3xl font-bold text-slate-800">{t("admin.certificates.title")}</h1>
           </div>
           <p className="text-sm text-slate-500">{t("admin.certificates.subtitle")}</p>
         </div>
 
         {/* 4096-bit notice */}
-        <div className="mb-6 flex items-start gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+        <div className="mb-6 flex items-start gap-2 border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-4 py-3 text-sm text-[var(--accent)]">
           <Info className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <span>{t("admin.certificates.key_notice")}</span>
         </div>
@@ -141,10 +141,10 @@ export default function CertificatesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* ── CSR Generation ─────────────────────────────────────────────── */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <Download className="h-5 w-5 text-indigo-600" />
+                <Download className="h-5 w-5 text-[var(--accent)]" />
                 {t("admin.certificates.csr_title")}
               </h2>
               <p className="text-xs text-slate-500 mt-1">{t("admin.certificates.csr_subtitle")}</p>
@@ -202,7 +202,7 @@ export default function CertificatesPage() {
               </div>
 
               <button type="submit" disabled={generatingCSR || !cn}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                className="w-full flex items-center justify-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                 {generatingCSR ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                 {generatingCSR ? t("admin.certificates.csr_generating") : t("admin.certificates.csr_button")}
               </button>
@@ -232,10 +232,10 @@ export default function CertificatesPage() {
           </div>
 
           {/* ── Certificate Upload ──────────────────────────────────────────── */}
-          <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
               <h2 className="text-lg font-semibold text-slate-800 flex items-center gap-2">
-                <Upload className="h-5 w-5 text-indigo-600" />
+                <Upload className="h-5 w-5 text-[var(--accent)]" />
                 {t("admin.certificates.upload_title")}
               </h2>
               <p className="text-xs text-slate-500 mt-1">{t("admin.certificates.upload_subtitle")}</p>
@@ -245,7 +245,7 @@ export default function CertificatesPage() {
               <div>
                 <label className={labelCls}>{t("admin.certificates.upload_file_label")}</label>
                 <input type="file" accept=".crt,.pem,.cer" onChange={handleFileUpload}
-                  className="w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100" />
+                  className="w-full text-sm text-slate-600 file:mr-4 file:py-2 file:px-4 file:rounded-none file:border-0 file:text-sm file:font-semibold file:bg-[var(--accent)]/5 file:text-[var(--accent)] hover:file:bg-[var(--accent)]/10" />
                 <p className="text-xs text-slate-400 mt-1">{t("admin.certificates.upload_or_paste")}</p>
               </div>
 
@@ -254,11 +254,11 @@ export default function CertificatesPage() {
                 <textarea
                   placeholder={"-----BEGIN CERTIFICATE-----\nMIIDXTCCAkWgAwIBAgIJAKZ...\n-----END CERTIFICATE-----"}
                   value={certContent} onChange={(e) => setCertContent(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 h-40 resize-none focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100" />
+                  className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800 h-40 resize-none focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20" />
               </div>
 
               <button type="submit" disabled={uploading || !certContent}
-                className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                className="w-full flex items-center justify-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
                 {uploading ? t("admin.certificates.upload_uploading") : t("admin.certificates.upload_button")}
               </button>

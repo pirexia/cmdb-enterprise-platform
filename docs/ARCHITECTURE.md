@@ -19,6 +19,7 @@
 9. [Seguridad](#9-seguridad)
 10. [Decisiones de Diseño](#10-decisiones-de-diseño)
 11. [Capacity Planning y Dimensionamiento de Hardware](#11-capacity-planning-y-dimensionamiento-de-hardware)
+12. [Subsistema RAG — Asistente IA](#12-subsistema-rag--asistente-ia)
 
 ---
 
@@ -44,6 +45,13 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | Export Excel | ExcelJS | 4.4.x |
 | i18n       | Custom Context (sin librería) | — |
 | Autenticación | JWT HttpOnly cookie + AuthContext | — |
+| Theming    | ThemeContext + CSS custom properties | — |
+
+**Contextos y componentes clave del frontend:**
+- `contexts/AuthContext.tsx` — estado de sesión, rehidratación del JWT en el montaje, comprobación periódica de caducidad cada 60 s.
+- `contexts/LanguageContext.tsx` — soporte de 6 idiomas (ES/EN/DE/PT/FR/IT). Todas las cadenas UI usan `t("clave")`.
+- `contexts/ThemeContext.tsx` — Obtiene `GET /api/settings/theme` en el montaje e inyecta las propiedades CSS `--sidebar-bg` y `--accent` en `<head>` mediante un `<style id="theme-vars">`. Expone `companyName` y `logoUrl` a todos los componentes.
+- `components/TopBar.tsx` — Barra superior solo móvil (`md:hidden`) con botón hamburguesa. Renderiza logo/nombre de empresa con el fondo temático.
 
 ### Backend
 | Componente | Tecnología | Versión |
@@ -376,6 +384,11 @@ audit_logs
   ├── user_email
   └── created_at
 
+app_settings                   (almacén clave-valor para configuración en runtime)
+  ├── key (TEXT, PK)             Claves: sidebar_bg, accent_color, company_name, logo_data, logo_mime
+  ├── value (TEXT)               Logo almacenado como base64
+  └── updated_at (TIMESTAMPTZ)
+
 document_types                documents
   ├── id (UUID)                 ├── id (UUID)
   ├── code (unique)             ├── name
@@ -495,7 +508,7 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Auditoría | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integraciones | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
-| Configuración | `/settings` | `GET/PATCH /api/users/*` |
+| Configuración | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo` |
 | Perfil | `/profile` | `GET/POST /api/users/me/mfa/*` |
 | Mapa | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relaciones | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
@@ -505,6 +518,14 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Contratos — CIs y Documentos | `/contracts` (fila expandida) | `GET /api/contracts/:id/cis`, `POST /api/contracts/:id/cis`, `DELETE /api/contracts/:id/cis/:ciId` |
 | Repositorio de Licencias | `/licenses` | `GET /api/licenses`, `POST /api/licenses`, `GET /api/licenses/:id`, `PATCH /api/licenses/:id`, `DELETE /api/licenses/:id`, `GET/POST/DELETE /api/licenses/:id/cis`, `GET/POST/DELETE /api/licenses/:id/documents`, `GET/POST/DELETE /api/licenses/:id/users` |
 | Datos Maestros — Licencias | `/admin/masters` (pestañas) | `GET/POST /api/masters/license-metric-categories`, `GET/POST/PATCH/DELETE /api/masters/license-metrics/:id`, `GET/POST /api/masters/license-type-categories`, `GET/POST/PATCH/DELETE /api/masters/license-types/:id` |
+
+### Endpoints de Configuración Visual (Branding)
+
+- `GET /api/settings/theme` — Público (sin autenticación). Devuelve `{ sidebarBg, accentColor, companyName, hasLogo }`. Usado por ThemeContext en el montaje y por la página de login.
+- `GET /api/settings/logo` — Público. Sirve el logo de la empresa como imagen binaria con `Content-Type` correcto. Devuelve 404 si no hay logo.
+- `PUT /api/settings/theme` — Solo ADMIN. Actualiza `sidebar_bg`, `accent_color` y/o `company_name` en `app_settings`. Registra en AuditLog.
+- `POST /api/settings/logo` — Solo ADMIN. Carga logo (PNG/JPEG/WebP, máx. 2 MB) con validación de magic bytes. Almacena en base64 en `app_settings`. Registra en AuditLog.
+- `DELETE /api/settings/logo` — Solo ADMIN. Elimina el logo. Registra en AuditLog.
 
 ### Asociaciones bidireccionales CI ↔ Documento ↔ Contrato
 
@@ -759,3 +780,161 @@ df -h /home
 ---
 
 *Para consultar la documentación de despliegue completa, revisa [`DEPLOY.md - Sección 1.3`](../DEPLOY.md#13-verificar-dimensionamiento-de-almacenamiento-lvm).*
+
+---
+
+## 12. Subsistema RAG — Asistente IA
+
+### 12.1 Visión general
+
+El asistente inteligente de CMDB utiliza RAG (Retrieval-Augmented Generation) para responder preguntas en lenguaje natural citando documentos del corpus almacenado en la plataforma. El usuario formula una pregunta; el sistema recupera los fragmentos de texto más relevantes de los documentos a los que tiene acceso según su rol, los incluye como contexto en el prompt y obtiene una respuesta del modelo de lenguaje. Todo el procesamiento de IA es local: no se envía ningún dato a servicios externos de IA en la nube.
+
+### 12.2 Componentes añadidos
+
+| Componente | Tecnología | Versión | Rol |
+|------------|-----------|---------|-----|
+| LLM local | Ollama | latest | Embeddings (bge-m3) y chat (qwen2.5:7b-instruct) |
+| BD vectorial | pgvector | 0.7+ | Vector store dentro del PostgreSQL existente |
+| Parsing docs | pdf-parse, mammoth, exceljs, officeparser | varias | Extracción de texto de PDF/DOCX/XLSX/PPTX/ODT |
+| Chat API | Express SSE | — | Streaming de respuestas via text/event-stream |
+
+### 12.3 Flujo de datos (Ingesta)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant API as POST /api/documents
+    participant BE as Backend
+    participant IDX as rag_document_index
+    participant CRON as Cron 30s
+    participant P as docParser
+    participant C as Chunker
+    participant RS as ragService.embed()
+    participant OL as Ollama (bge-m3)
+    participant DB as rag_chunks
+
+    U->>API: Sube documento
+    API->>BE: multipart/form-data
+    BE->>IDX: INSERT estado=PENDING
+    CRON->>IDX: Consulta documentos PENDING
+    IDX-->>CRON: Documento pendiente
+    CRON->>P: extrae texto (por tipo MIME)
+    P->>C: texto plano
+    C->>RS: chunks semánticos 800 tok
+    RS->>OL: texto del chunk
+    OL-->>RS: vector float[1024]
+    RS->>DB: INSERT rag_chunks (embedding + metadata)
+    DB-->>IDX: estado=READY
+```
+
+### 12.4 Flujo de datos (Query)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuario
+    participant API as POST /api/chat/ask
+    participant BE as Backend
+    participant ACL as docVisibilityFilter(role)
+    participant PG as kNN HNSW pgvector
+    participant RE as Reranking MMR
+    participant PR as Prompt Builder
+    participant OL as Ollama (qwen2.5:7b)
+    participant FE as Frontend
+    participant AL as AuditLog
+
+    U->>API: Pregunta (JWT + rol)
+    API->>BE: autenticación y autorización
+    BE->>ACL: obtiene IDs accesibles por rol
+    ACL-->>BE: lista de document_ids
+    BE->>PG: kNN HNSW top-30 (filtrado por IDs)
+    PG-->>BE: 30 chunks candidatos
+    BE->>RE: reranking MMR top-6
+    RE-->>BE: 6 chunks seleccionados
+    BE->>PR: system prompt fijo + chunks + pregunta
+    PR->>OL: prompt completo
+    OL-->>FE: tokens SSE (stream)
+    FE-->>U: respuesta renderizada + citaciones
+    BE->>AL: INSERT AuditLog (ASK_RAG, hash query)
+```
+
+### 12.5 Topología de contenedores (actualizada)
+
+Se añade el servicio `cmdb-ollama` a la red interna `cmdb-net`. Este contenedor nunca se expone al host. El backend accede a Ollama exclusivamente en `http://ollama:11434`. Nginx sigue siendo la única puerta de entrada para el tráfico externo; Ollama es completamente opaco desde el exterior.
+
+```
+Browser ──HTTPS:443──▶ nginx ──/──▶ frontend (Next.js :3001)
+                              └──/api/──▶ backend (Express :3000)
+                                              ├──▶ postgres+pgvector (:5432)
+                                              └──▶ ollama (:11434)  [red interna]
+```
+
+### 12.6 Modelo de datos RAG (tablas)
+
+| Tabla | Descripción |
+|-------|-------------|
+| `rag_document_index` | Estado de indexación por documento/versión: `PENDING`, `INDEXING`, `READY`, `ERROR`. Una fila por cada combinación documento+versión. |
+| `rag_chunks` | Fragmentos de texto con embedding `vector(1024)`, campos `section`, `page`, `metadata` (jsonb). Desde v2 incluye `entity_type` (`document` \| `ci` \| `contract` \| `license` \| `vulnerability`) y `entity_id` (uuid); para chunks de documento `document_id` se mantiene poblado, para chunks de entidad es `NULL`. Índice HNSW sobre `embedding` con `vector_cosine_ops` y un índice B-tree compuesto sobre `(entity_type, entity_id)` para el lookup por entidad y los DELETE en hooks. |
+| `rag_entity_index` *(v2)* | Estado de indexación por entidad no-documento. Clave única `(entity_type, entity_id)`. Separada de `rag_document_index` porque las entidades son mutables y no versionadas en el pipeline. CHECK constraint sobre `entity_type` en `('ci','contract','license','vulnerability')`. |
+| `rag_chat_sessions` | Sesiones de chat por usuario: id, user_id, título, timestamps de creación y última actividad. |
+| `rag_chat_messages` | Mensajes por sesión: pregunta del usuario, respuesta del modelo, `citations` (jsonb con `entityType`, `entityId`, título, sección y snippet de cada fragmento usado). |
+
+**Índices clave:**
+
+```sql
+-- Búsqueda aproximada de vectores (cosine similarity)
+CREATE INDEX rag_chunks_embedding_hnsw
+    ON rag_chunks
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+
+-- Lookup por entidad (v2): re-index, DELETE en hooks, listing por tipo
+CREATE INDEX idx_rag_chunks_entity
+    ON rag_chunks (entity_type, entity_id);
+```
+
+Para las vulnerabilidades, que no son una tabla sino entradas JSON dentro de `configuration_items.vulnerabilities`, `entity_id` se calcula como `uuid_v5(namespace, ciId || ':' || cve)` con un namespace fijo e inmutable definido en `backend/src/services/entitySerializer.ts`. Esto permite la idempotencia del UPSERT y la trazabilidad estable de citaciones a lo largo del tiempo.
+
+### 12.7 Control de acceso (ACL documentos)
+
+Los campos `read_admin`, `read_auditor` y `read_viewer` (Boolean, por defecto `true`) en la tabla `documents` determinan si un fragmento procedente de ese documento es recuperable para cada rol. El filtro se aplica **antes** del kNN mediante una subconsulta SQL que restringe los `document_id` elegibles, garantizando que ningún chunk de un documento restringido se incluya jamás en el contexto del modelo. El filtrado post-recuperación no se utiliza para evitar fugas de información.
+
+```sql
+-- Subconsulta de visibilidad aplicada ANTES del kNN
+SELECT id FROM documents
+WHERE
+  (role = 'ADMIN'   AND read_admin   = true) OR
+  (role = 'AUDITOR' AND read_auditor = true) OR
+  (role = 'VIEWER'  AND read_viewer  = true)
+```
+
+### 12.8 Seguridad y cumplimiento
+
+| Área | Medida |
+|------|--------|
+| SSRF | Ollama solo es accesible dentro de la red interna Docker; el backend nunca acepta URLs proporcionadas por el cliente para realizar llamadas salientes. |
+| Prompt injection | El system prompt es fijo y no sobrescribible por el usuario. Se aplica una denylist de patrones de control (p. ej. secuencias de escape de roles) antes de enviar el prompt al modelo. |
+| GDPR | El `AuditLog` registra un hash SHA-256 de la query, nunca el texto literal. Las sesiones de chat son purgables por el propio usuario. No se almacena PII en `rag_chunks`. |
+| ISO 27001 A.8.15 | Se inserta un registro en `AuditLog` por cada operación `ASK_RAG` e `INDEX_DOC`. |
+| ISO 22301 | Ollama es stateless entre llamadas. Un fallo del servicio Ollama degrada el asistente a "IA no disponible" sin afectar al resto de la aplicación (degradación controlada). |
+
+### 12.9 Capacity planning (host CPU-only con AMX)
+
+El modelo `qwen2.5:7b-instruct` ejecutado en CPU con extensiones Intel AMX (Sapphire Rapids o posterior) ofrece el siguiente perfil de rendimiento aproximado:
+
+| Usuarios concurrentes | RAM Ollama en uso | Velocidad (tok/s por llamada) | Tiempo de respuesta medio |
+|-----------------------|-------------------|-------------------------------|---------------------------|
+| 1 | 6 GB | 12–18 tok/s | 10–18 s |
+| 5 (cola FIFO) | 6 GB | 12–18 tok/s por llamada | 50–90 s |
+| 10 (cola FIFO) | 6 GB | 12–18 tok/s por llamada | > 90 s (degradación visible) |
+
+El límite práctico sin GPU es de 2–3 peticiones simultáneas con latencia aceptable. A partir de 5 usuarios concurrentes se forma cola FIFO; el tiempo total escala linealmente.
+
+> **Nota de escaldo:** Cambiar al modelo `qwen2.5:3b-instruct` aproximadamente duplica la concurrencia efectiva y reduce la latencia media a la mitad, a costa de menor precisión en preguntas técnicas complejas.
+
+> **Nota de arquitectura:** Si `backend/src/index.ts` supera ~5.500 líneas tras añadir el subsistema RAG, planificar la migración a `backend/src/modules/` como siguiente refactor de arquitectura.
+
+### 12.10 v2 — Indexación de entidades estructuradas
+
+A partir de v2.3, el subsistema RAG indexa cuatro tipos de entidades estructuradas además del corpus documental: **CIs**, **contratos** (sólo el contrato raíz — los anexos se serializan dentro del texto del raíz), **licencias** (mismo patrón raíz/anexos) y **vulnerabilidades** (identificadas por un UUID v5 sintético derivado de `(ciId, cve)`). El esquema de la tabla `rag_chunks` se extiende con las columnas `entity_type` y `entity_id`, y se añade una tabla de estado `rag_entity_index` separada de `rag_document_index` porque las entidades son mutables y no versionadas en el pipeline.
+
+El control de acceso en el worker de búsqueda usa una sola cláusula `WHERE` con `LEFT JOIN` condicional: los chunks de documento siguen filtrándose por la ACL por rol existente; los chunks de entidad son visibles a todos los usuarios autenticados. Las prioridades del worker (vulnerabilidad > contrato/licencia > CI, 3 huecos por tick) y la SQL ACL completa se documentan en `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 y §10. La DPIA actualizada con los ocho riesgos STRIDE adicionales se encuentra en `docs/security/rag-dpia.md` (AMENDMENT v1.1).

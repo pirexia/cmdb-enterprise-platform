@@ -420,11 +420,13 @@ model AuditLog {
   entity    String   @db.VarChar(100)
   entityId  String   @map("entity_id") @db.VarChar(36)
   userEmail String   @map("user_email") @db.VarChar(255)
+  details   Json?    @db.JsonB
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entity, entityId])
   @@index([createdAt])
   @@index([userEmail])
+  @@index([action, createdAt(sort: Desc)], map: "idx_audit_logs_action_created_at")
   @@map("audit_logs")
 }
 

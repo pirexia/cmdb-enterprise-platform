@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
   ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX,
@@ -619,6 +620,18 @@ export default function ContractsPage() {
   };
 
   useEffect(() => { fetchContracts(); }, []);
+
+  // RAG chat deep-link: ?focus=<contractId> expands the row once contracts are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || contracts.length === 0) return;
+    if (contracts.some((c) => c.id === focusId)) {
+      setExpanded(focusId);
+      router.replace("/contracts", { scroll: false });
+    }
+  }, [searchParams, contracts, router]);
 
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {

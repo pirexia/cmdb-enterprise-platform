@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Key, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
   ChevronRight, Download, Eye, EyeOff, X, Search, Check, User,
@@ -629,6 +630,18 @@ export default function LicensesPage() {
   };
 
   useEffect(() => { fetchLicenses(); }, []);
+
+  // RAG chat deep-link: ?focus=<licenseId> expands the row once licenses are loaded.
+  const searchParams = useSearchParams();
+  const router       = useRouter();
+  useEffect(() => {
+    const focusId = searchParams.get("focus");
+    if (!focusId || licenses.length === 0) return;
+    if (licenses.some((l) => l.id === focusId)) {
+      setExpanded(focusId);
+      router.replace("/licenses", { scroll: false });
+    }
+  }, [searchParams, licenses, router]);
 
   const [filters, setFilters] = useState({ name: "", vendor: "", licenseType: "", status: "" });
   const activeFilterCount = Object.values(filters).filter(Boolean).length;

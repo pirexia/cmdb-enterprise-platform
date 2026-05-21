@@ -15,11 +15,16 @@ import {
   MessageSquare,
   RefreshCw,
   AlertTriangle,
+  FileText,
+  Server,
+  FileSignature,
+  Key,
+  ShieldAlert,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { useChatStream } from "@/lib/useChatStream";
-import type { ChatCitation, ChatStreamEvent } from "@/lib/useChatStream";
+import type { ChatCitation, ChatEntityType, ChatStreamEvent } from "@/lib/useChatStream";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +51,24 @@ interface ChatMessage {
 
 // ─── Citation chip ────────────────────────────────────────────────────────────
 
+/**
+ * Resolves a citation to its destination URL. Documents go to their dedicated
+ * detail page; other entity types deep-link to their listing with ?focus=<id>
+ * so the listing can auto-open the corresponding modal (v2.N6). For
+ * vulnerabilities the backend's entityId is a synthetic UUID v5 that the
+ * frontend can't reverse, so we pass the human-readable CVE-ID (carried in
+ * documentTitle) as ?cve= — the listing matches rows by that.
+ */
+function citationHref(c: ChatCitation): string {
+  switch (c.entityType) {
+    case 'document':      return `/documents/${c.entityId}`;
+    case 'ci':            return `/inventory?focus=${c.entityId}`;
+    case 'contract':      return `/contracts?focus=${c.entityId}`;
+    case 'license':       return `/licenses?focus=${c.entityId}`;
+    case 'vulnerability': return `/vulnerabilities?cve=${encodeURIComponent(c.documentTitle)}`;
+  }
+}
+
 function CitationChip({
   index,
   citation,
@@ -63,13 +86,13 @@ function CitationChip({
 
   return (
     <Link
-      href={`/documents/${citation.documentId}`}
+      href={citationHref(citation)}
       title={tooltip}
       className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-600 hover:bg-[var(--accent)]/10 hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors max-w-[260px] truncate"
     >
       <span className="font-mono font-semibold text-[var(--accent)]">[{index + 1}]</span>
       <span className="truncate">{citation.documentTitle}</span>
-      {citation.versionNumber > 0 && (
+      {citation.versionNumber !== undefined && citation.versionNumber > 0 && (
         <span className="flex-shrink-0 text-slate-400">v{citation.versionNumber}</span>
       )}
       {citation.section && (
@@ -124,7 +147,7 @@ function MessageBubble({ msg, t }: { msg: ChatMessage; t: (key: string) => strin
           </p>
           <div className="flex flex-wrap gap-1.5">
             {msg.citations.map((c, i) => (
-              <CitationChip key={`${c.documentId}-${i}`} index={i} citation={c} />
+              <CitationChip key={`${c.entityType}-${c.entityId}-${i}`} index={i} citation={c} />
             ))}
           </div>
         </div>
@@ -150,6 +173,40 @@ export default function ChatPage() {
 
   // Input
   const [question, setQuestion]           = useState("");
+
+  // Source filter chips (E4a)
+  const ENTITY_TYPES: { key: ChatEntityType; i18n: string; icon: typeof FileText }[] = [
+    { key: 'document',      i18n: 'chat.filter.documents',       icon: FileText      },
+    { key: 'ci',            i18n: 'chat.filter.cis',             icon: Server        },
+    { key: 'contract',      i18n: 'chat.filter.contracts',       icon: FileSignature },
+    { key: 'license',       i18n: 'chat.filter.licenses',        icon: Key           },
+    { key: 'vulnerability', i18n: 'chat.filter.vulnerabilities', icon: ShieldAlert   },
+  ];
+
+  const [selectedEntityTypes, setSelectedEntityTypes] = useState<ChatEntityType[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = sessionStorage.getItem('chat.filter.entityTypes');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      const allowed: ChatEntityType[] = ['document', 'ci', 'contract', 'license', 'vulnerability'];
+      return parsed.filter((x): x is ChatEntityType => typeof x === 'string' && (allowed as string[]).includes(x));
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('chat.filter.entityTypes', JSON.stringify(selectedEntityTypes));
+    } catch {
+      /* sessionStorage may be unavailable; ignore */
+    }
+  }, [selectedEntityTypes]);
+
+  const toggleEntityType = (k: ChatEntityType) =>
+    setSelectedEntityTypes((prev) => (prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]));
 
   // Status / error banners
   const [ragDisabled, setRagDisabled]     = useState(false);
@@ -289,6 +346,7 @@ export default function ChatPage() {
     await ask({
       question: trimmed,
       sessionId: resolvedSessionId,
+      entityTypes: selectedEntityTypes.length > 0 ? selectedEntityTypes : undefined,
       onEvent: (ev: ChatStreamEvent) => {
         switch (ev.kind) {
           case "session": {
@@ -520,6 +578,42 @@ export default function ChatPage() {
           {/* Input area */}
           <div className="border-t border-slate-200 bg-white px-6 py-4">
             <div className="mx-auto max-w-3xl">
+              {/* Source filter chips (E4a) */}
+              <div className="mb-3 flex items-center gap-2 flex-wrap text-xs">
+                <span className="font-medium text-slate-500">{t("chat.filter.label")}</span>
+                {ENTITY_TYPES.map(({ key, i18n, icon: Icon }) => {
+                  const active = selectedEntityTypes.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleEntityType(key)}
+                      aria-pressed={active}
+                      className={
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 border transition-colors " +
+                        (active
+                          ? "bg-[var(--accent)] text-white border-[var(--accent)] hover:opacity-90"
+                          : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50")
+                      }
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span>{t(i18n)}</span>
+                    </button>
+                  );
+                })}
+                {selectedEntityTypes.length === 0 ? (
+                  <span className="text-slate-400 italic">{t("chat.filter.all")}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEntityTypes([])}
+                    className="ml-2 text-[var(--accent)] hover:underline"
+                  >
+                    {t("chat.filter.clear")}
+                  </button>
+                )}
+              </div>
+
               {/* Streaming status */}
               {isStreaming && (
                 <p className="mb-2 flex items-center gap-2 text-xs text-slate-500">

@@ -2027,3 +2027,77 @@ When RAG is disabled, the `/api/chat/*` endpoints return HTTP 503. The rest of t
 | Incorrect responses / hallucinations | High temperature or stale index | Verify `RAG_CHAT_TEMPERATURE=0.1`; trigger a reindex |
 | "no space left on device" | Logical volume full | `df -h /var/lib/containers /opt/cmdb-data` |
 | Slow embeddings during indexing | bge-m3 model not loaded | `ollama pull bge-m3`; restart backend |
+
+### 19.10 Entity indexing (CIs, contracts, licenses, vulnerabilities)
+
+Starting with v2.3, the RAG subsystem indexes structured entities in addition to documents. No extra flag is needed — it activates automatically when `RAG_ENABLED=true`.
+
+**Indexing worker.** The 30 s cron splits a 3-slot budget per tick across entities with priority vulnerability > contract/license > CI. If three vulnerabilities are pending, they consume the whole budget and contracts / CIs wait for the next cycle. This preserves document upload latency and prioritises security signal. See `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 for full details.
+
+**Full reindex.** To reindex every entity type without restarting:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"...","password":"..."}' | jq -r .token)
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document","ci","contract","license","vulnerability"]}'
+```
+
+An empty body `{}` (or no body) is equivalent to reindexing all types.
+
+**Observability.** Queue state per type:
+
+```sql
+SELECT entity_type, status, COUNT(*) FROM rag_entity_index GROUP BY 1,2 ORDER BY 1,2;
+```
+
+Aggregated audit (one event per worker tick — not per entity):
+
+```sql
+SELECT created_at, details->>'cycle_at' AS cycle, details
+FROM audit_logs WHERE action = 'INDEX_BATCH' ORDER BY created_at DESC LIMIT 10;
+```
+
+Other relevant events: `RAG_BACKFILL_ENTITIES` (manual reindex) and `ASK_RAG_VULN` (queries including vulnerabilities).
+
+**Stuck-row troubleshooting.** A row may stay in `INDEXING` if the worker crashes mid-processing. Restarting the backend does NOT release it (the ARCH-3 guard prevents accidental overwrites). Release manually:
+
+```sql
+UPDATE rag_entity_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE status = 'INDEXING' AND updated_at < now() - interval '5 minutes';
+```
+
+**Vulnerability UUID lock-in.** The `RAG_VULN_NAMESPACE` constant in `backend/src/services/entitySerializer.ts` (`6c8b1a3e-9d4f-4a2b-8c7d-1e2f3a4b5c6d`) is immutable. Changing it would invalidate every existing vulnerability chunk and require a full reindex, in addition to breaking the historical traceability of citations.
+
+---
+
+## 20. Backups — RAG encryption considerations
+
+The `rag_chunks` and `rag_entity_index` tables store plaintext fragments of indexed documents and entities. Even though the serializer applies `scrubPII()` (email, Spanish DNI/NIE, phone) before embeddings are computed, **residual PII can always remain** in free-text notes and descriptions. This raises the sensitivity of any backup that includes these tables.
+
+Encrypted backups are **mandatory in production**. Recommended approach: encrypt with `openssl` (AES-256-CBC, key in KMS or HSM) directly in the `pg_dump` pipe — never write plaintext to disk:
+
+```bash
+pg_dump -U admin -h localhost cmdb_db \
+  | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/secure/backup.key \
+  > backup_$(date +%F).sql.enc
+```
+
+Restore:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/secure/backup.key \
+  -in backup_2026-05-21.sql.enc \
+  | psql -U admin -d cmdb_db_restore
+```
+
+Operational policy:
+
+- The encryption key and the backup files must live on systems with separate ACLs.
+- Key rotation: every 12 months, or immediately after any incident with suspected key exposure.
+- Monthly restore sample test (`pg_restore --list`).
+
+Reference: ENT-08 in `docs/security/rag-dpia.md` §A1.4.

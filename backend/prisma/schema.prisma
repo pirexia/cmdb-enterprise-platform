@@ -420,11 +420,13 @@ model AuditLog {
   entity    String   @db.VarChar(100)
   entityId  String   @map("entity_id") @db.VarChar(36)
   userEmail String   @map("user_email") @db.VarChar(255)
+  details   Json?    @db.JsonB
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([entity, entityId])
   @@index([createdAt])
   @@index([userEmail])
+  @@index([action, createdAt(sort: Desc)], map: "idx_audit_logs_action_created_at")
   @@map("audit_logs")
 }
 
@@ -712,7 +714,7 @@ model RagDocumentIndex {
 
 model RagChunk {
   id            String                        @id @default(uuid()) @db.Uuid
-  documentId    String                        @db.Uuid @map("document_id")
+  documentId    String?                       @db.Uuid @map("document_id")
   versionNumber Int                           @default(1) @map("version_number")
   chunkIndex    Int                           @map("chunk_index")
   sectionPath   String?                       @map("section_path")
@@ -722,12 +724,31 @@ model RagChunk {
   content       String
   embedding     Unsupported("vector(1024)")?
   metadata      Json                          @default("{}")
+  entityType    String                        @map("entity_type")
+  entityId      String                        @db.Uuid @map("entity_id")
   createdAt     DateTime                      @default(now()) @map("created_at")
 
-  document      Document                      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document      Document?                     @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId])
+  @@index([entityType, entityId], map: "idx_rag_chunks_entity")
   @@map("rag_chunks")
+}
+
+model RagEntityIndex {
+  id           String    @id @default(uuid()) @db.Uuid
+  entityType   String    @map("entity_type")
+  entityId     String    @map("entity_id") @db.Uuid
+  status       String    @default("PENDING")
+  errorMessage String?   @map("error_message")
+  chunkCount   Int       @default(0) @map("chunk_count")
+  indexedAt    DateTime? @map("indexed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@unique([entityType, entityId], map: "rag_entity_index_unique")
+  @@index([status], map: "idx_rag_entity_index_status")
+  @@map("rag_entity_index")
 }
 
 model RagChatSession {

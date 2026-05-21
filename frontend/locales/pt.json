@@ -1022,7 +1022,17 @@
       "rateLimit": "Demasiados pedidos. Aguarde um minuto."
     },
     "modelLabel": "Modelo",
-    "latencyLabel": "Latência"
+    "latencyLabel": "Latência",
+    "filter": {
+      "label": "Filtrar fontes",
+      "documents": "Documentos",
+      "cis": "CIs",
+      "contracts": "Contratos",
+      "licenses": "Licenças",
+      "vulnerabilities": "Vulnerabilidades",
+      "all": "Todas",
+      "clear": "Limpar"
+    }
   },
   "document": {
     "acl": {

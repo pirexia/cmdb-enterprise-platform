@@ -923,3 +923,9 @@ The practical limit without a GPU is 2–3 simultaneous requests with acceptable
 > **Scaling note:** Switching to the `qwen2.5:3b-instruct` model approximately doubles effective concurrency and halves mean latency, at the cost of lower accuracy on complex technical questions.
 
 > **Architecture note:** If `backend/src/index.ts` exceeds ~5,500 lines after adding the RAG subsystem, plan the migration to `backend/src/modules/` as the next architecture refactor.
+
+### 12.10 v2 — Structured entity indexing
+
+Starting with v2.3 the RAG subsystem indexes four structured entity types in addition to the document corpus: **CIs**, **contracts** (root only — addenda are serialised inside the root's text), **licenses** (same root/addenda pattern) and **vulnerabilities** (identified by a synthetic UUID v5 derived from `(ciId, cve)`). The `rag_chunks` table is extended with `entity_type` and `entity_id` columns, and a separate state table `rag_entity_index` is added — kept apart from `rag_document_index` because entities are mutable and not versioned through the pipeline.
+
+Access control in the search path uses a single `WHERE` clause with a conditional `LEFT JOIN`: document chunks still flow through the existing per-role ACL; entity chunks are visible to every authenticated user. Worker priorities (vulnerability > contract/license > CI, 3 slots per tick) and the complete ACL SQL are documented in `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 and §10. The DPIA updated with the eight additional STRIDE risks lives in `docs/security/rag-dpia.md` (AMENDMENT v1.1).

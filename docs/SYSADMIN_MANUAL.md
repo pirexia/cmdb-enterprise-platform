@@ -2049,3 +2049,77 @@ Con RAG desactivado, los endpoints `/api/chat/*` devuelven HTTP 503. El resto de
 | Respuestas incorrectas / alucinaciones | Temperatura alta o corpus indexado desactualizado | Verificar `RAG_CHAT_TEMPERATURE=0.1`; lanzar reindex |
 | "no space left on device" | LV llena | `df -h /var/lib/containers /opt/cmdb-data` |
 | Embeddings lentos al indexar | Modelo bge-m3 no cargado | `ollama pull bge-m3`; reiniciar backend |
+
+### 19.10 Indexación de entidades (CIs, contratos, licencias, vulnerabilidades)
+
+A partir de v2.3, el subsistema RAG indexa también entidades estructuradas además de documentos. No requiere una variable adicional: se activa automáticamente cuando `RAG_ENABLED=true`.
+
+**Worker de indexación.** El cron de 30 s reparte un presupuesto de 3 huecos por tick entre entidades, con prioridad vulnerabilidad > contrato/licencia > CI. Si hay 3 vulns en cola, consumen todo el presupuesto y los contratos / CIs esperan al siguiente ciclo. Esto preserva la latencia de subida de documentos y prioriza la seguridad operativa. Ver `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 para el detalle.
+
+**Reindex completo.** Para reindexar todas las entidades sin reiniciar:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"...","password":"..."}' | jq -r .token)
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document","ci","contract","license","vulnerability"]}'
+```
+
+Body vacío `{}` o sin body equivale a indexar todos los tipos.
+
+**Observabilidad.** Estado de cola por tipo:
+
+```sql
+SELECT entity_type, status, COUNT(*) FROM rag_entity_index GROUP BY 1,2 ORDER BY 1,2;
+```
+
+Auditoría agregada (1 evento por tick del worker, no por entidad):
+
+```sql
+SELECT created_at, details->>'cycle_at' AS cycle, details
+FROM audit_logs WHERE action = 'INDEX_BATCH' ORDER BY created_at DESC LIMIT 10;
+```
+
+Otros eventos relevantes: `RAG_BACKFILL_ENTITIES` (reindex manual) y `ASK_RAG_VULN` (queries que incluyen vulnerabilidades).
+
+**Troubleshooting de filas atascadas.** Una fila puede quedar en `INDEXING` si el worker cae mientras procesa. Reiniciar el backend NO la libera (el guard ARCH-3 protege contra carrera). Liberar manualmente:
+
+```sql
+UPDATE rag_entity_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE status = 'INDEXING' AND updated_at < now() - interval '5 minutes';
+```
+
+**Lock-in de UUID de vulnerabilidades.** El namespace `RAG_VULN_NAMESPACE` en `backend/src/services/entitySerializer.ts` (`6c8b1a3e-9d4f-4a2b-8c7d-1e2f3a4b5c6d`) es inmutable. Cambiarlo invalidaría todos los chunks de vulnerabilidades existentes y requeriría un reindex completo, además de romper la trazabilidad histórica de las citaciones.
+
+---
+
+## 20. Backups — consideraciones de cifrado para RAG
+
+Las tablas `rag_chunks` y `rag_entity_index` almacenan en texto plano fragmentos de documentos y entidades indexadas. Aunque el serializador aplica `scrubPII()` (email, DNI/NIE, teléfono) antes de generar embeddings, **siempre puede quedar PII residual** en notas libres y descripciones. Esto eleva la sensibilidad de los backups que incluyan estas tablas.
+
+El cifrado de backups en producción es **obligatorio**. Recomendado: cifrar con `openssl` (AES-256-CBC con clave en KMS o HSM) directamente en la pipe de `pg_dump`, nunca en disco:
+
+```bash
+pg_dump -U admin -h localhost cmdb_db \
+  | openssl enc -aes-256-cbc -salt -pbkdf2 -pass file:/secure/backup.key \
+  > backup_$(date +%F).sql.enc
+```
+
+Restauración:
+
+```bash
+openssl enc -d -aes-256-cbc -pbkdf2 -pass file:/secure/backup.key \
+  -in backup_2026-05-21.sql.enc \
+  | psql -U admin -d cmdb_db_restore
+```
+
+Política operativa:
+
+- La clave de cifrado y los backups deben residir en sistemas con ACL separadas.
+- Rotación de la clave: cada 12 meses o tras incidente con sospecha de exposición.
+- Verificar restore con un sample mensual (test `pg_restore --list`).
+
+Referencia: ENT-08 en `docs/security/rag-dpia.md` §A1.4.

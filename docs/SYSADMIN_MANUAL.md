@@ -765,6 +765,17 @@ El script implementa cinco capas de protección antes y durante la actualizació
 
 3. **Punto de rollback etiquetado:** Crea un tag git `rollback/<timestamp>` con el HEAD actual antes de hacer `git pull`. Este tag permite restaurar el código exacto de la versión anterior.
 
+> **v2.3.0 — RAG sobre entidades estructuradas (CIs, contratos, licencias, vulnerabilidades):**
+> - **Indexación de entidades:** El subsistema RAG ya no se limita a documentos. Los CIs, contratos (raíz, los anexos se serializan dentro), licencias (mismo patrón raíz/anexos) y vulnerabilidades (identificadas por UUID v5 sintético sobre `(ciId, cve)`) se indexan automáticamente. La activación es transparente cuando `RAG_ENABLED=true`.
+> - **Chips de filtro en el chat:** Cinco chips (Documentos, CIs, Contratos, Licencias, Vulnerabilidades) permiten acotar las fuentes consultadas. Persistencia por sesión del navegador. Selección vacía = todas las fuentes.
+> - **Citaciones enlazables:** Cada cita devuelta por el asistente lleva ahora `entityType` + `entityId`. Hacer clic en una cita abre el ítem citado en su listado (`/inventory?focus=<id>` abre el modal del CI; `/contracts?focus=<id>` despliega la fila; igual con licencias; `/vulnerabilities?cve=<CVE-ID>` pre-filtra la lista).
+> - **Worker priorizado:** El cron de 30 s usa un presupuesto de 3 huecos por tick con prioridad vulnerabilidad > contrato/licencia > CI. Preserva la latencia de subida de documentos y prioriza la señal de seguridad.
+> - **Backfill multi-tipo:** `POST /api/admin/rag/backfill` ahora acepta `{ "entityTypes": [...] }`. Body vacío indexa todos los tipos.
+> - **Auditoría agregada:** Nueva acción `INDEX_BATCH` (un evento por tick del worker, no por entidad) y `ASK_RAG_VULN` (trazabilidad fina para queries que incluyen vulnerabilidades). `audit_logs.details` formalizada como `jsonb` con índice `(action, created_at DESC)`.
+> - **Mitigaciones anti-injection:** Bloques `<ENTITY_DATA>` en el prompt + REGLAS 5–7 reforzadas + `stripInjectionTokens()` en el serializador. `scrubPII()` (email, DNI/NIE, teléfono) sobre todo el texto libre antes de embedding. Allowlist estricto en serializador de vulnerabilidades (CVE-ID + severity + CVSS band + status + importedAt — sin description, sin source).
+> - **Compliance:** DPIA v1.1 con 8 entradas STRIDE adicionales (ENT-01..08) y checklist de sign-off DPO+CISO (10 ítems). Mandato de cifrado de backups para `rag_chunks` (NIS2 Art.21.2.h / ISO 22301).
+> - **Operaciones:** `scripts/update.sh --reindex` ahora también encola CIs / contratos / licencias para reindexación. Nuevo runbook `docs/RAG_V2_DEPLOY_RUNBOOK.md` con smoke checklist copy-paste, rollback, sign-off worksheet y monitoring post-deploy.
+
 > **v2.2.3 — Rediseño UI Corporate Dark, theming dinámico y navegación responsive:**
 > - **Theming dinámico en base de datos:** Nueva tabla `app_settings` almacena color de sidebar, color de acento, nombre de empresa y logo. Sin rebuild para cambiar la apariencia.
 > - **Panel de Apariencia (Admin):** Nueva pestaña "Apariencia" en Ajustes con selector de color en vivo, subida de logo (PNG/JPEG/WebP, máx. 2 MB, validación magic bytes) y nombre de empresa configurable.

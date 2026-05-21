@@ -755,6 +755,17 @@ The script implements five layers of protection before and during the update:
 
 4. **Auto-rollback on failure:** If the Docker build fails or the health check does not respond within 120 seconds, the script automatically restores the rollback tag, rebuilds the previous image, and restarts the services.
 
+> **v2.3.0 — RAG over structured entities (CIs, contracts, licenses, vulnerabilities):**
+> - **Entity indexing:** The RAG subsystem no longer covers documents only. CIs, contracts (roots — addenda are serialised inside the root's text), licenses (same root/addenda pattern) and vulnerabilities (identified by a synthetic UUID v5 derived from `(ciId, cve)`) are indexed automatically. Activation is transparent when `RAG_ENABLED=true`.
+> - **Source filter chips in chat:** Five chips (Documents, CIs, Contracts, Licenses, Vulnerabilities) let users narrow the assistant's sources. Session-scoped persistence in the browser. Empty selection = all sources.
+> - **Deep-linkable citations:** Every citation now carries `entityType` + `entityId`. Clicking a citation opens the cited item in its listing (`/inventory?focus=<id>` opens the CI detail modal; `/contracts?focus=<id>` expands the row; same for licenses; `/vulnerabilities?cve=<CVE-ID>` pre-fills the filter).
+> - **Priority worker:** The 30-second cron uses a 3-slot budget per tick with vulnerability > contract/license > CI priority. Preserves document upload latency and prioritises security signal.
+> - **Multi-type backfill:** `POST /api/admin/rag/backfill` now accepts `{ "entityTypes": [...] }`. An empty body reindexes all types.
+> - **Aggregated audit:** New `INDEX_BATCH` action (one event per worker tick, not per entity) and `ASK_RAG_VULN` (fine-grained traceability for queries that include vulnerabilities). `audit_logs.details` formalised as `jsonb` with an index on `(action, created_at DESC)`.
+> - **Anti-injection mitigations:** `<ENTITY_DATA>` blocks in the prompt + reinforced REGLAS 5–7 + `stripInjectionTokens()` in the serializer. `scrubPII()` (email, ES-DNI/NIE, phone) runs over all free text before embedding. Strict allowlist in the vulnerability serializer (CVE-ID + severity + CVSS band + status + importedAt — no description, no source).
+> - **Compliance:** DPIA v1.1 with 8 additional STRIDE entries (ENT-01..08) and a 10-item DPO+CISO sign-off checklist. Backup-encryption mandate for `rag_chunks` (NIS2 Art.21.2.h / ISO 22301).
+> - **Operations:** `scripts/update.sh --reindex` now also queues CIs / contracts / licenses for re-indexing. New runbook `docs/RAG_V2_DEPLOY_RUNBOOK.md` with copy-paste smoke checklist, rollback matrix, sign-off worksheet and post-deploy monitoring.
+
 > **v2.2.3 — Corporate Dark UI redesign, dynamic theming, and responsive navigation:**
 > - **Database-driven theming:** New `app_settings` table stores sidebar color, accent color, company name, and logo. No rebuild required to change the appearance.
 > - **Branding panel (Admin):** New "Appearance" tab in Settings with live color pickers, logo upload (PNG/JPEG/WebP, max 2 MB, magic bytes validated), and company name configuration.

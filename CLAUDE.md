@@ -335,7 +335,8 @@ Before committing any `fix` or `feat`:
 - `main` — production releases (tagged `vX.Y.Z`)
 - `develop` — active development; PRs merge here first
 - Feature branches cut from `develop`, merged back via PR
-- Current release: **v2.1.1** (HttpOnly JWT, CSP, TOTP otplib, GDPR erasure, LDAP strict mode, Prisma v6, Next.js 16, React 19)
+- Current release: **v2.3.0** (RAG indexing over CIs / contracts / licenses / vulnerabilities, chat source-filter chips, deep-linkable citations, INDEX_BATCH audit, anti-injection `<ENTITY_DATA>` + REGLAS 5–7, DPIA v1.1)
+- Previous release: **v2.2.3** (Corporate Dark UI redesign, database-driven theming, responsive nav)
 
 ---
 

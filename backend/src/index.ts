@@ -34,6 +34,7 @@ import {
   buildRagPrompt, chatWithContext, streamChatWithContext,
   type RagChunkResult, type Citation,
 } from './services/ragService';
+import { vulnUuid, getContractRoot, getLicenseRoot } from './services/entitySerializer';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -1368,6 +1369,9 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, now())
     `;
 
+    // Re-index this entity for the RAG (queue, non-blocking on errors)
+    void queueEntityForIndexing('ci', ci.id);
+
     res.status(201).json(flattenCI(ci));
   } catch (error: unknown) {
     console.error('[POST /api/cis] Error:', error);
@@ -1436,6 +1440,9 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
       VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
     `;
 
+    // Re-index this entity for the RAG (queue, non-blocking on errors)
+    void queueEntityForIndexing('ci', id);
+
     res.json(flattenCI(ci));
   } catch (error: unknown) {
     console.error('[PATCH /api/cis/:id] Error:', error);
@@ -1470,6 +1477,9 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request,
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
       VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
     `;
+
+    // Purge RAG index/chunks for this entity (await before response — cascade safety)
+    await purgeEntityFromRag('ci', id);
 
     res.json({ id, message: `CI "${ci.name}" deleted successfully` });
   } catch (error) {
@@ -1542,6 +1552,10 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
     `;
 
+    // Re-index the vulnerability + its parent CI (whose summary line changed)
+    void queueEntityForIndexing('vulnerability', vulnUuid(ciId, cve));
+    void queueEntityForIndexing('ci', ciId);
+
     res.json({ ciId, cve, status, message: `Status updated to ${status}` });
   } catch (error) {
     console.error('[PATCH /api/vulnerabilities] Error:', error);
@@ -1590,6 +1604,11 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
       VALUES(gen_random_uuid(), 'CREATE', 'Contract', ${contract.id}::uuid, ${req.user!.email}, now())
     `;
+
+    // Re-index the contract ROOT (addenda roll up to their root)
+    const contractRootId = await getContractRoot(contract.id);
+    void queueEntityForIndexing('contract', contractRootId);
+
     res.status(201).json(contract);
   } catch (error: unknown) {
     console.error('[POST /api/contracts] Error:', error);
@@ -1754,6 +1773,13 @@ app.post('/api/cis/bulk', authenticateToken, requireAdmin, async (req: Request, 
     const message = err instanceof Error ? err.message : 'Failed to import CIs';
     res.status(400).json({ error: message });
     return;
+  }
+
+  // Re-index every newly created CI for the RAG (queue, non-blocking on errors)
+  for (const r of results) {
+    if (r.status === 'created' && r.id) {
+      void queueEntityForIndexing('ci', r.id);
+    }
   }
 
   res.status(207).json({
@@ -2092,6 +2118,21 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       WHERE "vulnerabilities" IS NOT NULL
     `;
     log.info(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
+
+    // RAG mass purge: all vulnerability rows lose their parent data, so wipe
+    // both chunks and index entries. Then mark every CI for re-index since
+    // its summary line just lost all vulns. Skip CIs already INDEXING to
+    // respect the ARCH-3 worker race guard.
+    if (process.env.RAG_ENABLED === 'true') {
+      try {
+        await prisma.$executeRaw`DELETE FROM "rag_chunks" WHERE entity_type = 'vulnerability'`;
+        await prisma.$executeRaw`DELETE FROM "rag_entity_index" WHERE entity_type = 'vulnerability'`;
+        await prisma.$executeRaw`UPDATE "rag_entity_index" SET status='PENDING', updated_at=now() WHERE entity_type = 'ci' AND status != 'INDEXING'`;
+      } catch (e) {
+        console.error('[RAG] reset-vulnerabilities purge error:', e);
+      }
+    }
+
     res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
@@ -2666,6 +2707,10 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
       VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
     `;
 
+    // Re-index BOTH endpoints — each CI's relation list changed
+    void queueEntityForIndexing('ci', sourceCiId);
+    void queueEntityForIndexing('ci', targetCiId);
+
     res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
   } catch (error: unknown) {
     console.error('[POST /api/cis/:id/relations] Error:', error);
@@ -2721,6 +2766,10 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
       VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
     `;
 
+    // Re-index BOTH endpoints — each CI's relation list changed
+    void queueEntityForIndexing('ci', sourceCiId);
+    void queueEntityForIndexing('ci', targetCiId);
+
     res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
   } catch (error: unknown) {
     console.error('[POST /api/relations] Error:', error);
@@ -2741,12 +2790,24 @@ app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Re
   const id = req.params.id as string;
 
   try {
+    // Look up endpoints BEFORE the delete so we can re-index both CIs after
+    const endpoints = await prisma.$queryRaw<{ source_ci_id: string; target_ci_id: string }[]>`
+      SELECT source_ci_id::text AS source_ci_id, target_ci_id::text AS target_ci_id
+      FROM ci_relations WHERE id = ${id}::uuid LIMIT 1
+    `;
+
     await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
       VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
     `;
+
+    // Re-index both endpoints (relation list changed for both)
+    if (endpoints.length) {
+      void queueEntityForIndexing('ci', endpoints[0].source_ci_id);
+      void queueEntityForIndexing('ci', endpoints[0].target_ci_id);
+    }
 
     res.json({ id, message: 'Relationship deleted successfully' });
   } catch (error) {
@@ -2784,6 +2845,9 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
       INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
       VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
     `;
+
+    // Re-index this entity for the RAG (queue, non-blocking on errors)
+    void queueEntityForIndexing('ci', id);
 
     res.json({ id, lastCheckDate: checkDate, verificationSource: source, message: 'Verification updated' });
   } catch (error) {
@@ -2886,6 +2950,12 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
       processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
       log.info(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
+
+      // Queue every (ci, cve) pair for re-index, plus the parent CI once
+      for (const v of merged) {
+        void queueEntityForIndexing('vulnerability', vulnUuid(ci.id, v.cve));
+      }
+      void queueEntityForIndexing('ci', ci.id);
     }
 
     res.json({
@@ -3052,6 +3122,47 @@ async function queueDocumentForIndexing(documentId: string, versionNumber: numbe
       ON CONFLICT (document_id, version_number) DO UPDATE SET status='PENDING', updated_at=now()`;
   } catch (e) {
     console.error('[RAG] queueDocumentForIndexing error:', e);
+  }
+}
+
+type RagEntityType = 'ci' | 'contract' | 'license' | 'vulnerability';
+
+/**
+ * Enqueues a non-document entity for asynchronous RAG indexing.
+ *
+ * Idempotent UPSERT with an ARCH-3 guard: never overwrites a row whose status
+ * is INDEXING (would race with the worker mid-flight). The next worker tick
+ * picks up PENDING rows.
+ *
+ * For vulnerabilities, the caller must derive entityId via vulnUuid(ciId, cve)
+ * from entitySerializer.ts — never pass raw CI UUID for a 'vulnerability' type.
+ */
+async function queueEntityForIndexing(entityType: RagEntityType, entityId: string): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "rag_entity_index"(id, entity_type, entity_id, status, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${entityType}, ${entityId}::uuid, 'PENDING', now(), now())
+      ON CONFLICT (entity_type, entity_id) DO UPDATE
+        SET status='PENDING', updated_at=now()
+        WHERE "rag_entity_index".status != 'INDEXING'`;
+  } catch (e) {
+    console.error('[RAG] queueEntityForIndexing error:', e);
+  }
+}
+
+/**
+ * Synchronously purges all chunks + index row for an entity. Call this BEFORE
+ * the HTTP response of DELETE handlers (await, not void) so the chunks never
+ * survive their parent entity (GDPR Art.17 / ISO 27001 A.8.10).
+ */
+async function purgeEntityFromRag(entityType: RagEntityType, entityId: string): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  try {
+    await prisma.$executeRaw`DELETE FROM "rag_chunks" WHERE entity_type = ${entityType} AND entity_id = ${entityId}::uuid`;
+    await prisma.$executeRaw`DELETE FROM "rag_entity_index" WHERE entity_type = ${entityType} AND entity_id = ${entityId}::uuid`;
+  } catch (e) {
+    console.error('[RAG] purgeEntityFromRag error:', e);
   }
 }
 
@@ -3924,6 +4035,14 @@ app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, 
       where: { id: ciId },
       data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
     });
+
+    // Re-index the CI and each affected contract ROOT
+    void queueEntityForIndexing('ci', ciId);
+    for (const cid of contractIds) {
+      const rootId = await getContractRoot(cid);
+      void queueEntityForIndexing('contract', rootId);
+    }
+
     res.json({ associated: contractIds.length });
   } catch (e) { res.status(500).json({ error: 'Failed to associate contracts to CI' }); }
 });
@@ -3937,6 +4056,12 @@ app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin
       where: { id: ciId },
       data: { contracts: { disconnect: [{ id: contractId }] } },
     });
+
+    // Re-index the CI and the contract root (association removed)
+    void queueEntityForIndexing('ci', ciId);
+    const rootId = await getContractRoot(contractId);
+    void queueEntityForIndexing('contract', rootId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to disassociate contract from CI' }); }
 });
@@ -3954,6 +4079,10 @@ app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, 
       await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+
+    // Re-index the CI (document list changed)
+    void queueEntityForIndexing('ci', ciId);
+
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate documents to CI' }); }
 });
@@ -3964,6 +4093,10 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
   const docId = req.params.docId as string;
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+
+    // Re-index the CI (document list changed)
+    void queueEntityForIndexing('ci', ciId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to remove document association from CI' }); }
 });
@@ -3993,6 +4126,14 @@ app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, 
       where: { id: contractId },
       data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
     });
+
+    // Re-index the contract ROOT and every newly attached CI
+    const rootId = await getContractRoot(contractId);
+    void queueEntityForIndexing('contract', rootId);
+    for (const cid of ciIds) {
+      void queueEntityForIndexing('ci', cid);
+    }
+
     res.json({ associated: ciIds.length });
   } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to contract' }); }
 });
@@ -4006,6 +4147,12 @@ app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, asyn
       where: { id: contractId },
       data: { cis: { disconnect: [{ id: ciId }] } },
     });
+
+    // Re-index the contract ROOT and the detached CI
+    const rootId = await getContractRoot(contractId);
+    void queueEntityForIndexing('contract', rootId);
+    void queueEntityForIndexing('ci', ciId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to disassociate CI from contract' }); }
 });
@@ -4643,6 +4790,11 @@ app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
       },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','License',${license.id}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT (addenda roll up to their root)
+    const licenseRootId = await getLicenseRoot(license.id);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.status(201).json(license);
   } catch (e) { res.status(500).json({ error: 'Failed to create license' }); }
 });
@@ -4674,6 +4826,11 @@ app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res)
       },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE','License',${license.id}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT
+    const licenseRootId = await getLicenseRoot(license.id);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.json(license);
   } catch (e) { res.status(500).json({ error: 'Failed to update license' }); }
 });
@@ -4682,8 +4839,19 @@ app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res)
 app.delete('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
   const id = req.params.id as string;
   try {
+    // Walk to root BEFORE the delete so we know whether to purge or re-queue
+    const licenseRootId = await getLicenseRoot(id);
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','License',${id}::uuid,${req.user!.email},now())`;
     await prisma.license.delete({ where: { id } });
+
+    // If we just deleted the ROOT, purge its RAG row. If we deleted an
+    // addendum, the root is still alive — re-queue it for a fresh index.
+    if (licenseRootId === id) {
+      await purgeEntityFromRag('license', licenseRootId);
+    } else {
+      void queueEntityForIndexing('license', licenseRootId);
+    }
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license' }); }
 });
@@ -4719,6 +4887,14 @@ app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, async (req, r
       data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'LINK_CI','License',${licenseId}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT and each newly attached CI
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+    for (const cid of ciIds) {
+      void queueEntityForIndexing('ci', cid);
+    }
+
     res.json({ associated: ciIds.length });
   } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to license' }); }
 });
@@ -4733,6 +4909,12 @@ app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async
       data: { cis: { disconnect: [{ id: ciId }] } },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','License',${licenseId}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT and the detached CI
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+    void queueEntityForIndexing('ci', ciId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to disassociate CI from license' }); }
 });
@@ -4783,6 +4965,11 @@ app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, async (
       associated++;
     }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','License',${licenseId}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT (document list changed)
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate documents to license' }); }
 });
@@ -4795,6 +4982,11 @@ app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin
     await prisma.$executeRaw`
       DELETE FROM "document_licenses" WHERE document_id = ${docId}::uuid AND license_id = ${licenseId}::uuid`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','License',${licenseId}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT (document list changed)
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to remove document association from license' }); }
 });
@@ -4829,6 +5021,11 @@ app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req,
       },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','LicenseUser',${user.id}::uuid,${req.user!.email},now())`;
+
+    // Re-index the license ROOT (user total changed)
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.status(201).json(user);
   } catch (e) { res.status(500).json({ error: 'Failed to create license user' }); }
 });
@@ -4836,9 +5033,15 @@ app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req,
 // DELETE /api/licenses/:id/users/:userId — delete a LicenseUser
 app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
   const userId = req.params.userId as string;
+  const licenseId = req.params.id as string;
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE','LicenseUser',${userId}::uuid,${req.user!.email},now())`;
     await prisma.licenseUser.delete({ where: { id: userId } });
+
+    // Re-index the license ROOT (user total changed)
+    const licenseRootId = await getLicenseRoot(licenseId);
+    void queueEntityForIndexing('license', licenseRootId);
+
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: 'Failed to delete license user' }); }
 });

@@ -294,6 +294,11 @@ const ChatAskSchema = z.object({
   sessionId: z.string().uuid().optional(), // if omitted, a new session is created
   question:  z.string().min(1).max(2000),
   topK:      z.number().int().min(1).max(20).optional(),
+  // Optional allowlist of entity types to restrict retrieval to (v2 RAG-entities).
+  // Unknown values are rejected by the enum; an empty/omitted array means "no filter".
+  entityTypes: z
+    .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability']))
+    .optional(),
 });
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -3137,7 +3142,12 @@ async function processRagQueue(): Promise<void> {
  * @param role   - 'ADMIN' | 'AUDITOR' | 'VIEWER'
  * @param topK   - Number of chunks to return (default 6)
  */
-async function ragSearchChunks(query: string, role: string, topK = 6): Promise<RagChunkResult[]> {
+async function ragSearchChunks(
+  query: string,
+  role: string,
+  topK = 6,
+  entityTypes?: string[],
+): Promise<RagChunkResult[]> {
   const cleanQuery = sanitizeQuery(query);
   const { embedding } = await getEmbedding(cleanQuery);
   const embeddingStr = `[${embedding.join(',')}]`;
@@ -3145,11 +3155,26 @@ async function ragSearchChunks(query: string, role: string, topK = 6): Promise<R
   // Allowlisted column name from docVisibilitySqlCol — safe with Prisma.raw()
   const visCol = Prisma.raw(`"${docVisibilitySqlCol(role)}"`);
 
+  // Validate entityTypes against the fixed allowlist.
+  // Unknown values are silently dropped (per spec). Empty / undefined → no filter.
+  const ALLOWED_ENTITY_TYPES = ['document', 'ci', 'contract', 'license', 'vulnerability'] as const;
+  const filteredEntityTypes = Array.isArray(entityTypes)
+    ? entityTypes.filter((t): t is (typeof ALLOWED_ENTITY_TYPES)[number] =>
+        (ALLOWED_ENTITY_TYPES as readonly string[]).includes(t),
+      )
+    : [];
+  // Pass null when no filter is desired so the SQL `IS NULL` branch matches all rows.
+  // Prisma binds JS arrays of strings to Postgres text[] when the SQL casts via ::text[].
+  const entityTypesParam: string[] | null =
+    filteredEntityTypes.length > 0 ? filteredEntityTypes : null;
+
   const rows = await prisma.$queryRaw<{
     id: string;
-    document_id: string;
-    document_title: string;
-    version_number: number;
+    entity_type: string;
+    entity_id: string;
+    document_id: string | null;
+    title: string | null;
+    version_number: number | null;
     section_path: string | null;
     page_start: number | null;
     content: string;
@@ -3157,26 +3182,39 @@ async function ragSearchChunks(query: string, role: string, topK = 6): Promise<R
   }[]>`
     SELECT
       c.id::text                   AS id,
+      c.entity_type                AS entity_type,
+      c.entity_id::text            AS entity_id,
       c.document_id::text          AS document_id,
-      d.title                      AS document_title,
+      COALESCE(d.title, c.metadata->>'title') AS title,
       c.version_number             AS version_number,
       c.section_path               AS section_path,
       c.page_start                 AS page_start,
       c.content                    AS content,
       1 - (c.embedding <=> ${embeddingStr}::vector) AS score
     FROM "rag_chunks" c
-    JOIN "documents" d ON d.id = c.document_id
-    JOIN "documents" root ON root.id = COALESCE(d.root_id, d.id)
-    WHERE root.${visCol} = true
-      AND d.is_latest = true
+    LEFT JOIN "documents" d
+      ON c.entity_type = 'document' AND d.id = c.document_id
+    LEFT JOIN "documents" root
+      ON c.entity_type = 'document' AND root.id = COALESCE(d.root_id, d.id)
+    WHERE (
+        (c.entity_type = 'document' AND root.${visCol} = true AND d.is_latest = true)
+        OR
+        (c.entity_type IN ('ci','contract','license','vulnerability'))
+      )
+      AND (
+        ${entityTypesParam}::text[] IS NULL
+        OR c.entity_type = ANY(${entityTypesParam}::text[])
+      )
     ORDER BY c.embedding <=> ${embeddingStr}::vector
     LIMIT ${topK}`;
 
   return rows.map((r) => ({
     id:             r.id,
-    documentId:     r.document_id,
-    documentTitle:  r.document_title,
-    versionNumber:  r.version_number,
+    entityType:     r.entity_type as RagChunkResult['entityType'],
+    entityId:       r.entity_id,
+    documentId:     r.entity_type === 'document' ? (r.document_id ?? undefined) : undefined,
+    documentTitle:  r.title ?? '(sin título)',
+    versionNumber:  r.entity_type === 'document' ? (r.version_number ?? undefined) : undefined,
     sectionPath:    r.section_path ?? undefined,
     pageStart:      r.page_start   ?? undefined,
     content:        r.content,
@@ -4873,7 +4911,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK } = parsed.data;
+  const { question, topK, entityTypes } = parsed.data;
   let { sessionId } = parsed.data;
 
   try {
@@ -4894,7 +4932,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
     }
 
     // 2. Retrieve chunks (ACL pre-filter + kNN)
-    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6);
+    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
 
     // 3. Build prompt + call LLM
     const messages = buildRagPrompt(question, chunks);
@@ -4904,6 +4942,8 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
 
     // 4. Build citations from chunks
     const citations: Citation[] = chunks.map(c => ({
+      entityType:    c.entityType,
+      entityId:      c.entityId,
       documentId:    c.documentId,
       documentTitle: c.documentTitle,
       versionNumber: c.versionNumber,
@@ -4938,7 +4978,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK } = parsed.data;
+  const { question, topK, entityTypes } = parsed.data;
   let { sessionId } = parsed.data;
 
   // SSE headers
@@ -4972,9 +5012,11 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
     send('session', { sessionId });
 
     // 2. Retrieve chunks
-    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6);
+    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
 
     const citations: Citation[] = chunks.map(c => ({
+      entityType:    c.entityType,
+      entityId:      c.entityId,
       documentId:    c.documentId,
       documentTitle: c.documentTitle,
       versionNumber: c.versionNumber,

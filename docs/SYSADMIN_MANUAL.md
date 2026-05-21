@@ -2053,6 +2053,8 @@ Con RAG desactivado, los endpoints `/api/chat/*` devuelven HTTP 503. El resto de
 
 ### 19.10 Indexación de entidades (CIs, contratos, licencias, vulnerabilidades)
 
+> Para el procedimiento operativo completo (smoke checklist + sign-off DPO/CISO + reindex post-update de corpus pre-existente), consulta `docs/RAG_V2_DEPLOY_RUNBOOK.md`. Esta sección documenta sólo el comportamiento estable; el runbook cubre la ejecución one-off al pasar de v1 a v2.
+
 A partir de v2.3, el subsistema RAG indexa también entidades estructuradas además de documentos. No requiere una variable adicional: se activa automáticamente cuando `RAG_ENABLED=true`.
 
 **Worker de indexación.** El cron de 30 s reparte un presupuesto de 3 huecos por tick entre entidades, con prioridad vulnerabilidad > contrato/licencia > CI. Si hay 3 vulns en cola, consumen todo el presupuesto y los contratos / CIs esperan al siguiente ciclo. Esto preserva la latencia de subida de documentos y prioriza la seguridad operativa. Ver `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 para el detalle.

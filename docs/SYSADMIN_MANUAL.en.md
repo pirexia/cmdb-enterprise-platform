@@ -2031,6 +2031,8 @@ When RAG is disabled, the `/api/chat/*` endpoints return HTTP 503. The rest of t
 
 ### 19.10 Entity indexing (CIs, contracts, licenses, vulnerabilities)
 
+> For the full operational procedure (smoke checklist + DPO/CISO sign-off + re-indexing of pre-existing corpora when upgrading from v1), see `docs/RAG_V2_DEPLOY_RUNBOOK.md`. This section documents the steady-state behaviour only; the runbook covers the one-off execution when moving from v1 to v2.
+
 Starting with v2.3, the RAG subsystem indexes structured entities in addition to documents. No extra flag is needed — it activates automatically when `RAG_ENABLED=true`.
 
 **Indexing worker.** The 30 s cron splits a 3-slot budget per tick across entities with priority vulnerability > contract/license > CI. If three vulnerabilities are pending, they consume the whole budget and contracts / CIs wait for the next cycle. This preserves document upload latency and prioritises security signal. See `docs/RAG_ENTITIES_INDEXING_PLAN.md` §10 for full details.

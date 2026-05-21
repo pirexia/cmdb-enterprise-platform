@@ -581,6 +581,83 @@ reindex_documents() {
   success "All documents queued for re-indexing — the cron worker will process them."
 }
 
+# ── Step 10b: Re-index structured entities (--reindex flag, RAG v2 only) ──────
+# CIs / contract roots / license roots / vulnerabilities. Vulnerabilities are
+# enumerated as the JSON entries of configuration_items.vulnerabilities; the
+# rag_entity_index UPSERT for vulns is done from the backend's
+# /api/admin/rag/backfill endpoint because it needs the uuid_v5 derivation
+# which lives in TypeScript — we trigger that endpoint here once the deploy
+# is healthy. CIs / contracts / licenses can be queued via plain SQL.
+reindex_entities() {
+  if [[ "${REINDEX_FLAG}" != "true" ]] || [[ "${RAG_PRESENT}" != "true" ]]; then
+    return 0
+  fi
+
+  step "Re-indexing structured entities (CIs, contracts, licenses, vulnerabilities)"
+  warn "Vulnerabilities are enqueued via /api/admin/rag/backfill (needs admin token)."
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would mark rag_entity_index rows as PENDING and enqueue missing CIs/contract-roots/license-roots."
+    info "[DRY RUN] Would invoke POST /api/admin/rag/backfill with entityTypes=['vulnerability']."
+    return 0
+  fi
+
+  local db_user="${POSTGRES_USER:-admin}"
+  local db_name="${POSTGRES_DB:-cmdb_db}"
+
+  # Mark every existing entity_index row as PENDING (skipping any actively INDEXING).
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "UPDATE rag_entity_index SET status='PENDING', updated_at=now() WHERE status != 'INDEXING';"
+
+  # Enqueue every CI that has no entity_index row yet.
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
+       SELECT gen_random_uuid(), 'ci', c.id, 'PENDING', now(), now()
+       FROM configuration_items c
+       LEFT JOIN rag_entity_index r ON r.entity_type='ci' AND r.entity_id=c.id
+       WHERE r.id IS NULL
+     ON CONFLICT (entity_type, entity_id) DO NOTHING;"
+
+  # Enqueue every contract ROOT (parent_contract_id IS NULL) that has no row yet.
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
+       SELECT gen_random_uuid(), 'contract', c.id, 'PENDING', now(), now()
+       FROM contracts c
+       LEFT JOIN rag_entity_index r ON r.entity_type='contract' AND r.entity_id=c.id
+       WHERE c.parent_contract_id IS NULL AND r.id IS NULL
+     ON CONFLICT (entity_type, entity_id) DO NOTHING;"
+
+  # Same for license roots.
+  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+    "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
+       SELECT gen_random_uuid(), 'license', l.id, 'PENDING', now(), now()
+       FROM licenses l
+       LEFT JOIN rag_entity_index r ON r.entity_type='license' AND r.entity_id=l.id
+       WHERE l.parent_license_id IS NULL AND r.id IS NULL
+     ON CONFLICT (entity_type, entity_id) DO NOTHING;"
+
+  # Vulnerabilities — invoke the backend endpoint so uuid_v5 is computed in TS.
+  # We use the seed admin if RAG_BACKFILL_TOKEN is provided in env, otherwise
+  # skip with a guidance message (the operator can run it later from the UI).
+  if [ -n "${RAG_BACKFILL_TOKEN:-}" ]; then
+    local health_base="${FRONTEND_URL:-https://localhost}"
+    info "POST ${health_base}/api/admin/rag/backfill (entityTypes=['vulnerability'])"
+    curl -sk -X POST "${health_base}/api/admin/rag/backfill" \
+      -H "Authorization: Bearer ${RAG_BACKFILL_TOKEN}" \
+      -H 'Content-Type: application/json' \
+      -d '{"entityTypes":["vulnerability"]}' \
+      | sed 's/^/  /'
+    echo ""
+  else
+    warn "RAG_BACKFILL_TOKEN not set in environment — vulnerabilities will NOT be re-indexed automatically."
+    warn "Run manually after login as an ADMIN user:"
+    warn "  TOKEN=\$(curl -sk -X POST ${FRONTEND_URL:-https://localhost}/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"...\",\"password\":\"...\"}' | jq -r .token)"
+    warn "  curl -sk -X POST ${FRONTEND_URL:-https://localhost}/api/admin/rag/backfill -H \"Authorization: Bearer \$TOKEN\" -H 'Content-Type: application/json' -d '{\"entityTypes\":[\"vulnerability\"]}'"
+  fi
+
+  success "Entities queued for re-indexing — the cron worker will process them (3-slot priority budget per tick)."
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Parse flags
@@ -659,6 +736,7 @@ main() {
   if [ "${DRY_RUN}" = "true" ]; then
     check_new_env_vars
     reindex_documents
+    reindex_entities
     echo ""
     echo -e "${BOLD}${YELLOW}╔══════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${YELLOW}║  DRY RUN complete — no changes made      ║${NC}"
@@ -670,6 +748,7 @@ main() {
   # ── Step 8: Check for new env vars not present in existing .env ──────────────
   check_new_env_vars
   reindex_documents
+  reindex_entities
 
   # Success summary
   local new_version

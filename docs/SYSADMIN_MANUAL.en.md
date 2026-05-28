@@ -30,6 +30,7 @@
 18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
 19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
 20. [Backups — RAG encryption considerations](#20-backups--rag-encryption-considerations)
+21. [RAG — Performance and GPU-accelerated inference (optional)](#21-rag--performance-and-gpu-accelerated-inference-optional)
 
 ---
 

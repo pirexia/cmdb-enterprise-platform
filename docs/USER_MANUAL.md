@@ -1137,8 +1137,14 @@ Bajo el cuadro de pregunta se muestran cinco "chips" de tipo de fuente: **Docume
 - Sin ningún chip seleccionado, el asistente busca en **todas** las fuentes disponibles.
 - Al pulsar uno o varios chips, la consulta se limita a esos tipos. La selección es multi-respuesta (puedes activar varios) y se conserva durante la sesión del navegador (al cerrar la pestaña, vuelve al estado por defecto).
 - El botón **Limpiar** restablece la selección a "todas las fuentes".
+- **Chip Contratos:** cuando está activo, el asistente busca no solo en los registros de contratos, sino también en los documentos PDF asociados al contrato y en los activos (CIs) que cubre. Por ejemplo, si seleccionas este chip y preguntas por "condiciones de soporte Oracle", el asistente consultará el contrato, las adendas vinculadas y los CIs relacionados.
+- **Chip Licencias:** comportamiento análogo: incluye los documentos y CIs asociados a las licencias.
 - Si recientemente se ha activado el subsistema RAG por primera vez, algunas categorías pueden aparecer vacías hasta que el proceso de indexación en segundo plano las procese. El administrador puede acelerarlo con un reindex completo (ver Manual del Administrador §19.10).
 
 Las citas que devuelve el asistente incluyen un icono identificativo del tipo de fuente (documento, CI, contrato, licencia o vulnerabilidad) y, al hacer clic, abren la página correspondiente del inventario, contratos, licencias o vulnerabilidades, ya filtrada por el elemento citado.
+
+> El asistente responde siempre en el **idioma de la interfaz** (configurable en tu perfil). Si los documentos están en inglés y la interfaz está en español, las respuestas se generan en español.
+
+> Para los requisitos de hardware del servidor, la configuración de Ollama y las opciones de aceleración GPU, consulta el **Manual del Administrador de Sistemas, §19 y §21**.
 
 > Para los requisitos de hardware del servidor, la configuración de Ollama, la gestión del modelo y los procedimientos de mantenimiento del subsistema RAG, consulta el **Manual del Administrador de Sistemas, §19 — Subsistema RAG**.

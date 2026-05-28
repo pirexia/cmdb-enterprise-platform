@@ -136,7 +136,7 @@ export default function MastersPage() {
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
         apiFetch("/api/masters/device-models"),
-        apiFetch("/api/masters/providers"),
+        apiFetch("/api/vendors"),
         apiFetch("/api/masters/cost-centers"),
         apiFetch("/api/masters/ci-type-categories"),
         apiFetch("/api/masters/document-types"),
@@ -925,7 +925,7 @@ export default function MastersPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Nuevo Proveedor</p>
               <div className="flex gap-2 mt-2">
                 <Input placeholder="Ej: Telefónica, AWS, Microsoft" value={newProv} onChange={(e) => setNewProv(e.target.value)} />
-                <button onClick={async () => { try { await post("/api/masters/providers", { name: newProv }); setNewProv(""); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
+                <button onClick={async () => { try { await post("/api/vendors", { name: newProv }); setNewProv(""); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}}
                   className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
                   <Plus className="h-4 w-4" />Añadir
                 </button>
@@ -935,10 +935,10 @@ export default function MastersPage() {
               {providers.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin proveedores registrados.</p> :
                 providers.map((p) => (
                   <EditableRow key={p.id} id={p.id} label={p.name} editState={editState}
-                    onStartEdit={() => setEditState({ kind: "simple", path: "/api/masters/providers", id: p.id, name: p.name })}
-                    onSaveEdit={async (name) => { try { await patch(`/api/masters/providers/${p.id}`, { name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); } }}
+                    onStartEdit={() => setEditState({ kind: "simple", path: "/api/vendors", id: p.id, name: p.name })}
+                    onSaveEdit={async (name) => { try { await patch(`/api/vendors/${p.id}`, { name }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); } }}
                     onCancelEdit={() => setEditState(null)}
-                    onDelete={() => del(`/api/masters/providers/${p.id}`, load)} />
+                    onDelete={() => del(`/api/vendors/${p.id}`, load)} />
                 ))}
             </div>
           </div>

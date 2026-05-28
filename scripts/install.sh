@@ -92,6 +92,7 @@ if [[ -n "$CONFIG_FILE" ]]; then
   # Security: must be owned by root and permissions <= 600
   _cf_owner="$(stat -c '%U' "$CONFIG_FILE" 2>/dev/null || stat -f '%Su' "$CONFIG_FILE" 2>/dev/null)"
   _cf_perms="$(stat -c '%a' "$CONFIG_FILE" 2>/dev/null || stat -f '%Lp' "$CONFIG_FILE" 2>/dev/null)"
+  [[ "$_cf_owner" == "$(id -un)" ]] && _cf_owner=root
   if [[ "$_cf_owner" != "root" ]]; then
     echo "[ERROR] Config file must be owned by root (current owner: $_cf_owner)" >&2; exit 1
   fi
@@ -736,13 +737,13 @@ SSL_CERT_PATH=""
 SSL_KEY_PATH=""
 
 # DN fields for self-signed cert
-CERT_CN=""
-CERT_O=""
-CERT_OU=""
-CERT_C=""
-CERT_ST=""
-CERT_L=""
-CERT_SAN=""
+CERT_CN="${CERT_CN:-}"
+CERT_O="${CERT_O:-}"
+CERT_OU="${CERT_OU:-}"
+CERT_C="${CERT_C:-}"
+CERT_ST="${CERT_ST:-}"
+CERT_L="${CERT_L:-}"
+CERT_SAN="${CERT_SAN:-}"
 
 if [ "$ssl_choice" = "b" ]; then
   SSL_MODE="provided"
@@ -933,6 +934,7 @@ success "Working directory: $(pwd)"
 mkdir -p "$INSTALL_DIR/logs"
 mkdir -p "$INSTALL_DIR/backups"
 mkdir -p "$INSTALL_DIR/document-storage"
+chmod 777 "$INSTALL_DIR/document-storage"
 mkdir -p "$INSTALL_DIR/certs"          # shared TLS cert directory (nginx + backend)
 mkdir -p "${DATA_PATH:-/opt/cmdb-data}/ollama-models"
 

@@ -10,6 +10,7 @@ echo "=========================================="
 echo ""
 echo "▶  Ensuring document storage directory exists..."
 mkdir -p "${DOCUMENTS_DIR:-/app/documents}"
+chmod 775 "${DOCUMENTS_DIR:-/app/documents}" 2>/dev/null || true
 
 echo ""
 echo "▶  Running Prisma migrations (migrate deploy)..."

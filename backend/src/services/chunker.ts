@@ -246,7 +246,7 @@ export function chunkSections(
 
   for (const section of sections) {
     if (pending !== null) {
-      const combined = pending.text.trim() + "\n\n" + section.text.trim();
+      const combined: string = pending.text.trim() + "\n\n" + section.text.trim();
       pending = {
         sectionPath: pending.sectionPath,          // keep the first path
         text: combined,

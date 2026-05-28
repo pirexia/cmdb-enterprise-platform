@@ -147,10 +147,10 @@ async function parseXlsx(filePath: string): Promise<DocumentSection[]> {
         const v = cell.value;
         if (v === null || v === undefined) {
           cells.push('');
-        } else if (typeof v === 'object' && 'result' in (v as Record<string, unknown>)) {
+        } else if (typeof v === 'object' && 'result' in (v as unknown as Record<string, unknown>)) {
           // Formula cell — use result
           cells.push(String((v as { result: unknown }).result ?? ''));
-        } else if (typeof v === 'object' && 'text' in (v as Record<string, unknown>)) {
+        } else if (typeof v === 'object' && 'text' in (v as unknown as Record<string, unknown>)) {
           // Rich text
           cells.push(String((v as { text: unknown }).text ?? ''));
         } else {

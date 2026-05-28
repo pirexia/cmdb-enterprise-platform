@@ -270,7 +270,9 @@
     "create_addendum": "Create Addendum",
     "create_contract": "Create Contract",
     "no_match": "No matching CIs.",
-    "select_placeholder": "— Select —"
+    "select_placeholder": "— Select —",
+    "edit_contract": "Edit Contract",
+    "edit_error": "Failed to save contract"
   },
   "documents": {
     "title": "Document Repository",

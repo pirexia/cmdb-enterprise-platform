@@ -225,7 +225,9 @@
     "create_addendum": "Créer un Avenant",
     "create_contract": "Créer un Contrat",
     "no_match": "Aucun CI correspondant.",
-    "select_placeholder": "— Sélectionner —"
+    "select_placeholder": "— Sélectionner —",
+    "edit_contract": "Modifier le contrat",
+    "edit_error": "Erreur lors de l'enregistrement"
   },
   "documents": {
     "title": "Dépôt documentaire",

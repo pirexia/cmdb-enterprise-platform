@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
-  ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX,
+  ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX, Pencil,
 } from "lucide-react";
 import AddContractModal from "@/components/AddContractModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,6 +26,7 @@ interface AllDocRef   {
   id: string; title: string; documentTypeName: string; originalName: string;
   mimeType: string; latestVersionId: string;
 }
+interface VendorRef    { id: string; name: string }
 interface Contract {
   id: string; contractNumber: string; startDate: string; endDate: string | null;
   vendor: { id: string; name: string }; cis: CIRef[];
@@ -56,7 +57,10 @@ function formatDate(iso: string) {
 
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
-function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onExpand: () => void; expanded: boolean }) {
+function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
+  contract: Contract; onExpand: () => void; expanded: boolean;
+  onContractUpdated: (updated: Contract) => void;
+}) {
   const status     = getContractStatus(contract.endDate);
   const isAddendum = !!contract.parentContract;
   const { isAdmin }  = useAuth();
@@ -97,6 +101,19 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
   const [ciSearch, setCiSearch]               = useState("");
   const [selectedCiIds, setSelectedCiIds]     = useState<Set<string>>(new Set());
   const [ciAssocLoading, setCiAssocLoading]   = useState(false);
+
+  // ── Edit contract state ──────────────────────────────────────────────────────
+  const [showEdit, setShowEdit]           = useState(false);
+  const [editLoading, setEditLoading]     = useState(false);
+  const [editError, setEditError]         = useState<string | null>(null);
+  const [editVendors, setEditVendors]     = useState<VendorRef[]>([]);
+  const [editVendorsLoading, setEditVendorsLoading] = useState(false);
+  const [editFields, setEditFields]       = useState({
+    contractNumber: contract.contractNumber,
+    startDate:      contract.startDate.slice(0, 10),
+    endDate:        contract.endDate ? contract.endDate.slice(0, 10) : "",
+    vendorId:       contract.vendor.id,
+  });
 
   // ── Fetch docs on expand ────────────────────────────────────────────────────
   useEffect(() => {
@@ -222,6 +239,57 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
     }
   };
 
+  // ── Edit contract ─────────────────────────────────────────────────────────────
+  const openEdit = () => {
+    setEditFields({
+      contractNumber: contract.contractNumber,
+      startDate:      contract.startDate.slice(0, 10),
+      endDate:        contract.endDate ? contract.endDate.slice(0, 10) : "",
+      vendorId:       contract.vendor.id,
+    });
+    setEditError(null);
+    setShowEdit(true);
+    if (editVendors.length === 0) {
+      setEditVendorsLoading(true);
+      apiFetch("/api/vendors")
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((data: VendorRef[]) => setEditVendors(Array.isArray(data) ? data : []))
+        .catch(() => {})
+        .finally(() => setEditVendorsLoading(false));
+    }
+  };
+
+  const confirmEdit = async () => {
+    if (!editFields.contractNumber.trim() || !editFields.startDate || !editFields.vendorId) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const res = await apiFetch(`/api/contracts/${contract.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contractNumber:   editFields.contractNumber.trim(),
+          startDate:        new Date(editFields.startDate).toISOString(),
+          endDate:          editFields.endDate ? new Date(editFields.endDate).toISOString() : null,
+          vendorId:         editFields.vendorId,
+          parentContractId: contract.parentContract?.id ?? null,
+        }),
+      });
+      if (res.ok) {
+        const updated: Contract = await res.json();
+        onContractUpdated(updated);
+        setShowEdit(false);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setEditError((body as { error?: string }).error ?? t("contracts.edit_error"));
+      }
+    } catch {
+      setEditError(t("contracts.edit_error"));
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
   // ── Doc associate ────────────────────────────────────────────────────────────
   const openDocSelector = async () => {
     setShowDocSelector(true);
@@ -231,7 +299,12 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
       setAllDocsLoading(true);
       apiFetch("/api/documents")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((data: AllDocRef[]) => setAllDocs(Array.isArray(data) ? data : []))
+        .then((data: unknown) => {
+          const list = Array.isArray(data)
+            ? (data as AllDocRef[])
+            : ((data as { data?: AllDocRef[] })?.data ?? []);
+          setAllDocs(list);
+        })
         .catch(() => {})
         .finally(() => setAllDocsLoading(false));
     }
@@ -302,7 +375,18 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
           </div>
         </td>
         <td className="px-4 py-4 text-right">
-          <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform inline-block ${expanded ? "rotate-90" : ""}`} />
+          <div className="flex items-center justify-end gap-2">
+            {isAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); openEdit(); if (!expanded) onExpand(); }}
+                className="rounded p-1 text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                title={t("contracts.edit_contract")}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
+          </div>
         </td>
       </tr>
 
@@ -310,6 +394,68 @@ function ContractRow({ contract, onExpand, expanded }: { contract: Contract; onE
         <tr>
           <td colSpan={5} className="px-6 pb-4 bg-[var(--accent)]/5">
             <div className="space-y-3 pt-1">
+
+              {/* ── Edit form ─────────────────────────────────────────────── */}
+              {showEdit && (
+                <div className="border border-[var(--accent)]/30 bg-[var(--accent)]/5 px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)] mb-3">{t("contracts.edit_contract")}</p>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("contracts.contract_number_label")}</label>
+                      <input
+                        type="text"
+                        value={editFields.contractNumber}
+                        onChange={(e) => setEditFields((p) => ({ ...p, contractNumber: e.target.value }))}
+                        className="w-full rounded-none border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("contracts.vendor_label")}</label>
+                      {editVendorsLoading ? (
+                        <div className="flex items-center gap-1 py-1.5 text-xs text-slate-400"><RefreshCw className="h-3 w-3 animate-spin" /></div>
+                      ) : (
+                        <select
+                          value={editFields.vendorId}
+                          onChange={(e) => setEditFields((p) => ({ ...p, vendorId: e.target.value }))}
+                          className="w-full rounded-none border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                        >
+                          {editVendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("contracts.start_date_label")}</label>
+                      <input
+                        type="date"
+                        value={editFields.startDate}
+                        onChange={(e) => setEditFields((p) => ({ ...p, startDate: e.target.value }))}
+                        className="w-full rounded-none border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("contracts.end_date_label")}</label>
+                      <input
+                        type="date"
+                        value={editFields.endDate}
+                        onChange={(e) => setEditFields((p) => ({ ...p, endDate: e.target.value }))}
+                        className="w-full rounded-none border border-slate-200 bg-white px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-[var(--accent)]"
+                      />
+                    </div>
+                  </div>
+                  {editError && <p className="text-xs text-red-500 mb-2">{editError}</p>}
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => setShowEdit(false)} className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1">{t("actions.cancel")}</button>
+                    <button
+                      onClick={confirmEdit}
+                      disabled={editLoading || !editFields.contractNumber.trim() || !editFields.startDate || !editFields.vendorId}
+                      className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors"
+                    >
+                      {editLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      {t("actions.save")}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* ── CIs cubiertos ─────────────────────────────────────────── */}
               <div className="border border-[var(--accent)]/20 bg-white overflow-hidden">
@@ -810,7 +956,15 @@ export default function ContractsPage() {
                       </td></tr>
                     ) : (
                       filteredContracts.map((c) => (
-                        <ContractRow key={c.id} contract={c} expanded={expanded === c.id} onExpand={() => setExpanded((p) => (p === c.id ? null : c.id))} />
+                        <ContractRow
+                          key={c.id}
+                          contract={c}
+                          expanded={expanded === c.id}
+                          onExpand={() => setExpanded((p) => (p === c.id ? null : c.id))}
+                          onContractUpdated={(updated) =>
+                            setContracts((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
+                          }
+                        />
                       ))
                     )}
                   </tbody>

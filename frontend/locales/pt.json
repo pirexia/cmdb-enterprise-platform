@@ -225,7 +225,9 @@
     "create_addendum": "Criar Adenda",
     "create_contract": "Criar Contrato",
     "no_match": "Nenhum CI encontrado.",
-    "select_placeholder": "— Selecionar —"
+    "select_placeholder": "— Selecionar —",
+    "edit_contract": "Editar contrato",
+    "edit_error": "Erro ao guardar o contrato"
   },
   "documents": {
     "title": "Repositório Documental",

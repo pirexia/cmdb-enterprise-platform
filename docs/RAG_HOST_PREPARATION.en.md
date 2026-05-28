@@ -57,6 +57,8 @@ The table below describes three deployment profiles. The "Recommended" profile c
 
 > **Performance note:** With AMX enabled (recommended profile), throughput is ~12–18 tok/s with a time-to-first-token (TTFT) of 1–2 seconds and a full response in ~10–18 seconds. Without AMX (AVX-512 only), throughput drops to ~6–9 tok/s and a full response takes ~18–35 seconds.
 
+> **OCR for scanned documents (v2.3.2+):** Tesseract 5 and poppler-utils are bundled in the backend Docker image — **no additional host installation is required**. OCR is purely CPU-based (no GPU or AMX needed). Indicative performance on the recommended profile: ~8 s/page at 300 DPI. No impact on hardware sizing.
+
 ---
 
 ## 3. vCenter / vSphere Configuration

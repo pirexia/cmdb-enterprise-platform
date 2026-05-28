@@ -29,7 +29,8 @@
 17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
 18. [Aviso de Privacidad y Obligaciones GDPR Art. 13/14](#18-aviso-de-privacidad-y-obligaciones-gdpr-art-1314)
 19. [Subsistema RAG — Operación y mantenimiento](#19-subsistema-rag--operación-y-mantenimiento)
-20. [Backups — consideraciones de cifrado para RAG](#20-backups--consideraciones-de-cifrado-para-rag)
+20. [OCR para documentos escaneados](#20-ocr-para-documentos-escaneados)
+21. [Backups — consideraciones de cifrado para RAG](#21-backups--consideraciones-de-cifrado-para-rag)
 
 ---
 
@@ -2110,7 +2111,103 @@ UPDATE rag_entity_index
 
 ---
 
-## 20. Backups — consideraciones de cifrado para RAG
+## 20. OCR para documentos escaneados
+
+> Disponible desde **v2.3.2**. Tesseract 5 y poppler-utils están incluidos en la imagen Docker del backend — no se requiere ninguna instalación adicional en el host.
+
+El subsistema RAG incluye un fallback de OCR automático para PDFs escaneados (sin capa de texto embebido). Cuando `pdf-parse` extrae cero caracteres de un PDF, el sistema rasteriza cada página con `pdftoppm` y ejecuta Tesseract para extraer el texto, que se indexa y queda disponible para el Asistente IA igual que cualquier otro documento.
+
+### 20.1 Variables de entorno
+
+| Variable | Defecto | Descripción |
+|----------|---------|-------------|
+| `OCR_ENABLED` | `true` | `false` desactiva completamente el fallback OCR |
+| `OCR_LANGUAGES` | `spa+eng` | Idiomas Tesseract, separados por `+`. Combinaciones posibles: `eng`, `spa`, `deu`, `por`, `fra`, `ita` |
+| `OCR_DPI` | `300` | Resolución de rasterizado. `150` = rápido / menor calidad; `300` = estándar; `600` = alta calidad |
+| `OCR_TIMEOUT_MS` | `180000` | Tiempo máximo de OCR por documento en ms (defecto: 3 minutos) |
+
+Estas variables se establecen en el fichero `.env` del directorio de instalación junto al resto de variables RAG.
+
+### 20.2 Rendimiento esperado
+
+| Hardware | DPI | Tiempo por página | Documento 22 págs |
+|----------|-----|-------------------|-------------------|
+| Xeon Gold 6526Y (12 vCPU) | 300 | ~8 s | ~170 s |
+| Xeon Gold 6526Y (12 vCPU) | 150 | ~3 s | ~65 s |
+
+El OCR se ejecuta de forma asíncrona en el worker de cron (igual que la indexación de texto nativo). No bloquea peticiones HTTP.
+
+### 20.3 Idiomas disponibles
+
+Los paquetes de idioma instalados en la imagen son: `eng` (inglés), `spa` (español), `deu` (alemán), `por` (portugués), `fra` (francés), `ita` (italiano) y `osd` (detección automática de orientación).
+
+Para documentos multilingüe, combinar con `+`: `OCR_LANGUAGES=spa+eng+fra`.
+
+### 20.4 Re-indexar documentos escaneados ya subidos
+
+Los documentos subidos antes de v2.3.2 que tenían `chunk_count=0` por falta de texto pueden reindexarse. Para un documento concreto:
+
+```sql
+-- Obtener el UUID del documento (sustituir por el título real)
+SELECT id, title FROM documents WHERE title ILIKE '%nombre%';
+
+-- Poner en cola para re-indexación
+UPDATE rag_document_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE document_id = '<uuid-del-documento>';
+```
+
+Para encolar todos los documentos en bloque:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@...","password":"..."}' | jq -r .token)
+
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document"]}'
+```
+
+### 20.5 Verificar que el OCR está funcionando
+
+Comprobar los logs del backend durante la indexación:
+
+```bash
+docker logs cmdb-backend-prod --since 5m | grep "\[docParser\]\[OCR\]"
+```
+
+Una ejecución exitosa produce dos líneas por documento:
+
+```
+[docParser][OCR] fallback activated for "nombre.pdf" — 22 page(s) at 300 DPI, lang=spa+eng
+[docParser][OCR] "nombre.pdf" — 19 section(s) extracted
+```
+
+Verificar los chunks generados en BD:
+
+```sql
+SELECT d.title, rdi.chunk_count, rdi.status, rdi.indexed_at
+FROM rag_document_index rdi
+JOIN documents d ON d.id = rdi.document_id
+WHERE rdi.chunk_count > 0
+ORDER BY rdi.indexed_at DESC LIMIT 10;
+```
+
+### 20.6 Troubleshooting OCR
+
+| Síntoma | Causa probable | Solución |
+|---------|---------------|----------|
+| `status=ERROR`, logs vacíos sobre OCR | pdf-parse extrae algo de texto (no es PDF escaneado puro) | Verificar si el PDF realmente no tiene texto embebido |
+| OCR muy lento (>5 min por documento) | DPI alto + muchas páginas | Reducir `OCR_DPI=150` en `.env` y reiniciar el backend |
+| Texto extraído en idioma incorrecto / ilegible | Idioma no incluido en `OCR_LANGUAGES` | Añadir el idioma: `OCR_LANGUAGES=spa+eng+deu` |
+| `status=ERROR` tras extracción (logs muestran secciones) | Bug en inserción de chunks (histórico pre-v2.3.2) | Actualizar a v2.3.2+ |
+| Fila atascada en `INDEXING` | Worker caído durante OCR | `UPDATE rag_document_index SET status='PENDING' WHERE status='INDEXING' AND updated_at < now() - interval '10 minutes';` |
+
+---
+
+## 21. Backups — consideraciones de cifrado para RAG
 
 Las tablas `rag_chunks` y `rag_entity_index` almacenan en texto plano fragmentos de documentos y entidades indexadas. Aunque el serializador aplica `scrubPII()` (email, DNI/NIE, teléfono) antes de generar embeddings, **siempre puede quedar PII residual** en notas libres y descripciones. Esto eleva la sensibilidad de los backups que incluyan estas tablas.
 

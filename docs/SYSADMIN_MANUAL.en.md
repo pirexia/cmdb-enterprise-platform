@@ -29,7 +29,8 @@
 17. [LDAP_STRICT_MODE](#17-ldap_strict_mode)
 18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
 19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
-20. [Backups — RAG encryption considerations](#20-backups--rag-encryption-considerations)
+20. [OCR for scanned documents](#20-ocr-for-scanned-documents)
+21. [Backups — RAG encryption considerations](#21-backups--rag-encryption-considerations)
 
 ---
 
@@ -2088,7 +2089,103 @@ UPDATE rag_entity_index
 
 ---
 
-## 20. Backups — RAG encryption considerations
+## 20. OCR for scanned documents
+
+> Available since **v2.3.2**. Tesseract 5 and poppler-utils are bundled in the backend Docker image — no additional host installation is required.
+
+The RAG subsystem includes an automatic OCR fallback for scanned PDFs (no embedded text layer). When `pdf-parse` extracts zero characters from a PDF, the system rasterises each page with `pdftoppm` and runs Tesseract to extract the text, which is indexed and made available to the AI Assistant exactly like any other document.
+
+### 20.1 Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OCR_ENABLED` | `true` | Set to `false` to disable the OCR fallback entirely |
+| `OCR_LANGUAGES` | `spa+eng` | Tesseract language codes joined with `+`. Available: `eng`, `spa`, `deu`, `por`, `fra`, `ita` |
+| `OCR_DPI` | `300` | Rasterisation resolution. `150` = fast/lower quality; `300` = standard; `600` = high quality |
+| `OCR_TIMEOUT_MS` | `180000` | Maximum OCR time per document in ms (default: 3 minutes) |
+
+These variables are set in the `.env` file in the installation directory, alongside the other RAG variables.
+
+### 20.2 Expected performance
+
+| Hardware | DPI | Time per page | 22-page document |
+|----------|-----|---------------|------------------|
+| Xeon Gold 6526Y (12 vCPU) | 300 | ~8 s | ~170 s |
+| Xeon Gold 6526Y (12 vCPU) | 150 | ~3 s | ~65 s |
+
+OCR runs asynchronously in the cron worker (same as native text indexing). It does not block HTTP requests.
+
+### 20.3 Available languages
+
+Language packs installed in the image: `eng` (English), `spa` (Spanish), `deu` (German), `por` (Portuguese), `fra` (French), `ita` (Italian), and `osd` (automatic orientation detection).
+
+For multilingual documents, combine with `+`: `OCR_LANGUAGES=spa+eng+fra`.
+
+### 20.4 Re-indexing previously uploaded scanned documents
+
+Documents uploaded before v2.3.2 that had `chunk_count=0` due to missing text can be re-indexed. For a single document:
+
+```sql
+-- Find the document UUID (replace with the actual title)
+SELECT id, title FROM documents WHERE title ILIKE '%name%';
+
+-- Queue for re-indexing
+UPDATE rag_document_index
+   SET status = 'PENDING', updated_at = now()
+ WHERE document_id = '<document-uuid>';
+```
+
+To queue all documents in bulk:
+
+```bash
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@...","password":"..."}' | jq -r .token)
+
+curl -sk -X POST https://localhost/api/admin/rag/backfill \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"entityTypes":["document"]}'
+```
+
+### 20.5 Verifying OCR is working
+
+Check the backend logs during indexing:
+
+```bash
+docker logs cmdb-backend-prod --since 5m | grep "\[docParser\]\[OCR\]"
+```
+
+A successful run produces two log lines per document:
+
+```
+[docParser][OCR] fallback activated for "filename.pdf" — 22 page(s) at 300 DPI, lang=spa+eng
+[docParser][OCR] "filename.pdf" — 19 section(s) extracted
+```
+
+Verify generated chunks in the database:
+
+```sql
+SELECT d.title, rdi.chunk_count, rdi.status, rdi.indexed_at
+FROM rag_document_index rdi
+JOIN documents d ON d.id = rdi.document_id
+WHERE rdi.chunk_count > 0
+ORDER BY rdi.indexed_at DESC LIMIT 10;
+```
+
+### 20.6 Troubleshooting OCR
+
+| Symptom | Likely cause | Solution |
+|---------|-------------|----------|
+| `status=ERROR`, no OCR log lines | pdf-parse extracted some text (not a pure scanned PDF) | Verify the PDF truly has no embedded text |
+| OCR very slow (>5 min per document) | High DPI + many pages | Reduce `OCR_DPI=150` in `.env` and restart the backend |
+| Extracted text is garbled / wrong language | Language not included in `OCR_LANGUAGES` | Add the language: `OCR_LANGUAGES=spa+eng+deu` |
+| `status=ERROR` after extraction (logs show sections) | Chunk insertion bug (pre-v2.3.2 issue) | Update to v2.3.2+ |
+| Row stuck in `INDEXING` | Worker crashed during OCR | `UPDATE rag_document_index SET status='PENDING' WHERE status='INDEXING' AND updated_at < now() - interval '10 minutes';` |
+
+---
+
+## 21. Backups — RAG encryption considerations
 
 The `rag_chunks` and `rag_entity_index` tables store plaintext fragments of indexed documents and entities. Even though the serializer applies `scrubPII()` (email, Spanish DNI/NIE, phone) before embeddings are computed, **residual PII can always remain** in free-text notes and descriptions. This raises the sensitivity of any backup that includes these tables.
 

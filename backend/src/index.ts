@@ -3281,8 +3281,8 @@ async function processRagQueue(): Promise<void> {
         const docId = row.document_id;
         const versionNumber = row.version_number;
         await prisma.$executeRaw`
-          INSERT INTO "rag_chunks"(id, document_id, version_number, chunk_index, section_path, page_start, page_end, token_count, content, embedding, metadata, created_at)
-          VALUES(gen_random_uuid(), ${docId}::uuid, ${versionNumber}, ${chunks[i].chunkIndex}, ${chunks[i].sectionPath ?? null}, ${chunks[i].pageStart ?? null}, ${chunks[i].pageEnd ?? null}, ${chunks[i].tokenCount}, ${chunks[i].content}, ${embeddingStr}::vector, '{}'::jsonb, now())`;
+          INSERT INTO "rag_chunks"(id, document_id, version_number, chunk_index, section_path, page_start, page_end, token_count, content, embedding, metadata, entity_type, entity_id, created_at)
+          VALUES(gen_random_uuid(), ${docId}::uuid, ${versionNumber}, ${chunks[i].chunkIndex}, ${chunks[i].sectionPath ?? null}, ${chunks[i].pageStart ?? null}, ${chunks[i].pageEnd ?? null}, ${chunks[i].tokenCount}, ${chunks[i].content}, ${embeddingStr}::vector, '{}'::jsonb, 'document', ${docId}::uuid, now())`;
       }
 
       await prisma.$executeRaw`

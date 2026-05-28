@@ -303,6 +303,8 @@ const ChatAskSchema = z.object({
   entityTypes: z
     .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability']))
     .optional(),
+  // UI locale — forces the model to reply in that language regardless of context language.
+  lang: z.enum(['es', 'en', 'de', 'pt', 'fr', 'it']).optional(),
 });
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -3429,7 +3431,9 @@ async function processRagQueue(): Promise<void> {
         continue;
       }
 
-      const chunks = chunkSections(parseResult.sections);
+      // minChunkTokens:1 — entity serializations are intentionally short (structured
+      // metadata, not prose). The default 50-token floor discards them entirely.
+      const chunks = chunkSections(parseResult.sections, { minChunkTokens: 1 });
 
       // Replace existing chunks for this (entity_type, entity_id).
       await prisma.$executeRaw`
@@ -3544,6 +3548,14 @@ async function ragSearchChunks(
         (ALLOWED_ENTITY_TYPES as readonly string[]).includes(t),
       )
     : [];
+
+  // Relational expansion: when the caller filters by 'contract' or 'license', also pull
+  // in chunks from documents and CIs that are associated with those entities via the
+  // explicit join tables (document_contracts / _ContractToCI, document_licenses / _LicenseToCI).
+  // The document ACL (visCol + is_latest) is enforced for every document reached this way.
+  const expandContracts = filteredEntityTypes.includes('contract');
+  const expandLicenses  = filteredEntityTypes.includes('license');
+
   // Pass null when no filter is desired so the SQL `IS NULL` branch matches all rows.
   // Prisma binds JS arrays of strings to Postgres text[] when the SQL casts via ::text[].
   const entityTypesParam: string[] | null =
@@ -3578,13 +3590,51 @@ async function ragSearchChunks(
     LEFT JOIN "documents" root
       ON c.entity_type = 'document' AND root.id = COALESCE(d.root_id, d.id)
     WHERE (
+        -- Direct entity chunks (ci / contract / license / vulnerability)
+        (c.entity_type IN ('ci','contract','license','vulnerability'))
+        OR
+        -- Document chunks: standard ACL filter
         (c.entity_type = 'document' AND root.${visCol} = true AND d.is_latest = true)
         OR
-        (c.entity_type IN ('ci','contract','license','vulnerability'))
+        -- Relational expansion: documents linked to a contract in the filter
+        (${expandContracts} AND c.entity_type = 'document' AND d.is_latest = true AND root.${visCol} = true
+          AND c.document_id IN (
+            SELECT dc.document_id FROM "document_contracts" dc
+            JOIN "rag_entity_index" rei ON rei.entity_type = 'contract' AND rei.entity_id = dc.contract_id
+          )
+        )
+        OR
+        -- Relational expansion: CIs linked to a contract in the filter
+        (${expandContracts} AND c.entity_type = 'ci'
+          AND c.entity_id IN (
+            SELECT ctc."A" FROM "_ContractToCI" ctc
+            JOIN "rag_entity_index" rei ON rei.entity_type = 'contract' AND rei.entity_id = ctc."B"
+          )
+        )
+        OR
+        -- Relational expansion: documents linked to a license in the filter
+        (${expandLicenses} AND c.entity_type = 'document' AND d.is_latest = true AND root.${visCol} = true
+          AND c.document_id IN (
+            SELECT dl.document_id FROM "document_licenses" dl
+            JOIN "rag_entity_index" rei ON rei.entity_type = 'license' AND rei.entity_id = dl.license_id
+          )
+        )
+        OR
+        -- Relational expansion: CIs linked to a license in the filter
+        (${expandLicenses} AND c.entity_type = 'ci'
+          AND c.entity_id IN (
+            SELECT ltc."A" FROM "_LicenseToCI" ltc
+            JOIN "rag_entity_index" rei ON rei.entity_type = 'license' AND rei.entity_id = ltc."B"
+          )
+        )
       )
       AND (
         ${entityTypesParam}::text[] IS NULL
+        -- When a relational expansion is active, also allow the related entity types
+        -- (document / ci) even if they are not explicitly in the filter array.
         OR c.entity_type = ANY(${entityTypesParam}::text[])
+        OR (${expandContracts} AND c.entity_type IN ('document','ci'))
+        OR (${expandLicenses}  AND c.entity_type IN ('document','ci'))
       )
     ORDER BY c.embedding <=> ${embeddingStr}::vector
     LIMIT ${topK}`;
@@ -5486,7 +5536,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK, entityTypes } = parsed.data;
+  const { question, topK, entityTypes, lang } = parsed.data;
   let { sessionId } = parsed.data;
 
   try {
@@ -5510,7 +5560,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
     const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
 
     // 3. Build prompt + call LLM
-    const messages = buildRagPrompt(question, chunks);
+    const messages = buildRagPrompt(question, chunks, lang);
     const start = Date.now();
     const result = await chatWithContext(messages);
     const latencyMs = Date.now() - start;
@@ -5553,7 +5603,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK, entityTypes } = parsed.data;
+  const { question, topK, entityTypes, lang } = parsed.data;
   let { sessionId } = parsed.data;
 
   // SSE headers
@@ -5608,7 +5658,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
       VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
 
     // 4. Stream LLM tokens
-    const messages = buildRagPrompt(question, chunks);
+    const messages = buildRagPrompt(question, chunks, lang);
     const start = Date.now();
     let assistantText = '';
     const { model, tokensUsed } = await streamChatWithContext(messages, (token) => {

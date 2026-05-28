@@ -30,6 +30,7 @@
 18. [Privacy Notice and GDPR Art. 13/14 Obligations](#18-privacy-notice-and-gdpr-art-1314-obligations)
 19. [RAG Subsystem — Operation and Maintenance](#19-rag-subsystem--operation-and-maintenance)
 20. [Backups — RAG encryption considerations](#20-backups--rag-encryption-considerations)
+21. [RAG — Performance and GPU-accelerated inference (optional)](#21-rag--performance-and-gpu-accelerated-inference-optional)
 
 ---
 
@@ -2115,3 +2116,105 @@ Operational policy:
 - Monthly restore sample test (`pg_restore --list`).
 
 Reference: ENT-08 in `docs/security/rag-dpia.md` §A1.4.
+
+---
+
+## 21. RAG — Performance and GPU-accelerated inference (optional)
+
+### 21.1 Why GPU matters
+
+The `qwen2.5:7b-instruct-q4_K_M` chat model running on **CPU only** produces latencies of 40-120 seconds per query (measured on Xeon Gold 6526Y, 12 vCPU, 31 GB RAM). A mid-range GPU (RTX 4060 Ti 16 GB, L4, A10) accelerates inference **20-40×**, reducing typical response time to 2-5 seconds.
+
+The `bge-m3` embedding model (1.2 GB) is lighter and tolerable on CPU, but also benefits from GPU.
+
+### 21.2 Software tuning (no GPU required)
+
+Configurable via `.env` or `install.conf`:
+
+| Variable | Default | Effect |
+|---|---|---|
+| `RAG_NUM_PREDICT` | `768` | Max tokens per response. Reduce to 512 for ~25% faster on CPU with shorter answers. `0` = unlimited. |
+| `RAG_CHAT_TIMEOUT_MS` | `180000` | Chat timeout (ms). Increase on slower hardware. |
+| `OLLAMA_KEEP_ALIVE` | `-1` | `-1` = keep model loaded in RAM (eliminates ~20-30 s cold-load). `0` = unload after each request. |
+| `RAG_CHAT_MODEL` | `qwen2.5:7b-instruct-q4_K_M` | Switch to `qwen2.5:3b-instruct-q4_K_M` for ~2× faster on CPU (lower response quality). |
+
+### 21.3 Adding an NVIDIA GPU (RHEL 9)
+
+#### Host prerequisites
+
+```bash
+# 1. Install NVIDIA driver (version ≥ 525)
+sudo dnf install -y kernel-devel kernel-headers
+# Download from https://www.nvidia.com/en-us/drivers/ or use NVIDIA's CUDA repo
+
+# 2. Install NVIDIA Container Toolkit (CDI provider)
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo \
+  | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+sudo dnf install -y nvidia-container-toolkit
+
+# 3. Configure CDI for Podman
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+sudo nvidia-ctk runtime configure --runtime=crio   # or docker depending on runtime
+
+# 4. Verify
+nvidia-smi
+podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.2-base-ubuntu22.04 nvidia-smi
+```
+
+#### Modify `docker-compose.prod.yml`
+
+Add the `devices` block to the `ollama` service:
+
+```yaml
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: cmdb-ollama-prod
+    restart: unless-stopped
+    environment:
+      OLLAMA_MODELS: /root/.ollama/models
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}   # 30 min is enough with GPU
+    devices:
+      - nvidia.com/gpu=all                           # CDI — RHEL 9 / Podman 4+
+    volumes:
+      - ${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models}:/root/.ollama/models:Z
+```
+
+> **Docker Engine note:** with Docker instead of Podman, use `deploy.resources.reservations.devices` with `driver: nvidia` instead of the `devices` block.
+
+#### Verify Ollama detects the GPU
+
+```bash
+# After restarting containers
+podman exec cmdb-ollama-prod nvidia-smi
+podman exec cmdb-ollama-prod ollama run qwen2.5:7b-instruct-q4_K_M "hello" 2>&1 | grep -i "gpu\|cuda"
+```
+
+If the GPU is active, Ollama logs show: `llm server loaded in X.XXs with GPU layers`.
+
+### 21.4 Alternative faster models (CPU or light GPU)
+
+| Model | Size | CPU (12 vCPU) | GPU RTX 4060 Ti | Notes |
+|---|---|---|---|---|
+| `qwen2.5:7b-instruct-q4_K_M` | 4.7 GB | ~45 s | ~3 s | Current default |
+| `qwen2.5:3b-instruct-q4_K_M` | 2.0 GB | ~20 s | ~1.5 s | Lower quality |
+| `llama3.2:3b-instruct-q4_K_M` | 2.0 GB | ~18 s | ~1.5 s | 3B alternative |
+| `qwen2.5:14b-instruct-q4_K_M` | 9.0 GB | ~90 s | ~6 s | Higher quality (requires ≥16 GB VRAM) |
+
+To change the model:
+
+```bash
+# 1. Pull the new model in Ollama
+podman exec cmdb-ollama-prod ollama pull qwen2.5:3b-instruct-q4_K_M
+
+# 2. Update the variable in .env
+RAG_CHAT_MODEL=qwen2.5:3b-instruct-q4_K_M
+
+# 3. Restart the backend (no image rebuild needed)
+podman-compose -f docker-compose.prod.yml restart backend
+```
+
+### 21.5 Security and continuity impact
+
+- **A08 — Integrity:** the CDI `devices: nvidia.com/gpu=all` block grants GPU device access to the Ollama container only; other containers have no hardware access.
+- **ISO 22301 / RTO:** a GPU dedicated to the `ollama` container becomes an availability component. Document the procedure for starting without GPU (CPU fallback) as an acceptable degraded mode.
+- **Drivers:** keep the NVIDIA driver updated. Kernel driver CVEs with DMA access are high severity.

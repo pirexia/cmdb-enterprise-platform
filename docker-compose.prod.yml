@@ -94,6 +94,15 @@ services:
       RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
       RAG_TOP_K:       ${RAG_TOP_K:-6}
       RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}
+      # Max tokens to generate per response (0 = unlimited). Lower = faster on CPU.
+      RAG_NUM_PREDICT:      ${RAG_NUM_PREDICT:-768}
+      # Chat inference timeout in ms. Raise if CPU inference is slower than default.
+      RAG_CHAT_TIMEOUT_MS:  ${RAG_CHAT_TIMEOUT_MS:-180000}
+      # ── OCR — Tesseract fallback for scanned PDFs ─────────────────────────────
+      OCR_ENABLED:      ${OCR_ENABLED:-true}
+      OCR_LANGUAGES:    ${OCR_LANGUAGES:-spa+eng}
+      OCR_DPI:          ${OCR_DPI:-300}
+      OCR_TIMEOUT_MS:   ${OCR_TIMEOUT_MS:-180000}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z
@@ -169,6 +178,9 @@ services:
     restart: unless-stopped
     environment:
       OLLAMA_MODELS: /root/.ollama/models
+      # Keep models loaded in memory indefinitely (avoid cold-load latency on each query).
+      # Set to a duration (e.g. "30m") or "0" to unload immediately after each request.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models}:/root/.ollama/models:Z
     networks:

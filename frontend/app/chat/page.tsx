@@ -159,7 +159,7 @@ function MessageBubble({ msg, t }: { msg: ChatMessage; t: (key: string) => strin
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const { ask, isStreaming } = useChatStream();
 
   // Session list
@@ -347,6 +347,7 @@ export default function ChatPage() {
       question: trimmed,
       sessionId: resolvedSessionId,
       entityTypes: selectedEntityTypes.length > 0 ? selectedEntityTypes : undefined,
+      lang: locale,
       onEvent: (ev: ChatStreamEvent) => {
         switch (ev.kind) {
           case "session": {

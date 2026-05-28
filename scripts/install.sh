@@ -934,6 +934,7 @@ success "Working directory: $(pwd)"
 mkdir -p "$INSTALL_DIR/logs"
 mkdir -p "$INSTALL_DIR/backups"
 mkdir -p "$INSTALL_DIR/document-storage"
+chmod 777 "$INSTALL_DIR/document-storage"
 mkdir -p "$INSTALL_DIR/certs"          # shared TLS cert directory (nginx + backend)
 mkdir -p "${DATA_PATH:-/opt/cmdb-data}/ollama-models"
 

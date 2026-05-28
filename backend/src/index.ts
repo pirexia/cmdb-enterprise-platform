@@ -4130,7 +4130,12 @@ app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.
     // Store file
     const storedFileName = `${crypto.randomUUID()}.${ext}`;
     const filePath = path.join(DOCUMENTS_DIR, storedFileName);
-    fs.writeFileSync(filePath, req.file.buffer);
+    try {
+      fs.writeFileSync(filePath, req.file.buffer);
+    } catch {
+      res.status(500).json({ error: 'Error saving file' });
+      return;
+    }
 
     // Mark previous latest as not latest (only version children, not the root document itself)
     await prisma.$executeRaw`UPDATE "documents" SET is_latest=false WHERE root_id=${rootId}::uuid`;

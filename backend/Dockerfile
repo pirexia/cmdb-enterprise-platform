@@ -8,8 +8,9 @@
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
 FROM docker.io/library/node:22-alpine AS builder
 
-# openssl is required by Prisma query engine on Alpine
-RUN apk add --no-cache openssl
+# openssl: Prisma query engine. tesseract-ocr + poppler-utils: OCR build-time tools
+# (needed so node-tesseract-ocr can locate the binary path during npm ci)
+RUN apk add --no-cache openssl tesseract-ocr poppler-utils
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 
@@ -30,8 +31,21 @@ RUN npm run build
 # ── Stage 2: Runner ──────────────────────────────────────────────────────────
 FROM docker.io/library/node:22-alpine AS runner
 
-# openssl required by Prisma query engine at runtime
-RUN apk add --no-cache openssl dumb-init
+# openssl: Prisma. dumb-init: PID 1 signal handling.
+# tesseract-ocr + language packs: OCR for scanned PDFs (fallback in docParser).
+# poppler-utils: pdftoppm to rasterise PDF pages before Tesseract.
+RUN apk add --no-cache \
+      openssl \
+      dumb-init \
+      tesseract-ocr \
+      tesseract-ocr-data-eng \
+      tesseract-ocr-data-spa \
+      tesseract-ocr-data-deu \
+      tesseract-ocr-data-por \
+      tesseract-ocr-data-fra \
+      tesseract-ocr-data-ita \
+      tesseract-ocr-data-osd \
+      poppler-utils
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 ENV NODE_ENV=production

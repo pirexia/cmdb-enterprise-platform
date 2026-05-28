@@ -3429,7 +3429,9 @@ async function processRagQueue(): Promise<void> {
         continue;
       }
 
-      const chunks = chunkSections(parseResult.sections);
+      // minChunkTokens:1 — entity serializations are intentionally short (structured
+      // metadata, not prose). The default 50-token floor discards them entirely.
+      const chunks = chunkSections(parseResult.sections, { minChunkTokens: 1 });
 
       // Replace existing chunks for this (entity_type, entity_id).
       await prisma.$executeRaw`

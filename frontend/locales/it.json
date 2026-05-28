@@ -225,7 +225,9 @@
     "create_addendum": "Crea Addendum",
     "create_contract": "Crea Contratto",
     "no_match": "Nessun CI corrispondente.",
-    "select_placeholder": "— Seleziona —"
+    "select_placeholder": "— Seleziona —",
+    "edit_contract": "Modifica contratto",
+    "edit_error": "Errore durante il salvataggio"
   },
   "documents": {
     "title": "Archivio documenti",

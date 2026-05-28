@@ -225,7 +225,9 @@
     "create_addendum": "Nachtrag erstellen",
     "create_contract": "Vertrag erstellen",
     "no_match": "Keine übereinstimmenden CIs.",
-    "select_placeholder": "— Auswählen —"
+    "select_placeholder": "— Auswählen —",
+    "edit_contract": "Vertrag bearbeiten",
+    "edit_error": "Fehler beim Speichern des Vertrags"
   },
   "documents": {
     "title": "Dokumentenablage",

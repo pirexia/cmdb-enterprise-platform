@@ -1664,6 +1664,50 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   }
 });
 
+app.patch('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const ContractUpdateSchema = z.object({
+    contractNumber:   z.string().min(1).max(100),
+    startDate:        z.string().min(1),
+    endDate:          z.string().nullable().optional(),
+    vendorId:         z.string().uuid(),
+    parentContractId: z.string().uuid().nullable().optional(),
+  });
+  const parsed = ContractUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid contract data' });
+    return;
+  }
+  const { contractNumber, startDate, endDate, vendorId, parentContractId } = parsed.data;
+  const contractId = req.params.id as string;
+  try {
+    const contract = await prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        contractNumber,
+        startDate:        new Date(startDate),
+        endDate:          endDate ? new Date(endDate) : null,
+        vendorId,
+        parentContractId: parentContractId ?? null,
+      },
+      include: CONTRACT_INCLUDE,
+    });
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'UPDATE', 'Contract', ${contractId}::uuid, ${req.user!.email}, now())
+    `;
+    const contractRootId = await getContractRoot(contract.id);
+    void queueEntityForIndexing('contract', contractRootId);
+    res.json(contract);
+  } catch (error: unknown) {
+    console.error('[PATCH /api/contracts/:id] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2002') {
+      res.status(409).json({ error: 'A contract with this number already exists' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ── EOL Catalog Proxy ─────────────────────────────────────────────────────────
 
 const POPULAR_MANUFACTURERS = [
@@ -4338,8 +4382,8 @@ app.get('/api/cis/:id/contracts', authenticateToken, async (req, res) => {
              v.id::text AS "vendorId", v.name AS "vendorName"
       FROM contracts c
       JOIN vendors v ON c.vendor_id = v.id
-      JOIN "_ContractToCI" ctc ON ctc."A" = c.id
-      WHERE ctc."B" = ${ciId}::uuid`;
+      JOIN "_ContractToCI" ctc ON ctc."B" = c.id
+      WHERE ctc."A" = ${ciId}::uuid`;
     const result = rows.map((r) => ({
       id: r.id,
       contractNumber: r.contractNumber,
@@ -4435,9 +4479,9 @@ app.get('/api/contracts/:id/cis', authenticateToken, async (req, res) => {
   try {
     const rows = await prisma.$queryRaw<{ id: string; name: string; apiSlug: string; environment: string; criticality: string }[]>`
       SELECT ci.id::text AS id, ci.name, ci.api_slug AS "apiSlug", ci.environment::text AS environment, ci.criticality::text AS criticality
-      FROM "CI" ci
-      JOIN "_ContractToCI" ctc ON ctc."B" = ci.id
-      WHERE ctc."A" = ${contractId}::uuid`;
+      FROM "configuration_items" ci
+      JOIN "_ContractToCI" ctc ON ctc."A" = ci.id
+      WHERE ctc."B" = ${contractId}::uuid`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Failed to fetch CIs for contract' }); }
 });
@@ -5195,9 +5239,9 @@ app.get('/api/licenses/:id/cis', authenticateToken, async (req, res) => {
     }[]>`
       SELECT ci.id::text AS id, ci.name, ci.api_slug AS "apiSlug",
              ci.environment::text AS environment, ci.criticality::text AS criticality
-      FROM "CI" ci
-      JOIN "_LicenseToCI" lci ON lci."B" = ci.id
-      WHERE lci."A" = ${licenseId}::uuid`;
+      FROM "configuration_items" ci
+      JOIN "_LicenseToCI" lci ON lci."A" = ci.id
+      WHERE lci."B" = ${licenseId}::uuid`;
     res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Failed to fetch CIs for license' }); }
 });

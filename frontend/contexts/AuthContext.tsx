@@ -157,7 +157,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error("Respuesta inesperada del servidor");
     }
 
-    // Use applySession to store user+exp (token goes to HttpOnly cookie automatically)
+    // MFA_SETUP_REQUIRED: the backend issued a limited 15-min token (HttpOnly cookie only).
+    // Do NOT call applySession — that would mark the admin as fully authenticated in
+    // localStorage, causing AppShell to redirect them away from the setup wizard.
+    // The cookie alone is enough for the /api/auth/mfa/* endpoints to work.
+    if (data.requireAction === 'MFA_SETUP_REQUIRED') {
+      throw new Error(data.requireAction);
+    }
+
+    // For all other outcomes (full token or MFA_SETUP_SUGGESTED) establish the session.
     applySession(data.token ?? null, data.user, data.deviceToken);
 
     if (data.requireAction) {

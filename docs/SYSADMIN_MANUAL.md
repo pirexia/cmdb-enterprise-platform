@@ -2137,3 +2137,105 @@ Política operativa:
 - Verificar restore con un sample mensual (test `pg_restore --list`).
 
 Referencia: ENT-08 en `docs/security/rag-dpia.md` §A1.4.
+
+---
+
+## 21. RAG — Rendimiento e inferencia con GPU (opcional)
+
+### 21.1 Por qué la GPU importa
+
+El modelo de chat `qwen2.5:7b-instruct-q4_K_M` ejecutado en **CPU pura** produce latencias de 40-120 segundos por consulta (medido en Xeon Gold 6526Y, 12 vCPU, 31 GB RAM). Una GPU de gama media (RTX 4060 Ti 16 GB, L4, A10) acelera la inferencia **20-40×**, reduciendo el tiempo típico a 2-5 segundos.
+
+El modelo de embedding `bge-m3` es más ligero (1,2 GB) y tolerable en CPU, pero también se beneficia de GPU.
+
+### 21.2 Tuning de software (sin GPU)
+
+Ajustables en `.env` o `install.conf`:
+
+| Variable | Por defecto | Efecto |
+|---|---|---|
+| `RAG_NUM_PREDICT` | `768` | Tokens máx por respuesta. Reducir a 512 acelera ~25% en CPU con respuestas más cortas. `0` = sin límite. |
+| `RAG_CHAT_TIMEOUT_MS` | `180000` | Timeout de chat (ms). Subir si el hardware es más lento. |
+| `OLLAMA_KEEP_ALIVE` | `-1` | `-1` = modelo siempre cargado en RAM (elimina cold-load de ~20-30 s). `0` = descargar tras cada petición. |
+| `RAG_CHAT_MODEL` | `qwen2.5:7b-instruct-q4_K_M` | Cambiar a `qwen2.5:3b-instruct-q4_K_M` para ~2× más velocidad en CPU (menor calidad de respuesta). |
+
+### 21.3 Añadir una GPU NVIDIA (RHEL 9)
+
+#### Requisitos previos en el host
+
+```bash
+# 1. Instalar el driver NVIDIA (versión ≥ 525)
+sudo dnf install -y kernel-devel kernel-headers
+# Descarga desde https://www.nvidia.com/en-us/drivers/ o usar CUDA repo de NVIDIA
+
+# 2. Instalar NVIDIA Container Toolkit (CDI provider)
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo \
+  | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+sudo dnf install -y nvidia-container-toolkit
+
+# 3. Configurar CDI para Podman
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+sudo nvidia-ctk runtime configure --runtime=crio  # o docker según el runtime
+
+# 4. Verificar
+nvidia-smi
+podman run --rm --device nvidia.com/gpu=all nvidia/cuda:12.2-base-ubuntu22.04 nvidia-smi
+```
+
+#### Modificar `docker-compose.prod.yml`
+
+Añadir el bloque `devices` al servicio `ollama`:
+
+```yaml
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: cmdb-ollama-prod
+    restart: unless-stopped
+    environment:
+      OLLAMA_MODELS: /root/.ollama/models
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}   # con GPU, 30 min es suficiente
+    devices:
+      - nvidia.com/gpu=all                           # CDI — RHEL 9 / Podman 4+
+    volumes:
+      - ${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models}:/root/.ollama/models:Z
+```
+
+> **Nota Docker:** con Docker Engine en lugar de Podman, usar `deploy.resources.reservations.devices` con `driver: nvidia` en lugar del bloque `devices`.
+
+#### Verificar que Ollama detecta la GPU
+
+```bash
+# Tras reiniciar los contenedores
+podman exec cmdb-ollama-prod nvidia-smi
+podman exec cmdb-ollama-prod ollama run qwen2.5:7b-instruct-q4_K_M "hola" 2>&1 | grep -i "gpu\|cuda"
+```
+
+Si la GPU está activa, Ollama muestra en sus logs: `llm server loaded in X.XXs with GPU layers`.
+
+### 21.4 Modelos alternativos más rápidos (CPU o GPU ligera)
+
+| Modelo | Tamaño | CPU (12 vCPU) | GPU RTX 4060 Ti | Notas |
+|---|---|---|---|---|
+| `qwen2.5:7b-instruct-q4_K_M` | 4,7 GB | ~45 s | ~3 s | Actual por defecto |
+| `qwen2.5:3b-instruct-q4_K_M` | 2,0 GB | ~20 s | ~1,5 s | Menor calidad |
+| `llama3.2:3b-instruct-q4_K_M` | 2,0 GB | ~18 s | ~1,5 s | Alternativa 3B |
+| `qwen2.5:14b-instruct-q4_K_M` | 9,0 GB | ~90 s | ~6 s | Mayor calidad (requiere ≥16 GB VRAM) |
+
+Para cambiar de modelo:
+
+```bash
+# 1. Descargar el nuevo modelo en Ollama
+podman exec cmdb-ollama-prod ollama pull qwen2.5:3b-instruct-q4_K_M
+
+# 2. Actualizar la variable en .env
+RAG_CHAT_MODEL=qwen2.5:3b-instruct-q4_K_M
+
+# 3. Reiniciar el backend (no requiere rebuild de imagen)
+podman-compose -f docker-compose.prod.yml restart backend
+```
+
+### 21.5 Impacto en seguridad y continuidad
+
+- **A08 — Integridad:** el bloque CDI `devices: nvidia.com/gpu=all` concede acceso al dispositivo GPU al contenedor Ollama únicamente; los demás contenedores no tienen acceso al hardware.
+- **ISO 22301 / RTO:** una GPU dedicada al contenedor `ollama` se convierte en un componente de disponibilidad. Documentar el procedimiento de arranque sin GPU (fallback a CPU) como modo degradado aceptable.
+- **Drivers:** mantener el driver NVIDIA actualizado. Los CVE de drivers de kernel con acceso DMA son de alta severidad.

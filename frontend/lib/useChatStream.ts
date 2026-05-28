@@ -29,6 +29,7 @@ interface AskOptions {
   sessionId?: string;
   topK?: number;
   entityTypes?: ChatEntityType[];
+  lang?: string;
   onEvent: (e: ChatStreamEvent) => void;
 }
 
@@ -93,7 +94,7 @@ export function useChatStream(): UseChatStreamResult {
   }, []);
 
   const ask = useCallback(async (opts: AskOptions): Promise<void> => {
-    const { question, sessionId, topK, entityTypes, onEvent } = opts;
+    const { question, sessionId, topK, entityTypes, lang, onEvent } = opts;
 
     // Abort any in-flight stream
     if (abortRef.current) {
@@ -112,6 +113,7 @@ export function useChatStream(): UseChatStreamResult {
       if (sessionId) body.sessionId = sessionId;
       if (topK !== undefined) body.topK = topK;
       if (entityTypes && entityTypes.length > 0) body.entityTypes = entityTypes;
+      if (lang) body.lang = lang;
 
       const res = await fetch(`${apiBase}/api/chat/ask/stream`, {
         method: "POST",

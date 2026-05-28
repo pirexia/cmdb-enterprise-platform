@@ -1137,8 +1137,12 @@ Below the question box you'll see five source-type "chips": **Documents**, **CIs
 - With no chip selected, the assistant searches **all** available sources.
 - Clicking one or more chips restricts the query to those types. The selection is multi-select (you can activate several) and is preserved across the current browser tab (closing the tab resets it).
 - The **Clear** button restores the selection to "all sources".
+- **Contracts chip:** when active, the assistant searches not only the contract records but also the PDF documents associated with the contract and the assets (CIs) it covers. For example, selecting this chip and asking about "Oracle support conditions" will search the contract, any linked addenda, and the related CIs.
+- **Licenses chip:** same behaviour — includes documents and CIs associated with the licenses.
 - If the RAG subsystem has just been enabled for the first time, some categories may be empty until the background indexer processes them. An administrator can speed this up with a full reindex (see System Administrator Manual §19.10).
 
 The citations returned by the assistant include an icon indicating the source type (document, CI, contract, license or vulnerability). Clicking a citation opens the corresponding listing in the inventory, contracts, licenses or vulnerabilities page, already focused on the cited item.
 
-> For server hardware requirements, Ollama configuration, model management, and RAG subsystem maintenance procedures, refer to the **System Administrator Manual, §19 — RAG Subsystem**.
+> The assistant always responds in the **interface language** (configurable in your profile). If documents are in English and the interface is in Spanish, responses are generated in Spanish.
+
+> For server hardware requirements, Ollama configuration, and GPU acceleration options, refer to the **System Administrator Manual, §19 and §21**.

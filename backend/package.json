@@ -55,6 +55,7 @@
     "pdf-parse": "^1.1.1",
     "mammoth": "^1.8.0",
     "officeparser": "^4.1.2",
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "node-tesseract-ocr": "^2.2.1"
   }
 }

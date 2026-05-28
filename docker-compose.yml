@@ -96,6 +96,13 @@ services:
       RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
       RAG_TOP_K:       ${RAG_TOP_K:-6}
       RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}
+      RAG_NUM_PREDICT:      ${RAG_NUM_PREDICT:-768}
+      RAG_CHAT_TIMEOUT_MS:  ${RAG_CHAT_TIMEOUT_MS:-180000}
+      # ── OCR — Tesseract fallback for scanned PDFs ─────────────────────────────
+      OCR_ENABLED:      ${OCR_ENABLED:-true}
+      OCR_LANGUAGES:    ${OCR_LANGUAGES:-spa+eng}
+      OCR_DPI:          ${OCR_DPI:-300}
+      OCR_TIMEOUT_MS:   ${OCR_TIMEOUT_MS:-180000}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z
@@ -154,6 +161,7 @@ services:
     restart: always
     environment:
       OLLAMA_MODELS: /root/.ollama/models
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:--1}
     volumes:
       - ollama-models:/root/.ollama/models:Z
     networks:

@@ -303,6 +303,8 @@ const ChatAskSchema = z.object({
   entityTypes: z
     .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability']))
     .optional(),
+  // UI locale — forces the model to reply in that language regardless of context language.
+  lang: z.enum(['es', 'en', 'de', 'pt', 'fr', 'it']).optional(),
 });
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -5534,7 +5536,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK, entityTypes } = parsed.data;
+  const { question, topK, entityTypes, lang } = parsed.data;
   let { sessionId } = parsed.data;
 
   try {
@@ -5558,7 +5560,7 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
     const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
 
     // 3. Build prompt + call LLM
-    const messages = buildRagPrompt(question, chunks);
+    const messages = buildRagPrompt(question, chunks, lang);
     const start = Date.now();
     const result = await chatWithContext(messages);
     const latencyMs = Date.now() - start;
@@ -5601,7 +5603,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
   if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'El asistente está deshabilitado' }); return; }
   const parsed = ChatAskSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid request' }); return; }
-  const { question, topK, entityTypes } = parsed.data;
+  const { question, topK, entityTypes, lang } = parsed.data;
   let { sessionId } = parsed.data;
 
   // SSE headers
@@ -5656,7 +5658,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
       VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
 
     // 4. Stream LLM tokens
-    const messages = buildRagPrompt(question, chunks);
+    const messages = buildRagPrompt(question, chunks, lang);
     const start = Date.now();
     let assistantText = '';
     const { model, tokensUsed } = await streamChatWithContext(messages, (token) => {

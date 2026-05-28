@@ -67,13 +67,17 @@ export interface RagChunkResult {
 
 // SSRF protection: OLLAMA_BASE_URL must point to an internal host.
 // The value comes from environment, never from user input.
-const OLLAMA_BASE_URL  = process.env.OLLAMA_BASE_URL  ?? 'http://ollama:11434';
-const RAG_EMBED_MODEL  = process.env.RAG_EMBED_MODEL  ?? 'bge-m3';
-const RAG_CHAT_MODEL   = process.env.RAG_CHAT_MODEL   ?? 'qwen2.5:7b-instruct-q4_K_M';
-const RAG_TEMPERATURE  = parseFloat(process.env.RAG_CHAT_TEMPERATURE ?? '0.1');
-const EMBED_TIMEOUT_MS = 30_000;
-const CHAT_TIMEOUT_MS  = 120_000;
-const EMBED_BATCH_SIZE = 32;
+const OLLAMA_BASE_URL    = process.env.OLLAMA_BASE_URL       ?? 'http://ollama:11434';
+const RAG_EMBED_MODEL    = process.env.RAG_EMBED_MODEL       ?? 'bge-m3';
+const RAG_CHAT_MODEL     = process.env.RAG_CHAT_MODEL        ?? 'qwen2.5:7b-instruct-q4_K_M';
+const RAG_TEMPERATURE    = parseFloat(process.env.RAG_CHAT_TEMPERATURE ?? '0.1');
+// Cap generated tokens — avoids runaway CPU time on long outputs (default 768).
+// Set RAG_NUM_PREDICT=0 to disable the cap (Ollama default: unlimited).
+const RAG_NUM_PREDICT    = parseInt(process.env.RAG_NUM_PREDICT ?? '768', 10);
+const EMBED_TIMEOUT_MS   = 30_000;
+// Generous timeout to accommodate CPU-only inference; increase via RAG_CHAT_TIMEOUT_MS.
+const CHAT_TIMEOUT_MS    = parseInt(process.env.RAG_CHAT_TIMEOUT_MS ?? '180000', 10);
+const EMBED_BATCH_SIZE   = 32;
 
 // Allowlist: only allow http/https to internal hostnames (no public IPs, no user-supplied URLs)
 const ALLOWED_OLLAMA_PATTERN =

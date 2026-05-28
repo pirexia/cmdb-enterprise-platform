@@ -36,7 +36,7 @@ import {
 } from './services/ragService';
 import {
   vulnUuid, getContractRoot, getLicenseRoot,
-  serializeCI, serializeContract, serializeLicense, serializeVulnerability,
+  serializeCI, serializeContract, serializeLicense, serializeVulnerability, type EntityParseResult,
 } from './services/entitySerializer';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
@@ -3207,8 +3207,7 @@ async function processRagQueue(): Promise<void> {
 
       const doc = docRows[0];
       const filePath = path.join(DOCUMENTS_DIR, doc.file_name);
-      const buffer = fs.readFileSync(filePath);
-      const parseResult = await parseDocument(buffer, doc.mime_type, doc.title);
+      const parseResult = await parseDocument(filePath, doc.mime_type, doc.title);
 
       if (parseResult.sections.length === 0) {
         await prisma.$executeRaw`
@@ -3344,7 +3343,7 @@ async function processRagQueue(): Promise<void> {
       await prisma.$executeRaw`UPDATE "rag_entity_index" SET status='INDEXING', updated_at=now() WHERE id=${row.id}::uuid`;
 
       // Resolve the entity → EntityParseResult via the appropriate serializer.
-      let parseResult: { sections: { heading?: string; content: string; pageStart?: number; pageEnd?: number }[]; title: string; metadata: Record<string, unknown> } | null = null;
+      let parseResult: EntityParseResult | null = null;
       let vulnTuple: { ciId: string; cve: string } | null = null;
 
       try {

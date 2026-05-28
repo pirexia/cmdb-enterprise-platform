@@ -174,7 +174,7 @@ services:
     networks:
       - cmdb-internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/version || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/11434' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

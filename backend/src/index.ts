@@ -3780,6 +3780,15 @@ async function materializeBulkItem(
 
   try {
     const result = await prisma.$transaction(async (tx) => {
+      // Atomically CLAIM the row first: a concurrent/retried commit blocks on this
+      // row lock, then sees status='COMMITTED' and affects 0 rows → we abort. This
+      // closes the TOCTOU between the pre-transaction status snapshot and the flip,
+      // preventing duplicate Document/Contract/License rows + orphaned files.
+      const claimed = await tx.$executeRaw`
+        UPDATE "bulk_import_item" SET status='COMMITTED', error_message=NULL, updated_at=now()
+        WHERE id=${item.id}::uuid AND status <> 'COMMITTED'`;
+      if (Number(claimed) === 0) throw new BulkValidationError('El elemento ya fue confirmado');
+
       const docRows = await tx.$queryRaw<{ id: string }[]>`
         INSERT INTO "documents"(id,title,description,document_type_id,root_id,version_number,is_latest,file_name,original_name,mime_type,file_size,uploaded_by,created_at,updated_at)
         VALUES(gen_random_uuid(), ${decision.title.trim()}, ${decision.description?.trim() || null}, ${decision.documentTypeId}::uuid, NULL, 1, true, ${finalName}, ${item.original_name}, ${item.mime_type}, ${item.file_size}, ${userEmail}, now(), now())
@@ -3825,7 +3834,8 @@ async function materializeBulkItem(
         await tx.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       }
 
-      await tx.$executeRaw`UPDATE "bulk_import_item" SET status='COMMITTED', committed_document_id=${documentId}::uuid, error_message=NULL, updated_at=now() WHERE id=${item.id}::uuid`;
+      // Status already set to COMMITTED by the claim above; just record the link.
+      await tx.$executeRaw`UPDATE "bulk_import_item" SET committed_document_id=${documentId}::uuid, updated_at=now() WHERE id=${item.id}::uuid`;
 
       return { documentId, contractId, licenseId };
     });

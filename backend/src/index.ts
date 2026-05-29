@@ -32,7 +32,8 @@ import { chunkSections } from './services/chunker';
 import {
   getEmbedding, getEmbeddingsBatch, isOllamaHealthy, sanitizeQuery,
   buildRagPrompt, chatWithContext, streamChatWithContext,
-  type RagChunkResult, type Citation,
+  analyzeDocumentForImport,
+  type RagChunkResult, type Citation, type BulkAnalysisRaw,
 } from './services/ragService';
 import {
   vulnUuid, getContractRoot, getLicenseRoot,
@@ -3122,6 +3123,9 @@ const STAGING_DIR          = process.env.BULK_STAGING_DIR ?? path.join(DOCUMENTS
 const BULK_MAX_FILES       = parseInt(process.env.BULK_MAX_FILES ?? '20', 10);
 const BULK_MAX_TOTAL_BYTES = parseInt(process.env.BULK_MAX_TOTAL_MB ?? '200', 10) * 1024 * 1024;
 const BULK_BATCH_TTL_HOURS = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24', 10);
+// Items analyzed per cron tick — kept small so AI bulk analysis never starves
+// the normal RAG indexing queue (both share the single CPU-bound Ollama).
+const BULK_ANALYZE_BUDGET  = parseInt(process.env.BULK_ANALYZE_BUDGET ?? '2', 10);
 
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
@@ -3522,6 +3526,171 @@ async function processRagQueue(): Promise<void> {
     } catch (e) {
       console.error('[RAG] processRagQueue audit batch error:', e);
     }
+  }
+}
+
+// ─── Bulk import: AI analysis worker ──────────────────────────────────────────
+
+// Validates the UNTRUSTED JSON the model returns. Unknown/extra keys are ignored.
+const BulkAnalysisSchema = z.object({
+  documentTypeGuess: z.string().max(40).nullable().optional(),
+  startDate:         z.string().max(40).nullable().optional(),
+  endDate:           z.string().max(40).nullable().optional(),
+  vendorName:        z.string().max(255).nullable().optional(),
+  entityNumber:      z.string().max(100).nullable().optional(),
+  suggestedTarget:   z.enum(['contract', 'addendum', 'license', 'none']).nullable().optional(),
+  ciHints:           z.array(z.string().max(255)).max(50).nullable().optional(),
+});
+
+interface NormalizedAnalysis {
+  documentTypeGuess: string | null;
+  startDate:         string | null;
+  endDate:           string | null;
+  vendorName:        string | null;
+  entityNumber:      string | null;
+  suggestedTarget:   'contract' | 'addendum' | 'license' | 'none';
+  ciHints:           string[];
+}
+
+/** Accepts only a strict ISO calendar date (YYYY-MM-DD) that is a real date. */
+function parseIsoDateSafe(s: unknown): string | null {
+  if (typeof s !== 'string') return null;
+  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (isNaN(d.getTime())) return null;
+  // Reject e.g. 2026-02-31 which Date silently rolls over
+  if (d.toISOString().slice(0, 10) !== iso) return null;
+  return iso;
+}
+
+/** Coerces the model's raw output into a safe, typed shape (never trusts it). */
+function normalizeAnalysis(raw: BulkAnalysisRaw): NormalizedAnalysis {
+  const parsed = BulkAnalysisSchema.safeParse(raw);
+  const d = parsed.success ? parsed.data : {};
+  const hints = Array.isArray(d.ciHints)
+    ? d.ciHints.filter((h): h is string => typeof h === 'string' && h.trim().length > 0).map((h) => h.trim())
+    : [];
+  return {
+    documentTypeGuess: typeof d.documentTypeGuess === 'string' ? d.documentTypeGuess.slice(0, 40) : null,
+    startDate:         parseIsoDateSafe(d.startDate),
+    endDate:           parseIsoDateSafe(d.endDate),
+    vendorName:        typeof d.vendorName === 'string' ? (d.vendorName.trim().slice(0, 255) || null) : null,
+    entityNumber:      typeof d.entityNumber === 'string' ? (d.entityNumber.trim().slice(0, 100) || null) : null,
+    suggestedTarget:   d.suggestedTarget ?? 'none',
+    ciHints:           hints,
+  };
+}
+
+interface CiMatch { ciId: string; name: string; serial: string | null; matchType: 'serial' | 'name'; }
+
+/**
+ * Finds candidate CIs for the AI's serial/name hints. LIKE wildcards are escaped
+ * and ESCAPE '\\' is used (A03). Bounded result set to avoid pathological scans.
+ */
+async function matchCIsForImport(hints: string[]): Promise<CiMatch[]> {
+  const seen = new Set<string>();
+  const out: CiMatch[] = [];
+  for (const rawHint of hints.slice(0, 20)) {
+    const hint = String(rawHint).trim();
+    if (hint.length < 3) continue;
+    const escaped = hint.replace(/[\\%_]/g, (c) => '\\' + c);
+    const like = `%${escaped}%`;
+    const rows = await prisma.$queryRaw<{ ciId: string; name: string; serial: string | null; matchType: string }[]>`
+      SELECT ci.id::text AS "ciId", ci.name AS name, h.serial_number AS serial,
+             CASE WHEN h.serial_number ILIKE ${like} ESCAPE '\\' THEN 'serial' ELSE 'name' END AS "matchType"
+      FROM "configuration_items" ci
+      LEFT JOIN "hardware_cis" h ON h.ci_id = ci.id
+      WHERE h.serial_number ILIKE ${like} ESCAPE '\\' OR ci.name ILIKE ${like} ESCAPE '\\'
+      LIMIT 5`;
+    for (const r of rows) {
+      if (seen.has(r.ciId)) continue;
+      seen.add(r.ciId);
+      out.push({ ciId: r.ciId, name: r.name, serial: r.serial, matchType: r.matchType === 'serial' ? 'serial' : 'name' });
+    }
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+
+/** Recomputes a batch's aggregate status from its items. Reused on commit. */
+async function recomputeBatchStatus(batchId: string): Promise<void> {
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint }[]>`
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
+           COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed
+    FROM "bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
+  const total = Number(rows[0]?.total ?? 0);
+  const pending = Number(rows[0]?.pending ?? 0);
+  const committed = Number(rows[0]?.committed ?? 0);
+  let status: string;
+  if (total === 0)                 status = 'DISCARDED';
+  else if (pending > 0)            status = 'ANALYZING';
+  else if (committed === total)    status = 'COMMITTED';
+  else if (committed > 0)          status = 'PARTIALLY_COMMITTED';
+  else                             status = 'READY';
+  await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
+}
+
+/**
+ * Analyzes up to BULK_ANALYZE_BUDGET staged items per tick: parses the file,
+ * asks Ollama to extract structured metadata, matches CIs, and stores the
+ * (validated) suggestion JSON. Runs after processRagQueue on the same cron.
+ */
+async function processBulkImportQueue(): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  if (!(await isOllamaHealthy())) return;
+
+  const pending = await prisma.$queryRaw<{ id: string; batch_id: string; staged_file_name: string; mime_type: string; original_name: string }[]>`
+    SELECT id::text AS id, batch_id::text AS batch_id, staged_file_name, mime_type, original_name
+    FROM "bulk_import_item"
+    WHERE status = 'PENDING_ANALYSIS'
+    ORDER BY created_at ASC
+    LIMIT ${BULK_ANALYZE_BUDGET}`;
+
+  const touchedBatches = new Set<string>();
+
+  for (const item of pending) {
+    touchedBatches.add(item.batch_id);
+    try {
+      await prisma.$executeRaw`UPDATE "bulk_import_item" SET status='ANALYZING', updated_at=now() WHERE id=${item.id}::uuid`;
+
+      const filePath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
+      const parseResult = await parseDocument(filePath, item.mime_type, item.original_name);
+      const text = parseResult.sections.map((s) => s.text).join('\n\n').trim();
+
+      let analysis: Record<string, unknown>;
+      if (!text) {
+        // No extractable text (e.g. image, empty PDF) — still reviewable manually.
+        analysis = { textExtracted: false, ciMatches: [], analyzedAt: new Date().toISOString() };
+      } else {
+        const raw = await analyzeDocumentForImport(text, { fileName: item.original_name });
+        const norm = normalizeAnalysis(raw);
+        const ciMatches = await matchCIsForImport(norm.ciHints);
+        analysis = { ...norm, ciMatches, textExtracted: true, analyzedAt: new Date().toISOString() };
+      }
+
+      await prisma.$executeRaw`
+        UPDATE "bulk_import_item"
+        SET status='ANALYZED', analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
+        WHERE id=${item.id}::uuid`;
+    } catch (e) {
+      console.error('[RAG] processBulkImportQueue item error:', e);
+      const errMsg = String(e).slice(0, 500);
+      try {
+        await prisma.$executeRaw`
+          UPDATE "bulk_import_item" SET status='ERROR', error_message=${errMsg}, updated_at=now()
+          WHERE id=${item.id}::uuid`;
+      } catch (e2) {
+        console.error('[RAG] processBulkImportQueue error-mark failure:', e2);
+      }
+    }
+  }
+
+  for (const batchId of touchedBatches) {
+    try { await recomputeBatchStatus(batchId); }
+    catch (e) { console.error('[RAG] processBulkImportQueue batch-status error:', e); }
   }
 }
 
@@ -5065,7 +5234,11 @@ cron.schedule('0 2 * * *', async () => {
 // ─── RAG Document Indexing Queue (every 30 s) ────────────────────────────────
 if (process.env.RAG_ENABLED === 'true') {
   cron.schedule('*/30 * * * * *', () => {
-    processRagQueue().catch((e) => console.error('[RAG] processRagQueue error:', e));
+    processRagQueue()
+      .catch((e) => console.error('[RAG] processRagQueue error:', e))
+      .finally(() => {
+        processBulkImportQueue().catch((e) => console.error('[RAG] processBulkImportQueue error:', e));
+      });
   }, { timezone: 'Europe/Madrid' });
   console.log('[RAG] Indexing queue processor scheduled (every 30 s).');
 } else {

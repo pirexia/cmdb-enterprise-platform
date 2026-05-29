@@ -537,7 +537,9 @@ export async function analyzeDocumentForImport(
     '- vendorName: nombre del proveedor, fabricante o empresa contratante, o null.\n' +
     '- entityNumber: número de contrato/licencia/oferta si aparece, o null.\n' +
     '- suggestedTarget: una de ["contract","addendum","license","none"] según el tipo de documento.\n' +
-    '- ciHints: array de cadenas con números de serie o nombres de equipos/sistemas (CIs) mencionados; ' +
+    '- ciHints: array de cadenas con los equipos/sistemas (CIs) mencionados. Incluye SIEMPRE, de forma ' +
+    'literal (verbatim), los números de serie, identificadores o códigos exactos que aparezcan ' +
+    '(p. ej. "DELL-SN-XK29-0091"), cada uno como un elemento independiente, además del nombre si lo hay. ' +
     '[] si no hay ninguno.';
 
   const userContent =

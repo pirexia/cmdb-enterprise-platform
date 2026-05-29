@@ -488,8 +488,11 @@ export function sanitizeQuery(query: string): string {
 
 // ─── Bulk-import structured extraction ────────────────────────────────────────
 
-/** Max characters of document text fed to the extraction model (CPU budget). */
-const ANALYSIS_MAX_CHARS = parseInt(process.env.BULK_ANALYSIS_MAX_CHARS ?? '12000', 10);
+// Max characters of document text fed to the extraction model. Kept modest
+// because the metadata we extract (type, dates, vendor, number) lives near the
+// top of the document, and a large context made prompt-eval exceed the chat
+// timeout on CPU (AbortError). Override via BULK_ANALYSIS_MAX_CHARS.
+const ANALYSIS_MAX_CHARS = parseInt(process.env.BULK_ANALYSIS_MAX_CHARS ?? '6000', 10);
 
 /** Raw, UNVALIDATED extraction output. The caller validates/sanitizes before persisting. */
 export interface BulkAnalysisRaw {

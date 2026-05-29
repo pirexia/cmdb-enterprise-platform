@@ -5482,7 +5482,7 @@ cron.schedule('0 * * * *', async () => {
   try {
     const stale = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM "bulk_import_batch"
-      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS})`;
+      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)`;
     let cleaned = 0;
     for (const b of stale) {
       const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`

@@ -1148,7 +1148,7 @@ To re-queue all documents in bulk (for example after a model update), an adminis
 
 ### Limitations
 
-- **No OCR:** scanned PDF files that do not contain an extractable text layer cannot be indexed. Only documents with embedded digital text are processed.
+- **Automatic OCR:** scanned PDFs (no embedded text layer) are automatically indexed via Tesseract OCR. The process is transparent — the document will appear as **Indexed** once complete (may take several minutes depending on page count).
 - **Time to first token (TTFT):** approximately 1–2 seconds from when the question is sent to when the first token appears.
 - **Full response time:** between 10 and 18 seconds for a response of around 250 tokens, depending on server load.
 - **Local model:** the system uses a local language model (Ollama). No data is transferred to the Internet or to third-party services.

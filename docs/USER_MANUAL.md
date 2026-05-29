@@ -1148,7 +1148,7 @@ Para volver a poner en cola todos los documentos en bloque (por ejemplo, tras un
 
 ### Limitaciones
 
-- **Sin OCR:** los archivos PDF escaneados que no contengan una capa de texto extraíble no se indexan. Solo se procesan los documentos con texto digital incorporado.
+- **OCR automático:** los PDFs escaneados (sin capa de texto) se indexan automáticamente mediante Tesseract OCR. El proceso es transparente — el documento aparecerá como **Indexado** una vez completado (puede tardar varios minutos según el número de páginas).
 - **Tiempo de primera respuesta (TTFT):** aproximadamente 1–2 segundos desde que se envía la pregunta hasta que aparece el primer token.
 - **Duración de la respuesta completa:** entre 10 y 18 segundos para una respuesta de unos 250 tokens, dependiendo de la carga del servidor.
 - **Modelo local:** el sistema utiliza un modelo de lenguaje local (Ollama). No se realiza ninguna transferencia de datos a Internet ni a servicios de terceros.

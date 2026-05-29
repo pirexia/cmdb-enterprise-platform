@@ -259,6 +259,23 @@ DOCUMENTS_STORAGE_PATH=./document-storage
 
 > **Important:** The directory must exist on the host before starting the services and must be readable and writable by UID `1000` (the `node` user in Alpine images). The container does **not** create the parent directory automatically.
 
+#### Bulk document import (staging + AI analysis)
+
+Bulk import lets users upload several documents at once; a background worker (on the same RAG cron, every 30 s) analyses them with Ollama to suggest type, validity dates, vendor, number and associated CIs before the user confirms them. Uploaded files are kept **temporarily** in a staging subdirectory (`_staging/` inside the document storage) and are **only** materialized into real documents/contracts/licences when each line is confirmed.
+
+```bash
+# ── Bulk import ───────────────────────────────────────────────────────
+# BULK_MAX_FILES=20         # max files per batch
+# BULK_MAX_TOTAL_MB=200     # max total batch size (MB). Each file still obeys MAX_DOCUMENT_SIZE_MB.
+# BULK_BATCH_TTL_HOURS=24   # age after which an abandoned batch is discarded automatically
+# BULK_ANALYZE_BUDGET=2     # documents analysed by AI per cycle (30 s); low = won't starve the RAG queue on CPU
+# BULK_STAGING_DIR=/app/documents/_staging   # staging area location (defaults to a subdir of DOCUMENTS_DIR)
+```
+
+> **Automatic cleanup:** an hourly cron discards batches older than `BULK_BATCH_TTL_HOURS` and deletes their staged files, preventing the staging area from growing unbounded (ISO 22301 / NIS2). Already-confirmed (materialized) documents are **not** affected.
+>
+> **Performance:** AI analysis is sequential and CPU-bound. A large batch can take several minutes per document. With a GPU, latency drops dramatically (see §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controls how many documents compete for Ollama each cycle against normal RAG indexing.
+
 #### Prepare the directory for a new installation
 
 ```bash

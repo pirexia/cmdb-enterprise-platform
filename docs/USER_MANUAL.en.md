@@ -486,6 +486,29 @@ The maximum file size is **50 MB**.
 4. If you wish, associate the document with one or more assets and/or contracts.
 5. Click **"Upload"**.
 
+### Bulk document import with AI analysis (ADMIN only)
+
+When you need to ingest many documents at once (e.g. a batch of contracts, addendums and offers), use **bulk import**. The AI assistant analyses each file and proposes a classification for you to review before anything is created.
+
+1. In the Document Repository, click **"Bulk Import"**.
+2. **Drag the files** into the drop area (or click to select them). You can upload up to the file count and total size set by your administrator (default **20 files / 200 MB**; each file keeps its individual size limit).
+3. Click **"Upload and analyze"**. The files are kept in a temporary staging area and the **review screen** opens.
+4. The screen shows one row per document and indicates analysis progress. As the AI finishes each file, it auto-fills:
+   - Detected **document type** (contract, addendum, offer, technical…).
+   - **Validity dates** (start and end) when present in the document.
+   - Suggested **vendor**.
+   - Contract/licence **number**.
+   - **Associated CIs**: assets detected by serial number or name.
+5. **Review and correct** each row:
+   - Choose what to create in **"Create as"**: Contract, Addendum, Licence or document only.
+   - Adjust type, dates, number and vendor. If the vendor does not exist, click **"+"** to create it inline.
+   - Add or remove associated CIs (the AI suggestions are highlighted).
+   - For an **addendum**, select the parent contract.
+6. Click **"Create"** on each row to materialize it, or **"Create all"** to process the whole batch. Each confirmation creates the real document and, where applicable, the contract/addendum/licence with its associations.
+7. You can **discard** individual files or the entire batch. Abandoned batches are removed automatically after a configurable period (default 24 h).
+
+> AI analysis runs in the background and, without a GPU, can take from 30 s to several minutes per document. The review screen updates on its own; you can close it and come back later. AI suggestions are advisory — always check the data before creating the records.
+
 ### Editing document metadata (ADMIN only)
 
 1. Open the document detail view.

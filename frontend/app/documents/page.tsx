@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   FolderOpen, Upload, Trash2, Download, RefreshCw,
   AlertTriangle, FileText, X, ChevronUp, ChevronDown, ChevronsUpDown,
-  FilterX, Search,
+  FilterX, Search, Layers, Sparkles,
 } from "lucide-react";
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -257,6 +257,112 @@ function UploadModal({
   );
 }
 
+// ─── Bulk Upload Modal (drag & drop) ──────────────────────────────────────────
+
+function BulkUploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded: (batchId: string) => void }) {
+  const { t } = useLanguage();
+  const MAX_FILES = Number(process.env.NEXT_PUBLIC_BULK_MAX_FILES ?? 20);
+  const MAX_MB = Number(process.env.NEXT_PUBLIC_BULK_MAX_TOTAL_MB ?? 200);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return;
+    setError(null);
+    const incoming = Array.from(list);
+    setFiles((prev) => {
+      const merged = [...prev];
+      for (const f of incoming) {
+        if (!merged.some((m) => m.name === f.name && m.size === f.size)) merged.push(f);
+      }
+      return merged;
+    });
+  };
+
+  const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx));
+  const totalBytes = files.reduce((s, f) => s + f.size, 0);
+
+  const handleSubmit = async () => {
+    if (files.length === 0) return;
+    if (files.length > MAX_FILES) { setError(t("documents.bulk.too_many_files", { maxFiles: MAX_FILES })); return; }
+    if (totalBytes > MAX_MB * 1024 * 1024) { setError(t("documents.bulk.too_large", { maxMb: MAX_MB })); return; }
+    setSubmitting(true); setError(null);
+    try {
+      const fd = new FormData();
+      for (const f of files) fd.append("files", f);
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+      const res = await fetch(`${apiBase}/api/documents/bulk/batches`, { method: "POST", credentials: "include", body: fd });
+      const data = await res.json().catch(() => ({})) as { batchId?: string; error?: string };
+      if (!res.ok || !data.batchId) throw new Error(data.error ?? `Error ${res.status}`);
+      onUploaded(data.batchId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("documents.upload_error"));
+    } finally { setSubmitting(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-lg bg-white shadow-xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center gap-2">
+            <Layers className="h-5 w-5 text-[var(--accent)]" />
+            <h2 className="text-base font-semibold text-slate-900">{t("documents.bulk.title")}</h2>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <p className="text-sm text-slate-500">{t("documents.bulk.subtitle")}</p>
+          {error && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{error}
+            </div>
+          )}
+          <label
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files); }}
+            className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-colors
+              ${dragOver ? "border-[var(--accent)] bg-[var(--accent)]/5" : "border-slate-300 bg-slate-50 hover:bg-slate-100"}`}
+          >
+            <Sparkles className="h-7 w-7 text-[var(--accent)]" />
+            <span className="text-sm font-medium text-slate-700">{t("documents.bulk.dropzone")}</span>
+            <span className="text-xs text-slate-400">{t("documents.bulk.dropzone_hint", { maxFiles: MAX_FILES, maxMb: MAX_MB })}</span>
+            <input type="file" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+          </label>
+          {files.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">
+                {t("documents.bulk.selected_files")} — {files.length} ({formatFileSize(totalBytes)})
+              </p>
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                {files.map((f, i) => (
+                  <div key={`${f.name}-${i}`} className="flex items-center gap-2 px-3 py-1.5">
+                    <FileText className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                    <span className="flex-1 truncate text-xs text-slate-700">{f.name}</span>
+                    <span className="text-xs text-slate-400">{formatFileSize(f.size)}</span>
+                    <button onClick={() => removeFile(i)} className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>
+          <button onClick={handleSubmit} disabled={submitting || files.length === 0}
+            className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors">
+            {submitting ? <><RefreshCw className="h-4 w-4 animate-spin" />{t("documents.bulk.uploading")}</> : <><Layers className="h-4 w-4" />{t("documents.bulk.start_upload")}</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DocumentsPage() {
@@ -272,6 +378,7 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
 
   // ── Filters ─────────────────────────────────────────────────────────────────
   const [filterTitle, setFilterTitle] = useState("");
@@ -388,6 +495,12 @@ export default function DocumentsPage() {
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
                 {t("actions.refresh")}
               </button>
+              {isAdmin && (
+                <button onClick={() => setShowBulk(true)}
+                  className="flex items-center gap-2 rounded-none border border-[var(--accent)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
+                  <Layers className="h-4 w-4" />{t("documents.bulk.button")}
+                </button>
+              )}
               {isAdmin && (
                 <button onClick={handleOpenUpload}
                   className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
@@ -529,6 +642,13 @@ export default function DocumentsPage() {
           docTypes={docTypes} cis={cis} contracts={contracts}
           onClose={() => setShowUpload(false)}
           onSuccess={() => { setShowUpload(false); void load(); }}
+        />
+      )}
+
+      {showBulk && (
+        <BulkUploadModal
+          onClose={() => setShowBulk(false)}
+          onUploaded={(batchId) => { setShowBulk(false); router.push(`/documents/bulk/${batchId}`); }}
         />
       )}
     </>

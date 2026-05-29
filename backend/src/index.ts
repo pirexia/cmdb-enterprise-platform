@@ -3694,6 +3694,158 @@ async function processBulkImportQueue(): Promise<void> {
   }
 }
 
+// ─── Bulk import: commit (materialization) ────────────────────────────────────
+
+/** Thrown for caller-correctable problems (returned as 400 with the message). */
+class BulkValidationError extends Error {}
+
+// The user's reviewed decision for one staged item. `target` drives which real
+// entity (if any) is created alongside the Document.
+const BulkItemDecisionBase = z.object({
+  target:           z.enum(['contract', 'addendum', 'license', 'none']),
+  documentTypeId:   z.string().uuid(),
+  title:            z.string().min(1).max(500),
+  description:      z.string().max(2000).nullable().optional(),
+  startDate:        z.string().max(40).nullable().optional(),
+  endDate:          z.string().max(40).nullable().optional(),
+  vendorId:         z.string().uuid().nullable().optional(),
+  entityNumber:     z.string().min(1).max(100).nullable().optional(),
+  parentContractId: z.string().uuid().nullable().optional(),
+  licenseName:      z.string().min(1).max(255).nullable().optional(),
+  ciIds:            z.array(z.string().uuid()).max(100).optional(),
+});
+
+const BulkItemDecisionSchema = BulkItemDecisionBase.superRefine((d, ctx) => {
+  const reqDate = /^\d{4}-\d{2}-\d{2}/;
+  if (d.target === 'contract' || d.target === 'addendum') {
+    if (!d.entityNumber) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Número de contrato requerido', path: ['entityNumber'] });
+    if (!d.vendorId)     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Proveedor requerido', path: ['vendorId'] });
+    if (!d.startDate)    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Fecha de inicio requerida', path: ['startDate'] });
+    if (d.target === 'addendum' && !d.parentContractId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Contrato padre requerido para una adenda', path: ['parentContractId'] });
+  }
+  if (d.target === 'license') {
+    if (!d.entityNumber) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Número de licencia requerido', path: ['entityNumber'] });
+    if (!d.licenseName)  ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Nombre de licencia requerido', path: ['licenseName'] });
+    if (!d.startDate)    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Fecha de inicio requerida', path: ['startDate'] });
+  }
+  for (const f of ['startDate', 'endDate'] as const) {
+    const v = d[f];
+    if (v && !reqDate.test(v)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Formato de fecha inválido en ${f}`, path: [f] });
+  }
+});
+type BulkItemDecision = z.infer<typeof BulkItemDecisionSchema>;
+
+interface BulkItemRow {
+  id: string; batch_id: string; staged_file_name: string;
+  original_name: string; mime_type: string; file_size: number; status: string;
+}
+
+/**
+ * Materializes one staged item into a real Document (+ optional Contract /
+ * Addendum / License) and associations, in a single transaction. The file is
+ * copied to the documents store first and only deleted from staging on success;
+ * on failure the destination copy is removed so nothing is orphaned.
+ */
+async function materializeBulkItem(
+  item: BulkItemRow,
+  decision: BulkItemDecision,
+  userEmail: string,
+): Promise<{ documentId: string; contractId?: string; licenseId?: string }> {
+  if (item.status === 'COMMITTED') throw new BulkValidationError('El elemento ya fue confirmado');
+
+  // ── Existence checks (clean errors instead of raw FK violations) ───────────
+  const dtype = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "document_types" WHERE id=${decision.documentTypeId}::uuid LIMIT 1`;
+  if (!dtype.length) throw new BulkValidationError('Tipo de documento no encontrado');
+
+  if (decision.vendorId) {
+    const v = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "vendors" WHERE id=${decision.vendorId}::uuid LIMIT 1`;
+    if (!v.length) throw new BulkValidationError('Proveedor no encontrado');
+  }
+  if (decision.target === 'addendum' && decision.parentContractId) {
+    const p = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "contracts" WHERE id=${decision.parentContractId}::uuid LIMIT 1`;
+    if (!p.length) throw new BulkValidationError('Contrato padre no encontrado');
+  }
+  if (decision.ciIds && decision.ciIds.length > 0) {
+    const found = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "configuration_items" WHERE id IN (${Prisma.join(decision.ciIds.map((id) => Prisma.sql`${id}::uuid`))})`;
+    if (Number(found[0]?.c ?? 0) !== decision.ciIds.length) throw new BulkValidationError('Uno o más CIs no existen');
+  }
+
+  // ── Copy staged → final store (keep staging copy until DB commit succeeds) ──
+  const ext = (path.extname(item.staged_file_name).replace('.', '') || path.extname(item.original_name).replace('.', '')).toLowerCase();
+  const finalName = `${crypto.randomUUID()}.${ext}`;
+  const stagedPath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
+  const finalPath  = path.join(DOCUMENTS_DIR, finalName);
+  if (!fs.existsSync(stagedPath)) throw new BulkValidationError('El fichero en staging ya no existe');
+  fs.copyFileSync(stagedPath, finalPath);
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const docRows = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "documents"(id,title,description,document_type_id,root_id,version_number,is_latest,file_name,original_name,mime_type,file_size,uploaded_by,created_at,updated_at)
+        VALUES(gen_random_uuid(), ${decision.title.trim()}, ${decision.description?.trim() || null}, ${decision.documentTypeId}::uuid, NULL, 1, true, ${finalName}, ${item.original_name}, ${item.mime_type}, ${item.file_size}, ${userEmail}, now(), now())
+        RETURNING id::text AS id`;
+      const documentId = docRows[0].id;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Document',${documentId},${userEmail},now())`;
+
+      let contractId: string | undefined;
+      let licenseId: string | undefined;
+
+      if (decision.target === 'contract' || decision.target === 'addendum') {
+        const contract = await tx.contract.create({
+          data: {
+            contractNumber:   decision.entityNumber!,
+            startDate:        new Date(decision.startDate!),
+            endDate:          decision.endDate ? new Date(decision.endDate) : null,
+            vendorId:         decision.vendorId!,
+            parentContractId: decision.target === 'addendum' ? decision.parentContractId! : null,
+            ...(decision.ciIds && decision.ciIds.length > 0 && { cis: { connect: decision.ciIds.map((id) => ({ id })) } }),
+          },
+        });
+        contractId = contract.id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Contract',${contractId}::uuid,${userEmail},now())`;
+        await tx.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${documentId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
+      } else if (decision.target === 'license') {
+        const license = await tx.license.create({
+          data: {
+            name:          decision.licenseName!,
+            licenseNumber: decision.entityNumber!,
+            vendorId:      decision.vendorId ?? null,
+            startDate:     new Date(decision.startDate!),
+            endDate:       decision.endDate ? new Date(decision.endDate) : null,
+            ...(decision.ciIds && decision.ciIds.length > 0 && { cis: { connect: decision.ciIds.map((id) => ({ id })) } }),
+          },
+        });
+        licenseId = license.id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','License',${licenseId}::uuid,${userEmail},now())`;
+        await tx.$executeRaw`INSERT INTO "document_licenses"(id,document_id,license_id) VALUES(gen_random_uuid(),${documentId}::uuid,${licenseId}::uuid) ON CONFLICT DO NOTHING`;
+      }
+
+      // Associate selected CIs with the Document itself (independent of entity links)
+      for (const ciId of decision.ciIds ?? []) {
+        await tx.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+      }
+
+      await tx.$executeRaw`UPDATE "bulk_import_item" SET status='COMMITTED', committed_document_id=${documentId}::uuid, error_message=NULL, updated_at=now() WHERE id=${item.id}::uuid`;
+
+      return { documentId, contractId, licenseId };
+    });
+
+    // Success: drop the staging copy and queue async indexing.
+    try { fs.unlinkSync(stagedPath); } catch {}
+    void queueDocumentForIndexing(result.documentId, 1);
+    if (result.contractId) { try { void queueEntityForIndexing('contract', await getContractRoot(result.contractId)); } catch {} }
+    if (result.licenseId)  { try { void queueEntityForIndexing('license',  await getLicenseRoot(result.licenseId));   } catch {} }
+    return result;
+  } catch (e) {
+    try { fs.unlinkSync(finalPath); } catch {}
+    // Surface duplicate contract/license number as a clean message
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002') {
+      throw new BulkValidationError('Ya existe un contrato o licencia con ese número');
+    }
+    throw e;
+  }
+}
+
 /**
  * Retrieves the top-K most similar chunks for a query, filtered by the user's role ACL.
  *
@@ -4351,6 +4503,88 @@ app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, a
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_DISCARD_BATCH','BulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true });
   } catch (e) { console.error('[DELETE /api/documents/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PATCH /api/documents/bulk/items/:id — persist the user's reviewed decision
+app.patch('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const parsed = BulkItemDecisionBase.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; status: string }[]>`
+      SELECT i.id::text AS id, i.status
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "bulk_import_item"
+      SET analysis = jsonb_set(COALESCE(analysis, '{}'::jsonb), '{decision}', ${JSON.stringify(parsed.data)}::jsonb, true),
+          updated_at = now()
+      WHERE id = ${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[PATCH /api/documents/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/bulk/items/:id/commit — materialize one reviewed item
+app.post('/api/documents/bulk/items/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<(BulkItemRow & { analysis: unknown })[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.staged_file_name AS staged_file_name,
+             i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
+             i.status, i.analysis
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const item = rows[0];
+
+    // Prefer the decision in the request body; fall back to the persisted one.
+    const source = req.body && Object.keys(req.body).length > 0
+      ? req.body
+      : (item.analysis as { decision?: unknown } | null)?.decision;
+    const parsed = BulkItemDecisionSchema.safeParse(source);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Decisión inválida' }); return; }
+
+    const result = await materializeBulkItem(item, parsed.data, req.user!.email);
+    await recomputeBatchStatus(item.batch_id);
+    res.status(201).json(result);
+  } catch (e) {
+    if (e instanceof BulkValidationError) { res.status(400).json({ error: e.message }); return; }
+    console.error('[POST /api/documents/bulk/items/:id/commit]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/documents/bulk/batches/:id/commit — commit every reviewed item at once
+app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    const items = await prisma.$queryRaw<(BulkItemRow & { analysis: unknown })[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.staged_file_name AS staged_file_name,
+             i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
+             i.status, i.analysis
+      FROM "bulk_import_item" i
+      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR')
+      ORDER BY i.created_at ASC`;
+
+    const results: { itemId: string; ok: boolean; documentId?: string; error?: string }[] = [];
+    for (const item of items) {
+      const decision = (item.analysis as { decision?: unknown } | null)?.decision;
+      const parsed = BulkItemDecisionSchema.safeParse(decision);
+      if (!parsed.success) { results.push({ itemId: item.id, ok: false, error: parsed.error.issues[0]?.message ?? 'Decisión incompleta' }); continue; }
+      try {
+        const r = await materializeBulkItem(item, parsed.data, req.user!.email);
+        results.push({ itemId: item.id, ok: true, documentId: r.documentId });
+      } catch (e) {
+        results.push({ itemId: item.id, ok: false, error: e instanceof BulkValidationError ? e.message : 'Error interno' });
+      }
+    }
+    await recomputeBatchStatus(req.params.id as string);
+    res.json({ results });
+  } catch (e) { console.error('[POST /api/documents/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id/index-status — return the latest version's RAG indexing status
@@ -5228,6 +5462,31 @@ cron.schedule('0 2 * * *', async () => {
     log.info(`[TrustedDeviceCron] Cleaned up ${Number(result)} expired trusted device(s)`);
   } catch (e) {
     log.error('[TrustedDeviceCron] Cleanup error:', e);
+  }
+}, { timezone: 'Europe/Madrid' });
+
+// ── Bulk import staging cleanup (hourly) ──────────────────────────────────────
+// Discards abandoned batches older than BULK_BATCH_TTL_HOURS and removes their
+// staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).
+cron.schedule('0 * * * *', async () => {
+  try {
+    const stale = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS})`;
+    let cleaned = 0;
+    for (const b of stale) {
+      const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
+        SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
+        WHERE batch_id = ${b.id}::uuid AND status != 'COMMITTED'`;
+      for (const it of items) {
+        try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
+      }
+      await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${b.id}::uuid`;
+      cleaned++;
+    }
+    if (cleaned > 0) log.info(`[BulkCleanupCron] Removed ${cleaned} stale bulk import batch(es)`);
+  } catch (e) {
+    log.error('[BulkCleanupCron] Cleanup error:', e);
   }
 }, { timezone: 'Europe/Madrid' });
 

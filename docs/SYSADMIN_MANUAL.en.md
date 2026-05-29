@@ -275,6 +275,8 @@ Bulk import lets users upload several documents at once; a background worker (on
 > **Automatic cleanup:** an hourly cron discards batches older than `BULK_BATCH_TTL_HOURS` and deletes their staged files, preventing the staging area from growing unbounded (ISO 22301 / NIS2). Already-confirmed (materialized) documents are **not** affected.
 >
 > **Performance:** AI analysis is sequential and CPU-bound. A large batch can take several minutes per document. With a GPU, latency drops dramatically (see §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controls how many documents compete for Ollama each cycle against normal RAG indexing.
+>
+> **OCR for scanned files:** scanned PDFs (no digital text) are recognized automatically via OCR (Tesseract), same as single upload — the worker uses the same `parseDocument`. OCR rasterizes each page (`OCR_DPI`) and runs Tesseract (`OCR_LANGUAGES`), which **adds time** per document on CPU (e.g. ~3-4 min for a 20+ page scanned PDF). Requires `tesseract-ocr` + `poppler-utils` in the backend image (already included). Tune `OCR_ENABLED`/`OCR_DPI`/`OCR_LANGUAGES`/`OCR_TIMEOUT_MS` as needed.
 
 #### Prepare the directory for a new installation
 

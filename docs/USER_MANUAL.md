@@ -507,7 +507,7 @@ Cuando necesites incorporar muchos documentos de golpe (p. ej. un lote de contra
 6. Pulsa **"Crear"** en cada fila para materializarla, o **"Crear todos"** para procesar el lote completo. Cada confirmación crea el documento real y, si procede, el contrato/adenda/licencia con sus asociaciones.
 7. Puedes **descartar** ficheros individuales o el lote entero. Los lotes abandonados se eliminan automáticamente pasado un tiempo (por defecto 24 h).
 
-> El análisis de IA se ejecuta en segundo plano y, sin GPU, puede tardar entre 30 s y varios minutos por documento. La pantalla de revisión se va actualizando sola; puedes cerrarla y volver más tarde. Las sugerencias de la IA son orientativas: revisa siempre los datos antes de crear los registros.
+> El análisis de IA se ejecuta en segundo plano y, sin GPU, puede tardar entre 30 s y varios minutos por documento. Los **documentos escaneados** (sin texto digital) se reconocen automáticamente mediante OCR, lo que añade tiempo de proceso. La pantalla de revisión se va actualizando sola; puedes cerrarla y volver más tarde. Las sugerencias de la IA son orientativas: revisa siempre los datos antes de crear los registros.
 
 ### Editar metadatos de un documento (solo ADMIN)
 

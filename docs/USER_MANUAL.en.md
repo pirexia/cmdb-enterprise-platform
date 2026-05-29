@@ -507,7 +507,7 @@ When you need to ingest many documents at once (e.g. a batch of contracts, adden
 6. Click **"Create"** on each row to materialize it, or **"Create all"** to process the whole batch. Each confirmation creates the real document and, where applicable, the contract/addendum/licence with its associations.
 7. You can **discard** individual files or the entire batch. Abandoned batches are removed automatically after a configurable period (default 24 h).
 
-> AI analysis runs in the background and, without a GPU, can take from 30 s to several minutes per document. The review screen updates on its own; you can close it and come back later. AI suggestions are advisory — always check the data before creating the records.
+> AI analysis runs in the background and, without a GPU, can take from 30 s to several minutes per document. **Scanned documents** (no digital text) are recognized automatically via OCR, which adds processing time. The review screen updates on its own; you can close it and come back later. AI suggestions are advisory — always check the data before creating the records.
 
 ### Editing document metadata (ADMIN only)
 

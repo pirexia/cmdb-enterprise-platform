@@ -269,6 +269,8 @@ La carga masiva permite subir varios documentos a la vez; un *worker* en segundo
 > **Limpieza automática:** un cron horario descarta los lotes con antigüedad superior a `BULK_BATCH_TTL_HOURS` y borra sus ficheros de staging, evitando que el área temporal crezca sin control (ISO 22301 / NIS2). Los documentos ya confirmados (materializados) **no** se ven afectados.
 >
 > **Rendimiento:** el análisis IA es secuencial y limitado por CPU. Un lote grande puede tardar varios minutos por documento. Con GPU la latencia baja drásticamente (ver §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controla cuántos documentos compiten por Ollama en cada ciclo frente a la indexación RAG normal.
+>
+> **OCR para escaneados:** los PDFs escaneados (sin texto digital) se reconocen automáticamente por OCR (Tesseract), igual que en la subida individual — el worker usa el mismo `parseDocument`. El OCR rasteriza cada página (`OCR_DPI`) y la pasa por Tesseract (`OCR_LANGUAGES`), lo que **suma tiempo** por documento en CPU (p. ej. ~3-4 min para un PDF escaneado de 20+ páginas). Requiere `tesseract-ocr` + `poppler-utils` en la imagen del backend (ya incluidos). Ajusta `OCR_ENABLED`/`OCR_DPI`/`OCR_LANGUAGES`/`OCR_TIMEOUT_MS` según necesidad.
 
 #### Preparar el directorio en instalación nueva
 

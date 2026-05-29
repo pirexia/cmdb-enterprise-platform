@@ -3112,7 +3112,16 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
 // ─── Document Repository ──────────────────────────────────────────────────────
 
 const DOCUMENTS_DIR = process.env.DOCUMENTS_DIR ?? '/app/documents';
-const MAX_FILE_SIZE = parseInt(process.env.MAX_DOCUMENT_SIZE_MB ?? '50', 10) * 1024 * 1024;
+const MAX_DOCUMENT_SIZE_MB = parseInt(process.env.MAX_DOCUMENT_SIZE_MB ?? '50', 10);
+const MAX_FILE_SIZE = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
+
+// ── Bulk document import (staging) ────────────────────────────────────────────
+// Files land in STAGING_DIR (UUID names) until the user confirms each line, at
+// which point they are moved into DOCUMENTS_DIR as real Document records.
+const STAGING_DIR          = process.env.BULK_STAGING_DIR ?? path.join(DOCUMENTS_DIR, '_staging');
+const BULK_MAX_FILES       = parseInt(process.env.BULK_MAX_FILES ?? '20', 10);
+const BULK_MAX_TOTAL_BYTES = parseInt(process.env.BULK_MAX_TOTAL_MB ?? '200', 10) * 1024 * 1024;
+const BULK_BATCH_TTL_HOURS = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24', 10);
 
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
@@ -3700,6 +3709,39 @@ const upload = multer({
   },
 });
 
+// Multer for bulk upload: same per-file guards, plus a per-batch file-count cap.
+const bulkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE, files: BULK_MAX_FILES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    if (ALLOWED_EXTENSIONS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de archivo no permitido: .${ext}`));
+    }
+  },
+});
+
+/** Runs the bulk multer middleware and converts its errors into clean 400s. */
+function bulkUploadMiddleware(req: Request, res: Response, next: NextFunction): void {
+  bulkUpload.array('files', BULK_MAX_FILES)(req, res, (err: unknown) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `Cada fichero debe ser ≤ ${MAX_DOCUMENT_SIZE_MB} MB` }); return;
+        }
+        if (err.code === 'LIMIT_FILE_COUNT') {
+          res.status(400).json({ error: `Máximo ${BULK_MAX_FILES} ficheros por lote` }); return;
+        }
+        res.status(400).json({ error: 'Error al procesar la subida' }); return;
+      }
+      res.status(400).json({ error: (err as Error).message || 'Tipo de archivo no permitido' }); return;
+    }
+    next();
+  });
+}
+
 // ── Document Types master ─────────────────────────────────────────────────────
 
 app.get('/api/masters/document-types', authenticateToken, async (_req, res) => {
@@ -3998,6 +4040,148 @@ app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, async (r
       VALUES(gen_random_uuid(),'REINDEX_DOC','Document',${req.params.id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true, queued: rows[0].id });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Bulk Document Import (staging) ───────────────────────────────────────────
+// ADMIN-only multi-file upload → staging area. The AI worker (processBulkImport-
+// Queue) analyzes each file; the user then reviews/corrects and materializes
+// real Document/Contract/License records line by line via the commit endpoints.
+
+// POST /api/documents/bulk/batches — upload N files into a new staging batch
+app.post('/api/documents/bulk/batches', authenticateToken, requireAdmin, bulkUploadMiddleware, async (req: Request, res: Response) => {
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (files.length === 0) { res.status(400).json({ error: 'Se requiere al menos un fichero' }); return; }
+
+  // Per-batch total-size guard (per-file size + count already enforced by multer)
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalBytes > BULK_MAX_TOTAL_BYTES) {
+    res.status(400).json({ error: `El lote supera el máximo de ${Math.floor(BULK_MAX_TOTAL_BYTES / (1024 * 1024))} MB` });
+    return;
+  }
+
+  // Validate magic bytes for EVERY file before writing anything to disk
+  for (const f of files) {
+    const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
+    if (!validateMagicBytes(f.buffer, ext)) {
+      res.status(400).json({ error: `El contenido de "${f.originalname}" no coincide con su extensión declarada` });
+      return;
+    }
+  }
+
+  try { fs.mkdirSync(STAGING_DIR, { recursive: true }); }
+  catch { res.status(500).json({ error: 'Error preparando el almacenamiento' }); return; }
+
+  const written: string[] = [];
+  let batchId: string | null = null;
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "bulk_import_batch"(id, created_by, status, file_count, total_bytes, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${files.length}, ${totalBytes}, now(), now())
+      RETURNING id::text AS id`;
+    batchId = batchRows[0].id;
+
+    for (const f of files) {
+      const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
+      const stagedName = `${crypto.randomUUID()}.${ext}`;
+      fs.writeFileSync(path.join(STAGING_DIR, stagedName), f.buffer);
+      written.push(stagedName);
+      await prisma.$executeRaw`
+        INSERT INTO "bulk_import_item"(id, batch_id, staged_file_name, original_name, mime_type, file_size, status, analysis, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${batchId}::uuid, ${stagedName}, ${f.originalname}, ${f.mimetype}, ${f.size}, 'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'BULK_UPLOAD', 'BulkImportBatch', ${batchId}::uuid, ${req.user!.email},
+             ${JSON.stringify({ fileCount: files.length, totalBytes })}::jsonb, now())`;
+
+    res.status(201).json({ batchId, fileCount: files.length });
+  } catch (e) {
+    for (const name of written) { try { fs.unlinkSync(path.join(STAGING_DIR, name)); } catch {} }
+    if (batchId) { try { await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id=${batchId}::uuid`; } catch {} }
+    console.error('[POST /api/documents/bulk/batches]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/documents/bulk/batches — list the caller's batches (most recent first)
+app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; createdAt: Date; committed: bigint; pending: bigint }[]>`
+      SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.created_at AS "createdAt",
+             COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
+             COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending
+      FROM "bulk_import_batch" b
+      LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
+      WHERE b.created_by = ${req.user!.email}
+      GROUP BY b.id
+      ORDER BY b.created_at DESC
+      LIMIT 50`;
+    res.json(rows.map((r) => ({ ...r, committed: Number(r.committed), pending: Number(r.pending) })));
+  } catch (e) { console.error('[GET /api/documents/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/documents/bulk/batches/:id — batch detail + items (polling target)
+app.get('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdBy: string; createdAt: Date }[]>`
+      SELECT id::text AS id, status, file_count AS "fileCount", total_bytes::text AS "totalBytes",
+             created_by AS "createdBy", created_at AS "createdAt"
+      FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!batchRows.length) { res.status(404).json({ error: 'Batch not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ id: string; originalName: string; mimeType: string; fileSize: number; status: string; analysis: unknown; errorMessage: string | null; committedDocumentId: string | null; createdAt: Date }[]>`
+      SELECT id::text AS id, original_name AS "originalName", mime_type AS "mimeType",
+             file_size AS "fileSize", status, analysis, error_message AS "errorMessage",
+             committed_document_id::text AS "committedDocumentId", created_at AS "createdAt"
+      FROM "bulk_import_item"
+      WHERE batch_id = ${req.params.id}::uuid
+      ORDER BY created_at ASC`;
+
+    res.json({ ...batchRows[0], totalBytes: Number(batchRows[0].totalBytes), items });
+  } catch (e) { console.error('[GET /api/documents/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/documents/bulk/items/:id — discard a single staged item
+app.delete('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ stagedFileName: string; status: string }[]>`
+      SELECT i.staged_file_name AS "stagedFileName", i.status
+      FROM "bulk_import_item" i
+      JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status !== 'COMMITTED') {
+      try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(rows[0].stagedFileName))); } catch {}
+    }
+    await prisma.$executeRaw`DELETE FROM "bulk_import_item" WHERE id = ${req.params.id}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_DISCARD_ITEM','BulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/documents/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/documents/bulk/batches/:id — discard a whole batch (+ staged files)
+app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
+      SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
+      WHERE batch_id = ${req.params.id}::uuid AND status != 'COMMITTED'`;
+    for (const it of items) {
+      try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
+    }
+
+    await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_DISCARD_BATCH','BulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/documents/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id/index-status — return the latest version's RAG indexing status

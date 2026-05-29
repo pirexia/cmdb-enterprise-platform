@@ -796,6 +796,7 @@ El asistente inteligente de CMDB utiliza RAG (Retrieval-Augmented Generation) pa
 | LLM local | Ollama | latest | Embeddings (bge-m3) y chat (qwen2.5:7b-instruct) |
 | BD vectorial | pgvector | 0.7+ | Vector store dentro del PostgreSQL existente |
 | Parsing docs | pdf-parse, mammoth, exceljs, officeparser | varias | Extracción de texto de PDF/DOCX/XLSX/PPTX/ODT |
+| OCR (fallback) | tesseract-ocr, poppler-utils, node-tesseract-ocr | 5.5.1 / 2.2.1 | OCR de PDFs escaneados sin texto embebido (fallback automático de docParser) |
 | Chat API | Express SSE | — | Streaming de respuestas via text/event-stream |
 
 ### 12.3 Flujo de datos (Ingesta)
@@ -818,7 +819,7 @@ sequenceDiagram
     BE->>IDX: INSERT estado=PENDING
     CRON->>IDX: Consulta documentos PENDING
     IDX-->>CRON: Documento pendiente
-    CRON->>P: extrae texto (por tipo MIME)
+    CRON->>P: extrae texto (por tipo MIME; OCR si PDF escaneado)
     P->>C: texto plano
     C->>RS: chunks semánticos 800 tok
     RS->>OL: texto del chunk
@@ -826,6 +827,8 @@ sequenceDiagram
     RS->>DB: INSERT rag_chunks (embedding + metadata)
     DB-->>IDX: estado=READY
 ```
+
+> **Fallback OCR para PDFs escaneados:** si `pdf-parse` extrae cero caracteres, `docParser` activa automáticamente el fallback OCR: rasteriza cada página con `pdftoppm` (300 DPI por defecto, configurable con `OCR_DPI`) y ejecuta Tesseract 5 con los idiomas configurados en `OCR_LANGUAGES` (defecto `spa+eng`). Los ficheros PNG temporales se eliminan en el bloque `finally`. El texto OCR resultante sigue el mismo flujo de chunking y embedding que el texto nativo.
 
 ### 12.4 Flujo de datos (Query)
 

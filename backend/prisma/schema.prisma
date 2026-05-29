@@ -775,3 +775,43 @@ model RagChatMessage {
   @@index([createdAt])
   @@map("rag_chat_messages")
 }
+
+// ─── Bulk Document Import (staging) ───────────────────────────────────────────
+
+model BulkImportBatch {
+  id         String            @id @default(uuid()) @db.Uuid
+  createdBy  String            @map("created_by") @db.VarChar(255)
+  status     String            @default("UPLOADED") @db.VarChar(30)
+  fileCount  Int               @default(0) @map("file_count")
+  totalBytes BigInt            @default(0) @map("total_bytes")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  items      BulkImportItem[]
+
+  @@index([status])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@map("bulk_import_batch")
+}
+
+model BulkImportItem {
+  id                  String          @id @default(uuid()) @db.Uuid
+  batchId             String          @db.Uuid @map("batch_id")
+  stagedFileName      String          @map("staged_file_name") @db.VarChar(255)
+  originalName        String          @map("original_name") @db.VarChar(500)
+  mimeType            String          @map("mime_type") @db.VarChar(255)
+  fileSize            Int             @default(0) @map("file_size")
+  status              String          @default("PENDING_ANALYSIS") @db.VarChar(30)
+  analysis            Json            @default("{}")
+  errorMessage        String?         @map("error_message")
+  committedDocumentId String?         @db.Uuid @map("committed_document_id")
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+
+  batch               BulkImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([batchId])
+  @@index([status])
+  @@map("bulk_import_item")
+}

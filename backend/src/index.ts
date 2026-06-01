@@ -4169,6 +4169,7 @@ async function processBulkImportQueue(): Promise<void> {
  * and stores the combined analysis JSON on each item.
  */
 async function processCIBulkImportQueue(): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
   if (!(await isOllamaHealthy())) return;
 
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`

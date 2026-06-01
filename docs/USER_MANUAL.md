@@ -486,6 +486,29 @@ El tamaño máximo por fichero es de **50 MB**.
 4. Si lo deseas, asocia el documento a uno o varios activos y/o contratos.
 5. Haz clic en **"Subir"**.
 
+### Carga masiva de documentos con análisis IA (solo ADMIN)
+
+Cuando necesites incorporar muchos documentos de golpe (p. ej. un lote de contratos, adendas y ofertas), usa la **carga masiva**. El asistente de IA analiza cada fichero y propone su clasificación para que la revises antes de crear nada.
+
+1. En el Repositorio Documental, haz clic en **"Carga masiva"**.
+2. **Arrastra los ficheros** al área de soltado (o haz clic para seleccionarlos). Puedes subir hasta el número de ficheros y tamaño total que defina tu administrador (por defecto **20 ficheros / 200 MB**; cada fichero mantiene su límite individual).
+3. Haz clic en **"Subir y analizar"**. Los ficheros quedan en un área temporal y se abre la **pantalla de revisión**.
+4. La pantalla muestra una fila por documento e indica el progreso del análisis. A medida que la IA termina cada fichero, rellena de forma automática:
+   - **Tipo de documento** detectado (contrato, adenda, oferta, técnico…).
+   - **Fechas de vigencia** (inicio y fin) si aparecen en el documento.
+   - **Proveedor** sugerido.
+   - **Número** de contrato/licencia.
+   - **CIs asociados**: equipos detectados por número de serie o nombre.
+5. **Revisa y corrige** cada fila:
+   - Elige qué crear en **"Crear como"**: Contrato, Adenda, Licencia o solo Documento.
+   - Ajusta tipo, fechas, número y proveedor. Si el proveedor no existe, pulsa **"+"** para crearlo en el momento.
+   - Añade o quita CIs asociados (las sugerencias de la IA aparecen resaltadas).
+   - Para una **adenda**, selecciona el contrato padre.
+6. Pulsa **"Crear"** en cada fila para materializarla, o **"Crear todos"** para procesar el lote completo. Cada confirmación crea el documento real y, si procede, el contrato/adenda/licencia con sus asociaciones.
+7. Puedes **descartar** ficheros individuales o el lote entero. Los lotes abandonados se eliminan automáticamente pasado un tiempo (por defecto 24 h).
+
+> El análisis de IA se ejecuta en segundo plano y, sin GPU, puede tardar entre 30 s y varios minutos por documento. Los **documentos escaneados** (sin texto digital) se reconocen automáticamente mediante OCR, lo que añade tiempo de proceso. La pantalla de revisión se va actualizando sola; puedes cerrarla y volver más tarde. Las sugerencias de la IA son orientativas: revisa siempre los datos antes de crear los registros.
+
 ### Editar metadatos de un documento (solo ADMIN)
 
 1. Abre la vista de detalle del documento.
@@ -1125,7 +1148,7 @@ Para volver a poner en cola todos los documentos en bloque (por ejemplo, tras un
 
 ### Limitaciones
 
-- **Sin OCR:** los archivos PDF escaneados que no contengan una capa de texto extraíble no se indexan. Solo se procesan los documentos con texto digital incorporado.
+- **OCR automático:** los PDFs escaneados (sin capa de texto) se indexan automáticamente mediante Tesseract OCR. El proceso es transparente — el documento aparecerá como **Indexado** una vez completado (puede tardar varios minutos según el número de páginas).
 - **Tiempo de primera respuesta (TTFT):** aproximadamente 1–2 segundos desde que se envía la pregunta hasta que aparece el primer token.
 - **Duración de la respuesta completa:** entre 10 y 18 segundos para una respuesta de unos 250 tokens, dependiendo de la carga del servidor.
 - **Modelo local:** el sistema utiliza un modelo de lenguaje local (Ollama). No se realiza ninguna transferencia de datos a Internet ni a servicios de terceros.

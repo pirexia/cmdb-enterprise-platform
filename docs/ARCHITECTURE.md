@@ -796,6 +796,7 @@ El asistente inteligente de CMDB utiliza RAG (Retrieval-Augmented Generation) pa
 | LLM local | Ollama | latest | Embeddings (bge-m3) y chat (qwen2.5:7b-instruct) |
 | BD vectorial | pgvector | 0.7+ | Vector store dentro del PostgreSQL existente |
 | Parsing docs | pdf-parse, mammoth, exceljs, officeparser | varias | Extracción de texto de PDF/DOCX/XLSX/PPTX/ODT |
+| OCR (fallback) | tesseract-ocr, poppler-utils, node-tesseract-ocr | 5.5.1 / 2.2.1 | OCR de PDFs escaneados sin texto embebido (fallback automático de docParser) |
 | Chat API | Express SSE | — | Streaming de respuestas via text/event-stream |
 
 ### 12.3 Flujo de datos (Ingesta)
@@ -818,7 +819,7 @@ sequenceDiagram
     BE->>IDX: INSERT estado=PENDING
     CRON->>IDX: Consulta documentos PENDING
     IDX-->>CRON: Documento pendiente
-    CRON->>P: extrae texto (por tipo MIME)
+    CRON->>P: extrae texto (por tipo MIME; OCR si PDF escaneado)
     P->>C: texto plano
     C->>RS: chunks semánticos 800 tok
     RS->>OL: texto del chunk
@@ -826,6 +827,8 @@ sequenceDiagram
     RS->>DB: INSERT rag_chunks (embedding + metadata)
     DB-->>IDX: estado=READY
 ```
+
+> **Fallback OCR para PDFs escaneados:** si `pdf-parse` extrae cero caracteres, `docParser` activa automáticamente el fallback OCR: rasteriza cada página con `pdftoppm` (300 DPI por defecto, configurable con `OCR_DPI`) y ejecuta Tesseract 5 con los idiomas configurados en `OCR_LANGUAGES` (defecto `spa+eng`). Los ficheros PNG temporales se eliminan en el bloque `finally`. El texto OCR resultante sigue el mismo flujo de chunking y embedding que el texto nativo.
 
 ### 12.4 Flujo de datos (Query)
 
@@ -898,6 +901,24 @@ Para las vulnerabilidades, que no son una tabla sino entradas JSON dentro de `co
 
 Los campos `read_admin`, `read_auditor` y `read_viewer` (Boolean, por defecto `true`) en la tabla `documents` determinan si un fragmento procedente de ese documento es recuperable para cada rol. El filtro se aplica **antes** del kNN mediante una subconsulta SQL que restringe los `document_id` elegibles, garantizando que ningún chunk de un documento restringido se incluya jamás en el contexto del modelo. El filtrado post-recuperación no se utiliza para evitar fugas de información.
 
+### 12.8 Importación masiva de documentos (staging + análisis IA)
+
+La carga masiva (solo ADMIN) reutiliza el modelo Ollama para clasificar documentos antes de crearlos. Su ciclo de vida está respaldado por dos tablas de staging, separadas del repositorio documental real:
+
+| Tabla | Descripción |
+|-------|-------------|
+| `bulk_import_batch` | Un lote por subida: `created_by`, `status` (`UPLOADED` → `ANALYZING` → `READY` → `PARTIALLY_COMMITTED`/`COMMITTED`/`DISCARDED`), `file_count`, `total_bytes`. |
+| `bulk_import_item` | Un fichero por fila: `staged_file_name` (UUID en el área de staging), metadatos del fichero, `status` (`PENDING_ANALYSIS` → `ANALYZING` → `ANALYZED`/`ERROR` → `COMMITTED`/`DISCARDED`), `analysis` (jsonb con la sugerencia de la IA + la decisión del usuario), `committed_document_id`. FK a `bulk_import_batch` con `ON DELETE CASCADE`. |
+
+**Flujo:**
+
+1. **Subida** (`POST /api/documents/bulk/batches`): validación magic-bytes por fichero + límites de lote (`BULK_MAX_FILES`, `BULK_MAX_TOTAL_MB`); los ficheros se escriben en `BULK_STAGING_DIR` con nombre UUID; se crean el batch y los items (`PENDING_ANALYSIS`).
+2. **Análisis** (`processBulkImportQueue`, sobre el cron RAG cada 30 s, presupuesto `BULK_ANALYZE_BUDGET`/ciclo): `parseDocument` extrae el texto — **con fallback OCR (Tesseract vía `parsePdfWithOcr`) para PDFs escaneados sin texto digital**, igual que la indexación RAG normal —, `analyzeDocumentForImport` pide a Ollama (`format: json`, marco anti-inyección) `{tipo, fechas, proveedor, número, target, ciHints}`; la salida se valida con Zod y se sanea; `matchCIsForImport` busca CIs por serie/nombre (LIKE escapado). Resultado en `analysis`, estado `ANALYZED`.
+3. **Materialización** (`POST .../items/:id/commit` o `.../batches/:id/commit`): en una transacción se crea el `Document` real (el fichero se copia de staging al store y solo se borra de staging si la transacción tiene éxito), y opcionalmente un `Contract`/adenda o `License` con sus asociaciones documento↔entidad y documento↔CI. Cada entidad creada genera `AuditLog` y se encola para indexación RAG.
+4. **Limpieza:** un cron horario descarta lotes con antigüedad > `BULK_BATCH_TTL_HOURS` y borra sus ficheros de staging (recurso acotado — ISO 22301 / NIS2).
+
+El worker comparte el único Ollama CPU-bound con la indexación RAG; por eso se ejecuta **después** de `processRagQueue` en cada tick y con un presupuesto reducido por ciclo, para no inanizar la indexación normal.
+
 ```sql
 -- Subconsulta de visibilidad aplicada ANTES del kNN
 SELECT id FROM documents
@@ -907,7 +928,7 @@ WHERE
   (role = 'VIEWER'  AND read_viewer  = true)
 ```
 
-### 12.8 Seguridad y cumplimiento
+### 12.9 Seguridad y cumplimiento
 
 | Área | Medida |
 |------|--------|
@@ -917,7 +938,7 @@ WHERE
 | ISO 27001 A.8.15 | Se inserta un registro en `AuditLog` por cada operación `ASK_RAG` e `INDEX_DOC`. |
 | ISO 22301 | Ollama es stateless entre llamadas. Un fallo del servicio Ollama degrada el asistente a "IA no disponible" sin afectar al resto de la aplicación (degradación controlada). |
 
-### 12.9 Capacity planning (host CPU-only con AMX)
+### 12.10 Capacity planning (host CPU-only con AMX)
 
 El modelo `qwen2.5:7b-instruct` ejecutado en CPU con extensiones Intel AMX (Sapphire Rapids o posterior) ofrece el siguiente perfil de rendimiento aproximado:
 

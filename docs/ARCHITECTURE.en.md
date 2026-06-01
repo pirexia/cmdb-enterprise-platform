@@ -795,6 +795,7 @@ The CMDB intelligent assistant uses RAG (Retrieval-Augmented Generation) to answ
 | Local LLM | Ollama | latest | Embeddings (bge-m3) and chat (qwen2.5:7b-instruct) |
 | Vector DB | pgvector | 0.7+ | Vector store within the existing PostgreSQL instance |
 | Doc parsing | pdf-parse, mammoth, exceljs, officeparser | various | Text extraction from PDF/DOCX/XLSX/PPTX/ODT |
+| OCR (fallback) | tesseract-ocr, poppler-utils, node-tesseract-ocr | 5.5.1 / 2.2.1 | OCR for scanned PDFs with no embedded text (automatic docParser fallback) |
 | Chat API | Express SSE | — | Streaming responses via text/event-stream |
 
 ### 12.3 Data Flow (Ingestion)
@@ -817,7 +818,7 @@ sequenceDiagram
     BE->>IDX: INSERT status=PENDING
     CRON->>IDX: Query PENDING documents
     IDX-->>CRON: Pending document
-    CRON->>P: extract text (by MIME type)
+    CRON->>P: extract text (by MIME type; OCR if scanned PDF)
     P->>C: plain text
     C->>RS: semantic chunks 800 tok
     RS->>OL: chunk text
@@ -825,6 +826,8 @@ sequenceDiagram
     RS->>DB: INSERT rag_chunks (embedding + metadata)
     DB-->>IDX: status=READY
 ```
+
+> **OCR fallback for scanned PDFs:** if `pdf-parse` extracts zero characters, `docParser` automatically activates the OCR fallback: each page is rasterised with `pdftoppm` (300 DPI by default, configurable with `OCR_DPI`) and Tesseract 5 is run with the languages set in `OCR_LANGUAGES` (default `spa+eng`). Temporary PNG files are deleted in the `finally` block. The resulting OCR text follows the same chunking and embedding pipeline as native text.
 
 ### 12.4 Data Flow (Query)
 
@@ -906,7 +909,25 @@ WHERE
   (role = 'VIEWER'  AND read_viewer  = true)
 ```
 
-### 12.8 Security and Compliance
+### 12.8 Bulk Document Import (staging + AI analysis)
+
+Bulk import (ADMIN only) reuses the Ollama model to classify documents before they are created. Its lifecycle is backed by two staging tables, kept separate from the real document repository:
+
+| Table | Description |
+|-------|-------------|
+| `bulk_import_batch` | One row per upload: `created_by`, `status` (`UPLOADED` → `ANALYZING` → `READY` → `PARTIALLY_COMMITTED`/`COMMITTED`/`DISCARDED`), `file_count`, `total_bytes`. |
+| `bulk_import_item` | One row per file: `staged_file_name` (UUID in the staging area), file metadata, `status` (`PENDING_ANALYSIS` → `ANALYZING` → `ANALYZED`/`ERROR` → `COMMITTED`/`DISCARDED`), `analysis` (jsonb with the AI suggestion + the user's decision), `committed_document_id`. FK to `bulk_import_batch` with `ON DELETE CASCADE`. |
+
+**Flow:**
+
+1. **Upload** (`POST /api/documents/bulk/batches`): per-file magic-byte validation + batch limits (`BULK_MAX_FILES`, `BULK_MAX_TOTAL_MB`); files are written to `BULK_STAGING_DIR` with UUID names; the batch and items are created (`PENDING_ANALYSIS`).
+2. **Analysis** (`processBulkImportQueue`, on the RAG cron every 30 s, budget `BULK_ANALYZE_BUDGET`/cycle): `parseDocument` extracts text — **with an OCR fallback (Tesseract via `parsePdfWithOcr`) for scanned PDFs with no digital text**, same as normal RAG indexing —, `analyzeDocumentForImport` asks Ollama (`format: json`, anti-injection framing) for `{type, dates, vendor, number, target, ciHints}`; the output is Zod-validated and sanitized; `matchCIsForImport` finds CIs by serial/name (escaped LIKE). Result stored in `analysis`, status `ANALYZED`.
+3. **Materialization** (`POST .../items/:id/commit` or `.../batches/:id/commit`): in a transaction the real `Document` is created (the file is copied from staging to the store and only removed from staging if the transaction succeeds), plus optionally a `Contract`/addendum or `License` with its document↔entity and document↔CI associations. Each created entity is audited and queued for RAG indexing.
+4. **Cleanup:** an hourly cron discards batches older than `BULK_BATCH_TTL_HOURS` and deletes their staged files (bounded resource — ISO 22301 / NIS2).
+
+The worker shares the single CPU-bound Ollama with RAG indexing, so it runs **after** `processRagQueue` on each tick and with a small per-cycle budget, to avoid starving normal indexing.
+
+### 12.9 Security and Compliance
 
 | Area | Measure |
 |------|---------|
@@ -916,7 +937,7 @@ WHERE
 | ISO 27001 A.8.15 | An `AuditLog` record is inserted for every `ASK_RAG` and `INDEX_DOC` operation. |
 | ISO 22301 | Ollama is stateless between calls. An Ollama service failure degrades the assistant to "AI unavailable" without affecting the rest of the application (controlled degradation). |
 
-### 12.9 Capacity Planning (CPU-only host with AMX)
+### 12.10 Capacity Planning (CPU-only host with AMX)
 
 The `qwen2.5:7b-instruct` model running on CPU with Intel AMX extensions (Sapphire Rapids or later) delivers the following approximate performance profile:
 

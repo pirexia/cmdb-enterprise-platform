@@ -1060,7 +1060,25 @@ RAG_CHAT_MODEL=${RAG_CHAT_MODEL}
 RAG_CHAT_TEMPERATURE=0.1
 RAG_TOP_K=6
 RAG_RATE_LIMIT_PER_MIN=10
+# Performance tuning (optional — defaults are safe for CPU-only)
+# RAG_NUM_PREDICT=768
+# RAG_CHAT_TIMEOUT_MS=180000
+# OLLAMA_KEEP_ALIVE=-1
 OLLAMA_MODELS_PATH=${DATA_PATH}/ollama-models
+
+# ── OCR — Tesseract fallback for scanned PDFs ─────────────────────────────────
+OCR_ENABLED=true
+OCR_LANGUAGES=spa+eng
+OCR_DPI=150
+OCR_TIMEOUT_MS=180000
+OCR_DOC_TIMEOUT_MS=600000
+OCR_MAX_PAGES=50
+
+# ── Bulk document import (staging + AI analysis) ──────────────────────────────
+BULK_MAX_FILES=20
+BULK_MAX_TOTAL_MB=200
+BULK_BATCH_TTL_HOURS=24
+BULK_ANALYZE_BUDGET=2
 ENVEOF
 )
 

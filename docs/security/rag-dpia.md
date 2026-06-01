@@ -393,3 +393,61 @@ Antes de fusionar PR-3 (UX + activacion) a `develop`, el DPO y el CISO deben val
 La proxima revision obligatoria de esta DPIA sigue siendo 2027-05-20 (heredada de v1.0). Esta enmienda queda integrada en el documento sin modificar el calendario.
 
 *Esta enmienda contiene hallazgos legalmente sensibles. Su distribucion debe seguir las mismas restricciones que la DPIA v1.0.*
+
+---
+
+# AMENDMENT v1.2 — Procesamiento OCR de PDFs escaneados
+
+**Fecha:** 2026-05-28  
+**Estado:** Pendiente firma DPO + CISO  
+**Aplica a:** DPIA v1.0 + Amendment v1.1 (ISMS-DPIA-002)  
+**Disparador:** Incorporación de Tesseract 5 como motor OCR de respaldo para PDFs escaneados en el pipeline de ingesta RAG
+
+## A2.1 Resumen del cambio
+
+Cuando el extractor de texto principal (pdf-parse / docParser) no obtiene texto de un PDF (PDF escaneado sin capa de texto), el pipeline activa un proceso OCR secundario:
+
+1. El PDF se rasteriza página a página con `pdftoppm` a 300 DPI, generando un PNG temporal por página en `/tmp`.
+2. Cada PNG es procesado por Tesseract 5 dentro del contenedor Docker.
+3. El texto resultante se fragmenta y vectoriza con el mismo flujo que el resto de documentos.
+4. Los ficheros PNG temporales se eliminan en el bloque `finally`, sin persistencia a disco.
+
+El procesamiento es íntegramente local — no se produce ninguna transferencia a proveedores externos.
+
+## A2.2 Categorías adicionales de datos personales tratados
+
+| Dato | Origen | Riesgo | Mitigación actual |
+|---|---|---|---|
+| Nombres, firmas, direcciones en documentos escaneados | OCR de contratos, facturas, albaranes | PII residual en `rag_chunks` en texto claro | ACL del documento padre; cascade delete; procesamiento local |
+| Números de referencia personal en documentos físicos | OCR de documentos con datos de personas físicas | PII potencialmente sensible si se indexan documentos de RRHH | Limitar categorías indexables (decisión organizativa pendiente) |
+
+A diferencia del texto libre de entidades estructuradas (Amendment v1.1), el texto OCR **no pasa por `scrubPII()`** en la implementación actual.
+
+## A2.3 Base jurídica
+
+La base jurídica no varía respecto a la v1.0: **Art. 6.1.b GDPR** (ejecución del contrato / acceso a documentos corporativos). El OCR es un mecanismo técnico de extracción de texto, no un tratamiento nuevo independiente.
+
+## A2.4 Riesgos y mitigaciones
+
+| Riesgo | Nivel bruto | Mitigación | Nivel residual |
+|---|---|---|---|
+| PII de documentos escaneados almacenada sin scrubbing en `rag_chunks` | MEDIO | ACL heredada; cascade delete; confinamiento local | MEDIO — pendiente extensión de `scrubPII()` |
+| Ficheros PNG temporales accesibles durante el procesamiento | BAJO | Eliminación en bloque `finally`; permisos de contenedor | BAJO |
+| LLM expone PII extraída por OCR en respuestas RAG | MEDIO | Filtro ACL pre-kNN; rate-limit; temperatura 0.1 | BAJO |
+
+## A2.5 Acciones requeridas (DPO)
+
+- [ ] **A2.5.1** — Decisión sobre extensión de `scrubPII()` al texto OCR antes de indexar
+- [ ] **A2.5.2** — Definir categorías de documentos escaneados permitidas para indexación OCR
+- [ ] **A2.5.3** — Actualizar el aviso de privacidad si se procesan documentos escaneados con PII de terceros
+
+| Firma | Nombre | Fecha | Resultado |
+|---|---|---|---|
+| DPO | [SUSTITUIR] | YYYY-MM-DD | [ ] Aprueba  [ ] Aprueba condicionado  [ ] Rechaza |
+| CISO | [SUSTITUIR] | YYYY-MM-DD | [ ] Aprueba  [ ] Aprueba condicionado  [ ] Rechaza |
+
+## A2.6 Próxima revisión
+
+La próxima revisión obligatoria sigue siendo 2027-05-20. Esta enmienda queda integrada sin modificar el calendario.
+
+*Esta enmienda contiene hallazgos legalmente sensibles. Su distribución debe seguir las mismas restricciones que la DPIA v1.0.*

@@ -57,6 +57,8 @@ La tabla siguiente refleja tres perfiles de despliegue. El perfil "Recomendado" 
 
 > **Nota sobre rendimiento:** Con AMX activo (perfil recomendado), se obtienen ~12–18 tok/s y un tiempo hasta el primer token (TTFT) de 1–2 segundos, con respuesta completa en ~10–18 segundos. Sin AMX (solo AVX-512), la velocidad cae a ~6–9 tok/s y la respuesta completa tarda ~18–35 segundos.
 
+> **OCR de documentos escaneados (v2.3.2+):** Tesseract 5 y poppler-utils están incluidos en la imagen Docker del backend — **no se requiere instalación adicional en el host**. El OCR es puramente CPU (no necesita GPU ni AMX). Rendimiento orientativo con el perfil recomendado: ~8 s/página a 300 DPI. Sin impacto en el dimensionamiento de hardware.
+
 ---
 
 ## 3. Ajustes en vCenter / vSphere

@@ -84,7 +84,26 @@ A DPIA is required when processing is "likely to result in a high risk" (Art. 35
 
 **Residual risk:** Low — transfer mechanism documented and covered by Art. 46 SCCs.
 
-### 3.4 LDAP Auto-Provisioning — Art. 14 Obligation (MEDIUM RISK)
+### 3.4 OCR Processing of Scanned Documents (MEDIUM RISK)
+
+**Description:** Scanned PDFs are now processed via OCR (Tesseract 5). The extracted text may contain personal data present in digitised physical documents (contracts, invoices, signed agreements).
+
+**Risk:** OCR-extracted text from scanned documents may include names, signatures, addresses, or personal reference numbers. Unlike structured entity fields, OCR output is not passed through `scrubPII()` in the current implementation, so personal data may remain stored as plaintext in `rag_chunks`.
+
+**Mitigations:**
+- Processing is entirely local (Docker container) — no data leaves the system
+- Temporary PNG files are deleted in the `finally` block of the processor, never persisted
+- OCR chunks inherit the source document's ACL (`read_admin`, `read_auditor`, `read_viewer`)
+- Retention follows the existing `rag_chunks` policy (cascade delete when the document is deleted)
+- No transfer to external AI or OCR providers
+
+**Action required:** Evaluate extending `scrubPII()` to cover OCR-extracted text before chunking (DPO decision pending).
+
+**Residual risk:** Medium — acceptable given local confinement, but subject to review if the categories of scanned documents indexed are expanded.
+
+---
+
+### 3.5 LDAP Auto-Provisioning — Art. 14 Obligation (MEDIUM RISK)
 
 **Description:** Users authenticated via LDAP/AD are automatically created in the platform without direct interaction. This triggers Art. 14 (information to data subject when data not collected directly).
 

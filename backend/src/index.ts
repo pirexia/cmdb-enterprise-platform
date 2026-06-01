@@ -32,7 +32,8 @@ import { chunkSections } from './services/chunker';
 import {
   getEmbedding, getEmbeddingsBatch, isOllamaHealthy, sanitizeQuery,
   buildRagPrompt, chatWithContext, streamChatWithContext,
-  type RagChunkResult, type Citation,
+  analyzeDocumentForImport,
+  type RagChunkResult, type Citation, type BulkAnalysisRaw,
 } from './services/ragService';
 import {
   vulnUuid, getContractRoot, getLicenseRoot,
@@ -3112,7 +3113,19 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
 // ─── Document Repository ──────────────────────────────────────────────────────
 
 const DOCUMENTS_DIR = process.env.DOCUMENTS_DIR ?? '/app/documents';
-const MAX_FILE_SIZE = parseInt(process.env.MAX_DOCUMENT_SIZE_MB ?? '50', 10) * 1024 * 1024;
+const MAX_DOCUMENT_SIZE_MB = parseInt(process.env.MAX_DOCUMENT_SIZE_MB ?? '50', 10);
+const MAX_FILE_SIZE = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
+
+// ── Bulk document import (staging) ────────────────────────────────────────────
+// Files land in STAGING_DIR (UUID names) until the user confirms each line, at
+// which point they are moved into DOCUMENTS_DIR as real Document records.
+const STAGING_DIR          = process.env.BULK_STAGING_DIR ?? path.join(DOCUMENTS_DIR, '_staging');
+const BULK_MAX_FILES       = parseInt(process.env.BULK_MAX_FILES ?? '20', 10);
+const BULK_MAX_TOTAL_BYTES = parseInt(process.env.BULK_MAX_TOTAL_MB ?? '200', 10) * 1024 * 1024;
+const BULK_BATCH_TTL_HOURS = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24', 10);
+// Items analyzed per cron tick — kept small so AI bulk analysis never starves
+// the normal RAG indexing queue (both share the single CPU-bound Ollama).
+const BULK_ANALYZE_BUDGET  = parseInt(process.env.BULK_ANALYZE_BUDGET ?? '2', 10);
 
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
@@ -3283,8 +3296,8 @@ async function processRagQueue(): Promise<void> {
         const docId = row.document_id;
         const versionNumber = row.version_number;
         await prisma.$executeRaw`
-          INSERT INTO "rag_chunks"(id, document_id, version_number, chunk_index, section_path, page_start, page_end, token_count, content, embedding, metadata, created_at)
-          VALUES(gen_random_uuid(), ${docId}::uuid, ${versionNumber}, ${chunks[i].chunkIndex}, ${chunks[i].sectionPath ?? null}, ${chunks[i].pageStart ?? null}, ${chunks[i].pageEnd ?? null}, ${chunks[i].tokenCount}, ${chunks[i].content}, ${embeddingStr}::vector, '{}'::jsonb, now())`;
+          INSERT INTO "rag_chunks"(id, document_id, version_number, chunk_index, section_path, page_start, page_end, token_count, content, embedding, metadata, entity_type, entity_id, created_at)
+          VALUES(gen_random_uuid(), ${docId}::uuid, ${versionNumber}, ${chunks[i].chunkIndex}, ${chunks[i].sectionPath ?? null}, ${chunks[i].pageStart ?? null}, ${chunks[i].pageEnd ?? null}, ${chunks[i].tokenCount}, ${chunks[i].content}, ${embeddingStr}::vector, '{}'::jsonb, 'document', ${docId}::uuid, now())`;
       }
 
       await prisma.$executeRaw`
@@ -3516,6 +3529,333 @@ async function processRagQueue(): Promise<void> {
   }
 }
 
+// ─── Bulk import: AI analysis worker ──────────────────────────────────────────
+
+// Validates the UNTRUSTED JSON the model returns. Unknown/extra keys are ignored.
+const BulkAnalysisSchema = z.object({
+  documentTypeGuess: z.string().max(40).nullable().optional(),
+  startDate:         z.string().max(40).nullable().optional(),
+  endDate:           z.string().max(40).nullable().optional(),
+  vendorName:        z.string().max(255).nullable().optional(),
+  entityNumber:      z.string().max(100).nullable().optional(),
+  suggestedTarget:   z.enum(['contract', 'addendum', 'license', 'none']).nullable().optional(),
+  ciHints:           z.array(z.string().max(255)).max(50).nullable().optional(),
+});
+
+interface NormalizedAnalysis {
+  documentTypeGuess: string | null;
+  startDate:         string | null;
+  endDate:           string | null;
+  vendorName:        string | null;
+  entityNumber:      string | null;
+  suggestedTarget:   'contract' | 'addendum' | 'license' | 'none';
+  ciHints:           string[];
+}
+
+/** Accepts only a strict ISO calendar date (YYYY-MM-DD) that is a real date. */
+function parseIsoDateSafe(s: unknown): string | null {
+  if (typeof s !== 'string') return null;
+  const m = s.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}`;
+  const d = new Date(`${iso}T00:00:00Z`);
+  if (isNaN(d.getTime())) return null;
+  // Reject e.g. 2026-02-31 which Date silently rolls over
+  if (d.toISOString().slice(0, 10) !== iso) return null;
+  return iso;
+}
+
+/** Coerces the model's raw output into a safe, typed shape (never trusts it). */
+function normalizeAnalysis(raw: BulkAnalysisRaw): NormalizedAnalysis {
+  const parsed = BulkAnalysisSchema.safeParse(raw);
+  const d = parsed.success ? parsed.data : {};
+  const hints = Array.isArray(d.ciHints)
+    ? d.ciHints.filter((h): h is string => typeof h === 'string' && h.trim().length > 0).map((h) => h.trim())
+    : [];
+  return {
+    documentTypeGuess: typeof d.documentTypeGuess === 'string' ? d.documentTypeGuess.slice(0, 40) : null,
+    startDate:         parseIsoDateSafe(d.startDate),
+    endDate:           parseIsoDateSafe(d.endDate),
+    vendorName:        typeof d.vendorName === 'string' ? (d.vendorName.trim().slice(0, 255) || null) : null,
+    entityNumber:      typeof d.entityNumber === 'string' ? (d.entityNumber.trim().slice(0, 100) || null) : null,
+    suggestedTarget:   d.suggestedTarget ?? 'none',
+    ciHints:           hints,
+  };
+}
+
+interface CiMatch { ciId: string; name: string; serial: string | null; matchType: 'serial' | 'name'; }
+
+/**
+ * Finds candidate CIs for the AI's serial/name hints. LIKE wildcards are escaped
+ * and ESCAPE '\\' is used (A03). Bounded result set to avoid pathological scans.
+ */
+async function matchCIsForImport(hints: string[]): Promise<CiMatch[]> {
+  const seen = new Set<string>();
+  const out: CiMatch[] = [];
+  for (const rawHint of hints.slice(0, 20)) {
+    const hint = String(rawHint).trim();
+    if (hint.length < 3) continue;
+    const escaped = hint.replace(/[\\%_]/g, (c) => '\\' + c);
+    const like = `%${escaped}%`;
+    const rows = await prisma.$queryRaw<{ ciId: string; name: string; serial: string | null; matchType: string }[]>`
+      SELECT ci.id::text AS "ciId", ci.name AS name, h.serial_number AS serial,
+             CASE WHEN h.serial_number ILIKE ${like} ESCAPE '\\' THEN 'serial' ELSE 'name' END AS "matchType"
+      FROM "configuration_items" ci
+      LEFT JOIN "hardware_cis" h ON h.ci_id = ci.id
+      WHERE h.serial_number ILIKE ${like} ESCAPE '\\' OR ci.name ILIKE ${like} ESCAPE '\\'
+      LIMIT 5`;
+    for (const r of rows) {
+      if (seen.has(r.ciId)) continue;
+      seen.add(r.ciId);
+      out.push({ ciId: r.ciId, name: r.name, serial: r.serial, matchType: r.matchType === 'serial' ? 'serial' : 'name' });
+    }
+    if (out.length >= 25) break;
+  }
+  return out;
+}
+
+/** Recomputes a batch's aggregate status from its items. Reused on commit. */
+async function recomputeBatchStatus(batchId: string): Promise<void> {
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint }[]>`
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
+           COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed
+    FROM "bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
+  const total = Number(rows[0]?.total ?? 0);
+  const pending = Number(rows[0]?.pending ?? 0);
+  const committed = Number(rows[0]?.committed ?? 0);
+  let status: string;
+  if (total === 0)                 status = 'DISCARDED';
+  else if (pending > 0)            status = 'ANALYZING';
+  else if (committed === total)    status = 'COMMITTED';
+  else if (committed > 0)          status = 'PARTIALLY_COMMITTED';
+  else                             status = 'READY';
+  await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
+}
+
+/**
+ * Analyzes up to BULK_ANALYZE_BUDGET staged items per tick: parses the file,
+ * asks Ollama to extract structured metadata, matches CIs, and stores the
+ * (validated) suggestion JSON. Runs after processRagQueue on the same cron.
+ */
+async function processBulkImportQueue(): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  if (!(await isOllamaHealthy())) return;
+
+  const pending = await prisma.$queryRaw<{ id: string; batch_id: string; staged_file_name: string; mime_type: string; original_name: string }[]>`
+    SELECT id::text AS id, batch_id::text AS batch_id, staged_file_name, mime_type, original_name
+    FROM "bulk_import_item"
+    WHERE status = 'PENDING_ANALYSIS'
+    ORDER BY created_at ASC
+    LIMIT ${BULK_ANALYZE_BUDGET}`;
+
+  const touchedBatches = new Set<string>();
+
+  for (const item of pending) {
+    touchedBatches.add(item.batch_id);
+    try {
+      await prisma.$executeRaw`UPDATE "bulk_import_item" SET status='ANALYZING', updated_at=now() WHERE id=${item.id}::uuid`;
+
+      const filePath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
+      const parseResult = await parseDocument(filePath, item.mime_type, item.original_name);
+      const text = parseResult.sections.map((s) => s.text).join('\n\n').trim();
+
+      let analysis: Record<string, unknown>;
+      if (!text) {
+        // No extractable text (e.g. image, empty PDF) — still reviewable manually.
+        analysis = { textExtracted: false, ciMatches: [], analyzedAt: new Date().toISOString() };
+      } else {
+        const raw = await analyzeDocumentForImport(text, { fileName: item.original_name });
+        const norm = normalizeAnalysis(raw);
+        const ciMatches = await matchCIsForImport(norm.ciHints);
+        analysis = { ...norm, ciMatches, textExtracted: true, analyzedAt: new Date().toISOString() };
+      }
+
+      await prisma.$executeRaw`
+        UPDATE "bulk_import_item"
+        SET status='ANALYZED', analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
+        WHERE id=${item.id}::uuid`;
+    } catch (e) {
+      console.error('[RAG] processBulkImportQueue item error:', e);
+      const errMsg = String(e).slice(0, 500);
+      try {
+        await prisma.$executeRaw`
+          UPDATE "bulk_import_item" SET status='ERROR', error_message=${errMsg}, updated_at=now()
+          WHERE id=${item.id}::uuid`;
+      } catch (e2) {
+        console.error('[RAG] processBulkImportQueue error-mark failure:', e2);
+      }
+    }
+  }
+
+  for (const batchId of touchedBatches) {
+    try { await recomputeBatchStatus(batchId); }
+    catch (e) { console.error('[RAG] processBulkImportQueue batch-status error:', e); }
+  }
+}
+
+// ─── Bulk import: commit (materialization) ────────────────────────────────────
+
+/** Thrown for caller-correctable problems (returned as 400 with the message). */
+class BulkValidationError extends Error {}
+
+// The user's reviewed decision for one staged item. `target` drives which real
+// entity (if any) is created alongside the Document.
+const BulkItemDecisionBase = z.object({
+  target:           z.enum(['contract', 'addendum', 'license', 'none']),
+  documentTypeId:   z.string().uuid(),
+  title:            z.string().min(1).max(500),
+  description:      z.string().max(2000).nullable().optional(),
+  startDate:        z.string().max(40).nullable().optional(),
+  endDate:          z.string().max(40).nullable().optional(),
+  vendorId:         z.string().uuid().nullable().optional(),
+  entityNumber:     z.string().min(1).max(100).nullable().optional(),
+  parentContractId: z.string().uuid().nullable().optional(),
+  licenseName:      z.string().min(1).max(255).nullable().optional(),
+  ciIds:            z.array(z.string().uuid()).max(100).optional(),
+});
+
+const BulkItemDecisionSchema = BulkItemDecisionBase.superRefine((d, ctx) => {
+  const reqDate = /^\d{4}-\d{2}-\d{2}/;
+  if (d.target === 'contract' || d.target === 'addendum') {
+    if (!d.entityNumber) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Número de contrato requerido', path: ['entityNumber'] });
+    if (!d.vendorId)     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Proveedor requerido', path: ['vendorId'] });
+    if (!d.startDate)    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Fecha de inicio requerida', path: ['startDate'] });
+    if (d.target === 'addendum' && !d.parentContractId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Contrato padre requerido para una adenda', path: ['parentContractId'] });
+  }
+  if (d.target === 'license') {
+    if (!d.entityNumber) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Número de licencia requerido', path: ['entityNumber'] });
+    if (!d.licenseName)  ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Nombre de licencia requerido', path: ['licenseName'] });
+    if (!d.startDate)    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Fecha de inicio requerida', path: ['startDate'] });
+  }
+  for (const f of ['startDate', 'endDate'] as const) {
+    const v = d[f];
+    if (v && !reqDate.test(v)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Formato de fecha inválido en ${f}`, path: [f] });
+  }
+});
+type BulkItemDecision = z.infer<typeof BulkItemDecisionSchema>;
+
+interface BulkItemRow {
+  id: string; batch_id: string; staged_file_name: string;
+  original_name: string; mime_type: string; file_size: number; status: string;
+}
+
+/**
+ * Materializes one staged item into a real Document (+ optional Contract /
+ * Addendum / License) and associations, in a single transaction. The file is
+ * copied to the documents store first and only deleted from staging on success;
+ * on failure the destination copy is removed so nothing is orphaned.
+ */
+async function materializeBulkItem(
+  item: BulkItemRow,
+  decision: BulkItemDecision,
+  userEmail: string,
+): Promise<{ documentId: string; contractId?: string; licenseId?: string }> {
+  if (item.status === 'COMMITTED') throw new BulkValidationError('El elemento ya fue confirmado');
+
+  // ── Existence checks (clean errors instead of raw FK violations) ───────────
+  const dtype = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "document_types" WHERE id=${decision.documentTypeId}::uuid LIMIT 1`;
+  if (!dtype.length) throw new BulkValidationError('Tipo de documento no encontrado');
+
+  if (decision.vendorId) {
+    const v = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "vendors" WHERE id=${decision.vendorId}::uuid LIMIT 1`;
+    if (!v.length) throw new BulkValidationError('Proveedor no encontrado');
+  }
+  if (decision.target === 'addendum' && decision.parentContractId) {
+    const p = await prisma.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM "contracts" WHERE id=${decision.parentContractId}::uuid LIMIT 1`;
+    if (!p.length) throw new BulkValidationError('Contrato padre no encontrado');
+  }
+  if (decision.ciIds && decision.ciIds.length > 0) {
+    const found = await prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "configuration_items" WHERE id IN (${Prisma.join(decision.ciIds.map((id) => Prisma.sql`${id}::uuid`))})`;
+    if (Number(found[0]?.c ?? 0) !== decision.ciIds.length) throw new BulkValidationError('Uno o más CIs no existen');
+  }
+
+  // ── Copy staged → final store (keep staging copy until DB commit succeeds) ──
+  const ext = (path.extname(item.staged_file_name).replace('.', '') || path.extname(item.original_name).replace('.', '')).toLowerCase();
+  const finalName = `${crypto.randomUUID()}.${ext}`;
+  const stagedPath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
+  const finalPath  = path.join(DOCUMENTS_DIR, finalName);
+  if (!fs.existsSync(stagedPath)) throw new BulkValidationError('El fichero en staging ya no existe');
+  fs.copyFileSync(stagedPath, finalPath);
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Atomically CLAIM the row first: a concurrent/retried commit blocks on this
+      // row lock, then sees status='COMMITTED' and affects 0 rows → we abort. This
+      // closes the TOCTOU between the pre-transaction status snapshot and the flip,
+      // preventing duplicate Document/Contract/License rows + orphaned files.
+      const claimed = await tx.$executeRaw`
+        UPDATE "bulk_import_item" SET status='COMMITTED', error_message=NULL, updated_at=now()
+        WHERE id=${item.id}::uuid AND status <> 'COMMITTED'`;
+      if (Number(claimed) === 0) throw new BulkValidationError('El elemento ya fue confirmado');
+
+      const docRows = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "documents"(id,title,description,document_type_id,root_id,version_number,is_latest,file_name,original_name,mime_type,file_size,uploaded_by,created_at,updated_at)
+        VALUES(gen_random_uuid(), ${decision.title.trim()}, ${decision.description?.trim() || null}, ${decision.documentTypeId}::uuid, NULL, 1, true, ${finalName}, ${item.original_name}, ${item.mime_type}, ${item.file_size}, ${userEmail}, now(), now())
+        RETURNING id::text AS id`;
+      const documentId = docRows[0].id;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Document',${documentId},${userEmail},now())`;
+
+      let contractId: string | undefined;
+      let licenseId: string | undefined;
+
+      if (decision.target === 'contract' || decision.target === 'addendum') {
+        const contract = await tx.contract.create({
+          data: {
+            contractNumber:   decision.entityNumber!,
+            startDate:        new Date(decision.startDate!),
+            endDate:          decision.endDate ? new Date(decision.endDate) : null,
+            vendorId:         decision.vendorId!,
+            parentContractId: decision.target === 'addendum' ? decision.parentContractId! : null,
+            ...(decision.ciIds && decision.ciIds.length > 0 && { cis: { connect: decision.ciIds.map((id) => ({ id })) } }),
+          },
+        });
+        contractId = contract.id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Contract',${contractId}::uuid,${userEmail},now())`;
+        await tx.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${documentId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
+      } else if (decision.target === 'license') {
+        const license = await tx.license.create({
+          data: {
+            name:          decision.licenseName!,
+            licenseNumber: decision.entityNumber!,
+            vendorId:      decision.vendorId ?? null,
+            startDate:     new Date(decision.startDate!),
+            endDate:       decision.endDate ? new Date(decision.endDate) : null,
+            ...(decision.ciIds && decision.ciIds.length > 0 && { cis: { connect: decision.ciIds.map((id) => ({ id })) } }),
+          },
+        });
+        licenseId = license.id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','License',${licenseId}::uuid,${userEmail},now())`;
+        await tx.$executeRaw`INSERT INTO "document_licenses"(id,document_id,license_id) VALUES(gen_random_uuid(),${documentId}::uuid,${licenseId}::uuid) ON CONFLICT DO NOTHING`;
+      }
+
+      // Associate selected CIs with the Document itself (independent of entity links)
+      for (const ciId of decision.ciIds ?? []) {
+        await tx.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+      }
+
+      // Status already set to COMMITTED by the claim above; just record the link.
+      await tx.$executeRaw`UPDATE "bulk_import_item" SET committed_document_id=${documentId}::uuid, updated_at=now() WHERE id=${item.id}::uuid`;
+
+      return { documentId, contractId, licenseId };
+    });
+
+    // Success: drop the staging copy and queue async indexing.
+    try { fs.unlinkSync(stagedPath); } catch {}
+    void queueDocumentForIndexing(result.documentId, 1);
+    if (result.contractId) { try { void queueEntityForIndexing('contract', await getContractRoot(result.contractId)); } catch {} }
+    if (result.licenseId)  { try { void queueEntityForIndexing('license',  await getLicenseRoot(result.licenseId));   } catch {} }
+    return result;
+  } catch (e) {
+    try { fs.unlinkSync(finalPath); } catch {}
+    // Surface duplicate contract/license number as a clean message
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002') {
+      throw new BulkValidationError('Ya existe un contrato o licencia con ese número');
+    }
+    throw e;
+  }
+}
+
 /**
  * Retrieves the top-K most similar chunks for a query, filtered by the user's role ACL.
  *
@@ -3699,6 +4039,39 @@ const upload = multer({
     }
   },
 });
+
+// Multer for bulk upload: same per-file guards, plus a per-batch file-count cap.
+const bulkUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE, files: BULK_MAX_FILES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+    if (ALLOWED_EXTENSIONS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Tipo de archivo no permitido: .${ext}`));
+    }
+  },
+});
+
+/** Runs the bulk multer middleware and converts its errors into clean 400s. */
+function bulkUploadMiddleware(req: Request, res: Response, next: NextFunction): void {
+  bulkUpload.array('files', BULK_MAX_FILES)(req, res, (err: unknown) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          res.status(400).json({ error: `Cada fichero debe ser ≤ ${MAX_DOCUMENT_SIZE_MB} MB` }); return;
+        }
+        if (err.code === 'LIMIT_FILE_COUNT') {
+          res.status(400).json({ error: `Máximo ${BULK_MAX_FILES} ficheros por lote` }); return;
+        }
+        res.status(400).json({ error: 'Error al procesar la subida' }); return;
+      }
+      res.status(400).json({ error: (err as Error).message || 'Tipo de archivo no permitido' }); return;
+    }
+    next();
+  });
+}
 
 // ── Document Types master ─────────────────────────────────────────────────────
 
@@ -3998,6 +4371,271 @@ app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, async (r
       VALUES(gen_random_uuid(),'REINDEX_DOC','Document',${req.params.id}::uuid,${req.user!.email},now())`;
     res.json({ ok: true, queued: rows[0].id });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// ─── Bulk Document Import (staging) ───────────────────────────────────────────
+// ADMIN-only multi-file upload → staging area. The AI worker (processBulkImport-
+// Queue) analyzes each file; the user then reviews/corrects and materializes
+// real Document/Contract/License records line by line via the commit endpoints.
+
+// POST /api/documents/bulk/batches — upload N files into a new staging batch
+app.post('/api/documents/bulk/batches', authenticateToken, requireAdmin, bulkUploadMiddleware, async (req: Request, res: Response) => {
+  const files = (req.files as Express.Multer.File[] | undefined) ?? [];
+  if (files.length === 0) { res.status(400).json({ error: 'Se requiere al menos un fichero' }); return; }
+
+  // Per-batch total-size guard (per-file size + count already enforced by multer)
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  if (totalBytes > BULK_MAX_TOTAL_BYTES) {
+    res.status(400).json({ error: `El lote supera el máximo de ${Math.floor(BULK_MAX_TOTAL_BYTES / (1024 * 1024))} MB` });
+    return;
+  }
+
+  // Validate magic bytes for EVERY file before writing anything to disk
+  for (const f of files) {
+    const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
+    if (!validateMagicBytes(f.buffer, ext)) {
+      res.status(400).json({ error: `El contenido de "${f.originalname}" no coincide con su extensión declarada` });
+      return;
+    }
+  }
+
+  try { fs.mkdirSync(STAGING_DIR, { recursive: true }); }
+  catch { res.status(500).json({ error: 'Error preparando el almacenamiento' }); return; }
+
+  const written: string[] = [];
+  let batchId: string | null = null;
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "bulk_import_batch"(id, created_by, status, file_count, total_bytes, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${files.length}, ${totalBytes}, now(), now())
+      RETURNING id::text AS id`;
+    batchId = batchRows[0].id;
+
+    for (const f of files) {
+      const ext = path.extname(f.originalname).toLowerCase().replace('.', '');
+      const stagedName = `${crypto.randomUUID()}.${ext}`;
+      fs.writeFileSync(path.join(STAGING_DIR, stagedName), f.buffer);
+      written.push(stagedName);
+      await prisma.$executeRaw`
+        INSERT INTO "bulk_import_item"(id, batch_id, staged_file_name, original_name, mime_type, file_size, status, analysis, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${batchId}::uuid, ${stagedName}, ${f.originalname}, ${f.mimetype}, ${f.size}, 'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'BULK_UPLOAD', 'BulkImportBatch', ${batchId}::uuid, ${req.user!.email},
+             ${JSON.stringify({ fileCount: files.length, totalBytes })}::jsonb, now())`;
+
+    res.status(201).json({ batchId, fileCount: files.length });
+  } catch (e) {
+    for (const name of written) { try { fs.unlinkSync(path.join(STAGING_DIR, name)); } catch {} }
+    if (batchId) { try { await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id=${batchId}::uuid`; } catch {} }
+    console.error('[POST /api/documents/bulk/batches]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/documents/bulk/batches — list the caller's batches (most recent first)
+app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; createdAt: Date; committed: bigint; pending: bigint }[]>`
+      SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.created_at AS "createdAt",
+             COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
+             COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending
+      FROM "bulk_import_batch" b
+      LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
+      WHERE b.created_by = ${req.user!.email}
+      GROUP BY b.id
+      ORDER BY b.created_at DESC
+      LIMIT 50`;
+    res.json(rows.map((r) => ({ ...r, committed: Number(r.committed), pending: Number(r.pending) })));
+  } catch (e) { console.error('[GET /api/documents/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/documents/bulk/batches/:id — batch detail + items (polling target)
+app.get('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdBy: string; createdAt: Date }[]>`
+      SELECT id::text AS id, status, file_count AS "fileCount", total_bytes::text AS "totalBytes",
+             created_by AS "createdBy", created_at AS "createdAt"
+      FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!batchRows.length) { res.status(404).json({ error: 'Batch not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ id: string; originalName: string; mimeType: string; fileSize: number; status: string; analysis: unknown; errorMessage: string | null; committedDocumentId: string | null; createdAt: Date }[]>`
+      SELECT id::text AS id, original_name AS "originalName", mime_type AS "mimeType",
+             file_size AS "fileSize", status, analysis, error_message AS "errorMessage",
+             committed_document_id::text AS "committedDocumentId", created_at AS "createdAt"
+      FROM "bulk_import_item"
+      WHERE batch_id = ${req.params.id}::uuid
+      ORDER BY created_at ASC`;
+
+    res.json({ ...batchRows[0], totalBytes: Number(batchRows[0].totalBytes), items });
+  } catch (e) { console.error('[GET /api/documents/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/documents/bulk/items/:id — discard a single staged item
+app.delete('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ stagedFileName: string; status: string }[]>`
+      SELECT i.staged_file_name AS "stagedFileName", i.status
+      FROM "bulk_import_item" i
+      JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status !== 'COMMITTED') {
+      try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(rows[0].stagedFileName))); } catch {}
+    }
+    await prisma.$executeRaw`DELETE FROM "bulk_import_item" WHERE id = ${req.params.id}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_DISCARD_ITEM','BulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/documents/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/documents/bulk/batches/:id — discard a whole batch (+ staged files)
+app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
+      SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
+      WHERE batch_id = ${req.params.id}::uuid AND status != 'COMMITTED'`;
+    for (const it of items) {
+      try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
+    }
+
+    await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_DISCARD_BATCH','BulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/documents/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PATCH /api/documents/bulk/items/:id — persist the user's reviewed decision
+app.patch('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const parsed = BulkItemDecisionBase.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; status: string }[]>`
+      SELECT i.id::text AS id, i.status
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "bulk_import_item"
+      SET analysis = jsonb_set(COALESCE(analysis, '{}'::jsonb), '{decision}', ${JSON.stringify(parsed.data)}::jsonb, true),
+          updated_at = now()
+      WHERE id = ${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[PATCH /api/documents/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/bulk/items/:id/commit — materialize one reviewed item
+app.post('/api/documents/bulk/items/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<(BulkItemRow & { analysis: unknown })[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.staged_file_name AS staged_file_name,
+             i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
+             i.status, i.analysis
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const item = rows[0];
+
+    // Prefer the decision in the request body; fall back to the persisted one.
+    const source = req.body && Object.keys(req.body).length > 0
+      ? req.body
+      : (item.analysis as { decision?: unknown } | null)?.decision;
+    const parsed = BulkItemDecisionSchema.safeParse(source);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Decisión inválida' }); return; }
+
+    const result = await materializeBulkItem(item, parsed.data, req.user!.email);
+    await recomputeBatchStatus(item.batch_id);
+    res.status(201).json(result);
+  } catch (e) {
+    if (e instanceof BulkValidationError) { res.status(400).json({ error: e.message }); return; }
+    console.error('[POST /api/documents/bulk/items/:id/commit]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/documents/bulk/batches/:id/commit — commit every reviewed item at once
+app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    const items = await prisma.$queryRaw<(BulkItemRow & { analysis: unknown })[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.staged_file_name AS staged_file_name,
+             i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
+             i.status, i.analysis
+      FROM "bulk_import_item" i
+      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR')
+      ORDER BY i.created_at ASC`;
+
+    const results: { itemId: string; ok: boolean; documentId?: string; error?: string }[] = [];
+    for (const item of items) {
+      const decision = (item.analysis as { decision?: unknown } | null)?.decision;
+      const parsed = BulkItemDecisionSchema.safeParse(decision);
+      if (!parsed.success) { results.push({ itemId: item.id, ok: false, error: parsed.error.issues[0]?.message ?? 'Decisión incompleta' }); continue; }
+      try {
+        const r = await materializeBulkItem(item, parsed.data, req.user!.email);
+        results.push({ itemId: item.id, ok: true, documentId: r.documentId });
+      } catch (e) {
+        results.push({ itemId: item.id, ok: false, error: e instanceof BulkValidationError ? e.message : 'Error interno' });
+      }
+    }
+    await recomputeBatchStatus(req.params.id as string);
+    res.json({ results });
+  } catch (e) { console.error('[POST /api/documents/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/bulk/items/:id/reanalyze — flip one ANALYZED/ERROR item back
+// to PENDING_ANALYSIS so the worker re-processes it (useful after OCR or other
+// pipeline improvements that landed AFTER the original analysis).
+app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; batch_id: string }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+        AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE id = ${req.params.id}::uuid`;
+    await recomputeBatchStatus(rows[0].batch_id);
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_REANALYZE_ITEM','BulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[POST /api/documents/bulk/items/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/bulk/batches/:id/reanalyze — re-queue every ANALYZED/ERROR
+// item in the batch (committed items are skipped). Returns how many were queued.
+app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const result = await prisma.$executeRaw`
+      UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR')`;
+    const count = Number(result);
+    await recomputeBatchStatus(req.params.id as string);
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+      VALUES(gen_random_uuid(),'BULK_REANALYZE_BATCH','BulkImportBatch',${req.params.id}::uuid,${req.user!.email},
+             ${JSON.stringify({ count })}::jsonb, now())`;
+    res.json({ ok: true, count });
+  } catch (e) { console.error('[POST /api/documents/bulk/batches/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // GET /api/documents/:id/index-status — return the latest version's RAG indexing status
@@ -4878,10 +5516,61 @@ cron.schedule('0 2 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── Bulk import staging cleanup (hourly) ──────────────────────────────────────
+// Discards abandoned batches older than BULK_BATCH_TTL_HOURS and removes their
+// staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).
+cron.schedule('0 * * * *', async () => {
+  try {
+    const stale = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)`;
+    let cleaned = 0;
+    for (const b of stale) {
+      // Look up the batch owner + counts BEFORE deletion so the reap audit row
+      // is attributable (closes the "silent reap" backlog item).
+      const meta = await prisma.$queryRaw<{ created_by: string; file_count: number; committed: bigint; non_committed: bigint }[]>`
+        SELECT b.created_by, b.file_count,
+               COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED')  AS committed,
+               COUNT(i.id) FILTER (WHERE i.status <> 'COMMITTED') AS non_committed
+        FROM "bulk_import_batch" b LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
+        WHERE b.id = ${b.id}::uuid GROUP BY b.id`;
+      const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
+        SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
+        WHERE batch_id = ${b.id}::uuid AND status != 'COMMITTED'`;
+      for (const it of items) {
+        try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
+      }
+      await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${b.id}::uuid`;
+      const m = meta[0];
+      if (m) {
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+            VALUES(gen_random_uuid(),'BULK_REAP_BATCH','BulkImportBatch',${b.id}::uuid, ${m.created_by},
+                   ${JSON.stringify({
+                     ttlHours: BULK_BATCH_TTL_HOURS,
+                     fileCount: m.file_count,
+                     committed: Number(m.committed),
+                     nonCommittedReaped: Number(m.non_committed),
+                   })}::jsonb, now())`;
+        } catch (e2) { log.error('[BulkCleanupCron] Audit write failed:', e2); }
+      }
+      cleaned++;
+    }
+    if (cleaned > 0) log.info(`[BulkCleanupCron] Removed ${cleaned} stale bulk import batch(es)`);
+  } catch (e) {
+    log.error('[BulkCleanupCron] Cleanup error:', e);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ─── RAG Document Indexing Queue (every 30 s) ────────────────────────────────
 if (process.env.RAG_ENABLED === 'true') {
   cron.schedule('*/30 * * * * *', () => {
-    processRagQueue().catch((e) => console.error('[RAG] processRagQueue error:', e));
+    processRagQueue()
+      .catch((e) => console.error('[RAG] processRagQueue error:', e))
+      .finally(() => {
+        processBulkImportQueue().catch((e) => console.error('[RAG] processBulkImportQueue error:', e));
+      });
   }, { timezone: 'Europe/Madrid' });
   console.log('[RAG] Indexing queue processor scheduled (every 30 s).');
 } else {

@@ -1,10 +1,13 @@
 // backend/src/services/docParser.ts
 // Document text extraction service for the RAG pipeline.
-// Supports: PDF, DOCX, DOC, XLSX, PPTX, ODT, ODS, TXT, CSV
-// PNG/JPG are intentionally excluded from RAG indexing (no OCR).
+// Supports: PDF (native text + OCR fallback for scanned), DOCX, DOC, XLSX, PPTX, ODT, ODS, TXT, CSV
+// PNG/JPG are intentionally excluded from RAG indexing.
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,11 +32,26 @@ export interface ParseResult {
 // Safety constants
 // ---------------------------------------------------------------------------
 
-const MAX_PARSE_TIME_MS   = 60_000;     // 1 min max per document
+const MAX_PARSE_TIME_MS   = 60_000;     // 1 min max per document (native text extraction)
 const MAX_CONTENT_CHARS   = 2_000_000;  // ~2 M chars safety cap
 const MAX_FILE_BYTES      = 100 * 1024 * 1024; // 100 MB — skip larger files
 const MAX_XLSX_ROWS       = 1_000;      // rows per sheet for XLSX
 const CSV_CHUNK_LINES     = 100;        // lines per chunk for CSV
+
+// OCR constants — scanned PDF fallback
+const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap (pdftoppm or single tesseract page)
+// Total timeout for a full OCR run (pdftoppm + all tesseract pages). Must be >> MAX_OCR_TIME_MS * typical pages.
+// At 150 DPI a 16-page PDF takes ~14s (pdftoppm) + ~10s×16 (tesseract) ≈ 174s; 600s gives comfortable headroom.
+const MAX_OCR_DOC_TIME_MS = Math.max(60_000, Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000) || 600_000);
+const OCR_LANGUAGES       = process.env.OCR_LANGUAGES ?? 'spa+eng';
+const OCR_DPI             = process.env.OCR_DPI ?? '150';  // 300 DPI caused silent timeouts on multi-page scans; 150 is sufficient for text
+const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled
+// Hard cap on pages rasterised/OCR'd per document — bounds CPU/disk for huge scans (DoS guard).
+const OCR_MAX_PAGES       = Number(process.env.OCR_MAX_PAGES ?? 50);
+// Max bytes of OCR text captured from tesseract stdout per page.
+const OCR_MAX_STDOUT      = 16 * 1024 * 1024;
+
+const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,6 +98,71 @@ function splitByHeadings(text: string): DocumentSection[] {
 }
 
 // ---------------------------------------------------------------------------
+// OCR fallback — scanned PDF (no embedded text)
+// ---------------------------------------------------------------------------
+
+async function parsePdfWithOcr(filePath: string): Promise<DocumentSection[]> {
+  const label = path.basename(filePath);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmdb-ocr-'));
+  // Every external process gets a hard timeout + SIGKILL so a stuck/abusive
+  // file can never keep burning CPU after the parse promise is abandoned.
+  const procOpts = { timeout: MAX_OCR_TIME_MS, killSignal: 'SIGKILL' as const };
+
+  try {
+    // Rasterise pages to PNG at the configured DPI, capped at OCR_MAX_PAGES (`-l`).
+    // execFile (not exec) — args are an array literal, no shell, no interpolation.
+    const prefix = path.join(tmpDir, 'p');
+    await execFileAsync(
+      'pdftoppm',
+      ['-r', OCR_DPI, '-l', String(OCR_MAX_PAGES), '-png', filePath, prefix],
+      procOpts,
+    );
+
+    const pngs = fs.readdirSync(tmpDir)
+      .filter((f) => f.endsWith('.png'))
+      .sort()                                    // sort guarantees page order
+      .slice(0, OCR_MAX_PAGES)                   // belt-and-braces page cap
+      .map((f) => path.join(tmpDir, f));
+
+    if (pngs.length === 0) {
+      console.warn(`[docParser][OCR] pdftoppm produced no images for "${label}"`);
+      return [];
+    }
+
+    console.log(`[docParser][OCR] fallback activated for "${label}" — ${pngs.length} page(s) at ${OCR_DPI} DPI, lang=${OCR_LANGUAGES}`);
+
+    const sections: DocumentSection[] = [];
+
+    for (let i = 0; i < pngs.length; i++) {
+      // Call the tesseract binary directly via execFile (no shell). OCR_LANGUAGES
+      // comes from env only; the image path is a server-generated mkdtemp path.
+      const { stdout } = await execFileAsync(
+        'tesseract',
+        [pngs[i], 'stdout', '-l', OCR_LANGUAGES, '--oem', '1', '--psm', '3'],
+        { ...procOpts, maxBuffer: OCR_MAX_STDOUT },
+      );
+
+      const trimmed = stdout.trim().slice(0, MAX_CONTENT_CHARS);
+      if (trimmed) {
+        sections.push({
+          sectionPath: `Página ${i + 1}`,
+          text: trimmed,
+          pageStart: i + 1,
+          pageEnd:   i + 1,
+        });
+      }
+    }
+
+    console.log(`[docParser][OCR] "${label}" — ${sections.length} section(s) extracted`);
+    return sections;
+
+  } finally {
+    // Always clean up temporary PNG files regardless of success or error.
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // PDF parser
 // ---------------------------------------------------------------------------
 
@@ -91,6 +174,10 @@ async function parsePdf(filePath: string): Promise<DocumentSection[]> {
   const text = data.text.slice(0, MAX_CONTENT_CHARS);
 
   if (!text.trim()) {
+    // No embedded text — scanned PDF. Fall back to Tesseract OCR if enabled.
+    if (OCR_ENABLED) {
+      return parsePdfWithOcr(filePath);
+    }
     return [];
   }
 
@@ -299,11 +386,17 @@ export async function parseDocument(
     }
   };
 
+  // PDFs may trigger multi-page OCR; use MAX_OCR_DOC_TIME_MS as the outer cap so that
+  // the promise-race does not fire before all tesseract page calls complete.
+  // Previously MAX_OCR_TIME_MS (180s per subprocess) was used here, causing silent
+  // timeouts for 16-page scans at 300 DPI (pdftoppm 57s + tesseract 44s/page ≈ 760s).
+  const timeoutMs = mimeType === 'application/pdf' ? MAX_OCR_DOC_TIME_MS : MAX_PARSE_TIME_MS;
+
   let sections: DocumentSection[];
   try {
     sections = await Promise.race([
       parseWork(),
-      makeTimeoutPromise(MAX_PARSE_TIME_MS),
+      makeTimeoutPromise(timeoutMs),
     ]);
   } catch (err) {
     console.error(

@@ -95,7 +95,8 @@
       "eol": "EoL / EoS",
       "vulnerabilities": "Vulnerabilities",
       "agent": "CS Agent",
-      "support": "Support"
+      "support": "Support",
+      "status": "Status"
     },
     "support_badge": {
       "expired": "End of support",
@@ -146,6 +147,12 @@
       "CLOUD_STORAGE": "Cloud Storage",
       "BASE_SOFTWARE": "Base Software",
       "LICENSE": "License"
+    },
+    "filter_status_all": "All statuses",
+    "status": {
+      "ACTIVO": "Active",
+      "INACTIVO": "Inactive",
+      "RETIRADO": "Retired"
     }
   },
   "vulnerabilities": {

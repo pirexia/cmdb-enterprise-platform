@@ -336,7 +336,11 @@
       "back_to_docs": "Retour aux documents",
       "no_text": "Impossible d'extraire le texte ; classez-le manuellement",
       "empty": "Ce lot ne contient aucun fichier",
-      "refresh": "Actualiser"
+      "refresh": "Actualiser",
+      "reanalyze": "Réanalyser",
+      "reanalyze_batch": "Réanalyser le lot",
+      "reanalyze_batch_confirm": "Réanalyser tous les éléments non confirmés du lot ?",
+      "reanalyze_done": "{count} fichier(s) remis en file pour analyse"
     }
   },
   "licenses": {

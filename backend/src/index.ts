@@ -4597,6 +4597,47 @@ app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdm
   } catch (e) { console.error('[POST /api/documents/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
+// POST /api/documents/bulk/items/:id/reanalyze — flip one ANALYZED/ERROR item back
+// to PENDING_ANALYSIS so the worker re-processes it (useful after OCR or other
+// pipeline improvements that landed AFTER the original analysis).
+app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; batch_id: string }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id
+      FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+        AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE id = ${req.params.id}::uuid`;
+    await recomputeBatchStatus(rows[0].batch_id);
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'BULK_REANALYZE_ITEM','BulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[POST /api/documents/bulk/items/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/documents/bulk/batches/:id/reanalyze — re-queue every ANALYZED/ERROR
+// item in the batch (committed items are skipped). Returns how many were queued.
+app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const result = await prisma.$executeRaw`
+      UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR')`;
+    const count = Number(result);
+    await recomputeBatchStatus(req.params.id as string);
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+      VALUES(gen_random_uuid(),'BULK_REANALYZE_BATCH','BulkImportBatch',${req.params.id}::uuid,${req.user!.email},
+             ${JSON.stringify({ count })}::jsonb, now())`;
+    res.json({ ok: true, count });
+  } catch (e) { console.error('[POST /api/documents/bulk/batches/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
 // GET /api/documents/:id/index-status — return the latest version's RAG indexing status
 app.get('/api/documents/:id/index-status', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -5485,6 +5526,14 @@ cron.schedule('0 * * * *', async () => {
       WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)`;
     let cleaned = 0;
     for (const b of stale) {
+      // Look up the batch owner + counts BEFORE deletion so the reap audit row
+      // is attributable (closes the "silent reap" backlog item).
+      const meta = await prisma.$queryRaw<{ created_by: string; file_count: number; committed: bigint; non_committed: bigint }[]>`
+        SELECT b.created_by, b.file_count,
+               COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED')  AS committed,
+               COUNT(i.id) FILTER (WHERE i.status <> 'COMMITTED') AS non_committed
+        FROM "bulk_import_batch" b LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
+        WHERE b.id = ${b.id}::uuid GROUP BY b.id`;
       const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
         SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
         WHERE batch_id = ${b.id}::uuid AND status != 'COMMITTED'`;
@@ -5492,6 +5541,20 @@ cron.schedule('0 * * * *', async () => {
         try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
       }
       await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${b.id}::uuid`;
+      const m = meta[0];
+      if (m) {
+        try {
+          await prisma.$executeRaw`
+            INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+            VALUES(gen_random_uuid(),'BULK_REAP_BATCH','BulkImportBatch',${b.id}::uuid, ${m.created_by},
+                   ${JSON.stringify({
+                     ttlHours: BULK_BATCH_TTL_HOURS,
+                     fileCount: m.file_count,
+                     committed: Number(m.committed),
+                     nonCommittedReaped: Number(m.non_committed),
+                   })}::jsonb, now())`;
+        } catch (e2) { log.error('[BulkCleanupCron] Audit write failed:', e2); }
+      }
       cleaned++;
     }
     if (cleaned > 0) log.info(`[BulkCleanupCron] Removed ${cleaned} stale bulk import batch(es)`);

@@ -381,7 +381,11 @@
       "back_to_docs": "Back to documents",
       "no_text": "No text could be extracted; classify it manually",
       "empty": "This batch has no files",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "reanalyze": "Re-analyze",
+      "reanalyze_batch": "Re-analyze batch",
+      "reanalyze_batch_confirm": "Re-analyze every uncommitted item in this batch?",
+      "reanalyze_done": "{count} file(s) re-queued for analysis"
     }
   },
   "licenses": {

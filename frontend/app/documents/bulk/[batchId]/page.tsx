@@ -281,6 +281,28 @@ export default function BulkReviewPage() {
     catch (e) { alert(e instanceof Error ? e.message : "Error"); }
   };
 
+  const reanalyzeItem = async (itemId: string) => {
+    try {
+      const res = await apiFetch(`/api/documents/bulk/items/${itemId}/reanalyze`, { method: "POST" });
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? `Error ${res.status}`);
+      seededRef.current.delete(itemId);   // allow re-seed once analysis completes
+      await loadBatch();
+    } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+  };
+
+  const reanalyzeBatch = async () => {
+    if (!confirm(t("documents.bulk.reanalyze_batch_confirm"))) return;
+    try {
+      const res = await apiFetch(`/api/documents/bulk/batches/${batchId}/reanalyze`, { method: "POST" });
+      const d = await res.json().catch(() => ({})) as { count?: number; error?: string };
+      if (!res.ok) throw new Error(d.error ?? `Error ${res.status}`);
+      seededRef.current.clear();          // all items will be re-seeded after analysis
+      await loadBatch();
+      alert(t("documents.bulk.reanalyze_done", { count: d.count ?? 0 }));
+    } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+  };
+
   if (!isAdmin) {
     return <div className="flex h-screen items-center justify-center text-slate-500">{t("common.unknown_error")}</div>;
   }
@@ -305,6 +327,10 @@ export default function BulkReviewPage() {
             <button onClick={() => void loadBatch()}
               className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
               <RefreshCw className="h-3.5 w-3.5" />{t("documents.bulk.refresh")}
+            </button>
+            <button onClick={reanalyzeBatch}
+              className="flex items-center gap-2 rounded-lg border border-[var(--accent)] bg-white px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
+              <Sparkles className="h-3.5 w-3.5" />{t("documents.bulk.reanalyze_batch")}
             </button>
             <button onClick={discardBatch}
               className="flex items-center gap-2 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
@@ -349,6 +375,7 @@ export default function BulkReviewPage() {
               onCreateVendor={() => createVendor(item.id)}
               onCommit={() => commitItem(item.id)}
               onDiscard={() => discardItem(item.id)}
+              onReanalyze={() => reanalyzeItem(item.id)}
             />
           ))
         )}
@@ -361,7 +388,7 @@ export default function BulkReviewPage() {
 
 function ItemCard({
   item, decision, row, docTypes, vendors, contracts, cis,
-  onPatch, onCreateVendor, onCommit, onDiscard,
+  onPatch, onCreateVendor, onCommit, onDiscard, onReanalyze,
 }: {
   item: BatchItem;
   decision?: Decision;
@@ -374,6 +401,7 @@ function ItemCard({
   onCreateVendor: () => void;
   onCommit: () => void;
   onDiscard: () => void;
+  onReanalyze: () => void;
 }) {
   const { t } = useLanguage();
   const [ciSearch, setCiSearch] = useState("");
@@ -541,6 +569,10 @@ function ItemCard({
           </div>
 
           <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onReanalyze}
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--accent)] px-3 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
+              <Sparkles className="h-3.5 w-3.5" />{t("documents.bulk.reanalyze")}
+            </button>
             <button onClick={onDiscard}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
               <Trash2 className="h-3.5 w-3.5" />{t("documents.bulk.discard")}

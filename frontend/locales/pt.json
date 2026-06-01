@@ -336,7 +336,11 @@
       "back_to_docs": "Voltar aos documentos",
       "no_text": "Não foi possível extrair texto; classifique manualmente",
       "empty": "Este lote não tem ficheiros",
-      "refresh": "Atualizar"
+      "refresh": "Atualizar",
+      "reanalyze": "Re-analisar",
+      "reanalyze_batch": "Re-analisar lote",
+      "reanalyze_batch_confirm": "Re-analisar todos os itens não confirmados deste lote?",
+      "reanalyze_done": "{count} ficheiro(s) re-enfileirado(s) para análise"
     }
   },
   "licenses": {

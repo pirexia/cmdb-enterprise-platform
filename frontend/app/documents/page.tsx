@@ -496,6 +496,12 @@ export default function DocumentsPage() {
                 {t("actions.refresh")}
               </button>
               {isAdmin && (
+                <button onClick={() => router.push("/documents/bulk")}
+                  className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <Layers className="h-3.5 w-3.5" />{t("documents.bulk.my_batches_button")}
+                </button>
+              )}
+              {isAdmin && (
                 <button onClick={() => setShowBulk(true)}
                   className="flex items-center gap-2 rounded-none border border-[var(--accent)] bg-white px-4 py-2 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors">
                   <Layers className="h-4 w-4" />{t("documents.bulk.button")}

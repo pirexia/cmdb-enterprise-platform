@@ -39,10 +39,14 @@ const MAX_XLSX_ROWS       = 1_000;      // rows per sheet for XLSX
 const CSV_CHUNK_LINES     = 100;        // lines per chunk for CSV
 
 // OCR constants — scanned PDF fallback
-const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // 3 min default
+const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap, 3 min default
 const OCR_LANGUAGES       = process.env.OCR_LANGUAGES ?? 'spa+eng';
 const OCR_DPI             = process.env.OCR_DPI ?? '300';
 const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled
+// Hard cap on pages rasterised/OCR'd per document — bounds CPU/disk for huge scans (DoS guard).
+const OCR_MAX_PAGES       = Number(process.env.OCR_MAX_PAGES ?? 50);
+// Max bytes of OCR text captured from tesseract stdout per page.
+const OCR_MAX_STDOUT      = 16 * 1024 * 1024;
 
 const execFileAsync = promisify(execFile);
 
@@ -95,23 +99,26 @@ function splitByHeadings(text: string): DocumentSection[] {
 // ---------------------------------------------------------------------------
 
 async function parsePdfWithOcr(filePath: string): Promise<DocumentSection[]> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const tesseract = require('node-tesseract-ocr') as {
-    recognize: (imgPath: string, config: Record<string, unknown>) => Promise<string>;
-  };
-
   const label = path.basename(filePath);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cmdb-ocr-'));
+  // Every external process gets a hard timeout + SIGKILL so a stuck/abusive
+  // file can never keep burning CPU after the parse promise is abandoned.
+  const procOpts = { timeout: MAX_OCR_TIME_MS, killSignal: 'SIGKILL' as const };
 
   try {
-    // Rasterise every page of the PDF to PNG at the configured DPI.
-    // execFile is used (not exec) — arguments are array literals, no shell interpolation.
+    // Rasterise pages to PNG at the configured DPI, capped at OCR_MAX_PAGES (`-l`).
+    // execFile (not exec) — args are an array literal, no shell, no interpolation.
     const prefix = path.join(tmpDir, 'p');
-    await execFileAsync('pdftoppm', ['-r', OCR_DPI, '-png', filePath, prefix]);
+    await execFileAsync(
+      'pdftoppm',
+      ['-r', OCR_DPI, '-l', String(OCR_MAX_PAGES), '-png', filePath, prefix],
+      procOpts,
+    );
 
     const pngs = fs.readdirSync(tmpDir)
       .filter((f) => f.endsWith('.png'))
       .sort()                                    // sort guarantees page order
+      .slice(0, OCR_MAX_PAGES)                   // belt-and-braces page cap
       .map((f) => path.join(tmpDir, f));
 
     if (pngs.length === 0) {
@@ -124,13 +131,15 @@ async function parsePdfWithOcr(filePath: string): Promise<DocumentSection[]> {
     const sections: DocumentSection[] = [];
 
     for (let i = 0; i < pngs.length; i++) {
-      const text = await tesseract.recognize(pngs[i], {
-        lang: OCR_LANGUAGES,
-        oem: '1',   // LSTM neural-net engine
-        psm: '3',   // Fully automatic page segmentation
-      });
+      // Call the tesseract binary directly via execFile (no shell). OCR_LANGUAGES
+      // comes from env only; the image path is a server-generated mkdtemp path.
+      const { stdout } = await execFileAsync(
+        'tesseract',
+        [pngs[i], 'stdout', '-l', OCR_LANGUAGES, '--oem', '1', '--psm', '3'],
+        { ...procOpts, maxBuffer: OCR_MAX_STDOUT },
+      );
 
-      const trimmed = text.trim().slice(0, MAX_CONTENT_CHARS);
+      const trimmed = stdout.trim().slice(0, MAX_CONTENT_CHARS);
       if (trimmed) {
         sections.push({
           sectionPath: `Página ${i + 1}`,

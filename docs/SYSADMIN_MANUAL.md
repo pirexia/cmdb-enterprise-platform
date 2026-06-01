@@ -253,6 +253,25 @@ DOCUMENTS_STORAGE_PATH=./document-storage
 
 > **Importante:** El directorio debe existir en el host antes de arrancar los servicios y debe ser accesible (lectura/escritura) para el UID `1000` (usuario `node` de las imágenes Alpine). El contenedor **no** crea el directorio padre automáticamente.
 
+#### Carga masiva de documentos (staging + análisis IA)
+
+La carga masiva permite subir varios documentos a la vez; un *worker* en segundo plano (sobre el mismo cron RAG, cada 30 s) los analiza con Ollama para sugerir tipo, fechas de vigencia, proveedor, número y CIs asociados antes de que el usuario los confirme. Los ficheros subidos se guardan **temporalmente** en un subdirectorio de staging (`_staging/` dentro del almacenamiento de documentos) y **solo** se materializan como documentos/contratos/licencias reales al confirmar cada línea.
+
+```bash
+# ── Carga masiva (bulk import) ────────────────────────────────────────
+# BULK_MAX_FILES=20         # nº máx. de ficheros por lote
+# BULK_MAX_TOTAL_MB=200     # tamaño total máx. por lote (MB). Cada fichero mantiene MAX_DOCUMENT_SIZE_MB.
+# BULK_BATCH_TTL_HOURS=24   # antigüedad tras la cual un lote abandonado se descarta automáticamente
+# BULK_ANALYZE_BUDGET=2     # documentos analizados por IA por ciclo (30 s); bajo = no satura la cola RAG en CPU
+# BULK_STAGING_DIR=/app/documents/_staging   # ubicación del área temporal (por defecto, subdir de DOCUMENTS_DIR)
+```
+
+> **Limpieza automática:** un cron horario descarta los lotes con antigüedad superior a `BULK_BATCH_TTL_HOURS` y borra sus ficheros de staging, evitando que el área temporal crezca sin control (ISO 22301 / NIS2). Los documentos ya confirmados (materializados) **no** se ven afectados.
+>
+> **Rendimiento:** el análisis IA es secuencial y limitado por CPU. Un lote grande puede tardar varios minutos por documento. Con GPU la latencia baja drásticamente (ver §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controla cuántos documentos compiten por Ollama en cada ciclo frente a la indexación RAG normal.
+>
+> **OCR para escaneados:** los PDFs escaneados (sin texto digital) se reconocen automáticamente por OCR (Tesseract), igual que en la subida individual — el worker usa el mismo `parseDocument`. El OCR rasteriza cada página (`OCR_DPI`) y la pasa por Tesseract (`OCR_LANGUAGES`), lo que **suma tiempo** por documento en CPU (p. ej. ~3-4 min para un PDF escaneado de 20+ páginas). Requiere `tesseract-ocr` + `poppler-utils` en la imagen del backend (ya incluidos). Ajusta `OCR_ENABLED`/`OCR_DPI`/`OCR_LANGUAGES`/`OCR_TIMEOUT_MS` según necesidad.
+
 #### Preparar el directorio en instalación nueva
 
 ```bash

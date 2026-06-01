@@ -39,9 +39,12 @@ const MAX_XLSX_ROWS       = 1_000;      // rows per sheet for XLSX
 const CSV_CHUNK_LINES     = 100;        // lines per chunk for CSV
 
 // OCR constants — scanned PDF fallback
-const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap, 3 min default
+const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap (pdftoppm or single tesseract page)
+// Total timeout for a full OCR run (pdftoppm + all tesseract pages). Must be >> MAX_OCR_TIME_MS * typical pages.
+// At 150 DPI a 16-page PDF takes ~14s (pdftoppm) + ~10s×16 (tesseract) ≈ 174s; 600s gives comfortable headroom.
+const MAX_OCR_DOC_TIME_MS = Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000);
 const OCR_LANGUAGES       = process.env.OCR_LANGUAGES ?? 'spa+eng';
-const OCR_DPI             = process.env.OCR_DPI ?? '300';
+const OCR_DPI             = process.env.OCR_DPI ?? '150';  // 300 DPI caused silent timeouts on multi-page scans; 150 is sufficient for text
 const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled
 // Hard cap on pages rasterised/OCR'd per document — bounds CPU/disk for huge scans (DoS guard).
 const OCR_MAX_PAGES       = Number(process.env.OCR_MAX_PAGES ?? 50);
@@ -383,8 +386,11 @@ export async function parseDocument(
     }
   };
 
-  // PDF may trigger OCR which needs a longer timeout than native text extraction.
-  const timeoutMs = mimeType === 'application/pdf' ? Math.max(MAX_PARSE_TIME_MS, MAX_OCR_TIME_MS) : MAX_PARSE_TIME_MS;
+  // PDFs may trigger multi-page OCR; use MAX_OCR_DOC_TIME_MS as the outer cap so that
+  // the promise-race does not fire before all tesseract page calls complete.
+  // Previously MAX_OCR_TIME_MS (180s per subprocess) was used here, causing silent
+  // timeouts for 16-page scans at 300 DPI (pdftoppm 57s + tesseract 44s/page ≈ 760s).
+  const timeoutMs = mimeType === 'application/pdf' ? MAX_OCR_DOC_TIME_MS : MAX_PARSE_TIME_MS;
 
   let sections: DocumentSection[];
   try {

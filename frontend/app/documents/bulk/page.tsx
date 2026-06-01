@@ -81,6 +81,8 @@ export default function BulkBatchesListPage() {
   const router = useRouter();
 
   const [batches, setBatches] = useState<BatchSummary[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [truncated, setTruncated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
@@ -90,8 +92,13 @@ export default function BulkBatchesListPage() {
     try {
       const res = await apiFetch("/api/documents/bulk/batches");
       if (!res.ok) throw new Error(`Error ${res.status}`);
-      const data = await res.json() as BatchSummary[];
-      setBatches(data);
+      const data = await res.json() as { total?: number; truncated?: boolean; batches?: BatchSummary[] } | BatchSummary[];
+      // Support both old array shape and new { total, truncated, batches } shape
+      if (Array.isArray(data)) {
+        setBatches(data); setTotalCount(data.length); setTruncated(false);
+      } else {
+        setBatches(data.batches ?? []); setTotalCount(data.total ?? 0); setTruncated(data.truncated ?? false);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.unknown_error"));
     } finally { setLoading(false); }
@@ -178,6 +185,13 @@ export default function BulkBatchesListPage() {
             <p className="text-sm">{t("documents.bulk.batches_empty")}</p>
           </div>
         ) : (
+          <>
+          {truncated && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              Mostrando los 100 lotes más recientes de {totalCount} en total. Los más antiguos no aparecen en esta lista.
+            </div>
+          )}
           <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -236,6 +250,7 @@ export default function BulkBatchesListPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </main>
     </div>

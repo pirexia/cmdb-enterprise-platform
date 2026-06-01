@@ -3128,6 +3128,12 @@ const BULK_BATCH_TTL_HOURS    = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24
 const BULK_ANALYZE_BUDGET     = parseInt(process.env.BULK_ANALYZE_BUDGET ?? '2', 10);
 // Max concurrent open batches per user (non-terminal states). Prevents DoS / staging exhaustion.
 const BULK_MAX_OPEN_BATCHES   = parseInt(process.env.BULK_MAX_OPEN_BATCHES ?? '5', 10);
+// Max total staging bytes held by a single user across all open batches (default 500 MB).
+// Prevents peak disk exhaustion when multiple large batches are open simultaneously.
+const BULK_MAX_USER_STAGING_BYTES = parseInt(process.env.BULK_MAX_USER_STAGING_MB ?? '500', 10) * 1024 * 1024;
+// Days to retain REAPED batch rows in the DB before final deletion. Gives users time
+// to see expired batches in the list view (Task C) without causing table bloat.
+const BULK_REAPED_RETENTION_DAYS = parseInt(process.env.BULK_REAPED_RETENTION_DAYS ?? '7', 10);
 
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
@@ -4422,6 +4428,22 @@ app.post('/api/documents/bulk/batches', authenticateToken, requireAdmin, bulkUpl
       });
       return;
     }
+    // Per-user staging-bytes cap: bounds peak disk usage across all open batches.
+    const bytesRows = await prisma.$queryRaw<{ used: bigint }[]>`
+      SELECT COALESCE(SUM(total_bytes), 0) AS used FROM "bulk_import_batch"
+      WHERE created_by = ${req.user!.email}
+        AND status NOT IN ('COMMITTED','DISCARDED','REAPED')`;
+    const usedBytes = Number(bytesRows[0]?.used ?? 0);
+    if (usedBytes + totalBytes > BULK_MAX_USER_STAGING_BYTES) {
+      const maxMb = Math.floor(BULK_MAX_USER_STAGING_BYTES / (1024 * 1024));
+      const usedMb = Math.floor(usedBytes / (1024 * 1024));
+      res.status(429).json({
+        error: `El almacenamiento temporal de tus lotes abiertos superaría el límite de ${maxMb} MB (en uso: ${usedMb} MB). Confirma o descarta algún lote primero.`,
+        usedBytes,
+        maxBytes: BULK_MAX_USER_STAGING_BYTES,
+      });
+      return;
+    }
   } catch (e) { console.error('[POST /api/documents/bulk/batches] limit check error:', e); }
 
   // Validate magic bytes for EVERY file before writing anything to disk
@@ -5595,7 +5617,18 @@ cron.schedule('0 * * * *', async () => {
       }
       cleaned++;
     }
-    if (cleaned > 0) log.info(`[BulkCleanupCron] Removed ${cleaned} stale bulk import batch(es)`);
+    if (cleaned > 0) log.info(`[BulkCleanupCron] Reaped ${cleaned} stale bulk import batch(es)`);
+
+    // Second pass: permanently DELETE REAPED rows older than BULK_REAPED_RETENTION_DAYS.
+    // This prevents indefinite table bloat while giving users time to see expired batches.
+    const oldReaped = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "bulk_import_batch"
+      WHERE status = 'REAPED'
+        AND updated_at < now() - make_interval(days => ${BULK_REAPED_RETENTION_DAYS}::int)`;
+    for (const r of oldReaped) {
+      await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${r.id}::uuid`;
+    }
+    if (oldReaped.length > 0) log.info(`[BulkCleanupCron] Deleted ${oldReaped.length} expired REAPED batch(es)`);
   } catch (e) {
     log.error('[BulkCleanupCron] Cleanup error:', e);
   }

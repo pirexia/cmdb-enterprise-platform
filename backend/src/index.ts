@@ -4494,17 +4494,23 @@ app.post('/api/documents/bulk/batches', authenticateToken, requireAdmin, bulkUpl
 // GET /api/documents/bulk/batches — list the caller's batches (most recent first)
 app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const rows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; createdAt: Date; committed: bigint; pending: bigint }[]>`
-      SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.created_at AS "createdAt",
-             COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
-             COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending
-      FROM "bulk_import_batch" b
-      LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
-      WHERE b.created_by = ${req.user!.email}
-      GROUP BY b.id
-      ORDER BY b.created_at DESC
-      LIMIT 50`;
-    res.json(rows.map((r) => ({ ...r, committed: Number(r.committed), pending: Number(r.pending) })));
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "bulk_import_batch" WHERE created_by = ${req.user!.email}`,
+      prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdAt: Date; committed: bigint; pending: bigint; errors: bigint }[]>`
+        SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.total_bytes::text AS "totalBytes",
+               b.created_at AS "createdAt",
+               COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
+               COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
+               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors
+        FROM "bulk_import_batch" b
+        LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
+        WHERE b.created_by = ${req.user!.email}
+        GROUP BY b.id
+        ORDER BY b.created_at DESC
+        LIMIT 100`,
+    ]);
+    const total = Number(countRows[0]?.c ?? 0);
+    res.json({ total, truncated: total > 100, batches: rows.map((r) => ({ ...r, totalBytes: Number(r.totalBytes), committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors) })) });
   } catch (e) { console.error('[GET /api/documents/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 

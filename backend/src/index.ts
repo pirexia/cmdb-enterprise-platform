@@ -3122,10 +3122,12 @@ const MAX_FILE_SIZE = MAX_DOCUMENT_SIZE_MB * 1024 * 1024;
 const STAGING_DIR          = process.env.BULK_STAGING_DIR ?? path.join(DOCUMENTS_DIR, '_staging');
 const BULK_MAX_FILES       = parseInt(process.env.BULK_MAX_FILES ?? '20', 10);
 const BULK_MAX_TOTAL_BYTES = parseInt(process.env.BULK_MAX_TOTAL_MB ?? '200', 10) * 1024 * 1024;
-const BULK_BATCH_TTL_HOURS = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24', 10);
+const BULK_BATCH_TTL_HOURS    = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24', 10);
 // Items analyzed per cron tick — kept small so AI bulk analysis never starves
 // the normal RAG indexing queue (both share the single CPU-bound Ollama).
-const BULK_ANALYZE_BUDGET  = parseInt(process.env.BULK_ANALYZE_BUDGET ?? '2', 10);
+const BULK_ANALYZE_BUDGET     = parseInt(process.env.BULK_ANALYZE_BUDGET ?? '2', 10);
+// Max concurrent open batches per user (non-terminal states). Prevents DoS / staging exhaustion.
+const BULK_MAX_OPEN_BATCHES   = parseInt(process.env.BULK_MAX_OPEN_BATCHES ?? '5', 10);
 
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
@@ -3615,21 +3617,35 @@ async function matchCIsForImport(hints: string[]): Promise<CiMatch[]> {
 }
 
 /** Recomputes a batch's aggregate status from its items. Reused on commit. */
+/**
+ * Batch status state machine:
+ *   UPLOADED           → just created, no items processed yet
+ *   ANALYZING          → at least one item still in PENDING_ANALYSIS or ANALYZING
+ *   READY              → all analyzed (ANALYZED), none committed, none in error
+ *   ERROR              → all processed, no items pending/committed, but some items in ERROR
+ *   PARTIALLY_COMMITTED→ some committed, others still pending review or in error
+ *   COMMITTED          → every item committed
+ *   DISCARDED          → all items removed by user (total=0)
+ *   REAPED             → set by the TTL cleanup cron (external transition, not computed here)
+ */
 async function recomputeBatchStatus(batchId: string): Promise<void> {
-  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint }[]>`
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
     SELECT COUNT(*) AS total,
            COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
-           COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed
+           COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
+           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors
     FROM "bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
-  const total = Number(rows[0]?.total ?? 0);
-  const pending = Number(rows[0]?.pending ?? 0);
+  const total     = Number(rows[0]?.total     ?? 0);
+  const pending   = Number(rows[0]?.pending   ?? 0);
   const committed = Number(rows[0]?.committed ?? 0);
+  const errors    = Number(rows[0]?.errors    ?? 0);
   let status: string;
-  if (total === 0)                 status = 'DISCARDED';
-  else if (pending > 0)            status = 'ANALYZING';
-  else if (committed === total)    status = 'COMMITTED';
-  else if (committed > 0)          status = 'PARTIALLY_COMMITTED';
-  else                             status = 'READY';
+  if (total === 0)               status = 'DISCARDED';
+  else if (pending > 0)          status = 'ANALYZING';
+  else if (committed === total)  status = 'COMMITTED';
+  else if (committed > 0)        status = 'PARTIALLY_COMMITTED';
+  else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
+  else                           status = 'READY';
   await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
 
@@ -4389,6 +4405,24 @@ app.post('/api/documents/bulk/batches', authenticateToken, requireAdmin, bulkUpl
     res.status(400).json({ error: `El lote supera el máximo de ${Math.floor(BULK_MAX_TOTAL_BYTES / (1024 * 1024))} MB` });
     return;
   }
+
+  // Enforce concurrent-batch limit per user (prevents staging exhaustion / DoS).
+  // Terminal states (COMMITTED, DISCARDED, REAPED) do not count toward the limit.
+  try {
+    const openRows = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM "bulk_import_batch"
+      WHERE created_by = ${req.user!.email}
+        AND status NOT IN ('COMMITTED','DISCARDED','REAPED')`;
+    const open = Number(openRows[0]?.c ?? 0);
+    if (open >= BULK_MAX_OPEN_BATCHES) {
+      res.status(429).json({
+        error: `Has alcanzado el límite de ${BULK_MAX_OPEN_BATCHES} lotes abiertos simultáneos. Confirma o descarta alguno antes de subir uno nuevo.`,
+        openBatches: open,
+        maxBatches: BULK_MAX_OPEN_BATCHES,
+      });
+      return;
+    }
+  } catch (e) { console.error('[POST /api/documents/bulk/batches] limit check error:', e); }
 
   // Validate magic bytes for EVERY file before writing anything to disk
   for (const f of files) {
@@ -5521,26 +5555,30 @@ cron.schedule('0 2 * * *', async () => {
 // staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).
 cron.schedule('0 * * * *', async () => {
   try {
+    // Only reap batches that are not already REAPED/DISCARDED/COMMITTED (terminal states).
     const stale = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM "bulk_import_batch"
-      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)`;
+      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)
+        AND status NOT IN ('REAPED','COMMITTED','DISCARDED')`;
     let cleaned = 0;
     for (const b of stale) {
-      // Look up the batch owner + counts BEFORE deletion so the reap audit row
-      // is attributable (closes the "silent reap" backlog item).
+      // Look up the batch owner + counts BEFORE reaping so the audit row is attributable.
       const meta = await prisma.$queryRaw<{ created_by: string; file_count: number; committed: bigint; non_committed: bigint }[]>`
         SELECT b.created_by, b.file_count,
                COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED')  AS committed,
                COUNT(i.id) FILTER (WHERE i.status <> 'COMMITTED') AS non_committed
         FROM "bulk_import_batch" b LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
         WHERE b.id = ${b.id}::uuid GROUP BY b.id`;
+      // Delete only staged files (not committed documents, which already moved to DOCUMENTS_DIR).
       const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
         SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
         WHERE batch_id = ${b.id}::uuid AND status != 'COMMITTED'`;
       for (const it of items) {
         try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
       }
-      await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${b.id}::uuid`;
+      // Mark REAPED instead of DELETE: preserves the batch row for the list view (Task C)
+      // so the user can see their expired batches and understand what happened to them.
+      await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status='REAPED', updated_at=now() WHERE id = ${b.id}::uuid`;
       const m = meta[0];
       if (m) {
         try {

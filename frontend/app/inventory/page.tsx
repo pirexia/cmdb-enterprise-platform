@@ -170,6 +170,21 @@ function CriticalityBadge({ level }: { level: Criticality }) {
   return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${CRIT_STYLES[level]}`}>{CRIT_LABEL[level]}</span>;
 }
 
+// ─── CI Status badge ──────────────────────────────────────────────────────────
+
+function CIStatusBadge({ status, t }: { status: string; t: (k: string) => string }) {
+  const cfg: Record<string, string> = {
+    ACTIVO:   "bg-emerald-100 text-emerald-700",
+    INACTIVO: "bg-amber-100 text-amber-700",
+    RETIRADO: "bg-slate-100 text-slate-500",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cfg[status] ?? "bg-slate-100 text-slate-500"}`}>
+      {t(`inventory.status.${status}`) ?? status}
+    </span>
+  );
+}
+
 // ─── Greenbone vuln badge ──────────────────────────────────────────────────────
 
 function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
@@ -251,10 +266,10 @@ export default function InventoryPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
 
-  type SortCol = "name" | "ciType" | "environment" | "criticality" | null;
+  type SortCol = "name" | "ciType" | "environment" | "criticality" | "status" | null;
   type SortDir = "asc" | "desc";
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
-  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" });
+  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" });
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -264,7 +279,7 @@ export default function InventoryPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
 
-  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
+  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -306,6 +321,7 @@ export default function InventoryPage() {
       if (filters.ciType && resolvedType !== filters.ciType) return false;
       if (filters.environment && ci.environment !== filters.environment) return false;
       if (filters.criticality && ci.criticality !== filters.criticality) return false;
+      if (filters.status && (ci.status ?? "ACTIVO") !== filters.status) return false;
       if (filters.vulns) {
         if (filters.vulns === "no_data" && ci.vulnerabilities !== null) return false;
         if (filters.vulns === "clean" && (ci.vulnerabilities === null || openVulns.length > 0)) return false;
@@ -327,6 +343,7 @@ export default function InventoryPage() {
         if (sort.col === "name")        return dir * a.name.localeCompare(b.name);
         if (sort.col === "environment") return dir * a.environment.localeCompare(b.environment);
         if (sort.col === "criticality") return dir * ((CRIT_ORDER[a.criticality] ?? 0) - (CRIT_ORDER[b.criticality] ?? 0));
+        if (sort.col === "status")      return dir * (a.status ?? "ACTIVO").localeCompare(b.status ?? "ACTIVO");
         if (sort.col === "ciType") {
           const at = a.ciType ?? (a.hardware ? "HARDWARE" : a.software ? "SOFTWARE" : "OTHER");
           const bt = b.ciType ?? (b.hardware ? "HARDWARE" : b.software ? "SOFTWARE" : "OTHER");
@@ -550,6 +567,13 @@ export default function InventoryPage() {
                           {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
+                      {/* Status */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("status")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
+                          {t('inventory.columns.status')}
+                          {sort.col === "status" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
+                      </th>
                       <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div></th>
                       <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><Shield className="h-3.5 w-3.5" />CrowdStrike</div></th>
                       <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
@@ -599,6 +623,16 @@ export default function InventoryPage() {
                           <option value="HIGH">High</option>
                           <option value="MEDIUM">Medium</option>
                           <option value="LOW">Low</option>
+                        </select>
+                      </td>
+                      {/* Status filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.status ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">{t('inventory.filter_status_all')}</option>
+                          <option value="ACTIVO">{t('inventory.status.ACTIVO')}</option>
+                          <option value="INACTIVO">{t('inventory.status.INACTIVO')}</option>
+                          <option value="RETIRADO">{t('inventory.status.RETIRADO')}</option>
                         </select>
                       </td>
                       {/* Vulns filter */}
@@ -676,6 +710,7 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-3"><EnvironmentBadge env={ci.environment} /></td>
                             <td className="px-4 py-3"><CriticalityBadge level={ci.criticality} /></td>
+                            <td className="px-4 py-3"><CIStatusBadge status={ci.status ?? "ACTIVO"} t={t} /></td>
                             <td className="px-4 py-3"><VulnBadge vulns={ci.vulnerabilities} /></td>
                             <td className="px-4 py-3"><AgentBadge agent={ci.agentStatus} /></td>
                             <td className="px-4 py-3">

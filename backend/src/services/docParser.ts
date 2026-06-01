@@ -42,7 +42,7 @@ const CSV_CHUNK_LINES     = 100;        // lines per chunk for CSV
 const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap (pdftoppm or single tesseract page)
 // Total timeout for a full OCR run (pdftoppm + all tesseract pages). Must be >> MAX_OCR_TIME_MS * typical pages.
 // At 150 DPI a 16-page PDF takes ~14s (pdftoppm) + ~10s×16 (tesseract) ≈ 174s; 600s gives comfortable headroom.
-const MAX_OCR_DOC_TIME_MS = Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000);
+const MAX_OCR_DOC_TIME_MS = Math.max(60_000, Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000) || 600_000);
 const OCR_LANGUAGES       = process.env.OCR_LANGUAGES ?? 'spa+eng';
 const OCR_DPI             = process.env.OCR_DPI ?? '150';  // 300 DPI caused silent timeouts on multi-page scans; 150 is sufficient for text
 const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled

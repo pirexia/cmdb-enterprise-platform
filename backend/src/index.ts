@@ -2355,11 +2355,11 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
           ELSE NULL
         END AS entity_name
       FROM audit_logs al
-      LEFT JOIN configuration_items ci ON al.entity = 'CI' AND al.entity_id::uuid = ci.id
-      LEFT JOIN configuration_items vuln_ci ON al.entity = 'VULNERABILITY' AND split_part(al.entity_id, ':', 1)::uuid = vuln_ci.id
-      LEFT JOIN documents doc ON al.entity = 'Document' AND al.entity_id::uuid = doc.id
-      LEFT JOIN users u ON al.entity = 'USER' AND al.entity_id::uuid = u.id
-      LEFT JOIN ci_relations rel ON al.entity = 'CI_RELATION' AND al.entity_id::uuid = rel.id
+      LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'          THEN al.entity_id::uuid                         ELSE NULL END) = ci.id
+      LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
+      LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'     THEN al.entity_id::uuid                         ELSE NULL END) = doc.id
+      LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'          THEN al.entity_id::uuid                         ELSE NULL END) = u.id
+      LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'  THEN al.entity_id::uuid                         ELSE NULL END) = rel.id
       LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
       LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
       ${whereClause}

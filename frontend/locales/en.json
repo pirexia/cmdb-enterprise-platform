@@ -37,7 +37,6 @@
     "retry": "Retry",
     "search": "Search",
     "import": "Import",
-    "download_template": "CSV Template",
     "sync": "Sync",
     "send_test_email": "Send Test Email",
     "test": "Test"

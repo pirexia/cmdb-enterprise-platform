@@ -1625,13 +1625,42 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk-delete payload' });
     return;
   }
-  const { ciIds } = parsed.data;
+  const { ciIds, force } = parsed.data;
 
   try {
     // Snapshot of names for the audit log (lost after the DELETE).
     const existing = await prisma.$queryRaw<{ id: string; name: string }[]>`
       SELECT id::text AS id, name FROM "configuration_items" WHERE id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})`;
     const existingMap = new Map(existing.map((r) => [r.id, r.name]));
+
+    // V2.5.1-A04-1: count active associations BEFORE we cascade-delete them silently.
+    // Without this check, deleting a CI would silently sever:
+    //   - contract↔CI links (M2M _ContractToCI, A=CI/B=Contract)
+    //   - license↔CI links  (M2M _LicenseToCI,  A=License/B=CI)
+    //   - document↔CI links (document_cis.ci_id, onDelete: Cascade)
+    // ...without telling the admin or leaving a forensic trail of WHICH refs were broken.
+    const refRows = await prisma.$queryRaw<{ contracts: bigint; licenses: bigint; documents: bigint }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM "_ContractToCI" WHERE "A" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS contracts,
+        (SELECT COUNT(*) FROM "_LicenseToCI"  WHERE "B" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS licenses,
+        (SELECT COUNT(*) FROM "document_cis"  WHERE ci_id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS documents`;
+    const brokenRefs = {
+      contracts: Number(refRows[0]?.contracts ?? 0),
+      licenses:  Number(refRows[0]?.licenses  ?? 0),
+      documents: Number(refRows[0]?.documents ?? 0),
+    };
+    const totalBroken = brokenRefs.contracts + brokenRefs.licenses + brokenRefs.documents;
+
+    // If active references exist AND the caller hasn't explicitly opted in with
+    // `force: true`, return 409 with a breakdown so the UI can warn the admin.
+    if (totalBroken > 0 && !force) {
+      res.status(409).json({
+        error: 'Some CIs are linked to active contracts/licenses/documents.',
+        brokenRefs,
+        hint: 'Set { "force": true } in the request body to proceed and sever these associations.',
+      });
+      return;
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       // Per-CI audit BEFORE delete (so we keep entity_id resolvable to the historical name).
@@ -1656,6 +1685,9 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
         notFound: notFoundCount,
         sample: actuallyDeletedIds.slice(0, 10),
         truncated: actuallyDeletedIds.length > 10,
+        // V2.5.1-A04-1: forensic trail of associations severed by this delete
+        brokenRefs,
+        forced: !!force,
       };
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)

@@ -258,7 +258,13 @@
       "title": "Eliminazione massiva di CI",
       "confirm": "Eliminare i {count} CI selezionati? Questa azione non può essere annullata.",
       "warning": "Verranno rimossi anche l'hardware/software associato, le relazioni e i riferimenti a documenti/contratti/licenze.",
-      "confirm_button": "Sì, elimina"
+      "confirm_button": "Sì, elimina",
+      "has_refs_title": "I CI selezionati hanno relazioni attive",
+      "refs_contracts": "{count} relazione/i con contratti",
+      "refs_licenses": "{count} relazione/i con licenze",
+      "refs_documents": "{count} relazione/i con documenti",
+      "has_refs_warning": "Se procedi, queste associazioni saranno rimosse silenziosamente (i contratti, le licenze e i documenti stessi non vengono eliminati). I contatori vengono registrati nel log di audit per uso forense.",
+      "force_button": "Elimina e rompi le relazioni"
     }
   },
   "vulnerabilities": {

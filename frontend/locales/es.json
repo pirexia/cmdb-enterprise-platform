@@ -258,7 +258,13 @@
       "title": "Eliminar CIs en bloque",
       "confirm": "¿Eliminar los {count} CI(s) seleccionados? Esta acción no se puede deshacer.",
       "warning": "Se eliminarán también el hardware/software asociado, relaciones y referencias a documentos/contratos/licencias.",
-      "confirm_button": "Sí, eliminar"
+      "confirm_button": "Sí, eliminar",
+      "has_refs_title": "Los CIs seleccionados tienen relaciones activas",
+      "refs_contracts": "{count} relación(es) con contratos",
+      "refs_licenses": "{count} relación(es) con licencias",
+      "refs_documents": "{count} relación(es) con documentos",
+      "has_refs_warning": "Si continúas, esas asociaciones se eliminarán silenciosamente (los contratos, licencias y documentos en sí no se borran). Las referencias se registran en el audit log para forense.",
+      "force_button": "Eliminar y romper relaciones"
     }
   },
   "vulnerabilities": {

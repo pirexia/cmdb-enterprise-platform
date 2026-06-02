@@ -258,7 +258,13 @@
       "title": "CIs gesammelt löschen",
       "confirm": "{count} ausgewählte CI(s) löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
       "warning": "Zugehörige Hardware/Software, Beziehungen und Verweise auf Dokumente/Verträge/Lizenzen werden ebenfalls entfernt.",
-      "confirm_button": "Ja, löschen"
+      "confirm_button": "Ja, löschen",
+      "has_refs_title": "Die ausgewählten CIs haben aktive Beziehungen",
+      "refs_contracts": "{count} Vertragsbeziehung(en)",
+      "refs_licenses": "{count} Lizenzbeziehung(en)",
+      "refs_documents": "{count} Dokumentenbeziehung(en)",
+      "has_refs_warning": "Wenn Sie fortfahren, werden diese Verknüpfungen stillschweigend getrennt (Verträge, Lizenzen und Dokumente selbst werden nicht gelöscht). Die Referenzzahlen werden für Forensik im Audit-Log erfasst.",
+      "force_button": "Löschen und Beziehungen trennen"
     }
   },
   "vulnerabilities": {

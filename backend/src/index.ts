@@ -4805,6 +4805,46 @@ async function materializeCIBulkItem(
       WHERE id=${item.id}::uuid AND status <> 'COMMITTED'`;
     if (Number(claimed) === 0) throw new CIBulkValidationError('El elemento ya fue confirmado');
 
+    // K1: upsert master records for manufacturer + device model so they appear
+    // in the Datos Maestros UI and in future "create CI" dropdowns. Without
+    // this, manufacturer/model only lived as free-text strings on HardwareCI.
+    // Pattern: SELECT first (case-insensitive), INSERT if missing — neither
+    // table has a UNIQUE constraint that would let us use ON CONFLICT.
+    let ciModelId: string | null = null;
+    if (needsHw && decision.manufacturer?.trim()) {
+      const mfrName = decision.manufacturer.trim();
+      const existingMfr = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "manufacturers" WHERE LOWER(name) = LOWER(${mfrName}) LIMIT 1`;
+      let mfrId: string;
+      if (existingMfr.length > 0) {
+        mfrId = existingMfr[0].id;
+      } else {
+        const inserted = await tx.$queryRaw<{ id: string }[]>`
+          INSERT INTO "manufacturers"(id, name, created_at, updated_at)
+          VALUES (gen_random_uuid(), ${mfrName}, now(), now())
+          RETURNING id::text AS id`;
+        mfrId = inserted[0].id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Manufacturer',${mfrId}::uuid,${userEmail},${JSON.stringify({ name: mfrName, source: 'ci-bulk-import' })}::jsonb,now())`;
+      }
+
+      if (decision.model?.trim()) {
+        const modelName = decision.model.trim();
+        const existingModel = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM "device_models"
+          WHERE LOWER(name) = LOWER(${modelName}) AND manufacturer_id = ${mfrId}::uuid LIMIT 1`;
+        if (existingModel.length > 0) {
+          ciModelId = existingModel[0].id;
+        } else {
+          const insertedModel = await tx.$queryRaw<{ id: string }[]>`
+            INSERT INTO "device_models"(id, name, manufacturer_id, created_at, updated_at)
+            VALUES (gen_random_uuid(), ${modelName}, ${mfrId}::uuid, now(), now())
+            RETURNING id::text AS id`;
+          ciModelId = insertedModel[0].id;
+          await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','DeviceModel',${ciModelId}::uuid,${userEmail},${JSON.stringify({ name: modelName, manufacturerId: mfrId, source: 'ci-bulk-import' })}::jsonb,now())`;
+        }
+      }
+    }
+
     const newCi = await tx.cI.create({
       data: {
         name:               decision.name,
@@ -4815,6 +4855,7 @@ async function materializeCIBulkItem(
         ciTypeId,
         branchId,
         costCenterId,
+        ciModelId,
         inventoryNumber:    decision.inventoryNumber   || null,
         assignedUser:       decision.assignedUser      || null,
         businessImpact:     (decision.businessImpact   || null) as string | null,

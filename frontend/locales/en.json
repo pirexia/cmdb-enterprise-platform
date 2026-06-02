@@ -39,7 +39,8 @@
     "import": "Import",
     "sync": "Sync",
     "send_test_email": "Send Test Email",
-    "test": "Test"
+    "test": "Test",
+    "back": "Back"
   },
   "common": {
     "loading": "Loading…",

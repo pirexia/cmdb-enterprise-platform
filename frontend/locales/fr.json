@@ -39,7 +39,8 @@
     "import": "Importer",
     "sync": "Synchroniser",
     "send_test_email": "Envoyer un e-mail test",
-    "test": "Tester"
+    "test": "Tester",
+    "back": "Retour"
   },
   "common": {
     "loading": "Chargement…",

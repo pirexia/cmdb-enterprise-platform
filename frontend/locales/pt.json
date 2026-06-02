@@ -295,7 +295,14 @@
     "no_match": "Nenhum CI encontrado.",
     "select_placeholder": "— Selecionar —",
     "edit_contract": "Editar contrato",
-    "edit_error": "Erro ao guardar o contrato"
+    "edit_error": "Erro ao guardar o contrato",
+    "delete_button": "Eliminar contrato",
+    "delete_confirm": "Eliminar o contrato {number}? Esta ação não pode ser desfeita.",
+    "delete_error": "Não foi possível eliminar o contrato",
+    "delete_blocked_addendums": "O contrato tem adendas ativas. Elimine-as primeiro.",
+    "unlink_document": "Desassociar documento",
+    "unlink_document_confirm": "Desassociar este documento do contrato?",
+    "unlink_document_error": "Não foi possível desassociar o documento"
   },
   "documents": {
     "title": "Repositório Documental",

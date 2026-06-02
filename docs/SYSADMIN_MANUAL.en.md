@@ -270,11 +270,19 @@ Bulk import lets users upload several documents at once; a background worker (on
 # BULK_BATCH_TTL_HOURS=24   # age after which an abandoned batch is discarded automatically
 # BULK_ANALYZE_BUDGET=2     # documents analysed by AI per cycle (30 s); low = won't starve the RAG queue on CPU
 # BULK_STAGING_DIR=/app/documents/_staging   # staging area location (defaults to a subdir of DOCUMENTS_DIR)
+
+# ── CI bulk import (XLSX) — concurrent analysis ───────────────────────
+# CI_BULK_CONCURRENCY=3      # CI items analysed in parallel (1..5). Default 3.
+                              # CI analysis is light (no OCR); 3 workers saturate
+                              # Ollama without starving the rest. Raise to 5 only
+                              # with >=8 cores.
 ```
 
 > **Automatic cleanup:** an hourly cron discards batches older than `BULK_BATCH_TTL_HOURS` and deletes their staged files, preventing the staging area from growing unbounded (ISO 22301 / NIS2). Already-confirmed (materialized) documents are **not** affected.
 >
-> **Performance:** AI analysis is sequential and CPU-bound. A large batch can take several minutes per document. With a GPU, latency drops dramatically (see §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controls how many documents compete for Ollama each cycle against normal RAG indexing.
+> **Document performance:** AI analysis of documents is sequential and CPU-bound (one at a time to avoid saturating Ollama with simultaneous OCR + LLM). A large batch can take several minutes per document. With a GPU, latency drops dramatically (see §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controls how many documents compete for Ollama each cycle against normal RAG indexing.
+>
+> **CI performance:** the CI bulk import processes up to `CI_BULK_CONCURRENCY` rows in parallel (default 3). As soon as one analysis finishes, the next one starts immediately (not in batches), drastically reducing total processing time for large batches.
 >
 > **OCR for scanned files:** scanned PDFs (no digital text) are recognized automatically via OCR (Tesseract), same as single upload — the worker uses the same `parseDocument`. OCR rasterizes each page (`OCR_DPI`) and runs Tesseract (`OCR_LANGUAGES`), which **adds time** per document on CPU (e.g. ~3-4 min for a 20+ page scanned PDF). Requires `tesseract-ocr` + `poppler-utils` in the backend image (already included). Tune `OCR_ENABLED`/`OCR_DPI`/`OCR_LANGUAGES`/`OCR_TIMEOUT_MS` as needed.
 

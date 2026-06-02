@@ -264,11 +264,18 @@ La carga masiva permite subir varios documentos a la vez; un *worker* en segundo
 # BULK_BATCH_TTL_HOURS=24   # antigüedad tras la cual un lote abandonado se descarta automáticamente
 # BULK_ANALYZE_BUDGET=2     # documentos analizados por IA por ciclo (30 s); bajo = no satura la cola RAG en CPU
 # BULK_STAGING_DIR=/app/documents/_staging   # ubicación del área temporal (por defecto, subdir de DOCUMENTS_DIR)
+
+# ── Carga masiva de CIs (XLSX) — análisis concurrente ─────────────────
+# CI_BULK_CONCURRENCY=3      # nº de items CI analizados en paralelo (1..5). Default 3.
+                              # El análisis CI es ligero (sin OCR); 3 hilos saturan Ollama
+                              # sin afectar al resto. Subir a 5 solo con >=8 cores.
 ```
 
 > **Limpieza automática:** un cron horario descarta los lotes con antigüedad superior a `BULK_BATCH_TTL_HOURS` y borra sus ficheros de staging, evitando que el área temporal crezca sin control (ISO 22301 / NIS2). Los documentos ya confirmados (materializados) **no** se ven afectados.
 >
-> **Rendimiento:** el análisis IA es secuencial y limitado por CPU. Un lote grande puede tardar varios minutos por documento. Con GPU la latencia baja drásticamente (ver §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controla cuántos documentos compiten por Ollama en cada ciclo frente a la indexación RAG normal.
+> **Rendimiento documentos:** el análisis IA de documentos es secuencial y limitado por CPU (uno a la vez para evitar saturar Ollama con OCR + Ollama simultáneos). Un lote grande puede tardar varios minutos por documento. Con GPU la latencia baja drásticamente (ver §21 — RAG / GPU). `BULK_ANALYZE_BUDGET` controla cuántos documentos compiten por Ollama en cada ciclo frente a la indexación RAG normal.
+>
+> **Rendimiento CIs:** la importación masiva de CIs procesa hasta `CI_BULK_CONCURRENCY` filas en paralelo (default 3). Cuando un análisis termina, el siguiente arranca de inmediato (no en lotes), lo que reduce drásticamente el tiempo total para lotes grandes.
 >
 > **OCR para escaneados:** los PDFs escaneados (sin texto digital) se reconocen automáticamente por OCR (Tesseract), igual que en la subida individual — el worker usa el mismo `parseDocument`. El OCR rasteriza cada página (`OCR_DPI`) y la pasa por Tesseract (`OCR_LANGUAGES`), lo que **suma tiempo** por documento en CPU (p. ej. ~3-4 min para un PDF escaneado de 20+ páginas). Requiere `tesseract-ocr` + `poppler-utils` en la imagen del backend (ya incluidos). Ajusta `OCR_ENABLED`/`OCR_DPI`/`OCR_LANGUAGES`/`OCR_TIMEOUT_MS` según necesidad.
 

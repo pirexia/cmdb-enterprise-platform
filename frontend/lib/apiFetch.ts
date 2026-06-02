@@ -27,10 +27,14 @@ export function apiFetch(path: string, options?: RequestInit): Promise<Response>
     localStorage.removeItem("cmdb_user");
   }
 
+  // Don't set Content-Type when body is FormData — the browser sets it
+  // automatically with the correct multipart boundary.
+  const isFormData = options?.body instanceof FormData;
+
   return fetch(`${API_BASE}${path}`, {
     ...options,
     credentials: "include",
-    headers: {
+    headers: isFormData ? { ...options?.headers } : {
       "Content-Type": "application/json",
       ...options?.headers,
     },

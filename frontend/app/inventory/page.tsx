@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Layers } from "lucide-react";
 import {
   Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
   Shield, ShieldAlert, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
@@ -473,6 +474,10 @@ export default function InventoryPage() {
                   {importing ? t('common.loading') : t('inventory.import_csv')}
                   <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
                 </label>
+                <button onClick={() => router.push('/inventory/bulk')}
+                  className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors">
+                  <Layers className="h-3.5 w-3.5" />{t('inventory.bulk.button')}
+                </button>
                 <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                   <Plus className="h-4 w-4" />{t('inventory.add_ci')}
                 </button>

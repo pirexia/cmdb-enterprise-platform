@@ -27,13 +27,15 @@ import { authenticator } from 'otplib';
 authenticator.options = { window: 1 }; // accept 1 step before/after current (30-sec clock drift)
 import QRCode from 'qrcode';
 import multer from 'multer';
+import ExcelJS from 'exceljs';
 import { parseDocument } from './services/docParser';
 import { chunkSections } from './services/chunker';
 import {
   getEmbedding, getEmbeddingsBatch, isOllamaHealthy, sanitizeQuery,
   buildRagPrompt, chatWithContext, streamChatWithContext,
   analyzeDocumentForImport,
-  type RagChunkResult, type Citation, type BulkAnalysisRaw,
+  analyzeCIRowForImport,
+  type RagChunkResult, type Citation, type BulkAnalysisRaw, type CIRowRaw,
 } from './services/ragService';
 import {
   vulnUuid, getContractRoot, getLicenseRoot,
@@ -1764,6 +1766,427 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
 // ── Bulk CI Import ────────────────────────────────────────────────────────────
 
 /**
+ * GET /api/cis/bulk/template.xlsx — download an XLSX template with data-validation
+ * dropdowns populated from live master data. Sheet "Datos" has the editable rows;
+ * Sheet "Instrucciones" explains every field and lists valid values.
+ * ADMIN only (same as upload + commit).
+ */
+app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const [ciTypes, branches, costCenters, manufacturers] = await Promise.all([
+      prisma.$queryRaw<{ code: string; name: string }[]>`SELECT code, name FROM "ci_types" ORDER BY name`,
+      prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "branches" ORDER BY name`,
+      prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "cost_centers" ORDER BY name`,
+      prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "manufacturers" ORDER BY name`,
+    ]);
+
+    const ciTypeCodes  = ciTypes.map((t) => t.code);
+    const branchNames  = branches.map((b) => b.name);
+    const ccNames      = costCenters.map((c) => c.name);
+    const mfgNames     = manufacturers.map((m) => m.name);
+    const criticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
+    const environments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
+    const statuses      = ['ACTIVO', 'INACTIVO', 'RETIRADO'];
+    const businessImpacts = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+    const dataClassifications = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'];
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'CMDB Enterprise Platform';
+    wb.created = new Date();
+
+    // ── Sheet 1: Datos (editable) ────────────────────────────────────────────
+    const ws = wb.addWorksheet('Datos', { views: [{ state: 'frozen', ySplit: 1 }] });
+
+    const COLS = [
+      { key: 'name',               header: 'name *',               width: 30 },
+      { key: 'ciType',             header: 'ciType *',             width: 22 },
+      { key: 'criticality',        header: 'criticality *',        width: 18 },
+      { key: 'environment',        header: 'environment *',        width: 18 },
+      { key: 'status',             header: 'status',               width: 14 },
+      { key: 'inventoryNumber',    header: 'inventoryNumber',      width: 20 },
+      { key: 'manufacturer',       header: 'manufacturer',         width: 22 },
+      { key: 'serialNumber',       header: 'serialNumber',         width: 22 },
+      { key: 'model',              header: 'model',                width: 22 },
+      { key: 'branch',             header: 'branch',               width: 22 },
+      { key: 'costCenter',         header: 'costCenter',           width: 22 },
+      { key: 'version',            header: 'version (SW)',         width: 16 },
+      { key: 'licenseType',        header: 'licenseType (SW)',     width: 18 },
+      { key: 'eolDate',            header: 'eolDate (YYYY-MM-DD)', width: 20 },
+      { key: 'eosDate',            header: 'eosDate (YYYY-MM-DD)', width: 20 },
+      { key: 'businessImpact',     header: 'businessImpact',       width: 18 },
+      { key: 'dataClassification', header: 'dataClassification',  width: 22 },
+      { key: 'assignedUser',       header: 'assignedUser',         width: 22 },
+      { key: 'ipAddress',          header: 'ipAddress',            width: 18 },
+      { key: 'description',        header: 'description',          width: 40 },
+    ];
+
+    ws.columns = COLS;
+
+    // Header row styling
+    const headerRow = ws.getRow(1);
+    headerRow.eachCell((cell) => {
+      cell.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+      cell.font   = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FF1E40AF' } } };
+      cell.alignment = { vertical: 'middle' };
+    });
+
+    // Two example rows
+    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '' });
+    ws.addRow({ name: 'Office 365 E3', ciType: 'LICENSE', criticality: 'MEDIUM', environment: 'PRODUCTION', status: 'ACTIVO', version: '365', licenseType: 'subscription', eolDate: '2026-12-31' });
+
+    // Data validations (dropdown lists)
+    const listVal = (formulae: string) => ({ type: 'list' as const, allowBlank: true, showDropDown: true, formulae: [formulae] });
+    const maxRow = 1000;
+    for (let r = 2; r <= maxRow; r++) {
+      ws.getCell(r, 2).dataValidation  = listVal(`"${ciTypeCodes.slice(0, 30).join(',')}"`);
+      ws.getCell(r, 3).dataValidation  = listVal(`"${criticalities.join(',')}"`);
+      ws.getCell(r, 4).dataValidation  = listVal(`"${environments.join(',')}"`);
+      ws.getCell(r, 5).dataValidation  = listVal(`"${statuses.join(',')}"`);
+      ws.getCell(r, 10).dataValidation = branchNames.length ? listVal(`"${branchNames.slice(0, 40).join(',')}"`) : undefined!;
+      ws.getCell(r, 11).dataValidation = ccNames.length     ? listVal(`"${ccNames.slice(0, 40).join(',')}"`)     : undefined!;
+      ws.getCell(r, 16).dataValidation = listVal(`"${businessImpacts.join(',')}"`);
+      ws.getCell(r, 17).dataValidation = listVal(`"${dataClassifications.join(',')}"`);
+    }
+
+    // ── Sheet 2: Instrucciones ───────────────────────────────────────────────
+    const wi = wb.addWorksheet('Instrucciones');
+    const instructions: [string, string][] = [
+      ['Campo',               'Descripción y valores válidos'],
+      ['name *',              'Nombre del CI. Obligatorio y único.'],
+      ['ciType *',            `Tipo de CI. Valores: ${ciTypeCodes.join(', ')}`],
+      ['criticality *',       `Criticidad. Valores: ${criticalities.join(', ')}`],
+      ['environment *',       `Entorno. Valores: ${environments.join(', ')}`],
+      ['status',              `Estado. Valores: ${statuses.join(', ')} (defecto: ACTIVO)`],
+      ['inventoryNumber',     'Número de inventario interno (único si se indica).'],
+      ['manufacturer',        `Fabricante. Valores maestros: ${mfgNames.slice(0,20).join(', ')}`],
+      ['serialNumber',        'Número de serie (hardware). Genera un tipo HardwareCI.'],
+      ['model',               'Modelo del dispositivo (hardware).'],
+      ['branch',              `Delegación / sede. Valores maestros: ${branchNames.slice(0,20).join(', ')}`],
+      ['costCenter',          `Centro de coste. Valores maestros: ${ccNames.slice(0,20).join(', ')}`],
+      ['version',             'Versión del software (SW). Si se indica, genera tipo SoftwareCI.'],
+      ['licenseType',         'Tipo de licencia del software (SW). Ej: perpetual, subscription.'],
+      ['eolDate',             'Fecha de fin de vida (End-of-Life). Formato YYYY-MM-DD.'],
+      ['eosDate',             'Fecha de fin de soporte (End-of-Support). Formato YYYY-MM-DD.'],
+      ['businessImpact',      `Impacto de negocio (NIS2). Valores: ${businessImpacts.join(', ')}`],
+      ['dataClassification',  `Clasificación de datos (GDPR). Valores: ${dataClassifications.join(', ')}`],
+      ['assignedUser',        'Nombre del usuario asignado al activo (si aplica).'],
+      ['ipAddress',           'Dirección IP de consola de gestión (opcional).'],
+      ['description',         'Descripción libre del CI.'],
+      ['', ''],
+      ['NOTAS:', ''],
+      ['* Obligatorio',       'Los campos marcados con * son requeridos por el sistema.'],
+      ['Filas 2-3',           'Son filas de ejemplo — borrarlas antes de importar.'],
+      ['Conflictos',          'La IA detectará CIs existentes con el mismo nombre, nº de serie o inventario y los marcará para revisión.'],
+    ];
+    wi.columns = [{ width: 25 }, { width: 80 }];
+    instructions.forEach((row, i) => {
+      const r = wi.addRow(row);
+      if (i === 0) { r.eachCell((c) => { c.font = { bold: true }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; }); }
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla-cis.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  } catch (e) {
+    console.error('[GET /api/cis/bulk/template.xlsx]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cis/bulk/batches — upload XLSX → create staging batch
+app.post('/api/cis/bulk/batches', authenticateToken, requireAdmin, ciXlsxUploadMiddleware, async (req: Request, res: Response) => {
+  const file = req.file;
+  if (!file) { res.status(400).json({ error: 'Se requiere un fichero .xlsx' }); return; }
+
+  // Validate magic bytes: XLSX = ZIP (PK\x03\x04)
+  if (file.buffer.length < 4 || file.buffer[0] !== 0x50 || file.buffer[1] !== 0x4B ||
+      file.buffer[2] !== 0x03 || file.buffer[3] !== 0x04) {
+    res.status(400).json({ error: 'El fichero no es un XLSX válido' }); return;
+  }
+
+  // Concurrent-batch limit (shared constant, prevents staging DoS)
+  try {
+    const openRows = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM "ci_bulk_import_batch"
+      WHERE created_by = ${req.user!.email}
+        AND status NOT IN ('COMMITTED','DISCARDED','REAPED')`;
+    if (Number(openRows[0]?.c ?? 0) >= BULK_MAX_OPEN_BATCHES) {
+      res.status(429).json({
+        error: `Límite de ${BULK_MAX_OPEN_BATCHES} lotes abiertos alcanzado. Confirma o descarta alguno primero.`,
+        maxBatches: BULK_MAX_OPEN_BATCHES,
+      });
+      return;
+    }
+  } catch (e) { console.error('[POST /api/cis/bulk/batches] limit check error:', e); }
+
+  // Parse XLSX with ExcelJS
+  let rows: Array<Record<string, string | null>> = [];
+  try {
+    const wb = new ExcelJS.Workbook();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await wb.xlsx.load(file.buffer as any);
+    const ws = wb.getWorksheet('Datos') ?? wb.worksheets[0];
+    if (!ws) { res.status(400).json({ error: 'El XLSX no contiene la hoja "Datos"' }); return; }
+
+    const headers: string[] = [];
+    ws.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
+      headers[col - 1] = String(cell.value ?? '').replace(/\s*\*\s*$/, '').trim();
+    });
+
+    ws.eachRow({ includeEmpty: false }, (row, rowNum) => {
+      if (rowNum === 1) return;
+      const obj: Record<string, string | null> = {};
+      let hasData = false;
+      row.eachCell({ includeEmpty: true }, (cell, col) => {
+        const key = headers[col - 1];
+        if (!key) return;
+        const v = cell.value;
+        if (v !== null && v !== undefined && String(v).trim() !== '') {
+          obj[key] = String(v).trim();
+          hasData = true;
+        } else {
+          obj[key] = null;
+        }
+      });
+      if (hasData && obj['name']) rows.push(obj);
+    });
+  } catch (e) {
+    console.error('[POST /api/cis/bulk/batches] XLSX parse error:', e);
+    res.status(400).json({ error: 'No se pudo leer el fichero XLSX' }); return;
+  }
+
+  if (rows.length === 0) { res.status(400).json({ error: 'El XLSX no contiene filas con datos válidos (columna "name" requerida)' }); return; }
+  if (rows.length > CI_BULK_MAX_ROWS) { res.status(400).json({ error: `El XLSX excede el límite de ${CI_BULK_MAX_ROWS} filas` }); return; }
+
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string }[]>`
+      INSERT INTO "ci_bulk_import_batch"(id, created_by, status, row_count, created_at, updated_at)
+      VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${rows.length}, now(), now())
+      RETURNING id::text AS id`;
+    const batchId = batchRows[0].id;
+
+    for (let i = 0; i < rows.length; i++) {
+      await prisma.$executeRaw`
+        INSERT INTO "ci_bulk_import_item"(id, batch_id, row_index, raw_data, status, analysis, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${batchId}::uuid, ${i + 1}, ${JSON.stringify(rows[i])}::jsonb,
+               'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
+    }
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'CI_BULK_UPLOAD', 'CiBulkImportBatch', ${batchId}::uuid, ${req.user!.email},
+             ${JSON.stringify({ rowCount: rows.length })}::jsonb, now())`;
+
+    res.status(201).json({ batchId, rowCount: rows.length });
+  } catch (e) {
+    console.error('[POST /api/cis/bulk/batches]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/cis/bulk/batches — list admin's batches (most recent first)
+app.get('/api/cis/bulk/batches', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const [countRows, rows] = await Promise.all([
+      prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "ci_bulk_import_batch" WHERE created_by = ${req.user!.email}`,
+      prisma.$queryRaw<{ id: string; status: string; rowCount: number; createdAt: Date; committed: bigint; pending: bigint; errors: bigint }[]>`
+        SELECT b.id::text AS id, b.status, b.row_count AS "rowCount", b.created_at AS "createdAt",
+               COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
+               COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
+               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors
+        FROM "ci_bulk_import_batch" b
+        LEFT JOIN "ci_bulk_import_item" i ON i.batch_id = b.id
+        WHERE b.created_by = ${req.user!.email}
+        GROUP BY b.id
+        ORDER BY b.created_at DESC
+        LIMIT 100`,
+    ]);
+    const total = Number(countRows[0]?.c ?? 0);
+    res.json({
+      total, truncated: total > 100,
+      batches: rows.map(r => ({ ...r, committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors) })),
+    });
+  } catch (e) { console.error('[GET /api/cis/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// GET /api/cis/bulk/batches/:id — batch detail + items (polling target)
+app.get('/api/cis/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batchRows = await prisma.$queryRaw<{ id: string; status: string; rowCount: number; createdBy: string; createdAt: Date }[]>`
+      SELECT id::text AS id, status, row_count AS "rowCount", created_by AS "createdBy", created_at AS "createdAt"
+      FROM "ci_bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!batchRows.length) { res.status(404).json({ error: 'Batch not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ id: string; rowIndex: number; rawData: unknown; status: string; analysis: unknown; errorMessage: string | null; committedCiId: string | null; createdAt: Date }[]>`
+      SELECT id::text AS id, row_index AS "rowIndex", raw_data AS "rawData", status,
+             analysis, error_message AS "errorMessage", committed_ci_id::text AS "committedCiId", created_at AS "createdAt"
+      FROM "ci_bulk_import_item"
+      WHERE batch_id = ${req.params.id}::uuid
+      ORDER BY row_index ASC`;
+
+    res.json({ ...batchRows[0], items });
+  } catch (e) { console.error('[GET /api/cis/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/cis/bulk/items/:id — discard one staged item
+app.delete('/api/cis/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; batch_id: string; status: string }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.status
+      FROM "ci_bulk_import_item" i
+      JOIN "ci_bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+      LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado y no se puede descartar' }); return; }
+    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_item" WHERE id = ${req.params.id}::uuid`;
+    await recomputeCIBatchStatus(rows[0].batch_id);
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/cis/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// DELETE /api/cis/bulk/batches/:id — discard a whole batch
+app.delete('/api/cis/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "ci_bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_BATCH','CiBulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/cis/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// PATCH /api/cis/bulk/items/:id — save user's reviewed decision
+app.patch('/api/cis/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const parsed = CIBulkDecisionSchema.partial().safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }); return; }
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; status: string }[]>`
+      SELECT i.id::text AS id, i.status
+      FROM "ci_bulk_import_item" i JOIN "ci_bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "ci_bulk_import_item"
+      SET analysis = jsonb_set(COALESCE(analysis, '{}'::jsonb), '{decision}', ${JSON.stringify(parsed.data)}::jsonb, true),
+          updated_at = now()
+      WHERE id = ${req.params.id}::uuid`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[PATCH /api/cis/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/cis/bulk/items/:id/commit — materialize one reviewed item
+app.post('/api/cis/bulk/items/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; batch_id: string; status: string; analysis: unknown }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.status, i.analysis
+      FROM "ci_bulk_import_item" i JOIN "ci_bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email} LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const item = rows[0];
+
+    // Prefer body; fall back to persisted decision
+    const source = req.body && Object.keys(req.body).length > 0
+      ? req.body
+      : (item.analysis as { decision?: unknown } | null)?.decision;
+    const parsed = CIBulkDecisionSchema.safeParse(source);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Decisión inválida' }); return; }
+
+    const result = await materializeCIBulkItem(item, parsed.data, req.user!.email);
+    await recomputeCIBatchStatus(item.batch_id);
+    res.status(201).json(result);
+  } catch (e) {
+    if (e instanceof CIBulkValidationError) { res.status(400).json({ error: e.message }); return; }
+    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002') {
+      res.status(409).json({ error: 'Conflicto de unicidad: nombre, número de serie o inventario ya existen' }); return;
+    }
+    console.error('[POST /api/cis/bulk/items/:id/commit]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/cis/bulk/batches/:id/commit — commit all reviewed items in the batch
+app.post('/api/cis/bulk/batches/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "ci_bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+
+    const items = await prisma.$queryRaw<{ id: string; batch_id: string; status: string; analysis: unknown }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.status, i.analysis
+      FROM "ci_bulk_import_item" i
+      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR')
+      ORDER BY i.row_index ASC`;
+
+    const results: { itemId: string; ok: boolean; ciId?: string; error?: string }[] = [];
+    for (const item of items) {
+      const decision = (item.analysis as { decision?: unknown } | null)?.decision;
+      const parsed = CIBulkDecisionSchema.safeParse(decision);
+      if (!parsed.success) { results.push({ itemId: item.id, ok: false, error: parsed.error.issues[0]?.message ?? 'Decisión incompleta' }); continue; }
+      try {
+        const r = await materializeCIBulkItem(item, parsed.data, req.user!.email);
+        results.push({ itemId: item.id, ok: true, ciId: r.ciId });
+      } catch (e) {
+        const msg = e instanceof CIBulkValidationError ? e.message
+          : (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2002')
+            ? 'Conflicto de unicidad (nombre, serie o inventario ya existen)'
+            : 'Error interno';
+        results.push({ itemId: item.id, ok: false, error: msg });
+      }
+    }
+    await recomputeCIBatchStatus(String(req.params.id));
+    res.json({ results });
+  } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/cis/bulk/items/:id/reanalyze — re-queue one ANALYZED/ERROR item
+app.post('/api/cis/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await prisma.$queryRaw<{ id: string; batch_id: string }[]>`
+      SELECT i.id::text AS id, i.batch_id::text AS batch_id
+      FROM "ci_bulk_import_item" i JOIN "ci_bulk_import_batch" b ON b.id = i.batch_id
+      WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
+        AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
+    if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
+    await prisma.$executeRaw`
+      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE id = ${req.params.id}::uuid`;
+    await recomputeCIBatchStatus(rows[0].batch_id);
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    res.json({ ok: true });
+  } catch (e) { console.error('[POST /api/cis/bulk/items/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+// POST /api/cis/bulk/batches/:id/reanalyze — re-queue all ANALYZED/ERROR items
+app.post('/api/cis/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const batch = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "ci_bulk_import_batch"
+      WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
+    if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
+    const batchIdStr = String(req.params.id);
+    const count = Number(await prisma.$executeRaw`
+      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+      WHERE batch_id = ${batchIdStr}::uuid AND status IN ('ANALYZED','ERROR')`);
+    await recomputeCIBatchStatus(batchIdStr);
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+      VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_BATCH','CiBulkImportBatch',${batchIdStr}::uuid,${req.user!.email},
+             ${JSON.stringify({ count })}::jsonb, now())`;
+    res.json({ ok: true, count });
+  } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+/**
  * POST /api/cis/bulk
  * Accepts an array of up to 500 CI objects and creates them.
  * Returns a 207 Multi-Status with per-row results.
@@ -1932,11 +2355,11 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
           ELSE NULL
         END AS entity_name
       FROM audit_logs al
-      LEFT JOIN configuration_items ci ON al.entity = 'CI' AND al.entity_id::uuid = ci.id
-      LEFT JOIN configuration_items vuln_ci ON al.entity = 'VULNERABILITY' AND split_part(al.entity_id, ':', 1)::uuid = vuln_ci.id
-      LEFT JOIN documents doc ON al.entity = 'Document' AND al.entity_id::uuid = doc.id
-      LEFT JOIN users u ON al.entity = 'USER' AND al.entity_id::uuid = u.id
-      LEFT JOIN ci_relations rel ON al.entity = 'CI_RELATION' AND al.entity_id::uuid = rel.id
+      LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'          THEN al.entity_id::uuid                         ELSE NULL END) = ci.id
+      LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
+      LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'     THEN al.entity_id::uuid                         ELSE NULL END) = doc.id
+      LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'          THEN al.entity_id::uuid                         ELSE NULL END) = u.id
+      LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'  THEN al.entity_id::uuid                         ELSE NULL END) = rel.id
       LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
       LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
       ${whereClause}
@@ -3135,6 +3558,9 @@ const BULK_MAX_USER_STAGING_BYTES = parseInt(process.env.BULK_MAX_USER_STAGING_M
 // to see expired batches in the list view (Task C) without causing table bloat.
 const BULK_REAPED_RETENTION_DAYS = parseInt(process.env.BULK_REAPED_RETENTION_DAYS ?? '7', 10);
 
+// ── CI Bulk Import (staging + AI analysis) ────────────────────────────────────
+const CI_BULK_MAX_ROWS = parseInt(process.env.CI_BULK_MAX_ROWS ?? '500', 10);
+
 // Allowed file extensions and their expected magic bytes
 const ALLOWED_EXTENSIONS = new Set([
   'pdf', 'docx', 'xlsx', 'pptx', 'doc', 'txt', 'csv', 'png', 'jpg', 'jpeg', 'odt', 'ods',
@@ -3655,6 +4081,27 @@ async function recomputeBatchStatus(batchId: string): Promise<void> {
   await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
 
+async function recomputeCIBatchStatus(batchId: string): Promise<void> {
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
+    SELECT COUNT(*) AS total,
+           COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
+           COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
+           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors
+    FROM "ci_bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
+  const total     = Number(rows[0]?.total     ?? 0);
+  const pending   = Number(rows[0]?.pending   ?? 0);
+  const committed = Number(rows[0]?.committed ?? 0);
+  const errors    = Number(rows[0]?.errors    ?? 0);
+  let status: string;
+  if (total === 0)              status = 'DISCARDED';
+  else if (pending > 0)         status = 'ANALYZING';
+  else if (committed === total) status = 'COMMITTED';
+  else if (committed > 0)       status = 'PARTIALLY_COMMITTED';
+  else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
+  else                          status = 'READY';
+  await prisma.$executeRaw`UPDATE "ci_bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
+}
+
 /**
  * Analyzes up to BULK_ANALYZE_BUDGET staged items per tick: parses the file,
  * asks Ollama to extract structured metadata, matches CIs, and stores the
@@ -3716,6 +4163,80 @@ async function processBulkImportQueue(): Promise<void> {
   }
 }
 
+/**
+ * Processes up to BULK_ANALYZE_BUDGET CI staging rows per cron tick.
+ * Calls Ollama to normalize field values, runs DB conflict detection,
+ * and stores the combined analysis JSON on each item.
+ */
+async function processCIBulkImportQueue(): Promise<void> {
+  if (process.env.RAG_ENABLED !== 'true') return;
+  if (!(await isOllamaHealthy())) return;
+
+  const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`
+    SELECT id::text AS id, batch_id::text AS batch_id, raw_data
+    FROM "ci_bulk_import_item"
+    WHERE status = 'PENDING_ANALYSIS'
+    ORDER BY created_at ASC
+    LIMIT ${BULK_ANALYZE_BUDGET}`;
+
+  const touchedBatches = new Set<string>();
+
+  for (const item of pending) {
+    touchedBatches.add(item.batch_id);
+    try {
+      await prisma.$executeRaw`UPDATE "ci_bulk_import_item" SET status='ANALYZING', updated_at=now() WHERE id=${item.id}::uuid`;
+
+      const raw = (item.raw_data ?? {}) as CIRowRaw;
+
+      // Conflict detection: existing CIs by name, serialNumber, inventoryNumber
+      const conflicts: { field: string; existingId: string; existingName: string }[] = [];
+      const name = (raw['name'] ?? '').trim();
+      if (name) {
+        const ms = await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id::text AS id, name FROM "configuration_items" WHERE LOWER(name) = LOWER(${name}) LIMIT 3`;
+        for (const m of ms) conflicts.push({ field: 'name', existingId: m.id, existingName: m.name });
+      }
+      const serial = (raw['serialNumber'] ?? '').trim();
+      if (serial) {
+        const ms = await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT ci.id::text AS id, ci.name FROM "configuration_items" ci
+          JOIN "hardware_cis" hw ON hw.ci_id = ci.id
+          WHERE LOWER(hw.serial_number) = LOWER(${serial}) LIMIT 3`;
+        for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'serialNumber', existingId: m.id, existingName: m.name }); }
+      }
+      const inv = (raw['inventoryNumber'] ?? '').trim();
+      if (inv) {
+        const ms = await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id::text AS id, name FROM "configuration_items" WHERE LOWER(inventory_number) = LOWER(${inv}) LIMIT 3`;
+        for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'inventoryNumber', existingId: m.id, existingName: m.name }); }
+      }
+
+      // AI normalization (graceful: falls back to raw if Ollama unavailable)
+      const normalized = await analyzeCIRowForImport(raw);
+
+      const analysis = { normalized, conflicts, analyzedAt: new Date().toISOString() };
+
+      await prisma.$executeRaw`
+        UPDATE "ci_bulk_import_item"
+        SET status='ANALYZED', analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
+        WHERE id=${item.id}::uuid`;
+    } catch (e) {
+      console.error('[CI-Bulk] processCIBulkImportQueue item error:', e);
+      const errMsg = String(e).slice(0, 500);
+      try {
+        await prisma.$executeRaw`
+          UPDATE "ci_bulk_import_item" SET status='ERROR', error_message=${errMsg}, updated_at=now()
+          WHERE id=${item.id}::uuid`;
+      } catch (e2) { console.error('[CI-Bulk] processCIBulkImportQueue error-mark failure:', e2); }
+    }
+  }
+
+  for (const batchId of touchedBatches) {
+    try { await recomputeCIBatchStatus(batchId); }
+    catch (e) { console.error('[CI-Bulk] processCIBulkImportQueue batch-status error:', e); }
+  }
+}
+
 // ─── Bulk import: commit (materialization) ────────────────────────────────────
 
 /** Thrown for caller-correctable problems (returned as 400 with the message). */
@@ -3756,6 +4277,32 @@ const BulkItemDecisionSchema = BulkItemDecisionBase.superRefine((d, ctx) => {
   }
 });
 type BulkItemDecision = z.infer<typeof BulkItemDecisionSchema>;
+
+// ── CI Bulk — decision schema (what the user submits to commit one row) ────────
+const CIBulkDecisionSchema = z.object({
+  name:               z.string().min(1).max(255),
+  ciType:             z.string().min(1).max(50),
+  criticality:        z.enum(['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL']),
+  environment:        z.enum(['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION']),
+  status:             z.enum(['ACTIVO', 'INACTIVO', 'RETIRADO']).optional(),
+  inventoryNumber:    z.string().max(100).nullable().optional(),
+  manufacturer:       z.string().max(255).nullable().optional(),
+  serialNumber:       z.string().max(255).nullable().optional(),
+  model:              z.string().max(255).nullable().optional(),
+  branch:             z.string().max(255).nullable().optional(),
+  costCenter:         z.string().max(255).nullable().optional(),
+  version:            z.string().max(255).nullable().optional(),
+  licenseType:        z.string().max(255).nullable().optional(),
+  eolDate:            z.string().max(20).nullable().optional(),
+  eosDate:            z.string().max(20).nullable().optional(),
+  businessImpact:     z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).nullable().optional(),
+  dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).nullable().optional(),
+  assignedUser:       z.string().max(255).nullable().optional(),
+  ipAddress:          z.string().max(50).nullable().optional(),
+  description:        z.string().max(2000).nullable().optional(),
+  forceCreate:        z.boolean().optional(),
+});
+type CIBulkDecision = z.infer<typeof CIBulkDecisionSchema>;
 
 interface BulkItemRow {
   id: string; batch_id: string; staged_file_name: string;
@@ -3876,6 +4423,125 @@ async function materializeBulkItem(
     }
     throw e;
   }
+}
+
+// ─── CI Bulk import: commit (materialization) ─────────────────────────────────
+
+class CIBulkValidationError extends Error {}
+
+function safeParseDate(s: string | null | undefined): Date | null {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+async function materializeCIBulkItem(
+  item: { id: string; batch_id: string; status: string },
+  decision: CIBulkDecision,
+  userEmail: string,
+): Promise<{ ciId: string }> {
+  if (item.status === 'COMMITTED') throw new CIBulkValidationError('El elemento ya fue confirmado');
+
+  // Name conflict check (skip if forceCreate)
+  if (!decision.forceCreate) {
+    const existing = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "configuration_items" WHERE LOWER(name) = LOWER(${decision.name}) LIMIT 1`;
+    if (existing.length) throw new CIBulkValidationError(`Ya existe un CI con el nombre "${decision.name}"`);
+  }
+
+  // Resolve ciType → id
+  const allTypes = await prisma.cIType.findMany({ select: { id: true, code: true } });
+  const ciTypeMap = new Map(allTypes.map(t => [t.code, t.id]));
+  const ciTypeId = ciTypeMap.get(decision.ciType.toUpperCase()) ?? ciTypeMap.get('OTHER') ?? null;
+
+  // Resolve branch / cost center by name
+  let branchId: string | null = null;
+  if (decision.branch) {
+    const b = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "branches" WHERE LOWER(name) = LOWER(${decision.branch}) LIMIT 1`;
+    branchId = b[0]?.id ?? null;
+  }
+  let costCenterId: string | null = null;
+  if (decision.costCenter) {
+    const c = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "cost_centers" WHERE LOWER(name) = LOWER(${decision.costCenter}) LIMIT 1`;
+    costCenterId = c[0]?.id ?? null;
+  }
+
+  const hwTypes = [
+    'PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','NETWORK_EQUIPMENT','STORAGE','BACKUP',
+    'HARDWARE','DESKTOP','LAPTOP','PRINTER','SCANNER','MONITOR','VIDEOCONFERENCE','SMART_DISPLAY',
+    'TIME_CLOCK','IP_PHONE','SMARTPHONE','TABLET','PDA','BARCODE_SCANNER','IP_CAMERA','UPS',
+    'WIFI_AP','CLOUD_INSTANCE','CLOUD_STORAGE',
+  ];
+  const swTypes = ['SOFTWARE','DATABASE','BASE_SOFTWARE','LICENSE','APPLICATION'];
+  const ciTypeCode = decision.ciType.toUpperCase();
+  const needsHw = hwTypes.includes(ciTypeCode);
+  const needsSw = swTypes.includes(ciTypeCode);
+
+  const slug    = decision.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+  const apiSlug = `${slug}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+  const status  = (['ACTIVO','INACTIVO','RETIRADO'].includes(decision.status ?? '') ? decision.status : 'ACTIVO') as string;
+
+  const ci = await prisma.$transaction(async (tx) => {
+    // Claim: prevent double-commit (TOCTOU guard)
+    const claimed = await tx.$executeRaw`
+      UPDATE "ci_bulk_import_item" SET status='COMMITTING', updated_at=now()
+      WHERE id=${item.id}::uuid AND status <> 'COMMITTED'`;
+    if (Number(claimed) === 0) throw new CIBulkValidationError('El elemento ya fue confirmado');
+
+    const newCi = await tx.cI.create({
+      data: {
+        name:               decision.name,
+        apiSlug,
+        criticality:        decision.criticality as Criticality,
+        environment:        decision.environment as Environment,
+        status,
+        ciTypeId,
+        branchId,
+        costCenterId,
+        inventoryNumber:    decision.inventoryNumber   || null,
+        assignedUser:       decision.assignedUser      || null,
+        businessImpact:     (decision.businessImpact   || null) as string | null,
+        dataClassification: (decision.dataClassification || null) as string | null,
+        ...(needsHw && {
+          hardware: {
+            create: {
+              serialNumber: decision.serialNumber || `AUTO-${Date.now()}`,
+              model:        decision.model        || 'Unknown',
+              manufacturer: decision.manufacturer || 'Unknown',
+              ipAddress:    decision.ipAddress    || null,
+            },
+          },
+        }),
+        ...(needsSw && {
+          software: {
+            create: {
+              version:     decision.version     || '1.0',
+              licenseType: decision.licenseType || '',
+              eolDate:     safeParseDate(decision.eolDate),
+              eosDate:     safeParseDate(decision.eosDate),
+            },
+          },
+        }),
+      } as Parameters<typeof tx.cI.create>[0]['data'],
+    });
+
+    await tx.$executeRaw`
+      UPDATE "ci_bulk_import_item"
+      SET status='COMMITTED', committed_ci_id=${newCi.id}::uuid, updated_at=now()
+      WHERE id=${item.id}::uuid`;
+
+    await tx.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'CI_BULK_COMMIT', 'CI', ${newCi.id}::uuid, ${userEmail},
+             ${JSON.stringify({ batchItemId: item.id, ciName: newCi.name })}::jsonb, now())`;
+
+    return newCi;
+  });
+
+  void queueEntityForIndexing('ci', ci.id);
+  return { ciId: ci.id };
 }
 
 /**
@@ -4090,6 +4756,27 @@ function bulkUploadMiddleware(req: Request, res: Response, next: NextFunction): 
         res.status(400).json({ error: 'Error al procesar la subida' }); return;
       }
       res.status(400).json({ error: (err as Error).message || 'Tipo de archivo no permitido' }); return;
+    }
+    next();
+  });
+}
+
+// Multer for CI bulk XLSX upload: single file, 10 MB, .xlsx only
+const ciXlsxUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter(_req, file, cb) {
+    if (path.extname(file.originalname).toLowerCase() === '.xlsx') { cb(null, true); }
+    else { cb(new Error('Solo se permiten ficheros .xlsx')); }
+  },
+});
+function ciXlsxUploadMiddleware(req: Request, res: Response, next: NextFunction): void {
+  ciXlsxUpload.single('file')(req, res, (err: unknown) => {
+    if (err) {
+      if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+        res.status(400).json({ error: 'El fichero XLSX no puede superar 10 MB' }); return;
+      }
+      res.status(400).json({ error: (err as Error).message || 'Error al subir el fichero' }); return;
     }
     next();
   });
@@ -5647,6 +6334,7 @@ if (process.env.RAG_ENABLED === 'true') {
       .catch((e) => console.error('[RAG] processRagQueue error:', e))
       .finally(() => {
         processBulkImportQueue().catch((e) => console.error('[RAG] processBulkImportQueue error:', e));
+        processCIBulkImportQueue().catch((e) => console.error('[CI-Bulk] processCIBulkImportQueue error:', e));
       });
   }, { timezone: 'Europe/Madrid' });
   console.log('[RAG] Indexing queue processor scheduled (every 30 s).');

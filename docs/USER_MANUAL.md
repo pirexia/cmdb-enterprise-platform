@@ -334,6 +334,18 @@ Cuando necesites cambiar el mismo valor en muchos CIs a la vez (por ejemplo, mov
 
 > Hay un máximo de 500 CIs por operación. Campos únicos por CI (nombre, slug, número de inventario, número de serie, etc.) **no** se pueden cambiar masivamente para evitar conflictos de unicidad.
 
+### Eliminación masiva de CIs (solo ADMIN)
+
+Cuando necesites dar de baja varios activos a la vez (por ejemplo, decomisión de una sala entera), usa la **eliminación masiva**:
+
+1. Selecciona los CIs con las casillas (igual que en la actualización masiva).
+2. En la barra superior aparece el botón rojo **"Eliminar seleccionados"**.
+3. Confirma en el modal. La acción **no se puede deshacer**.
+4. Se eliminan el CI, su hardware/software asociado, sus relaciones y todas las referencias a documentos, contratos y licencias.
+5. Cada eliminación genera dos registros de auditoría: uno por CI (`action=DELETE_CI:<nombre>`) y un evento agregado del lote (`action=CI_BULK_DELETE`).
+
+> Máximo **200 CIs por operación** (al ser irreversible). Si necesitas borrar más, divídelo en varias tandas.
+
 ---
 
 ## 8. Importación Masiva por CSV

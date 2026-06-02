@@ -334,6 +334,18 @@ When you need to change the same value on many CIs at once (e.g. moving several 
 
 > Maximum 500 CIs per operation. Per-CI unique fields (name, slug, inventory number, serial number, etc.) **cannot** be bulk-updated to avoid uniqueness conflicts.
 
+### Bulk CI delete (ADMIN only)
+
+When you need to retire several assets at once (e.g. decommissioning a whole room), use **bulk delete**:
+
+1. Tick the CIs with the checkboxes (same as for bulk update).
+2. The toolbar shows a red **"Delete selected"** button.
+3. Confirm in the modal. The action **cannot be undone**.
+4. The CI, its associated hardware/software, relations, and references to documents/contracts/licences are all removed.
+5. Each deletion produces two audit entries: a per-CI record (`action=DELETE_CI:<name>`) and an aggregate batch event (`action=CI_BULK_DELETE`).
+
+> Maximum **200 CIs per operation** (irreversible). For larger purges, split into multiple rounds.
+
 ---
 
 ## 8. Bulk Import by CSV

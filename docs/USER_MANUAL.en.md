@@ -509,6 +509,15 @@ When you need to ingest many documents at once (e.g. a batch of contracts, adden
 
 > AI analysis runs in the background and, without a GPU, can take from 30 s to several minutes per document. **Scanned documents** (no digital text) are recognized automatically via OCR, which adds processing time. The review screen updates on its own; you can close it and come back later. AI suggestions are advisory — always check the data before creating the records.
 
+#### "Warning" status — document with no extractable text
+
+When the AI cannot extract text from a document (e.g. a very low-quality scanned PDF where OCR fails, or a corrupt file), its status becomes **"Warning"** (yellow badge) instead of "Ready". The system:
+- Still lets you **review and confirm the document manually**: you will have to classify the type, dates and vendor by hand.
+- In the **"My imports"** view, batches with warnings are labelled **"Ready with warnings"** and a new **"Warnings"** column shows the count.
+- Batch sum: **Files = Created + Pending + Warnings + Errors**.
+
+This visual cue keeps you aware of documents that need additional attention.
+
 ### Editing document metadata (ADMIN only)
 
 1. Open the document detail view.

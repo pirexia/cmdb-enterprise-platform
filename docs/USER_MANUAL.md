@@ -509,6 +509,15 @@ Cuando necesites incorporar muchos documentos de golpe (p. ej. un lote de contra
 
 > El análisis de IA se ejecuta en segundo plano y, sin GPU, puede tardar entre 30 s y varios minutos por documento. Los **documentos escaneados** (sin texto digital) se reconocen automáticamente mediante OCR, lo que añade tiempo de proceso. La pantalla de revisión se va actualizando sola; puedes cerrarla y volver más tarde. Las sugerencias de la IA son orientativas: revisa siempre los datos antes de crear los registros.
 
+#### Estado "Advertencia" — documento sin texto extraído
+
+Cuando la IA no puede extraer texto de un documento (por ejemplo, un PDF escaneado de muy baja calidad en el que el OCR falla, o un fichero corrupto), su estado pasa a **"Advertencia"** (badge amarillo) en lugar de "Listo". El sistema:
+- Permite **revisar y confirmar el documento manualmente**: tendrás que clasificar el tipo, fechas y proveedor a mano.
+- En la vista **"Mis importaciones"**, los lotes con advertencias se etiquetan como **"Listo con advertencias"** y la columna **"Advertencias"** muestra el contador.
+- El sumatorio del lote es: **Ficheros = Creados + Pendientes + Advertencias + Errores**.
+
+Esta señal te ayuda a no perder visibilidad de los documentos que requieren atención adicional.
+
 ### Editar metadatos de un documento (solo ADMIN)
 
 1. Abre la vista de detalle del documento.

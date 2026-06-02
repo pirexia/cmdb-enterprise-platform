@@ -19,7 +19,7 @@
 | **D** | Bulk docs: estado `WARNING` para "sin texto extraído" | `task-l/bulk-warning-status` | ✅ Mergeada (5c5924e) — desplegado |
 | **F** | Actualización masiva de campos en CIs | `task-n/ci-bulk-update` | ✅ Mergeada (262f56e) — desplegado |
 | **G** | Borrado masivo de CIs seleccionados | `task-o/ci-bulk-delete` | ✅ Mergeada (b52edb1) — desplegado |
-| **OWASP** | Análisis OWASP único de todas las tareas | (sobre `develop`) | ⬅ SIGUIENTE |
+| **OWASP** | Análisis OWASP único de todas las tareas | (sobre `develop`) | ✅ Realizado — 2H+4M corregidos en task-p (08bf40a) |
 | **R** | Release v2.5.1 | — | ⏳ Pendiente |
 
 **Orden de ejecución:** A → **E** (bug bloqueante) → B → C → D → F → OWASP global → Release.

@@ -214,7 +214,45 @@
       "empty_batch": "No hay filas en este lote",
       "no_items_to_commit": "No hay elementos listos para confirmar"
     },
-    "my_imports": "Mis importaciones"
+    "my_imports": "Mis importaciones",
+    "criticality": {
+      "LOW": "Baja",
+      "MEDIUM": "Media",
+      "HIGH": "Alta",
+      "MISSION_CRITICAL": "Crítica"
+    },
+    "environment": {
+      "DEVELOPMENT": "Desarrollo",
+      "TESTING": "Pruebas",
+      "STAGING": "Preproducción",
+      "PRODUCTION": "Producción"
+    },
+    "bulk_update": {
+      "button": "Editar seleccionados",
+      "selected_count": "{count} seleccionados",
+      "clear_selection": "Quitar selección",
+      "select_all": "Seleccionar todos",
+      "title": "Actualización masiva de CIs",
+      "hint": "Solo los campos que rellenes se aplicarán; el resto queda intacto.",
+      "no_change": "— Sin cambio —",
+      "clear_value": "Vaciar valor (null)",
+      "set_true": "Sí",
+      "set_false": "No",
+      "apply": "Aplicar a la selección",
+      "error": "No se pudo aplicar la actualización masiva",
+      "field_criticality": "Criticidad",
+      "field_environment": "Entorno",
+      "field_status": "Estado",
+      "field_ciType": "Tipo de CI",
+      "field_branch": "Sede",
+      "field_costCenter": "Centro de coste",
+      "field_businessOwner": "Responsable de negocio",
+      "field_technicalLead": "Responsable técnico",
+      "field_businessImpact": "Impacto de negocio",
+      "field_dataClassification": "Clasificación de datos",
+      "field_containsPii": "Contiene datos personales (PII)",
+      "field_spofRisk": "Punto único de fallo (SPOF)"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",

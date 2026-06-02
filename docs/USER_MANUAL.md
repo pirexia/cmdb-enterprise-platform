@@ -320,6 +320,20 @@ Cada activo muestra una etiqueta de color que indica el estado de soporte del fa
 - Naranja — Quedan menos de 6 meses hasta que finalice el soporte. Planifica la renovación.
 - Rojo — El soporte ya ha finalizado. El activo está fuera de soporte oficial.
 
+### Actualización masiva de campos (solo ADMIN)
+
+Cuando necesites cambiar el mismo valor en muchos CIs a la vez (por ejemplo, mover varios servidores de "Testing" a "Producción" o reasignar el responsable técnico de un departamento entero), usa la **actualización masiva**:
+
+1. **Selecciona los CIs**: marca las casillas de la columna izquierda en la tabla del inventario. Usa la casilla del encabezado para **seleccionar todos los activos visibles** (incluyendo los filtrados). Los seleccionados se resaltan en color.
+2. En la barra superior aparecerá un contador `"N seleccionados"` y el botón **"Editar seleccionados"**.
+3. El modal muestra una lista de campos editables. **Solo los campos que rellenes se aplicarán**; el resto permanece intacto en cada CI.
+4. Campos disponibles: criticidad, entorno, estado, tipo de CI, sede, centro de coste, responsables (de negocio y técnico), impacto de negocio, clasificación de datos, PII y SPOF.
+5. Para los campos de tipo FK (selección por id) puedes elegir **"Vaciar valor (null)"** además de "Sin cambio" o un valor concreto.
+6. Pulsa **"Aplicar a la selección"**. La actualización es atómica: o se aplican a todos los CIs seleccionados, o a ninguno.
+7. La acción queda registrada en el Registro de Auditoría con `action=CI_BULK_UPDATE` y la lista de ids afectados.
+
+> Hay un máximo de 500 CIs por operación. Campos únicos por CI (nombre, slug, número de inventario, número de serie, etc.) **no** se pueden cambiar masivamente para evitar conflictos de unicidad.
+
 ---
 
 ## 8. Importación Masiva por CSV

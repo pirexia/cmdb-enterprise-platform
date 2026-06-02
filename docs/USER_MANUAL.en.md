@@ -320,6 +320,20 @@ Each asset shows a colour label indicating the manufacturer's support status:
 - Orange — Fewer than 6 months until support ends. Plan for renewal.
 - Red — Support has already ended. The asset is no longer officially supported.
 
+### Bulk field update (ADMIN only)
+
+When you need to change the same value on many CIs at once (e.g. moving several servers from "Testing" to "Production", or reassigning the technical lead for a whole department), use **bulk update**:
+
+1. **Select CIs**: tick the checkboxes in the left column of the inventory table. The header checkbox **selects all visible assets** (respecting active filters). Selected rows are highlighted.
+2. The top bar shows a `"N selected"` counter and the **"Edit selected"** button.
+3. The modal lists the editable fields. **Only the fields you fill in are applied**; the rest is left untouched on each CI.
+4. Available fields: criticality, environment, status, CI type, branch, cost centre, owners (business and technical), business impact, data classification, PII flag, and SPOF flag.
+5. For FK fields (id-based selection) you can also choose **"Clear value (null)"** besides "No change" or a specific value.
+6. Click **"Apply to selection"**. The update is atomic — either every selected CI is updated, or none.
+7. The action is recorded in the Audit Log with `action=CI_BULK_UPDATE` and the list of affected ids.
+
+> Maximum 500 CIs per operation. Per-CI unique fields (name, slug, inventory number, serial number, etc.) **cannot** be bulk-updated to avoid uniqueness conflicts.
+
 ---
 
 ## 8. Bulk Import by CSV

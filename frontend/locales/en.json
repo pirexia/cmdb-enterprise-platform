@@ -214,7 +214,45 @@
       "empty_batch": "No rows in this batch",
       "no_items_to_commit": "No items ready to commit"
     },
-    "my_imports": "My imports"
+    "my_imports": "My imports",
+    "criticality": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "MISSION_CRITICAL": "Mission Critical"
+    },
+    "environment": {
+      "DEVELOPMENT": "Development",
+      "TESTING": "Testing",
+      "STAGING": "Staging",
+      "PRODUCTION": "Production"
+    },
+    "bulk_update": {
+      "button": "Edit selected",
+      "selected_count": "{count} selected",
+      "clear_selection": "Clear selection",
+      "select_all": "Select all",
+      "title": "Bulk CI update",
+      "hint": "Only fields you fill in will be applied; the rest stays untouched.",
+      "no_change": "— No change —",
+      "clear_value": "Clear value (null)",
+      "set_true": "Yes",
+      "set_false": "No",
+      "apply": "Apply to selection",
+      "error": "Could not apply the bulk update",
+      "field_criticality": "Criticality",
+      "field_environment": "Environment",
+      "field_status": "Status",
+      "field_ciType": "CI Type",
+      "field_branch": "Branch",
+      "field_costCenter": "Cost Center",
+      "field_businessOwner": "Business Owner",
+      "field_technicalLead": "Technical Lead",
+      "field_businessImpact": "Business Impact",
+      "field_dataClassification": "Data Classification",
+      "field_containsPii": "Contains PII",
+      "field_spofRisk": "Single Point of Failure (SPOF)"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilities",

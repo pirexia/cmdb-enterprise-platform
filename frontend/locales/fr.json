@@ -295,7 +295,14 @@
     "no_match": "Aucun CI correspondant.",
     "select_placeholder": "— Sélectionner —",
     "edit_contract": "Modifier le contrat",
-    "edit_error": "Erreur lors de l'enregistrement"
+    "edit_error": "Erreur lors de l'enregistrement",
+    "delete_button": "Supprimer le contrat",
+    "delete_confirm": "Supprimer le contrat {number} ? Cette action est irréversible.",
+    "delete_error": "Impossible de supprimer le contrat",
+    "delete_blocked_addendums": "Ce contrat a des avenants actifs. Supprimez-les d'abord.",
+    "unlink_document": "Dissocier le document",
+    "unlink_document_confirm": "Dissocier ce document du contrat ?",
+    "unlink_document_error": "Impossible de dissocier le document"
   },
   "documents": {
     "title": "Dépôt documentaire",

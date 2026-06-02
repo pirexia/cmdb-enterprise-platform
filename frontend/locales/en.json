@@ -340,7 +340,14 @@
     "no_match": "No matching CIs.",
     "select_placeholder": "— Select —",
     "edit_contract": "Edit Contract",
-    "edit_error": "Failed to save contract"
+    "edit_error": "Failed to save contract",
+    "delete_button": "Delete contract",
+    "delete_confirm": "Delete contract {number}? This action cannot be undone.",
+    "delete_error": "Could not delete the contract",
+    "delete_blocked_addendums": "This contract has active addendums. Delete those first.",
+    "unlink_document": "Unlink document",
+    "unlink_document_confirm": "Unlink this document from the contract?",
+    "unlink_document_error": "Could not unlink the document"
   },
   "documents": {
     "title": "Document Repository",

@@ -295,7 +295,14 @@
     "no_match": "Nessun CI corrispondente.",
     "select_placeholder": "— Seleziona —",
     "edit_contract": "Modifica contratto",
-    "edit_error": "Errore durante il salvataggio"
+    "edit_error": "Errore durante il salvataggio",
+    "delete_button": "Elimina contratto",
+    "delete_confirm": "Eliminare il contratto {number}? Questa azione non può essere annullata.",
+    "delete_error": "Impossibile eliminare il contratto",
+    "delete_blocked_addendums": "Il contratto ha addenda attivi. Eliminali prima.",
+    "unlink_document": "Dissocia documento",
+    "unlink_document_confirm": "Dissociare questo documento dal contratto?",
+    "unlink_document_error": "Impossibile dissociare il documento"
   },
   "documents": {
     "title": "Archivio documenti",

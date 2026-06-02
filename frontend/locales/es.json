@@ -340,7 +340,14 @@
     "no_match": "No hay CIs que coincidan.",
     "select_placeholder": "— Seleccionar —",
     "edit_contract": "Editar contrato",
-    "edit_error": "Error al guardar el contrato"
+    "edit_error": "Error al guardar el contrato",
+    "delete_button": "Eliminar contrato",
+    "delete_confirm": "¿Eliminar el contrato {number}? Esta acción no se puede deshacer.",
+    "delete_error": "No se pudo eliminar el contrato",
+    "delete_blocked_addendums": "El contrato tiene adendas asociadas. Bórralas primero.",
+    "unlink_document": "Desasociar documento",
+    "unlink_document_confirm": "¿Desasociar este documento del contrato?",
+    "unlink_document_error": "No se pudo desasociar el documento"
   },
   "documents": {
     "title": "Repositorio Documental",

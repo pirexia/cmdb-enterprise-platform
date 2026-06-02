@@ -213,7 +213,8 @@
       "refresh": "Actualizar",
       "empty_batch": "No hay filas en este lote",
       "no_items_to_commit": "No hay elementos listos para confirmar"
-    }
+    },
+    "my_imports": "Mis importaciones"
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",

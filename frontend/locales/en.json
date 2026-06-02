@@ -213,7 +213,8 @@
       "refresh": "Refresh",
       "empty_batch": "No rows in this batch",
       "no_items_to_commit": "No items ready to commit"
-    }
+    },
+    "my_imports": "My imports"
   },
   "vulnerabilities": {
     "title": "Vulnerabilities",

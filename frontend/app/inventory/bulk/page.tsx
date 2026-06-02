@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Layers, ArrowLeft, RefreshCw, AlertTriangle, CheckCircle2,
   Clock, XCircle, ChevronRight, Upload, Download, Loader2, Inbox,
@@ -63,6 +63,8 @@ export default function CIBulkPage() {
   const { t } = useLanguage();
   const { isAdmin } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const showListOnly = searchParams.get("tab") === "list";
 
   // ── Upload state ─────────────────────────────────────────────────────────────
   const [file, setFile] = useState<File | null>(null);
@@ -158,20 +160,38 @@ export default function CIBulkPage() {
           <div className="flex items-center gap-3">
             <Layers className="h-6 w-6 text-[var(--accent)]" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">{t("inventory.bulk.title")}</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{t("inventory.bulk.subtitle")}</p>
+              <h1 className="text-xl font-bold text-slate-900">
+                {showListOnly ? t("inventory.bulk.batches_title") : t("inventory.bulk.title")}
+              </h1>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {showListOnly ? t("inventory.bulk.batches_subtitle") : t("inventory.bulk.subtitle")}
+              </p>
             </div>
           </div>
-          <button onClick={() => router.push("/inventory")}
-            className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <ArrowLeft className="h-3.5 w-3.5" />{t("actions.back") ?? "Volver"}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Tab toggle */}
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <button onClick={() => router.push("/inventory/bulk")}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${!showListOnly ? "bg-[var(--accent)] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+                {t("inventory.bulk.button")}
+              </button>
+              <button onClick={() => router.push("/inventory/bulk?tab=list")}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${showListOnly ? "bg-[var(--accent)] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+                {t("inventory.my_imports")}
+              </button>
+            </div>
+            <button onClick={() => router.push("/inventory")}
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+              <ArrowLeft className="h-3.5 w-3.5" />{t("actions.back") ?? "Volver"}
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
 
-        {/* Upload card */}
+        {/* Upload card — hidden when navigating from "Mis importaciones" */}
+        {!showListOnly && (
         <div className="bg-white rounded-xl shadow-sm ring-1 ring-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-slate-800">{t("inventory.bulk.start_upload")}</h2>
@@ -221,6 +241,7 @@ export default function CIBulkPage() {
             </button>
           </div>
         </div>
+        )}
 
         {/* Batch list */}
         <div>

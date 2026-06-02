@@ -213,7 +213,8 @@
       "refresh": "Aktualisieren",
       "empty_batch": "Keine Zeilen in diesem Batch",
       "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
-    }
+    },
+    "my_imports": "Meine Importe"
   },
   "vulnerabilities": {
     "title": "Schwachstellen",

@@ -213,7 +213,8 @@
       "refresh": "Aggiorna",
       "empty_batch": "Nessuna riga in questo batch",
       "no_items_to_commit": "Nessun elemento pronto per confermare"
-    }
+    },
+    "my_imports": "Le mie importazioni"
   },
   "vulnerabilities": {
     "title": "Vulnerabilità",

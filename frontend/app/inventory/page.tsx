@@ -412,8 +412,12 @@ export default function InventoryPage() {
             {isAdmin && (
               <div className="flex items-center gap-2">
                 <button onClick={() => router.push('/inventory/bulk')}
-                  className="flex items-center gap-1.5 rounded-none border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors">
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
                   <Layers className="h-3.5 w-3.5" />{t('inventory.bulk.button')}
+                </button>
+                <button onClick={() => router.push('/inventory/bulk?tab=list')}
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <Layers className="h-3.5 w-3.5" />{t('inventory.my_imports')}
                 </button>
                 <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                   <Plus className="h-4 w-4" />{t('inventory.add_ci')}

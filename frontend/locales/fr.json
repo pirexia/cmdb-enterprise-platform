@@ -258,7 +258,13 @@
       "title": "Suppression groupée de CIs",
       "confirm": "Supprimer les {count} CI(s) sélectionné(s) ? Cette action est irréversible.",
       "warning": "Le matériel/logiciel associé, les relations et les références aux documents/contrats/licences seront également supprimés.",
-      "confirm_button": "Oui, supprimer"
+      "confirm_button": "Oui, supprimer",
+      "has_refs_title": "Les CIs sélectionnés ont des relations actives",
+      "refs_contracts": "{count} relation(s) avec des contrats",
+      "refs_licenses": "{count} relation(s) avec des licences",
+      "refs_documents": "{count} relation(s) avec des documents",
+      "has_refs_warning": "Si vous continuez, ces associations seront supprimées silencieusement (les contrats, licences et documents eux-mêmes ne sont pas supprimés). Les compteurs sont enregistrés dans l'audit log pour la forensique.",
+      "force_button": "Supprimer et rompre les relations"
     }
   },
   "vulnerabilities": {

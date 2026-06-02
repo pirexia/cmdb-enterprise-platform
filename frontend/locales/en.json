@@ -258,7 +258,13 @@
       "title": "Delete CIs in bulk",
       "confirm": "Delete the {count} selected CI(s)? This action cannot be undone.",
       "warning": "Associated hardware/software, relations, and document/contract/licence references will also be removed.",
-      "confirm_button": "Yes, delete"
+      "confirm_button": "Yes, delete",
+      "has_refs_title": "Selected CIs have active relationships",
+      "refs_contracts": "{count} contract relation(s)",
+      "refs_licenses": "{count} licence relation(s)",
+      "refs_documents": "{count} document relation(s)",
+      "has_refs_warning": "If you proceed, those associations will be silently severed (the contracts, licences and documents themselves are not deleted). The reference counts are recorded in the audit log for forensics.",
+      "force_button": "Delete and sever relationships"
     }
   },
   "vulnerabilities": {

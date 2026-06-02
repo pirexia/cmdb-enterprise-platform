@@ -1526,7 +1526,8 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
  */
 app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const BulkUpdateSchema = z.object({
-    ciIds: z.array(z.string().uuid()).min(1).max(500),
+    // Deduplicate to avoid: repeated RAG re-index, inflated audit ciIds, ambiguous affected count
+    ciIds: z.array(z.string().uuid()).min(1).max(500).transform((arr) => Array.from(new Set(arr))),
     updates: z.object({
       criticality:        z.enum(['LOW','MEDIUM','HIGH','MISSION_CRITICAL']).optional(),
       environment:        z.enum(['DEVELOPMENT','TESTING','STAGING','PRODUCTION']).optional(),
@@ -1571,10 +1572,20 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
         where: { id: { in: ciIds } },
         data,
       });
+      // V2.5.1-A04-2: don't dump full ciIds array (up to 500 UUIDs ≈ 21KB) into
+      // details JSONB. Keep count + 10-id sample; per-CI trace is preserved by the
+      // queueEntityForIndexing loop below if forensic recreation is ever needed.
+      const auditDetails = {
+        count: ciIds.length,
+        sample: ciIds.slice(0, 10),
+        truncated: ciIds.length > 10,
+        changes: updates,
+        affected: upd.count,
+      };
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
         VALUES(gen_random_uuid(), 'CI_BULK_UPDATE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ ciIds, changes: updates, affected: upd.count })}::jsonb, now())`;
+               ${JSON.stringify(auditDetails)}::jsonb, now())`;
       return upd.count;
     });
 
@@ -1603,14 +1614,18 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
  */
 app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const BulkDeleteSchema = z.object({
-    ciIds: z.array(z.string().uuid()).min(1).max(200),
+    // Deduplicate: per-CI audit row would be inserted twice for a repeated id while
+    // deleteMany only removes the row once → ghost audit + RAG-purge wasted work
+    ciIds: z.array(z.string().uuid()).min(1).max(200).transform((arr) => Array.from(new Set(arr))),
+    // Opt-in flag to allow destruction of CIs that still have active links
+    force: z.boolean().optional(),
   });
   const parsed = BulkDeleteSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk-delete payload' });
     return;
   }
-  const { ciIds } = parsed.data;
+  const { ciIds, force } = parsed.data;
 
   try {
     // Snapshot of names for the audit log (lost after the DELETE).
@@ -1618,28 +1633,75 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
       SELECT id::text AS id, name FROM "configuration_items" WHERE id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})`;
     const existingMap = new Map(existing.map((r) => [r.id, r.name]));
 
+    // V2.5.1-A04-1: count active associations BEFORE we cascade-delete them silently.
+    // Without this check, deleting a CI would silently sever:
+    //   - contract↔CI links (M2M _ContractToCI, A=CI/B=Contract)
+    //   - license↔CI links  (M2M _LicenseToCI,  A=License/B=CI)
+    //   - document↔CI links (document_cis.ci_id, onDelete: Cascade)
+    // ...without telling the admin or leaving a forensic trail of WHICH refs were broken.
+    const refRows = await prisma.$queryRaw<{ contracts: bigint; licenses: bigint; documents: bigint }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM "_ContractToCI" WHERE "A" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS contracts,
+        (SELECT COUNT(*) FROM "_LicenseToCI"  WHERE "B" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS licenses,
+        (SELECT COUNT(*) FROM "document_cis"  WHERE ci_id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS documents`;
+    const brokenRefs = {
+      contracts: Number(refRows[0]?.contracts ?? 0),
+      licenses:  Number(refRows[0]?.licenses  ?? 0),
+      documents: Number(refRows[0]?.documents ?? 0),
+    };
+    const totalBroken = brokenRefs.contracts + brokenRefs.licenses + brokenRefs.documents;
+
+    // If active references exist AND the caller hasn't explicitly opted in with
+    // `force: true`, return 409 with a breakdown so the UI can warn the admin.
+    if (totalBroken > 0 && !force) {
+      res.status(409).json({
+        error: 'Some CIs are linked to active contracts/licenses/documents.',
+        brokenRefs,
+        hint: 'Set { "force": true } in the request body to proceed and sever these associations.',
+      });
+      return;
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       // Per-CI audit BEFORE delete (so we keep entity_id resolvable to the historical name).
+      // V2.5.1-A09-1: name lives in details.name, NOT concatenated into the action column
+      // (which is VARCHAR(100) and risks truncation + PII leak per GDPR Art.5).
       for (const id of ciIds) {
         const name = existingMap.get(id);
         if (!name) continue;
         await tx.$executeRaw`
-          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-          VALUES(gen_random_uuid(), ${'DELETE_CI:' + name}, 'CI', ${id}::uuid, ${req.user!.email}, now())`;
+          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+          VALUES(gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                 ${JSON.stringify({ name })}::jsonb, now())`;
       }
-      // Batch audit (aggregate event for forensic correlation).
+      // V2.5.1-A04-2 + A09-3: aggregate audit avoids dumping the full UUID array.
+      // Persists requested vs actuallyDeleted counts so NIS2 Art.23 traceability
+      // distinguishes "I asked to delete 50" from "50 actually went away".
+      const actuallyDeletedIds = Array.from(existingMap.keys());
+      const notFoundCount = ciIds.length - existing.length;
+      const aggDetails = {
+        requested: ciIds.length,
+        deleted: existing.length,
+        notFound: notFoundCount,
+        sample: actuallyDeletedIds.slice(0, 10),
+        truncated: actuallyDeletedIds.length > 10,
+        // V2.5.1-A04-1: forensic trail of associations severed by this delete
+        brokenRefs,
+        forced: !!force,
+      };
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
         VALUES(gen_random_uuid(), 'CI_BULK_DELETE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ ciIds, count: existing.length })}::jsonb, now())`;
+               ${JSON.stringify(aggDetails)}::jsonb, now())`;
       // Hard delete (cascades via schema).
       const del = await tx.cI.deleteMany({ where: { id: { in: ciIds } } });
       return del.count;
     });
 
-    // Purge RAG entries (best-effort, non-blocking on errors).
+    // Fire-and-forget RAG purge — don't block the HTTP response for up to N×latency.
+    // purgeEntityFromRag is idempotent so retries on the next ragQueue tick are safe.
     for (const id of ciIds) {
-      try { await purgeEntityFromRag('ci', id); } catch (e) { console.error('[POST /api/cis/bulk-delete] RAG purge error:', e); }
+      void purgeEntityFromRag('ci', id).catch((e) => console.error('[POST /api/cis/bulk-delete] RAG purge error:', e));
     }
 
     res.json({ deleted: result, notFound: ciIds.length - existing.length, requested: ciIds.length });
@@ -1665,16 +1727,21 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request,
       return;
     }
 
-    // Delete CI (cascade handles hardware/software via Prisma schema)
-    await prisma.cI.delete({ where: { id } });
+    // V2.5.1-A09-2: wrap delete + audit in a single transaction so the audit row is
+    // never missing when the row is gone (ISO 27001 A.8.15 atomicity).
+    // V2.5.1-A09-1: store name in details.name (structured) instead of concatenated
+    // into the action column (VARCHAR(100), PII risk).
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.delete({ where: { id } });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                ${JSON.stringify({ name: ci.name })}::jsonb, now())
+      `;
+    });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
-    `;
-
-    // Purge RAG index/chunks for this entity (await before response — cascade safety)
-    await purgeEntityFromRag('ci', id);
+    // Purge RAG asynchronously (don't block the response — RAG is eventually consistent)
+    void purgeEntityFromRag('ci', id).catch((e) => console.error('[DELETE /api/cis/:id] RAG purge error:', e));
 
     res.json({ id, message: `CI "${ci.name}" deleted successfully` });
   } catch (error) {

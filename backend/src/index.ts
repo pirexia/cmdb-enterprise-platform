@@ -4492,13 +4492,14 @@ async function materializeCIBulkItem(
         assignedUser:       decision.assignedUser      || null,
         businessImpact:     (decision.businessImpact   || null) as string | null,
         dataClassification: (decision.dataClassification || null) as string | null,
+        // ipAddress lives on CI.consoleIp in the schema (HardwareCI has no ipAddress field)
+        consoleIp:          decision.ipAddress         || null,
         ...(needsHw && {
           hardware: {
             create: {
               serialNumber: decision.serialNumber || `AUTO-${Date.now()}`,
               model:        decision.model        || 'Unknown',
               manufacturer: decision.manufacturer || 'Unknown',
-              ipAddress:    decision.ipAddress    || null,
             },
           },
         }),

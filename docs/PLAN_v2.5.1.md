@@ -15,8 +15,8 @@
 | **A** | Fix i18n: clave `actions.back` faltante en 6 locales | `task-i/i18n-actions-back` | ✅ Mergeada (32d4593) |
 | **E** | 🐛 BUG CRÍTICO: CI Bulk commit falla con "Internal server error" | `task-m/ci-bulk-commit-bug` | ✅ Mergeada (413ee63) — backend desplegado |
 | **B** | CI Bulk: 3 análisis concurrentes (`CI_BULK_CONCURRENCY`) | `task-j/ci-bulk-parallel` | ✅ Mergeada (00dc48d) — backend desplegado |
-| **C** | Contratos: endpoint DELETE + desasociar documentos | `task-k/contracts-delete-unlink` | ⬅ SIGUIENTE |
-| **D** | Bulk docs: estado `WARNING` para "sin texto extraído" | `task-l/bulk-warning-status` | ⏳ Pendiente |
+| **C** | Contratos: endpoint DELETE + desasociar documentos | `task-k/contracts-delete-unlink` | ✅ Mergeada (1208147) — backend+frontend desplegados |
+| **D** | Bulk docs: estado `WARNING` para "sin texto extraído" | `task-l/bulk-warning-status` | ⬅ SIGUIENTE |
 | **F** | Actualización masiva de campos en CIs | `task-n/ci-bulk-update` | ⏳ Pendiente |
 | **OWASP** | Análisis OWASP único de todas las tareas | (sobre `develop`) | ⏳ Pendiente |
 | **R** | Release v2.5.1 | — | ⏳ Pendiente |

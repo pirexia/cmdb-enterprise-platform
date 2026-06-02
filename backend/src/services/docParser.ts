@@ -26,6 +26,7 @@ export interface ParseResult {
   totalChars: number;
   mimeType: string;
   parseTimeMs: number;
+  ocrUsed: boolean;  // true when Tesseract OCR fallback was triggered (OCR-A09-1)
 }
 
 // ---------------------------------------------------------------------------
@@ -43,8 +44,12 @@ const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // pe
 // Total timeout for a full OCR run (pdftoppm + all tesseract pages). Must be >> MAX_OCR_TIME_MS * typical pages.
 // At 150 DPI a 16-page PDF takes ~14s (pdftoppm) + ~10s×16 (tesseract) ≈ 174s; 600s gives comfortable headroom.
 const MAX_OCR_DOC_TIME_MS = Math.max(60_000, Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000) || 600_000);
-const OCR_LANGUAGES       = process.env.OCR_LANGUAGES ?? 'spa+eng';
-const OCR_DPI             = process.env.OCR_DPI ?? '150';  // 300 DPI caused silent timeouts on multi-page scans; 150 is sufficient for text
+// Validate OCR_LANGUAGES: must match <lang>(+<lang>)* — rejects shell-unsafe chars (OCR-A03-2).
+const _rawLangs = process.env.OCR_LANGUAGES ?? 'spa+eng';
+const OCR_LANGUAGES = /^[a-z]{2,4}(\+[a-z]{2,4})*$/i.test(_rawLangs) ? _rawLangs : 'spa+eng';
+// Validate OCR_DPI: integer in [72, 600] — rejects non-numeric / out-of-range values (OCR-A03-2).
+const _rawDpi = parseInt(process.env.OCR_DPI ?? '150', 10);
+const OCR_DPI = (!isNaN(_rawDpi) && _rawDpi >= 72 && _rawDpi <= 600) ? String(_rawDpi) : '150';
 const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled
 // Hard cap on pages rasterised/OCR'd per document — bounds CPU/disk for huge scans (DoS guard).
 const OCR_MAX_PAGES       = Number(process.env.OCR_MAX_PAGES ?? 50);
@@ -166,7 +171,7 @@ async function parsePdfWithOcr(filePath: string): Promise<DocumentSection[]> {
 // PDF parser
 // ---------------------------------------------------------------------------
 
-async function parsePdf(filePath: string): Promise<DocumentSection[]> {
+async function parsePdf(filePath: string): Promise<{ sections: DocumentSection[]; ocrUsed: boolean }> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const pdfParse = require('pdf-parse') as (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string; numpages: number }>;
   const dataBuffer = fs.readFileSync(filePath);
@@ -176,17 +181,15 @@ async function parsePdf(filePath: string): Promise<DocumentSection[]> {
   if (!text.trim()) {
     // No embedded text — scanned PDF. Fall back to Tesseract OCR if enabled.
     if (OCR_ENABLED) {
-      return parsePdfWithOcr(filePath);
+      return { sections: await parsePdfWithOcr(filePath), ocrUsed: true };
     }
-    return [];
+    return { sections: [], ocrUsed: false };
   }
 
-  return [{
-    sectionPath: 'PDF',
-    text,
-    pageStart: 1,
-    pageEnd: data.numpages,
-  }];
+  return {
+    sections: [{ sectionPath: 'PDF', text, pageStart: 1, pageEnd: data.numpages }],
+    ocrUsed: false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -339,6 +342,7 @@ export async function parseDocument(
     totalChars: 0,
     mimeType,
     parseTimeMs: Date.now() - start,
+    ocrUsed: false,
   });
 
   // --- File-size guard ---
@@ -357,8 +361,7 @@ export async function parseDocument(
 
   const parseWork = async (): Promise<DocumentSection[]> => {
     switch (mimeType) {
-      case 'application/pdf':
-        return parsePdf(filePath);
+      // PDF handled separately in parseWorkWrapped to capture ocrUsed flag
 
       case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
       case 'application/msword': // .doc
@@ -392,10 +395,20 @@ export async function parseDocument(
   // timeouts for 16-page scans at 300 DPI (pdftoppm 57s + tesseract 44s/page ≈ 760s).
   const timeoutMs = mimeType === 'application/pdf' ? MAX_OCR_DOC_TIME_MS : MAX_PARSE_TIME_MS;
 
+  let ocrUsed = false;
+  const parseWorkWrapped = async (): Promise<DocumentSection[]> => {
+    if (mimeType === 'application/pdf') {
+      const result = await parsePdf(filePath);
+      ocrUsed = result.ocrUsed;
+      return result.sections;
+    }
+    return parseWork();
+  };
+
   let sections: DocumentSection[];
   try {
     sections = await Promise.race([
-      parseWork(),
+      parseWorkWrapped(),
       makeTimeoutPromise(timeoutMs),
     ]);
   } catch (err) {
@@ -413,5 +426,6 @@ export async function parseDocument(
     totalChars,
     mimeType,
     parseTimeMs: Date.now() - start,
+    ocrUsed,
   };
 }

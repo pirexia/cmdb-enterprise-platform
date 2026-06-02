@@ -37,7 +37,6 @@
     "retry": "Reintentar",
     "search": "Buscar",
     "import": "Importar",
-    "download_template": "Plantilla CSV",
     "sync": "Sincronizar",
     "send_test_email": "Enviar Correo de Prueba",
     "test": "Probar"

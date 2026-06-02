@@ -2526,11 +2526,20 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
  */
 app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const result = await prisma.$executeRaw`
-      UPDATE "configuration_items"
-      SET "vulnerabilities" = '[]'::jsonb
-      WHERE "vulnerabilities" IS NOT NULL
-    `;
+    // G-L03: wrap the UPDATE + audit in one transaction so the audit is never skipped
+    // G-L01: nil UUID for SYSTEM-scope events (no single entity_id applies)
+    const result = await prisma.$transaction(async (tx) => {
+      const affected = await tx.$executeRaw`
+        UPDATE "configuration_items"
+        SET "vulnerabilities" = '[]'::jsonb
+        WHERE "vulnerabilities" IS NOT NULL
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'RESET_VULNERABILITIES', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify({ affectedCIs: Number(affected) })}::jsonb, now())`;
+      return affected;
+    });
     log.info(`[POST /api/admin/reset-vulnerabilities] Reset ${result} CI(s)`);
 
     // RAG mass purge: all vulnerability rows lose their parent data, so wipe
@@ -2547,10 +2556,6 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       }
     }
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'RESET_VULNERABILITIES', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
-             ${JSON.stringify({ affectedCIs: Number(result) })}::jsonb, now())`;
     res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: Number(result) });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
@@ -2575,11 +2580,16 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────
 app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'DELETE_ALL_MASTER', 'Manufacturer', gen_random_uuid(), ${req.user!.email},
-             ${JSON.stringify({ deleted: Number(n) })}::jsonb, now())`;
+    // G-L03: wrap delete + audit in a single transaction so the audit is never missing
+    // G-L01: use nil UUID for entity_id on bulk-delete SYSTEM events
+    const n = await prisma.$transaction(async (tx) => {
+      const affected = await tx.$executeRaw`DELETE FROM "manufacturers"`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'DELETE_ALL_MASTER', 'Manufacturer', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify({ deleted: Number(affected) })}::jsonb, now())`;
+      return affected;
+    });
     res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3349,7 +3359,7 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
     const totalMatched = processed.filter((p) => p.matched).length;
     await prisma.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+      VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
              ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'Greenbone report processed',
@@ -3437,7 +3447,7 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
     const totalMatched = processed.filter((p) => p.matched).length;
     await prisma.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'INTEGRATION_CROWDSTRIKE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+      VALUES(gen_random_uuid(), 'INTEGRATION_CROWDSTRIKE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
              ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'CrowdStrike report processed',
@@ -4068,6 +4078,13 @@ async function processBulkImportQueue(): Promise<void> {
       const parseResult = await parseDocument(filePath, item.mime_type, item.original_name);
       const text = parseResult.sections.map((s) => s.text).join('\n\n').trim();
 
+      // OCR-A09-1: audit when Tesseract OCR fallback was triggered
+      if (parseResult.ocrUsed) {
+        await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+          VALUES(gen_random_uuid(),'OCR_INVOKED','Document',${item.id}::uuid,'system/cron',
+          ${JSON.stringify({ itemId: item.id, fileName: item.original_name })}::jsonb,now())`.catch(() => {});
+      }
+
       let analysis: Record<string, unknown>;
       if (!text) {
         // No extractable text (e.g. image, empty PDF) — still reviewable manually.
@@ -4085,6 +4102,12 @@ async function processBulkImportQueue(): Promise<void> {
         WHERE id=${item.id}::uuid`;
     } catch (e) {
       console.error('[RAG] processBulkImportQueue item error:', e);
+      // OCR-A09-1: best-effort OCR_FAILED audit for PDF items that errored
+      if (item.mime_type === 'application/pdf') {
+        await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+          VALUES(gen_random_uuid(),'OCR_FAILED','Document',${item.id}::uuid,'system/cron',
+          ${JSON.stringify({ itemId: item.id, fileName: item.original_name, error: String(e).slice(0, 200) })}::jsonb,now())`.catch(() => {});
+      }
       const errMsg = String(e).slice(0, 500);
       try {
         await prisma.$executeRaw`
@@ -4299,6 +4322,17 @@ async function materializeBulkItem(
   const stagedPath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
   const finalPath  = path.join(DOCUMENTS_DIR, finalName);
   if (!fs.existsSync(stagedPath)) throw new BulkValidationError('El fichero en staging ya no existe');
+
+  // Re-validate magic bytes at commit time (BULK-A08-2): the staged file could have
+  // been tampered with between upload and commit, or the upload-time check bypassed.
+  const headerBuf = Buffer.alloc(16);
+  const fd = fs.openSync(stagedPath, 'r');
+  fs.readSync(fd, headerBuf, 0, 16, 0);
+  fs.closeSync(fd);
+  if (!validateMagicBytes(headerBuf, ext)) {
+    throw new BulkValidationError('El fichero en staging no supera la validación de tipo (magic bytes)');
+  }
+
   fs.copyFileSync(stagedPath, finalPath);
 
   try {

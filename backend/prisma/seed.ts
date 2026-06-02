@@ -150,6 +150,8 @@ async function main() {
   console.log('     auditor@cmdb.local / Audit1234!  [AUDITOR]');
   console.log('─'.repeat(50));
   console.log('  ⚠️  Change passwords immediately after first login in production!');
+  console.log('  ℹ️  RAG: trigger full reindex via POST /api/admin/rag/reindex-all');
+  console.log('     (requires RAG_ENABLED=true and Ollama running) — OPS-1');
 }
 
 main()

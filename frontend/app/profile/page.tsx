@@ -73,10 +73,11 @@ export default function ProfilePage() {
   const [langSaved, setLangSaved] = useState(false);
 
   // ── MFA state ──
-  const [qrDataUrl,  setQrDataUrl]  = useState<string | null>(null);
-  const [mfaSecret,  setMfaSecret]  = useState<string | null>(null);
-  const [mfaCode,    setMfaCode]    = useState("");
-  const [mfaLoading, setMfaLoading] = useState(false);
+  const [qrDataUrl,   setQrDataUrl]   = useState<string | null>(null);
+  const [mfaSecret,   setMfaSecret]   = useState<string | null>(null);
+  const [showSecret,  setShowSecret]  = useState(false);
+  const [mfaCode,     setMfaCode]     = useState("");
+  const [mfaLoading,  setMfaLoading]  = useState(false);
   const [mfaEnabling,setMfaEnabling]= useState(false);
   const [mfaJustEnabled, setMfaJustEnabled] = useState(false); // activated in THIS session
   const [mfaError,   setMfaError]   = useState<string | null>(null);
@@ -394,9 +395,15 @@ export default function ProfilePage() {
                   <img src={qrDataUrl} alt="QR Code MFA" className="h-48 w-48 rounded-xl border border-slate-200" />
                   <div className="text-center">
                     <p className="text-xs text-slate-500">{t("profile.mfa_secret_label")}</p>
-                    <code className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/5 px-2 py-0.5 break-all">
-                      {mfaSecret}
-                    </code>
+                    <div className="flex items-center justify-center gap-1.5 mt-0.5">
+                      <code className={`text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/5 px-2 py-0.5 break-all ${showSecret ? "" : "blur-sm select-none"}`}>
+                        {mfaSecret}
+                      </code>
+                      <button type="button" onClick={() => setShowSecret((v) => !v)}
+                        className="text-slate-400 hover:text-slate-600 flex-shrink-0" title={showSecret ? "Ocultar" : "Mostrar"}>
+                        {showSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 {mfaError && (

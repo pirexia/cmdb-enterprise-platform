@@ -4299,6 +4299,17 @@ async function materializeBulkItem(
   const stagedPath = path.join(STAGING_DIR, path.basename(item.staged_file_name));
   const finalPath  = path.join(DOCUMENTS_DIR, finalName);
   if (!fs.existsSync(stagedPath)) throw new BulkValidationError('El fichero en staging ya no existe');
+
+  // Re-validate magic bytes at commit time (BULK-A08-2): the staged file could have
+  // been tampered with between upload and commit, or the upload-time check bypassed.
+  const headerBuf = Buffer.alloc(16);
+  const fd = fs.openSync(stagedPath, 'r');
+  fs.readSync(fd, headerBuf, 0, 16, 0);
+  fs.closeSync(fd);
+  if (!validateMagicBytes(headerBuf, ext)) {
+    throw new BulkValidationError('El fichero en staging no supera la validación de tipo (magic bytes)');
+  }
+
   fs.copyFileSync(stagedPath, finalPath);
 
   try {

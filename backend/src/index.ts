@@ -1572,10 +1572,20 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
         where: { id: { in: ciIds } },
         data,
       });
+      // V2.5.1-A04-2: don't dump full ciIds array (up to 500 UUIDs ≈ 21KB) into
+      // details JSONB. Keep count + 10-id sample; per-CI trace is preserved by the
+      // queueEntityForIndexing loop below if forensic recreation is ever needed.
+      const auditDetails = {
+        count: ciIds.length,
+        sample: ciIds.slice(0, 10),
+        truncated: ciIds.length > 10,
+        changes: updates,
+        affected: upd.count,
+      };
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
         VALUES(gen_random_uuid(), 'CI_BULK_UPDATE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ ciIds, changes: updates, affected: upd.count })}::jsonb, now())`;
+               ${JSON.stringify(auditDetails)}::jsonb, now())`;
       return upd.count;
     });
 
@@ -1635,11 +1645,22 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
           VALUES(gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
                  ${JSON.stringify({ name })}::jsonb, now())`;
       }
-      // Batch audit (aggregate event for forensic correlation).
+      // V2.5.1-A04-2 + A09-3: aggregate audit avoids dumping the full UUID array.
+      // Persists requested vs actuallyDeleted counts so NIS2 Art.23 traceability
+      // distinguishes "I asked to delete 50" from "50 actually went away".
+      const actuallyDeletedIds = Array.from(existingMap.keys());
+      const notFoundCount = ciIds.length - existing.length;
+      const aggDetails = {
+        requested: ciIds.length,
+        deleted: existing.length,
+        notFound: notFoundCount,
+        sample: actuallyDeletedIds.slice(0, 10),
+        truncated: actuallyDeletedIds.length > 10,
+      };
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
         VALUES(gen_random_uuid(), 'CI_BULK_DELETE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ ciIds, count: existing.length })}::jsonb, now())`;
+               ${JSON.stringify(aggDetails)}::jsonb, now())`;
       // Hard delete (cascades via schema).
       const del = await tx.cI.deleteMany({ where: { id: { in: ciIds } } });
       return del.count;

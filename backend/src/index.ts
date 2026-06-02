@@ -791,7 +791,12 @@ app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response
  * Clears the HttpOnly session cookie. No auth required — if the cookie is
  * missing the call is a no-op.
  */
-app.post('/api/auth/logout', (_req: Request, res: Response) => {
+app.post('/api/auth/logout', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'LOGOUT', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
+  } catch { /* non-blocking */ }
   clearAuthCookie(res);
   res.json({ message: 'Logged out.' });
 });
@@ -2276,6 +2281,9 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     await prisma.$executeRaw`
       UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
     `;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
 
     res.json({ secret, qrDataUrl });
   } catch (error) {
@@ -2508,7 +2516,7 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
  * Use this to wipe simulation/test data before a fresh connector import.
  * ADMIN only.
  */
-app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const result = await prisma.$executeRaw`
       UPDATE "configuration_items"
@@ -2531,7 +2539,11 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       }
     }
 
-    res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'RESET_VULNERABILITIES', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ affectedCIs: Number(result) })}::jsonb, now())`;
+    res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: Number(result) });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2553,9 +2565,13 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
 });
 
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────
-app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (_req, res) => {
+app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'DELETE_ALL_MASTER', 'Manufacturer', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ deleted: Number(n) })}::jsonb, now())`;
     res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });

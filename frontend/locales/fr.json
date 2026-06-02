@@ -252,6 +252,13 @@
       "field_dataClassification": "Classification des données",
       "field_containsPii": "Contient des données personnelles",
       "field_spofRisk": "Point unique de défaillance (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Supprimer la sélection",
+      "title": "Suppression groupée de CIs",
+      "confirm": "Supprimer les {count} CI(s) sélectionné(s) ? Cette action est irréversible.",
+      "warning": "Le matériel/logiciel associé, les relations et les références aux documents/contrats/licences seront également supprimés.",
+      "confirm_button": "Oui, supprimer"
     }
   },
   "vulnerabilities": {

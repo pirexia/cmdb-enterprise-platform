@@ -252,6 +252,13 @@
       "field_dataClassification": "Clasificación de datos",
       "field_containsPii": "Contiene datos personales (PII)",
       "field_spofRisk": "Punto único de fallo (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Eliminar seleccionados",
+      "title": "Eliminar CIs en bloque",
+      "confirm": "¿Eliminar los {count} CI(s) seleccionados? Esta acción no se puede deshacer.",
+      "warning": "Se eliminarán también el hardware/software asociado, relaciones y referencias a documentos/contratos/licencias.",
+      "confirm_button": "Sí, eliminar"
     }
   },
   "vulnerabilities": {

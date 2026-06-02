@@ -17,8 +17,8 @@
 | **B** | CI Bulk: 3 análisis concurrentes (`CI_BULK_CONCURRENCY`) | `task-j/ci-bulk-parallel` | ✅ Mergeada (00dc48d) — backend desplegado |
 | **C** | Contratos: endpoint DELETE + desasociar documentos | `task-k/contracts-delete-unlink` | ✅ Mergeada (1208147) — backend+frontend desplegados |
 | **D** | Bulk docs: estado `WARNING` para "sin texto extraído" | `task-l/bulk-warning-status` | ✅ Mergeada (5c5924e) — desplegado |
-| **F** | Actualización masiva de campos en CIs | `task-n/ci-bulk-update` | ⬅ SIGUIENTE |
-| **OWASP** | Análisis OWASP único de todas las tareas | (sobre `develop`) | ⏳ Pendiente |
+| **F** | Actualización masiva de campos en CIs | `task-n/ci-bulk-update` | ✅ Mergeada (262f56e) — desplegado |
+| **OWASP** | Análisis OWASP único de todas las tareas | (sobre `develop`) | ⬅ SIGUIENTE |
 | **R** | Release v2.5.1 | — | ⏳ Pendiente |
 
 **Orden de ejecución:** A → **E** (bug bloqueante) → B → C → D → F → OWASP global → Release.

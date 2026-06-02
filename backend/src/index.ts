@@ -788,15 +788,23 @@ app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response
 
 /**
  * POST /api/auth/logout
- * Clears the HttpOnly session cookie. No auth required — if the cookie is
- * missing the call is a no-op.
+ * Clears the HttpOnly session cookie. No auth required — even expired tokens
+ * must be clearable. LOGOUT is logged only when the token is still valid (to
+ * avoid blocking cookie clearance when the JWT has already expired — G-M01).
  */
-app.post('/api/auth/logout', authenticateToken, async (req: Request, res: Response) => {
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
   try {
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'LOGOUT', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
-  } catch { /* non-blocking */ }
+    const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
+    const authHeader  = req.headers['authorization'];
+    const bearer      = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const raw         = cookieToken ?? bearer ?? null;
+    if (raw) {
+      const payload = jwt.verify(raw, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'LOGOUT', 'User', ${payload.id}::uuid, ${payload.email}, now())`;
+    }
+  } catch { /* expired/invalid token or DB error — always clear the cookie */ }
   clearAuthCookie(res);
   res.json({ message: 'Logged out.' });
 });

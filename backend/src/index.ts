@@ -4126,9 +4126,51 @@ async function processBulkImportQueue(): Promise<void> {
 }
 
 /**
- * Processes up to BULK_ANALYZE_BUDGET CI staging rows per cron tick.
+ * CI bulk analysis concurrency (Task B / v2.5.1).
+ * Default 3 workers: CI analysis is cheap (no OCR) so we can saturate Ollama
+ * with a few parallel calls. Clamped to [1, 5] to avoid DoS on small hardware.
+ */
+const _rawCiConcurrency = parseInt(process.env.CI_BULK_CONCURRENCY ?? '3', 10);
+const CI_BULK_CONCURRENCY = (!isNaN(_rawCiConcurrency) && _rawCiConcurrency >= 1 && _rawCiConcurrency <= 5)
+  ? _rawCiConcurrency
+  : 3;
+
+/**
+ * Runs an array of async task factories with a maximum concurrency.
+ * When a task finishes, the next one starts immediately (not in batches).
+ * Errors do not stop the pool — each task captures its own rejection.
+ */
+async function withConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<Array<{ ok: true; value: T } | { ok: false; error: unknown }>> {
+  const results: Array<{ ok: true; value: T } | { ok: false; error: unknown }> = new Array(tasks.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= tasks.length) return;
+      try {
+        results[idx] = { ok: true, value: await tasks[idx]() };
+      } catch (error) {
+        results[idx] = { ok: false, error };
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Processes pending CI staging rows per cron tick with bounded concurrency.
  * Calls Ollama to normalize field values, runs DB conflict detection,
  * and stores the combined analysis JSON on each item.
+ *
+ * Concurrency model: up to CI_BULK_CONCURRENCY items processed in parallel,
+ * each new item starting as soon as a slot frees (not in batches).
  */
 async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
@@ -4144,24 +4186,36 @@ async function processCIBulkImportQueue(): Promise<void> {
     WHERE status = 'ANALYZING'
       AND updated_at < now() - make_interval(secs => ${maxCISecs}::int)`;
 
-  // Serialisation guard: skip if any CI item is still being analyzed
+  // Concurrency guard: skip if we already have CI_BULK_CONCURRENCY items in flight
   const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
     SELECT COUNT(*) AS c FROM "ci_bulk_import_item" WHERE status = 'ANALYZING'`;
-  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+  const inFlightCount = Number(inFlight[0]?.c ?? 0);
+  if (inFlightCount >= CI_BULK_CONCURRENCY) return;
 
+  // Fetch up to (3 × concurrency) pending items so a single tick can drain
+  // a small batch even if the worker pool is already partially busy.
+  const available = CI_BULK_CONCURRENCY - inFlightCount;
+  const fetchLimit = CI_BULK_CONCURRENCY * 3;
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, raw_data
     FROM "ci_bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT 1`;
+    LIMIT ${fetchLimit}::int`;
+
+  if (pending.length === 0) return;
 
   const touchedBatches = new Set<string>();
 
-  for (const item of pending) {
+  const analyzeOne = async (item: { id: string; batch_id: string; raw_data: unknown }) => {
     touchedBatches.add(item.batch_id);
     try {
-      await prisma.$executeRaw`UPDATE "ci_bulk_import_item" SET status='ANALYZING', updated_at=now() WHERE id=${item.id}::uuid`;
+      // Atomically claim the row — if a concurrent tick already grabbed it the
+      // UPDATE affects 0 rows and we skip silently to avoid duplicate work.
+      const claimed = await prisma.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='ANALYZING', updated_at=now()
+        WHERE id=${item.id}::uuid AND status='PENDING_ANALYSIS'`;
+      if (Number(claimed) === 0) return;
 
       const raw = (item.raw_data ?? {}) as CIRowRaw;
 
@@ -4206,7 +4260,12 @@ async function processCIBulkImportQueue(): Promise<void> {
           WHERE id=${item.id}::uuid`;
       } catch (e2) { console.error('[CI-Bulk] processCIBulkImportQueue error-mark failure:', e2); }
     }
-  }
+  };
+
+  // Process with bounded concurrency: at most `available` slots in this tick.
+  // (If others are mid-flight we don't exceed CI_BULK_CONCURRENCY globally.)
+  const tasks = pending.map((item) => () => analyzeOne(item));
+  await withConcurrency(tasks, Math.max(1, available));
 
   for (const batchId of touchedBatches) {
     try { await recomputeCIBatchStatus(batchId); }

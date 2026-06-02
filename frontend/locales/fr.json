@@ -39,7 +39,8 @@
     "import": "Importer",
     "sync": "Synchroniser",
     "send_test_email": "Envoyer un e-mail test",
-    "test": "Tester"
+    "test": "Tester",
+    "back": "Retour"
   },
   "common": {
     "loading": "Chargement…",
@@ -213,7 +214,58 @@
       "empty_batch": "Aucune ligne dans ce lot",
       "no_items_to_commit": "Aucun élément prêt à confirmer"
     },
-    "my_imports": "Mes importations"
+    "my_imports": "Mes importations",
+    "criticality": {
+      "LOW": "Faible",
+      "MEDIUM": "Moyenne",
+      "HIGH": "Élevée",
+      "MISSION_CRITICAL": "Critique"
+    },
+    "environment": {
+      "DEVELOPMENT": "Développement",
+      "TESTING": "Tests",
+      "STAGING": "Préproduction",
+      "PRODUCTION": "Production"
+    },
+    "bulk_update": {
+      "button": "Éditer la sélection",
+      "selected_count": "{count} sélectionnés",
+      "clear_selection": "Effacer la sélection",
+      "select_all": "Tout sélectionner",
+      "title": "Mise à jour groupée des CIs",
+      "hint": "Seuls les champs que vous remplissez sont appliqués ; le reste reste inchangé.",
+      "no_change": "— Aucun changement —",
+      "clear_value": "Vider la valeur (null)",
+      "set_true": "Oui",
+      "set_false": "Non",
+      "apply": "Appliquer à la sélection",
+      "error": "Impossible d'appliquer la mise à jour groupée",
+      "field_criticality": "Criticité",
+      "field_environment": "Environnement",
+      "field_status": "Statut",
+      "field_ciType": "Type de CI",
+      "field_branch": "Site",
+      "field_costCenter": "Centre de coût",
+      "field_businessOwner": "Responsable métier",
+      "field_technicalLead": "Responsable technique",
+      "field_businessImpact": "Impact métier",
+      "field_dataClassification": "Classification des données",
+      "field_containsPii": "Contient des données personnelles",
+      "field_spofRisk": "Point unique de défaillance (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Supprimer la sélection",
+      "title": "Suppression groupée de CIs",
+      "confirm": "Supprimer les {count} CI(s) sélectionné(s) ? Cette action est irréversible.",
+      "warning": "Le matériel/logiciel associé, les relations et les références aux documents/contrats/licences seront également supprimés.",
+      "confirm_button": "Oui, supprimer",
+      "has_refs_title": "Les CIs sélectionnés ont des relations actives",
+      "refs_contracts": "{count} relation(s) avec des contrats",
+      "refs_licenses": "{count} relation(s) avec des licences",
+      "refs_documents": "{count} relation(s) avec des documents",
+      "has_refs_warning": "Si vous continuez, ces associations seront supprimées silencieusement (les contrats, licences et documents eux-mêmes ne sont pas supprimés). Les compteurs sont enregistrés dans l'audit log pour la forensique.",
+      "force_button": "Supprimer et rompre les relations"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnérabilités",
@@ -294,7 +346,14 @@
     "no_match": "Aucun CI correspondant.",
     "select_placeholder": "— Sélectionner —",
     "edit_contract": "Modifier le contrat",
-    "edit_error": "Erreur lors de l'enregistrement"
+    "edit_error": "Erreur lors de l'enregistrement",
+    "delete_button": "Supprimer le contrat",
+    "delete_confirm": "Supprimer le contrat {number} ? Cette action est irréversible.",
+    "delete_error": "Impossible de supprimer le contrat",
+    "delete_blocked_addendums": "Ce contrat a des avenants actifs. Supprimez-les d'abord.",
+    "unlink_document": "Dissocier le document",
+    "unlink_document_confirm": "Dissocier ce document du contrat ?",
+    "unlink_document_error": "Impossible de dissocier le document"
   },
   "documents": {
     "title": "Dépôt documentaire",
@@ -430,7 +489,12 @@
       "open_batch": "Ouvrir",
       "filter_all": "Tous",
       "filter_open": "Ouverts",
-      "filter_done": "Terminés/Expirés"
+      "filter_done": "Terminés/Expirés",
+      "status_warning": "Avertissement",
+      "status_WARNING": "Avertissement",
+      "status_READY_WITH_WARNINGS": "Prêt avec avertissements",
+      "warning_hint": "Impossible d'extraire le texte du document. Vérifiez et classifiez manuellement avant de confirmer.",
+      "col_warnings": "Avertissements"
     }
   },
   "licenses": {

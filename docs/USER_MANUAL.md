@@ -320,6 +320,32 @@ Cada activo muestra una etiqueta de color que indica el estado de soporte del fa
 - Naranja — Quedan menos de 6 meses hasta que finalice el soporte. Planifica la renovación.
 - Rojo — El soporte ya ha finalizado. El activo está fuera de soporte oficial.
 
+### Actualización masiva de campos (solo ADMIN)
+
+Cuando necesites cambiar el mismo valor en muchos CIs a la vez (por ejemplo, mover varios servidores de "Testing" a "Producción" o reasignar el responsable técnico de un departamento entero), usa la **actualización masiva**:
+
+1. **Selecciona los CIs**: marca las casillas de la columna izquierda en la tabla del inventario. Usa la casilla del encabezado para **seleccionar todos los activos visibles** (incluyendo los filtrados). Los seleccionados se resaltan en color.
+2. En la barra superior aparecerá un contador `"N seleccionados"` y el botón **"Editar seleccionados"**.
+3. El modal muestra una lista de campos editables. **Solo los campos que rellenes se aplicarán**; el resto permanece intacto en cada CI.
+4. Campos disponibles: criticidad, entorno, estado, tipo de CI, sede, centro de coste, responsables (de negocio y técnico), impacto de negocio, clasificación de datos, PII y SPOF.
+5. Para los campos de tipo FK (selección por id) puedes elegir **"Vaciar valor (null)"** además de "Sin cambio" o un valor concreto.
+6. Pulsa **"Aplicar a la selección"**. La actualización es atómica: o se aplican a todos los CIs seleccionados, o a ninguno.
+7. La acción queda registrada en el Registro de Auditoría con `action=CI_BULK_UPDATE` y la lista de ids afectados.
+
+> Hay un máximo de 500 CIs por operación. Campos únicos por CI (nombre, slug, número de inventario, número de serie, etc.) **no** se pueden cambiar masivamente para evitar conflictos de unicidad.
+
+### Eliminación masiva de CIs (solo ADMIN)
+
+Cuando necesites dar de baja varios activos a la vez (por ejemplo, decomisión de una sala entera), usa la **eliminación masiva**:
+
+1. Selecciona los CIs con las casillas (igual que en la actualización masiva).
+2. En la barra superior aparece el botón rojo **"Eliminar seleccionados"**.
+3. Confirma en el modal. La acción **no se puede deshacer**.
+4. Se eliminan el CI, su hardware/software asociado, sus relaciones y todas las referencias a documentos, contratos y licencias.
+5. Cada eliminación genera dos registros de auditoría: uno por CI (`action=DELETE_CI:<nombre>`) y un evento agregado del lote (`action=CI_BULK_DELETE`).
+
+> Máximo **200 CIs por operación** (al ser irreversible). Si necesitas borrar más, divídelo en varias tandas.
+
 ---
 
 ## 8. Importación Masiva por CSV
@@ -509,6 +535,15 @@ Cuando necesites incorporar muchos documentos de golpe (p. ej. un lote de contra
 
 > El análisis de IA se ejecuta en segundo plano y, sin GPU, puede tardar entre 30 s y varios minutos por documento. Los **documentos escaneados** (sin texto digital) se reconocen automáticamente mediante OCR, lo que añade tiempo de proceso. La pantalla de revisión se va actualizando sola; puedes cerrarla y volver más tarde. Las sugerencias de la IA son orientativas: revisa siempre los datos antes de crear los registros.
 
+#### Estado "Advertencia" — documento sin texto extraído
+
+Cuando la IA no puede extraer texto de un documento (por ejemplo, un PDF escaneado de muy baja calidad en el que el OCR falla, o un fichero corrupto), su estado pasa a **"Advertencia"** (badge amarillo) en lugar de "Listo". El sistema:
+- Permite **revisar y confirmar el documento manualmente**: tendrás que clasificar el tipo, fechas y proveedor a mano.
+- En la vista **"Mis importaciones"**, los lotes con advertencias se etiquetan como **"Listo con advertencias"** y la columna **"Advertencias"** muestra el contador.
+- El sumatorio del lote es: **Ficheros = Creados + Pendientes + Advertencias + Errores**.
+
+Esta señal te ayuda a no perder visibilidad de los documentos que requieren atención adicional.
+
 ### Editar metadatos de un documento (solo ADMIN)
 
 1. Abre la vista de detalle del documento.
@@ -594,6 +629,18 @@ Haz clic en **"Contratos"** en el menú lateral. La tabla muestra el número de 
 2. Rellena el número de contrato, el proveedor, la fecha de inicio y la fecha de fin.
 3. Asocia los activos cubiertos por el contrato.
 4. Para crear una **Adenda** (una modificación o anexo vinculado a un contrato principal), selecciona el contrato padre en el campo **"Contrato padre"**.
+
+### Eliminar un contrato o adenda (solo ADMIN)
+
+1. Expande la fila del contrato y pulsa el icono de papelera 🗑 junto al lápiz de editar.
+2. Confirma en el panel rojo que aparece debajo.
+3. **Bloqueo de seguridad:** si el contrato tiene adendas vinculadas, no se puede eliminar — primero hay que borrar las adendas. El sistema mostrará el mensaje correspondiente.
+4. Al eliminar, se desasocian automáticamente los CIs y documentos vinculados (estos **no** se borran, solo deja de existir la relación con el contrato).
+5. La acción queda registrada en el Registro de Auditoría con `action=DELETE` y `entity=Contract`.
+
+### Desasociar un documento de un contrato (solo ADMIN)
+
+Dentro de la fila expandida, en la sección **"Documentos adjuntos"**, junto a cada documento aparece un icono ✕ rojo. Al pulsarlo, se elimina la relación entre el documento y este contrato (sin borrar el documento). Se solicita confirmación antes de proceder.
 
 ### Exportar contratos a CSV
 

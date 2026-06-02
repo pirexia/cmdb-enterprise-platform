@@ -39,7 +39,8 @@
     "import": "Importa",
     "sync": "Sincronizza",
     "send_test_email": "Invia e-mail di prova",
-    "test": "Testa"
+    "test": "Testa",
+    "back": "Indietro"
   },
   "common": {
     "loading": "Caricamento…",
@@ -213,7 +214,58 @@
       "empty_batch": "Nessuna riga in questo batch",
       "no_items_to_commit": "Nessun elemento pronto per confermare"
     },
-    "my_imports": "Le mie importazioni"
+    "my_imports": "Le mie importazioni",
+    "criticality": {
+      "LOW": "Bassa",
+      "MEDIUM": "Media",
+      "HIGH": "Alta",
+      "MISSION_CRITICAL": "Mission-critical"
+    },
+    "environment": {
+      "DEVELOPMENT": "Sviluppo",
+      "TESTING": "Test",
+      "STAGING": "Staging",
+      "PRODUCTION": "Produzione"
+    },
+    "bulk_update": {
+      "button": "Modifica selezionati",
+      "selected_count": "{count} selezionati",
+      "clear_selection": "Annulla selezione",
+      "select_all": "Seleziona tutti",
+      "title": "Aggiornamento massivo CI",
+      "hint": "Verranno applicati solo i campi compilati; il resto rimane invariato.",
+      "no_change": "— Nessuna modifica —",
+      "clear_value": "Svuota valore (null)",
+      "set_true": "Sì",
+      "set_false": "No",
+      "apply": "Applica alla selezione",
+      "error": "Impossibile applicare l'aggiornamento massivo",
+      "field_criticality": "Criticità",
+      "field_environment": "Ambiente",
+      "field_status": "Stato",
+      "field_ciType": "Tipo di CI",
+      "field_branch": "Sede",
+      "field_costCenter": "Centro di costo",
+      "field_businessOwner": "Responsabile business",
+      "field_technicalLead": "Responsabile tecnico",
+      "field_businessImpact": "Impatto sul business",
+      "field_dataClassification": "Classificazione dati",
+      "field_containsPii": "Contiene dati personali",
+      "field_spofRisk": "Single Point of Failure (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Elimina selezionati",
+      "title": "Eliminazione massiva di CI",
+      "confirm": "Eliminare i {count} CI selezionati? Questa azione non può essere annullata.",
+      "warning": "Verranno rimossi anche l'hardware/software associato, le relazioni e i riferimenti a documenti/contratti/licenze.",
+      "confirm_button": "Sì, elimina",
+      "has_refs_title": "I CI selezionati hanno relazioni attive",
+      "refs_contracts": "{count} relazione/i con contratti",
+      "refs_licenses": "{count} relazione/i con licenze",
+      "refs_documents": "{count} relazione/i con documenti",
+      "has_refs_warning": "Se procedi, queste associazioni saranno rimosse silenziosamente (i contratti, le licenze e i documenti stessi non vengono eliminati). I contatori vengono registrati nel log di audit per uso forense.",
+      "force_button": "Elimina e rompi le relazioni"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilità",
@@ -294,7 +346,14 @@
     "no_match": "Nessun CI corrispondente.",
     "select_placeholder": "— Seleziona —",
     "edit_contract": "Modifica contratto",
-    "edit_error": "Errore durante il salvataggio"
+    "edit_error": "Errore durante il salvataggio",
+    "delete_button": "Elimina contratto",
+    "delete_confirm": "Eliminare il contratto {number}? Questa azione non può essere annullata.",
+    "delete_error": "Impossibile eliminare il contratto",
+    "delete_blocked_addendums": "Il contratto ha addenda attivi. Eliminali prima.",
+    "unlink_document": "Dissocia documento",
+    "unlink_document_confirm": "Dissociare questo documento dal contratto?",
+    "unlink_document_error": "Impossibile dissociare il documento"
   },
   "documents": {
     "title": "Archivio documenti",
@@ -430,7 +489,12 @@
       "open_batch": "Apri",
       "filter_all": "Tutti",
       "filter_open": "Aperti",
-      "filter_done": "Completati/Scaduti"
+      "filter_done": "Completati/Scaduti",
+      "status_warning": "Avviso",
+      "status_WARNING": "Avviso",
+      "status_READY_WITH_WARNINGS": "Pronto con avvisi",
+      "warning_hint": "Impossibile estrarre il testo dal documento. Rivedi e classifica manualmente prima di confermare.",
+      "col_warnings": "Avvisi"
     }
   },
   "licenses": {

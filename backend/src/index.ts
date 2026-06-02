@@ -1517,6 +1517,201 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
 });
 
 /**
+ * PATCH /api/cis/bulk-update — apply the same field changes to many CIs at once.
+ * ADMIN only. Body: { ciIds: string[]; updates: Partial<CIBulkUpdateFields> }.
+ * Only enums and FK ids are exposed (no unique-per-CI fields like name,
+ * inventoryNumber, serial, etc., to prevent integrity issues).
+ * Atomic transaction: either all CIs are updated or none. AuditLog stores
+ * { ciIds, changes } per CI for forensic reconstruction.
+ */
+app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const BulkUpdateSchema = z.object({
+    // Deduplicate to avoid: repeated RAG re-index, inflated audit ciIds, ambiguous affected count
+    ciIds: z.array(z.string().uuid()).min(1).max(500).transform((arr) => Array.from(new Set(arr))),
+    updates: z.object({
+      criticality:        z.enum(['LOW','MEDIUM','HIGH','MISSION_CRITICAL']).optional(),
+      environment:        z.enum(['DEVELOPMENT','TESTING','STAGING','PRODUCTION']).optional(),
+      status:             z.enum(['ACTIVO','INACTIVO','RETIRADO']).optional(),
+      ciTypeId:           z.string().uuid().nullable().optional(),
+      costCenterId:       z.string().uuid().nullable().optional(),
+      branchId:           z.string().uuid().nullable().optional(),
+      businessOwnerId:    z.string().uuid().nullable().optional(),
+      technicalLeadId:    z.string().uuid().nullable().optional(),
+      businessImpact:     z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).nullable().optional(),
+      dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).nullable().optional(),
+      containsPii:        z.boolean().optional(),
+      spofRisk:           z.boolean().optional(),
+    }).refine((u) => Object.keys(u).length > 0, { message: 'No fields to update' }),
+  });
+
+  const parsed = BulkUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk update payload' });
+    return;
+  }
+  const { ciIds, updates } = parsed.data;
+
+  // Build the Prisma update data — only set fields the caller actually sent.
+  const data: Record<string, unknown> = {};
+  if (updates.criticality        !== undefined) data.criticality        = updates.criticality;
+  if (updates.environment        !== undefined) data.environment        = updates.environment;
+  if (updates.status             !== undefined) data.status             = updates.status;
+  if (updates.ciTypeId           !== undefined) data.ciTypeId           = updates.ciTypeId;
+  if (updates.costCenterId       !== undefined) data.costCenterId       = updates.costCenterId;
+  if (updates.branchId           !== undefined) data.branchId           = updates.branchId;
+  if (updates.businessOwnerId    !== undefined) data.businessOwnerId    = updates.businessOwnerId;
+  if (updates.technicalLeadId    !== undefined) data.technicalLeadId    = updates.technicalLeadId;
+  if (updates.businessImpact     !== undefined) data.businessImpact     = updates.businessImpact;
+  if (updates.dataClassification !== undefined) data.dataClassification = updates.dataClassification;
+  if (updates.containsPii        !== undefined) data.containsPii        = updates.containsPii;
+  if (updates.spofRisk           !== undefined) data.spofRisk           = updates.spofRisk;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const upd = await tx.cI.updateMany({
+        where: { id: { in: ciIds } },
+        data,
+      });
+      // V2.5.1-A04-2: don't dump full ciIds array (up to 500 UUIDs ≈ 21KB) into
+      // details JSONB. Keep count + 10-id sample; per-CI trace is preserved by the
+      // queueEntityForIndexing loop below if forensic recreation is ever needed.
+      const auditDetails = {
+        count: ciIds.length,
+        sample: ciIds.slice(0, 10),
+        truncated: ciIds.length > 10,
+        changes: updates,
+        affected: upd.count,
+      };
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_UPDATE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify(auditDetails)}::jsonb, now())`;
+      return upd.count;
+    });
+
+    // Re-index every affected CI for RAG (non-blocking).
+    for (const id of ciIds) void queueEntityForIndexing('ci', id);
+
+    res.json({ updated: result, requested: ciIds.length });
+  } catch (error: unknown) {
+    console.error('[PATCH /api/cis/bulk-update] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/cis/bulk-delete — hard-delete many CIs at once (ADMIN only).
+ * Body: { ciIds: string[] (1..200) }. Returns { deleted, notFound, requested }.
+ *
+ * We use POST (not DELETE with body) for broad client compatibility — some
+ * proxies strip DELETE bodies. Lower max (200) than bulk-update because
+ * hard-delete is irreversible and cascades hardware/software/relations.
+ *
+ * Per-CI cascade is handled by Prisma schema (onDelete: Cascade on Hardware,
+ * Software, CIRelation, DocumentCI, etc.). RAG entries are purged after.
+ * Each delete generates an individual DELETE_CI audit entry (alongside the
+ * batch CI_BULK_DELETE record) so forensics can trace which CIs went where.
+ */
+app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const BulkDeleteSchema = z.object({
+    // Deduplicate: per-CI audit row would be inserted twice for a repeated id while
+    // deleteMany only removes the row once → ghost audit + RAG-purge wasted work
+    ciIds: z.array(z.string().uuid()).min(1).max(200).transform((arr) => Array.from(new Set(arr))),
+    // Opt-in flag to allow destruction of CIs that still have active links
+    force: z.boolean().optional(),
+  });
+  const parsed = BulkDeleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk-delete payload' });
+    return;
+  }
+  const { ciIds, force } = parsed.data;
+
+  try {
+    // Snapshot of names for the audit log (lost after the DELETE).
+    const existing = await prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT id::text AS id, name FROM "configuration_items" WHERE id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})`;
+    const existingMap = new Map(existing.map((r) => [r.id, r.name]));
+
+    // V2.5.1-A04-1: count active associations BEFORE we cascade-delete them silently.
+    // Without this check, deleting a CI would silently sever:
+    //   - contract↔CI links (M2M _ContractToCI, A=CI/B=Contract)
+    //   - license↔CI links  (M2M _LicenseToCI,  A=License/B=CI)
+    //   - document↔CI links (document_cis.ci_id, onDelete: Cascade)
+    // ...without telling the admin or leaving a forensic trail of WHICH refs were broken.
+    const refRows = await prisma.$queryRaw<{ contracts: bigint; licenses: bigint; documents: bigint }[]>`
+      SELECT
+        (SELECT COUNT(*) FROM "_ContractToCI" WHERE "A" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS contracts,
+        (SELECT COUNT(*) FROM "_LicenseToCI"  WHERE "B" IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS licenses,
+        (SELECT COUNT(*) FROM "document_cis"  WHERE ci_id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})) AS documents`;
+    const brokenRefs = {
+      contracts: Number(refRows[0]?.contracts ?? 0),
+      licenses:  Number(refRows[0]?.licenses  ?? 0),
+      documents: Number(refRows[0]?.documents ?? 0),
+    };
+    const totalBroken = brokenRefs.contracts + brokenRefs.licenses + brokenRefs.documents;
+
+    // If active references exist AND the caller hasn't explicitly opted in with
+    // `force: true`, return 409 with a breakdown so the UI can warn the admin.
+    if (totalBroken > 0 && !force) {
+      res.status(409).json({
+        error: 'Some CIs are linked to active contracts/licenses/documents.',
+        brokenRefs,
+        hint: 'Set { "force": true } in the request body to proceed and sever these associations.',
+      });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Per-CI audit BEFORE delete (so we keep entity_id resolvable to the historical name).
+      // V2.5.1-A09-1: name lives in details.name, NOT concatenated into the action column
+      // (which is VARCHAR(100) and risks truncation + PII leak per GDPR Art.5).
+      for (const id of ciIds) {
+        const name = existingMap.get(id);
+        if (!name) continue;
+        await tx.$executeRaw`
+          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+          VALUES(gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                 ${JSON.stringify({ name })}::jsonb, now())`;
+      }
+      // V2.5.1-A04-2 + A09-3: aggregate audit avoids dumping the full UUID array.
+      // Persists requested vs actuallyDeleted counts so NIS2 Art.23 traceability
+      // distinguishes "I asked to delete 50" from "50 actually went away".
+      const actuallyDeletedIds = Array.from(existingMap.keys());
+      const notFoundCount = ciIds.length - existing.length;
+      const aggDetails = {
+        requested: ciIds.length,
+        deleted: existing.length,
+        notFound: notFoundCount,
+        sample: actuallyDeletedIds.slice(0, 10),
+        truncated: actuallyDeletedIds.length > 10,
+        // V2.5.1-A04-1: forensic trail of associations severed by this delete
+        brokenRefs,
+        forced: !!force,
+      };
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_DELETE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify(aggDetails)}::jsonb, now())`;
+      // Hard delete (cascades via schema).
+      const del = await tx.cI.deleteMany({ where: { id: { in: ciIds } } });
+      return del.count;
+    });
+
+    // Fire-and-forget RAG purge — don't block the HTTP response for up to N×latency.
+    // purgeEntityFromRag is idempotent so retries on the next ragQueue tick are safe.
+    for (const id of ciIds) {
+      void purgeEntityFromRag('ci', id).catch((e) => console.error('[POST /api/cis/bulk-delete] RAG purge error:', e));
+    }
+
+    res.json({ deleted: result, notFound: ciIds.length - existing.length, requested: ciIds.length });
+  } catch (error: unknown) {
+    console.error('[POST /api/cis/bulk-delete] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * DELETE /api/cis/:id
  * Deletes a Configuration Item (cascade deletes hardware/software).
  * ADMIN only.
@@ -1532,16 +1727,21 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request,
       return;
     }
 
-    // Delete CI (cascade handles hardware/software via Prisma schema)
-    await prisma.cI.delete({ where: { id } });
+    // V2.5.1-A09-2: wrap delete + audit in a single transaction so the audit row is
+    // never missing when the row is gone (ISO 27001 A.8.15 atomicity).
+    // V2.5.1-A09-1: store name in details.name (structured) instead of concatenated
+    // into the action column (VARCHAR(100), PII risk).
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.delete({ where: { id } });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                ${JSON.stringify({ name: ci.name })}::jsonb, now())
+      `;
+    });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
-    `;
-
-    // Purge RAG index/chunks for this entity (await before response — cascade safety)
-    await purgeEntityFromRag('ci', id);
+    // Purge RAG asynchronously (don't block the response — RAG is eventually consistent)
+    void purgeEntityFromRag('ci', id).catch((e) => console.error('[DELETE /api/cis/:id] RAG purge error:', e));
 
     res.json({ id, message: `CI "${ci.name}" deleted successfully` });
   } catch (error) {
@@ -1678,6 +1878,66 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
       res.status(409).json({ error: 'A contract with this number already exists' });
       return;
     }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/contracts/:id — hard delete (ADMIN only).
+ * Blocks (409) if the contract has active addendums — user must delete those first.
+ * Cascades: DocumentContract rows and the implicit ContractToCI M2M are cleaned by Prisma.
+ * Documents and CIs themselves are NOT deleted, only the associations.
+ */
+app.delete('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const IdSchema = z.string().uuid();
+  const parsedId = IdSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    res.status(400).json({ error: 'Invalid contract id' });
+    return;
+  }
+  const contractId = parsedId.data;
+  try {
+    const existing = await prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { id: true, contractNumber: true, parentContractId: true },
+    });
+    if (!existing) { res.status(404).json({ error: 'Contract not found' }); return; }
+
+    // Pre-check: addendums (children) must be deleted first.
+    const addendums = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM "contracts" WHERE parent_contract_id = ${contractId}::uuid`;
+    if (Number(addendums[0]?.c ?? 0) > 0) {
+      res.status(409).json({
+        error: 'Cannot delete contract with active addendums. Delete those first.',
+        addendumCount: Number(addendums[0]?.c ?? 0),
+      });
+      return;
+    }
+
+    // Compute root BEFORE delete so we can re-index after.
+    const rootId = await getContractRoot(contractId);
+
+    await prisma.$transaction(async (tx) => {
+      // Prisma client delete drives cascades for ContractToCI (M2M) and DocumentContract.
+      await tx.contract.delete({ where: { id: contractId } });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'DELETE', 'Contract', ${contractId}::uuid, ${req.user!.email},
+               ${JSON.stringify({ contractNumber: existing.contractNumber, wasAddendum: !!existing.parentContractId })}::jsonb, now())`;
+    });
+
+    // Drop RAG index entries for this contract (best-effort) and re-index root if it survives.
+    try {
+      await prisma.$executeRaw`DELETE FROM "rag_chunks" WHERE entity_type = 'contract' AND entity_id = ${contractId}::uuid`;
+      await prisma.$executeRaw`DELETE FROM "rag_entity_index" WHERE entity_type = 'contract' AND entity_id = ${contractId}::uuid`;
+    } catch (e) { console.error('[DELETE /api/contracts/:id] RAG cleanup error:', e); }
+    if (rootId && rootId !== contractId) {
+      void queueEntityForIndexing('contract', rootId);
+    }
+
+    res.json({ ok: true, deletedId: contractId });
+  } catch (error: unknown) {
+    console.error('[DELETE /api/contracts/:id] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -3989,22 +4249,25 @@ async function matchCIsForImport(hints: string[]): Promise<CiMatch[]> {
  *   REAPED             → set by the TTL cleanup cron (external transition, not computed here)
  */
 async function recomputeBatchStatus(batchId: string): Promise<void> {
-  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint; warnings: bigint }[]>`
     SELECT COUNT(*) AS total,
            COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
            COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
-           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors
+           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors,
+           COUNT(*) FILTER (WHERE status = 'WARNING') AS warnings
     FROM "bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
   const total     = Number(rows[0]?.total     ?? 0);
   const pending   = Number(rows[0]?.pending   ?? 0);
   const committed = Number(rows[0]?.committed ?? 0);
   const errors    = Number(rows[0]?.errors    ?? 0);
+  const warnings  = Number(rows[0]?.warnings  ?? 0);
   let status: string;
   if (total === 0)               status = 'DISCARDED';
   else if (pending > 0)          status = 'ANALYZING';
   else if (committed === total)  status = 'COMMITTED';
   else if (committed > 0)        status = 'PARTIALLY_COMMITTED';
-  else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
+  else if (errors > 0 && committed === 0 && pending === 0 && warnings === 0) status = 'ERROR';
+  else if (warnings > 0 && committed === 0 && pending === 0) status = 'READY_WITH_WARNINGS';
   else                           status = 'READY';
   await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
@@ -4086,19 +4349,24 @@ async function processBulkImportQueue(): Promise<void> {
       }
 
       let analysis: Record<string, unknown>;
+      let finalStatus: 'ANALYZED' | 'WARNING';
       if (!text) {
-        // No extractable text (e.g. image, empty PDF) — still reviewable manually.
+        // No extractable text (e.g. image, scanned PDF without readable OCR result).
+        // Mark as WARNING so the UI surfaces it for manual review/classification
+        // (legitimately-empty text files keep ANALYZED — they aren't a warning case).
         analysis = { textExtracted: false, ciMatches: [], analyzedAt: new Date().toISOString() };
+        finalStatus = item.mime_type === 'text/plain' ? 'ANALYZED' : 'WARNING';
       } else {
         const raw = await analyzeDocumentForImport(text, { fileName: item.original_name });
         const norm = normalizeAnalysis(raw);
         const ciMatches = await matchCIsForImport(norm.ciHints);
         analysis = { ...norm, ciMatches, textExtracted: true, analyzedAt: new Date().toISOString() };
+        finalStatus = 'ANALYZED';
       }
 
       await prisma.$executeRaw`
         UPDATE "bulk_import_item"
-        SET status='ANALYZED', analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
+        SET status=${finalStatus}, analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
         WHERE id=${item.id}::uuid`;
     } catch (e) {
       console.error('[RAG] processBulkImportQueue item error:', e);
@@ -4126,9 +4394,51 @@ async function processBulkImportQueue(): Promise<void> {
 }
 
 /**
- * Processes up to BULK_ANALYZE_BUDGET CI staging rows per cron tick.
+ * CI bulk analysis concurrency (Task B / v2.5.1).
+ * Default 3 workers: CI analysis is cheap (no OCR) so we can saturate Ollama
+ * with a few parallel calls. Clamped to [1, 5] to avoid DoS on small hardware.
+ */
+const _rawCiConcurrency = parseInt(process.env.CI_BULK_CONCURRENCY ?? '3', 10);
+const CI_BULK_CONCURRENCY = (!isNaN(_rawCiConcurrency) && _rawCiConcurrency >= 1 && _rawCiConcurrency <= 5)
+  ? _rawCiConcurrency
+  : 3;
+
+/**
+ * Runs an array of async task factories with a maximum concurrency.
+ * When a task finishes, the next one starts immediately (not in batches).
+ * Errors do not stop the pool — each task captures its own rejection.
+ */
+async function withConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  limit: number,
+): Promise<Array<{ ok: true; value: T } | { ok: false; error: unknown }>> {
+  const results: Array<{ ok: true; value: T } | { ok: false; error: unknown }> = new Array(tasks.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= tasks.length) return;
+      try {
+        results[idx] = { ok: true, value: await tasks[idx]() };
+      } catch (error) {
+        results[idx] = { ok: false, error };
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Processes pending CI staging rows per cron tick with bounded concurrency.
  * Calls Ollama to normalize field values, runs DB conflict detection,
  * and stores the combined analysis JSON on each item.
+ *
+ * Concurrency model: up to CI_BULK_CONCURRENCY items processed in parallel,
+ * each new item starting as soon as a slot frees (not in batches).
  */
 async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
@@ -4144,24 +4454,36 @@ async function processCIBulkImportQueue(): Promise<void> {
     WHERE status = 'ANALYZING'
       AND updated_at < now() - make_interval(secs => ${maxCISecs}::int)`;
 
-  // Serialisation guard: skip if any CI item is still being analyzed
+  // Concurrency guard: skip if we already have CI_BULK_CONCURRENCY items in flight
   const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
     SELECT COUNT(*) AS c FROM "ci_bulk_import_item" WHERE status = 'ANALYZING'`;
-  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+  const inFlightCount = Number(inFlight[0]?.c ?? 0);
+  if (inFlightCount >= CI_BULK_CONCURRENCY) return;
 
+  // Fetch up to (3 × concurrency) pending items so a single tick can drain
+  // a small batch even if the worker pool is already partially busy.
+  const available = CI_BULK_CONCURRENCY - inFlightCount;
+  const fetchLimit = CI_BULK_CONCURRENCY * 3;
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, raw_data
     FROM "ci_bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT 1`;
+    LIMIT ${fetchLimit}::int`;
+
+  if (pending.length === 0) return;
 
   const touchedBatches = new Set<string>();
 
-  for (const item of pending) {
+  const analyzeOne = async (item: { id: string; batch_id: string; raw_data: unknown }) => {
     touchedBatches.add(item.batch_id);
     try {
-      await prisma.$executeRaw`UPDATE "ci_bulk_import_item" SET status='ANALYZING', updated_at=now() WHERE id=${item.id}::uuid`;
+      // Atomically claim the row — if a concurrent tick already grabbed it the
+      // UPDATE affects 0 rows and we skip silently to avoid duplicate work.
+      const claimed = await prisma.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='ANALYZING', updated_at=now()
+        WHERE id=${item.id}::uuid AND status='PENDING_ANALYSIS'`;
+      if (Number(claimed) === 0) return;
 
       const raw = (item.raw_data ?? {}) as CIRowRaw;
 
@@ -4206,7 +4528,12 @@ async function processCIBulkImportQueue(): Promise<void> {
           WHERE id=${item.id}::uuid`;
       } catch (e2) { console.error('[CI-Bulk] processCIBulkImportQueue error-mark failure:', e2); }
     }
-  }
+  };
+
+  // Process with bounded concurrency: at most `available` slots in this tick.
+  // (If others are mid-flight we don't exceed CI_BULK_CONCURRENCY globally.)
+  const tasks = pending.map((item) => () => analyzeOne(item));
+  await withConcurrency(tasks, Math.max(1, available));
 
   for (const batchId of touchedBatches) {
     try { await recomputeCIBatchStatus(batchId); }
@@ -4492,13 +4819,14 @@ async function materializeCIBulkItem(
         assignedUser:       decision.assignedUser      || null,
         businessImpact:     (decision.businessImpact   || null) as string | null,
         dataClassification: (decision.dataClassification || null) as string | null,
+        // ipAddress lives on CI.consoleIp in the schema (HardwareCI has no ipAddress field)
+        consoleIp:          decision.ipAddress         || null,
         ...(needsHw && {
           hardware: {
             create: {
               serialNumber: decision.serialNumber || `AUTO-${Date.now()}`,
               model:        decision.model        || 'Unknown',
               manufacturer: decision.manufacturer || 'Unknown',
-              ipAddress:    decision.ipAddress    || null,
             },
           },
         }),
@@ -5171,12 +5499,13 @@ app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (r
   try {
     const [countRows, rows] = await Promise.all([
       prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "bulk_import_batch" WHERE created_by = ${req.user!.email}`,
-      prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdAt: Date; committed: bigint; pending: bigint; errors: bigint }[]>`
+      prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdAt: Date; committed: bigint; pending: bigint; errors: bigint; warnings: bigint }[]>`
         SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.total_bytes::text AS "totalBytes",
                b.created_at AS "createdAt",
                COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
                COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
-               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors
+               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors,
+               COUNT(i.id) FILTER (WHERE i.status = 'WARNING') AS warnings
         FROM "bulk_import_batch" b
         LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
         WHERE b.created_by = ${req.user!.email}
@@ -5185,7 +5514,7 @@ app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (r
         LIMIT 100`,
     ]);
     const total = Number(countRows[0]?.c ?? 0);
-    res.json({ total, truncated: total > 100, batches: rows.map((r) => ({ ...r, totalBytes: Number(r.totalBytes), committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors) })) });
+    res.json({ total, truncated: total > 100, batches: rows.map((r) => ({ ...r, totalBytes: Number(r.totalBytes), committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors), warnings: Number(r.warnings) })) });
   } catch (e) { console.error('[GET /api/documents/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -5314,7 +5643,7 @@ app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdm
              i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
              i.status, i.analysis
       FROM "bulk_import_item" i
-      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR')
+      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR','WARNING')
       ORDER BY i.created_at ASC`;
 
     const results: { itemId: string; ok: boolean; documentId?: string; error?: string }[] = [];
@@ -5343,7 +5672,7 @@ app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAd
       SELECT i.id::text AS id, i.batch_id::text AS batch_id
       FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
       WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
-        AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
+        AND i.status IN ('ANALYZED','ERROR','WARNING') LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
     await prisma.$executeRaw`
       UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
@@ -5364,7 +5693,7 @@ app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, require
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
     const result = await prisma.$executeRaw`
       UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR')`;
+      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR','WARNING')`;
     const count = Number(result);
     await recomputeBatchStatus(req.params.id as string);
     await prisma.$executeRaw`
@@ -5766,6 +6095,24 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
       ORDER BY d.created_at DESC`;
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+/**
+ * DELETE /api/contracts/:id/documents/:docId — unlink a document from a contract.
+ * Idempotent: returns 200 even if the link did not exist.
+ */
+app.delete('/api/contracts/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+  const IdSchema = z.object({ id: z.string().uuid(), docId: z.string().uuid() });
+  const parsed = IdSchema.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid contract or document id' }); return; }
+  const { id: contractId, docId } = parsed.data;
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE contract_id = ${contractId}::uuid AND document_id = ${docId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ documentId: docId })}::jsonb,now())`;
+    const rootId = await getContractRoot(contractId);
+    void queueEntityForIndexing('contract', rootId);
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/contracts/:id/documents/:docId]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Bulk Association Endpoints ───────────────────────────────────────────────

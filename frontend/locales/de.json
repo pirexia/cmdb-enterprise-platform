@@ -39,7 +39,8 @@
     "import": "Importieren",
     "sync": "Synchronisieren",
     "send_test_email": "Test-E-Mail senden",
-    "test": "Testen"
+    "test": "Testen",
+    "back": "Zurück"
   },
   "common": {
     "loading": "Laden…",
@@ -213,7 +214,58 @@
       "empty_batch": "Keine Zeilen in diesem Batch",
       "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
     },
-    "my_imports": "Meine Importe"
+    "my_imports": "Meine Importe",
+    "criticality": {
+      "LOW": "Niedrig",
+      "MEDIUM": "Mittel",
+      "HIGH": "Hoch",
+      "MISSION_CRITICAL": "Geschäftskritisch"
+    },
+    "environment": {
+      "DEVELOPMENT": "Entwicklung",
+      "TESTING": "Test",
+      "STAGING": "Staging",
+      "PRODUCTION": "Produktion"
+    },
+    "bulk_update": {
+      "button": "Auswahl bearbeiten",
+      "selected_count": "{count} ausgewählt",
+      "clear_selection": "Auswahl aufheben",
+      "select_all": "Alle auswählen",
+      "title": "CI-Massenaktualisierung",
+      "hint": "Nur ausgefüllte Felder werden angewendet; der Rest bleibt unverändert.",
+      "no_change": "— Keine Änderung —",
+      "clear_value": "Wert leeren (null)",
+      "set_true": "Ja",
+      "set_false": "Nein",
+      "apply": "Auf Auswahl anwenden",
+      "error": "Massenaktualisierung konnte nicht angewendet werden",
+      "field_criticality": "Kritikalität",
+      "field_environment": "Umgebung",
+      "field_status": "Status",
+      "field_ciType": "CI-Typ",
+      "field_branch": "Standort",
+      "field_costCenter": "Kostenstelle",
+      "field_businessOwner": "Geschäftsverantwortlicher",
+      "field_technicalLead": "Technischer Verantwortlicher",
+      "field_businessImpact": "Geschäftsauswirkung",
+      "field_dataClassification": "Datenklassifizierung",
+      "field_containsPii": "Enthält personenbezogene Daten",
+      "field_spofRisk": "Single Point of Failure"
+    },
+    "bulk_delete": {
+      "button": "Auswahl löschen",
+      "title": "CIs gesammelt löschen",
+      "confirm": "{count} ausgewählte CI(s) löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "warning": "Zugehörige Hardware/Software, Beziehungen und Verweise auf Dokumente/Verträge/Lizenzen werden ebenfalls entfernt.",
+      "confirm_button": "Ja, löschen",
+      "has_refs_title": "Die ausgewählten CIs haben aktive Beziehungen",
+      "refs_contracts": "{count} Vertragsbeziehung(en)",
+      "refs_licenses": "{count} Lizenzbeziehung(en)",
+      "refs_documents": "{count} Dokumentenbeziehung(en)",
+      "has_refs_warning": "Wenn Sie fortfahren, werden diese Verknüpfungen stillschweigend getrennt (Verträge, Lizenzen und Dokumente selbst werden nicht gelöscht). Die Referenzzahlen werden für Forensik im Audit-Log erfasst.",
+      "force_button": "Löschen und Beziehungen trennen"
+    }
   },
   "vulnerabilities": {
     "title": "Schwachstellen",
@@ -294,7 +346,14 @@
     "no_match": "Keine übereinstimmenden CIs.",
     "select_placeholder": "— Auswählen —",
     "edit_contract": "Vertrag bearbeiten",
-    "edit_error": "Fehler beim Speichern des Vertrags"
+    "edit_error": "Fehler beim Speichern des Vertrags",
+    "delete_button": "Vertrag löschen",
+    "delete_confirm": "Vertrag {number} löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "delete_error": "Vertrag konnte nicht gelöscht werden",
+    "delete_blocked_addendums": "Der Vertrag hat aktive Nachträge. Löschen Sie diese zuerst.",
+    "unlink_document": "Dokument entkoppeln",
+    "unlink_document_confirm": "Dokument vom Vertrag entkoppeln?",
+    "unlink_document_error": "Dokument konnte nicht entkoppelt werden"
   },
   "documents": {
     "title": "Dokumentenablage",
@@ -430,7 +489,12 @@
       "open_batch": "Öffnen",
       "filter_all": "Alle",
       "filter_open": "Offen",
-      "filter_done": "Abgeschlossen/Abgelaufen"
+      "filter_done": "Abgeschlossen/Abgelaufen",
+      "status_warning": "Warnung",
+      "status_WARNING": "Warnung",
+      "status_READY_WITH_WARNINGS": "Bereit mit Warnungen",
+      "warning_hint": "Aus dem Dokument konnte kein Text extrahiert werden. Vor der Bestätigung manuell prüfen und klassifizieren.",
+      "col_warnings": "Warnungen"
     }
   },
   "licenses": {

@@ -39,7 +39,8 @@
     "import": "Importar",
     "sync": "Sincronizar",
     "send_test_email": "Enviar E-mail de Teste",
-    "test": "Testar"
+    "test": "Testar",
+    "back": "Voltar"
   },
   "common": {
     "loading": "A carregar…",
@@ -213,7 +214,58 @@
       "empty_batch": "Sem linhas neste lote",
       "no_items_to_commit": "Nenhum item pronto para confirmar"
     },
-    "my_imports": "As minhas importações"
+    "my_imports": "As minhas importações",
+    "criticality": {
+      "LOW": "Baixa",
+      "MEDIUM": "Média",
+      "HIGH": "Alta",
+      "MISSION_CRITICAL": "Crítica"
+    },
+    "environment": {
+      "DEVELOPMENT": "Desenvolvimento",
+      "TESTING": "Testes",
+      "STAGING": "Pré-produção",
+      "PRODUCTION": "Produção"
+    },
+    "bulk_update": {
+      "button": "Editar selecionados",
+      "selected_count": "{count} selecionados",
+      "clear_selection": "Limpar seleção",
+      "select_all": "Selecionar todos",
+      "title": "Atualização em massa de CIs",
+      "hint": "Apenas os campos preenchidos serão aplicados; o restante fica inalterado.",
+      "no_change": "— Sem alteração —",
+      "clear_value": "Esvaziar valor (null)",
+      "set_true": "Sim",
+      "set_false": "Não",
+      "apply": "Aplicar à seleção",
+      "error": "Não foi possível aplicar a atualização em massa",
+      "field_criticality": "Criticidade",
+      "field_environment": "Ambiente",
+      "field_status": "Estado",
+      "field_ciType": "Tipo de CI",
+      "field_branch": "Sede",
+      "field_costCenter": "Centro de custo",
+      "field_businessOwner": "Responsável de negócio",
+      "field_technicalLead": "Responsável técnico",
+      "field_businessImpact": "Impacto de negócio",
+      "field_dataClassification": "Classificação de dados",
+      "field_containsPii": "Contém dados pessoais (PII)",
+      "field_spofRisk": "Ponto único de falha (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Eliminar selecionados",
+      "title": "Eliminar CIs em massa",
+      "confirm": "Eliminar os {count} CI(s) selecionados? Esta ação não pode ser desfeita.",
+      "warning": "Serão removidos também o hardware/software associado, relações e referências a documentos/contratos/licenças.",
+      "confirm_button": "Sim, eliminar",
+      "has_refs_title": "Os CIs selecionados têm relações ativas",
+      "refs_contracts": "{count} relação(ões) com contratos",
+      "refs_licenses": "{count} relação(ões) com licenças",
+      "refs_documents": "{count} relação(ões) com documentos",
+      "has_refs_warning": "Se continuares, essas associações serão removidas silenciosamente (os contratos, licenças e documentos em si não são apagados). Os contadores ficam registados no audit log para forense.",
+      "force_button": "Eliminar e romper relações"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",
@@ -294,7 +346,14 @@
     "no_match": "Nenhum CI encontrado.",
     "select_placeholder": "— Selecionar —",
     "edit_contract": "Editar contrato",
-    "edit_error": "Erro ao guardar o contrato"
+    "edit_error": "Erro ao guardar o contrato",
+    "delete_button": "Eliminar contrato",
+    "delete_confirm": "Eliminar o contrato {number}? Esta ação não pode ser desfeita.",
+    "delete_error": "Não foi possível eliminar o contrato",
+    "delete_blocked_addendums": "O contrato tem adendas ativas. Elimine-as primeiro.",
+    "unlink_document": "Desassociar documento",
+    "unlink_document_confirm": "Desassociar este documento do contrato?",
+    "unlink_document_error": "Não foi possível desassociar o documento"
   },
   "documents": {
     "title": "Repositório Documental",
@@ -430,7 +489,12 @@
       "open_batch": "Abrir",
       "filter_all": "Todos",
       "filter_open": "Abertos",
-      "filter_done": "Concluídos/Expirados"
+      "filter_done": "Concluídos/Expirados",
+      "status_warning": "Aviso",
+      "status_WARNING": "Aviso",
+      "status_READY_WITH_WARNINGS": "Pronto com avisos",
+      "warning_hint": "Não foi possível extrair texto do documento. Reveja e classifique manualmente antes de confirmar.",
+      "col_warnings": "Avisos"
     }
   },
   "licenses": {

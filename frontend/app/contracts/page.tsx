@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileText, Plus, RefreshCw, AlertTriangle, Building, Calendar, Server,
-  ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX, Pencil,
+  ChevronRight, GitBranch, Download, Eye, EyeOff, X, Search, Check, FilterX, Pencil, Trash2,
 } from "lucide-react";
 import AddContractModal from "@/components/AddContractModal";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,9 +57,10 @@ function formatDate(iso: string) {
 
 // ─── Row ──────────────────────────────────────────────────────────────────────
 
-function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
+function ContractRow({ contract, onExpand, expanded, onContractUpdated, onContractDeleted }: {
   contract: Contract; onExpand: () => void; expanded: boolean;
   onContractUpdated: (updated: Contract) => void;
+  onContractDeleted: (id: string) => void;
 }) {
   const status     = getContractStatus(contract.endDate);
   const isAddendum = !!contract.parentContract;
@@ -101,6 +102,11 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
   const [ciSearch, setCiSearch]               = useState("");
   const [selectedCiIds, setSelectedCiIds]     = useState<Set<string>>(new Set());
   const [ciAssocLoading, setCiAssocLoading]   = useState(false);
+
+  // ── Delete contract state ────────────────────────────────────────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading]         = useState(false);
+  const [deleteError, setDeleteError]             = useState<string | null>(null);
 
   // ── Edit contract state ──────────────────────────────────────────────────────
   const [showEdit, setShowEdit]           = useState(false);
@@ -290,6 +296,43 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
     }
   };
 
+  // ── Delete contract ──────────────────────────────────────────────────────────
+  const confirmDelete = async () => {
+    setDeleteLoading(true);
+    setDeleteError(null);
+    try {
+      const res = await apiFetch(`/api/contracts/${contract.id}`, { method: "DELETE" });
+      if (res.ok) {
+        onContractDeleted(contract.id);
+        // No setShowDeleteConfirm(false) — the row is gone now.
+      } else if (res.status === 409) {
+        setDeleteError(t("contracts.delete_blocked_addendums"));
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setDeleteError((body as { error?: string }).error ?? t("contracts.delete_error"));
+      }
+    } catch {
+      setDeleteError(t("contracts.delete_error"));
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // ── Unlink document from contract (from contract side) ──────────────────────
+  const handleUnlinkDoc = async (docId: string) => {
+    if (!confirm(t("contracts.unlink_document_confirm"))) return;
+    try {
+      const res = await apiFetch(`/api/contracts/${contract.id}/documents/${docId}`, { method: "DELETE" });
+      if (res.ok) {
+        setDocs((prev) => prev.filter((d) => d.id !== docId));
+      } else {
+        alert(t("contracts.unlink_document_error"));
+      }
+    } catch {
+      alert(t("contracts.unlink_document_error"));
+    }
+  };
+
   // ── Doc associate ────────────────────────────────────────────────────────────
   const openDocSelector = async () => {
     setShowDocSelector(true);
@@ -385,6 +428,15 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
+            {isAdmin && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setDeleteError(null); setShowDeleteConfirm(true); if (!expanded) onExpand(); }}
+                className="rounded p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                title={t("contracts.delete_button")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
             <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`} />
           </div>
         </td>
@@ -394,6 +446,29 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
         <tr>
           <td colSpan={5} className="px-6 pb-4 bg-[var(--accent)]/5">
             <div className="space-y-3 pt-1">
+
+              {/* ── Delete confirmation ─────────────────────────────────── */}
+              {showDeleteConfirm && (
+                <div className="border border-red-300 bg-red-50 px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <p className="text-sm font-semibold text-red-700 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    {t("contracts.delete_confirm").replace("{number}", contract.contractNumber)}
+                  </p>
+                  {deleteError && <p className="text-xs text-red-600 mb-2">{deleteError}</p>}
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={() => { setShowDeleteConfirm(false); setDeleteError(null); }}
+                            disabled={deleteLoading}
+                            className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 disabled:opacity-50">
+                      {t("actions.cancel")}
+                    </button>
+                    <button onClick={confirmDelete} disabled={deleteLoading}
+                            className="flex items-center gap-1 rounded-none bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+                      {deleteLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      {t("contracts.delete_button")}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* ── Edit form ─────────────────────────────────────────────── */}
               {showEdit && (
@@ -622,6 +697,16 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated }: {
                                 <Download className="h-3.5 w-3.5" />
                                 {t("documents.download")}
                               </button>
+                              {/* Unlink from contract (admin only) */}
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleUnlinkDoc(doc.id); }}
+                                  className="rounded p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                  title={t("contracts.unlink_document")}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -963,6 +1048,9 @@ export default function ContractsPage() {
                           onExpand={() => setExpanded((p) => (p === c.id ? null : c.id))}
                           onContractUpdated={(updated) =>
                             setContracts((prev) => prev.map((x) => (x.id === updated.id ? { ...x, ...updated } : x)))
+                          }
+                          onContractDeleted={(deletedId) =>
+                            setContracts((prev) => prev.filter((x) => x.id !== deletedId))
                           }
                         />
                       ))

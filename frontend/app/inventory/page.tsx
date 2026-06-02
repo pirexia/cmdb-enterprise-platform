@@ -11,12 +11,13 @@ import {
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
-  Key, Cloud, Terminal, Pencil, Trash2, Link2,
+  Key, Cloud, Terminal, Pencil, Trash2, Link2, X,
 } from "lucide-react";
 import AddCIModal from "@/components/AddCIModal";
 import EditCIModal from "@/components/EditCIModal";
 import AddRelationModal from "@/components/AddRelationModal";
 import CIDetailModal from "@/components/CIDetailModal";
+import BulkUpdateCIModal from "@/components/BulkUpdateCIModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
@@ -264,6 +265,13 @@ export default function InventoryPage() {
   const [deletingCI, setDeletingCI] = useState<string | null>(null);
   const [relatingCI, setRelatingCI] = useState<CI | null>(null);
 
+  // Bulk-update / bulk-delete selection state (admin only)
+  const [selectedIds, setSelectedIds]               = useState<Set<string>>(new Set());
+  const [showBulkUpdate, setShowBulkUpdate]         = useState(false);
+  const [showBulkDelete, setShowBulkDelete]         = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading]   = useState(false);
+  const [bulkDeleteError, setBulkDeleteError]       = useState<string | null>(null);
+
   type SortCol = "name" | "ciType" | "environment" | "criticality" | "status" | null;
   type SortDir = "asc" | "desc";
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
@@ -278,6 +286,48 @@ export default function InventoryPage() {
     setFilters((prev) => ({ ...prev, [key]: val }));
 
   const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
+
+  // Selection helpers (bulk-update flow)
+  const toggleSelect = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // Two-step delete: 1st call without force, server returns 409 + brokenRefs if
+  // active associations exist; we ask the user once more, then re-send with force.
+  const [bulkDeleteBrokenRefs, setBulkDeleteBrokenRefs] = useState<{ contracts: number; licenses: number; documents: number } | null>(null);
+
+  const handleBulkDelete = async (force = false) => {
+    setBulkDeleteLoading(true); setBulkDeleteError(null);
+    if (!force) setBulkDeleteBrokenRefs(null);
+    try {
+      const res = await apiFetch("/api/cis/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ciIds: Array.from(selectedIds), force }),
+      });
+      const body = await res.json().catch(() => ({})) as {
+        deleted?: number;
+        error?: string;
+        brokenRefs?: { contracts: number; licenses: number; documents: number };
+      };
+      if (res.status === 409 && body.brokenRefs) {
+        setBulkDeleteBrokenRefs(body.brokenRefs);
+        return; // surface the confirmation step — user must opt in with force=true
+      }
+      if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
+      setShowBulkDelete(false);
+      setBulkDeleteBrokenRefs(null);
+      clearSelection();
+      fetchCIs();
+    } catch (e) {
+      setBulkDeleteError(e instanceof Error ? e.message : t('inventory.bulk_update.error'));
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -386,6 +436,69 @@ export default function InventoryPage() {
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
       {editingCI && <EditCIModal ci={editingCI} onClose={() => setEditingCI(null)} onUpdated={fetchCIs} />}
+      {showBulkUpdate && (
+        <BulkUpdateCIModal
+          ciIds={Array.from(selectedIds)}
+          onClose={() => setShowBulkUpdate(false)}
+          onUpdated={() => { setShowBulkUpdate(false); clearSelection(); fetchCIs(); }}
+        />
+      )}
+      {showBulkDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!bulkDeleteLoading) { setShowBulkDelete(false); setBulkDeleteBrokenRefs(null); } }}>
+          <div className="w-full max-w-md rounded-none bg-white shadow-xl ring-1 ring-slate-200" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+                {t('inventory.bulk_delete.title')}
+              </h2>
+              <button onClick={() => { setShowBulkDelete(false); setBulkDeleteBrokenRefs(null); }} disabled={bulkDeleteLoading}
+                      className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors disabled:opacity-50">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              {!bulkDeleteBrokenRefs ? (
+                <>
+                  <p className="text-sm text-slate-700 mb-2">
+                    {t('inventory.bulk_delete.confirm', { count: String(selectedIds.size) })}
+                  </p>
+                  <p className="text-xs text-slate-500 mb-3">{t('inventory.bulk_delete.warning')}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold text-amber-800 mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    {t('inventory.bulk_delete.has_refs_title')}
+                  </p>
+                  <ul className="text-xs text-slate-700 mb-3 ml-6 list-disc space-y-0.5">
+                    {bulkDeleteBrokenRefs.contracts > 0 && <li>{t('inventory.bulk_delete.refs_contracts', { count: String(bulkDeleteBrokenRefs.contracts) })}</li>}
+                    {bulkDeleteBrokenRefs.licenses > 0 && <li>{t('inventory.bulk_delete.refs_licenses', { count: String(bulkDeleteBrokenRefs.licenses) })}</li>}
+                    {bulkDeleteBrokenRefs.documents > 0 && <li>{t('inventory.bulk_delete.refs_documents', { count: String(bulkDeleteBrokenRefs.documents) })}</li>}
+                  </ul>
+                  <p className="text-xs text-slate-600 mb-3">{t('inventory.bulk_delete.has_refs_warning')}</p>
+                </>
+              )}
+              {bulkDeleteError && (
+                <div className="flex items-start gap-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{bulkDeleteError}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-3 bg-slate-50">
+              <button onClick={() => { setShowBulkDelete(false); setBulkDeleteBrokenRefs(null); }} disabled={bulkDeleteLoading}
+                      className="rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
+                {t('actions.cancel')}
+              </button>
+              <button onClick={() => handleBulkDelete(!!bulkDeleteBrokenRefs)} disabled={bulkDeleteLoading}
+                      className="flex items-center gap-1.5 rounded-none bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+                {bulkDeleteLoading ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                {bulkDeleteBrokenRefs ? t('inventory.bulk_delete.force_button') : t('inventory.bulk_delete.confirm_button')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {detailCI && (
         <CIDetailModal
           ci={detailCI}
@@ -439,6 +552,32 @@ export default function InventoryPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {isAdmin && selectedIds.size > 0 && (
+                  <>
+                    <span className="text-xs text-slate-500">
+                      {t('inventory.bulk_update.selected_count', { count: String(selectedIds.size) })}
+                    </span>
+                    <button
+                      onClick={() => setShowBulkUpdate(true)}
+                      className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />{t('inventory.bulk_update.button')}
+                    </button>
+                    <button
+                      onClick={() => { setBulkDeleteError(null); setShowBulkDelete(true); }}
+                      className="flex items-center gap-1.5 rounded-none border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />{t('inventory.bulk_delete.button')}
+                    </button>
+                    <button
+                      onClick={clearSelection}
+                      className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-2 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
+                      title={t('inventory.bulk_update.clear_selection')}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
                 {activeFilterCount > 0 && (
                   <button onClick={clearFilters} className="flex items-center gap-1.5 rounded-none border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100 transition-colors">
                     <FilterX className="h-3.5 w-3.5" />Limpiar filtros
@@ -474,6 +613,31 @@ export default function InventoryPage() {
                   <thead className="sticky top-0 z-10">
                     {/* ── Sort row ── */}
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
+                      {/* Bulk-select checkbox column (admin only) */}
+                      {isAdmin && (
+                        <th className="px-3 py-3 whitespace-nowrap w-10">
+                          <input
+                            type="checkbox"
+                            aria-label={t('inventory.bulk_update.select_all')}
+                            checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))}
+                            ref={(el) => {
+                              if (el) {
+                                const someSelected = filtered.some((c) => selectedIds.has(c.id));
+                                const allSelected  = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
+                                el.indeterminate = someSelected && !allSelected;
+                              }
+                            }}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedIds(new Set(filtered.map((c) => c.id)));
+                              } else {
+                                clearSelection();
+                              }
+                            }}
+                            className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
+                          />
+                        </th>
+                      )}
                       {/* Name */}
                       <th className="px-4 py-3 whitespace-nowrap">
                         <button onClick={() => toggleSort("name")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
@@ -516,6 +680,8 @@ export default function InventoryPage() {
                     </tr>
                     {/* ── Filter row ── */}
                     <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
+                      {/* Bulk-select column (empty cell in filter row) */}
+                      {isAdmin && <td className="px-3 py-2" />}
                       {/* Name filter */}
                       <td className="px-3 py-2">
                         <div className="relative">
@@ -600,16 +766,29 @@ export default function InventoryPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={isAdmin ? 8 : 7} className="py-12 text-center text-slate-400 text-sm">
+                      <tr><td colSpan={isAdmin ? 10 : 8} className="py-12 text-center text-slate-400 text-sm">
                         {activeFilterCount > 0 ? "No hay CIs que coincidan con los filtros activos." : t('inventory.no_cis')}
                       </td></tr>
                     ) : (
                       filtered.map((ci) => {
                         const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
                         const typeMeta = CI_TYPE_META[resolvedType] ?? CI_TYPE_META["OTHER"];
+                        const isSelected = selectedIds.has(ci.id);
 
                         return (
-                          <tr key={ci.id} className="group hover:bg-[var(--accent)]/5 transition-colors">
+                          <tr key={ci.id} className={`group transition-colors ${isSelected ? "bg-[var(--accent)]/10" : "hover:bg-[var(--accent)]/5"}`}>
+                            {isAdmin && (
+                              <td className="px-3 py-3 w-10">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleSelect(ci.id)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
+                                  aria-label={`Seleccionar ${ci.name}`}
+                                />
+                              </td>
+                            )}
                             <td className="px-4 py-3 font-medium text-slate-800">
                               <button
                                 onClick={() => setDetailCI(ci)}

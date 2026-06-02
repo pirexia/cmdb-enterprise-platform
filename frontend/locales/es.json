@@ -39,7 +39,8 @@
     "import": "Importar",
     "sync": "Sincronizar",
     "send_test_email": "Enviar Correo de Prueba",
-    "test": "Probar"
+    "test": "Probar",
+    "back": "Volver"
   },
   "common": {
     "loading": "Cargando…",
@@ -213,7 +214,58 @@
       "empty_batch": "No hay filas en este lote",
       "no_items_to_commit": "No hay elementos listos para confirmar"
     },
-    "my_imports": "Mis importaciones"
+    "my_imports": "Mis importaciones",
+    "criticality": {
+      "LOW": "Baja",
+      "MEDIUM": "Media",
+      "HIGH": "Alta",
+      "MISSION_CRITICAL": "Crítica"
+    },
+    "environment": {
+      "DEVELOPMENT": "Desarrollo",
+      "TESTING": "Pruebas",
+      "STAGING": "Preproducción",
+      "PRODUCTION": "Producción"
+    },
+    "bulk_update": {
+      "button": "Editar seleccionados",
+      "selected_count": "{count} seleccionados",
+      "clear_selection": "Quitar selección",
+      "select_all": "Seleccionar todos",
+      "title": "Actualización masiva de CIs",
+      "hint": "Solo los campos que rellenes se aplicarán; el resto queda intacto.",
+      "no_change": "— Sin cambio —",
+      "clear_value": "Vaciar valor (null)",
+      "set_true": "Sí",
+      "set_false": "No",
+      "apply": "Aplicar a la selección",
+      "error": "No se pudo aplicar la actualización masiva",
+      "field_criticality": "Criticidad",
+      "field_environment": "Entorno",
+      "field_status": "Estado",
+      "field_ciType": "Tipo de CI",
+      "field_branch": "Sede",
+      "field_costCenter": "Centro de coste",
+      "field_businessOwner": "Responsable de negocio",
+      "field_technicalLead": "Responsable técnico",
+      "field_businessImpact": "Impacto de negocio",
+      "field_dataClassification": "Clasificación de datos",
+      "field_containsPii": "Contiene datos personales (PII)",
+      "field_spofRisk": "Punto único de fallo (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Eliminar seleccionados",
+      "title": "Eliminar CIs en bloque",
+      "confirm": "¿Eliminar los {count} CI(s) seleccionados? Esta acción no se puede deshacer.",
+      "warning": "Se eliminarán también el hardware/software asociado, relaciones y referencias a documentos/contratos/licencias.",
+      "confirm_button": "Sí, eliminar",
+      "has_refs_title": "Los CIs seleccionados tienen relaciones activas",
+      "refs_contracts": "{count} relación(es) con contratos",
+      "refs_licenses": "{count} relación(es) con licencias",
+      "refs_documents": "{count} relación(es) con documentos",
+      "has_refs_warning": "Si continúas, esas asociaciones se eliminarán silenciosamente (los contratos, licencias y documentos en sí no se borran). Las referencias se registran en el audit log para forense.",
+      "force_button": "Eliminar y romper relaciones"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",
@@ -339,7 +391,14 @@
     "no_match": "No hay CIs que coincidan.",
     "select_placeholder": "— Seleccionar —",
     "edit_contract": "Editar contrato",
-    "edit_error": "Error al guardar el contrato"
+    "edit_error": "Error al guardar el contrato",
+    "delete_button": "Eliminar contrato",
+    "delete_confirm": "¿Eliminar el contrato {number}? Esta acción no se puede deshacer.",
+    "delete_error": "No se pudo eliminar el contrato",
+    "delete_blocked_addendums": "El contrato tiene adendas asociadas. Bórralas primero.",
+    "unlink_document": "Desasociar documento",
+    "unlink_document_confirm": "¿Desasociar este documento del contrato?",
+    "unlink_document_error": "No se pudo desasociar el documento"
   },
   "documents": {
     "title": "Repositorio Documental",
@@ -475,7 +534,12 @@
       "open_batch": "Abrir",
       "filter_all": "Todos",
       "filter_open": "Abiertos",
-      "filter_done": "Completados/Expirados"
+      "filter_done": "Completados/Expirados",
+      "status_warning": "Advertencia",
+      "status_WARNING": "Advertencia",
+      "status_READY_WITH_WARNINGS": "Listo con advertencias",
+      "warning_hint": "No se pudo extraer texto del documento. Revisa y clasifica manualmente antes de confirmar.",
+      "col_warnings": "Advertencias"
     }
   },
   "licenses": {

@@ -39,7 +39,8 @@
     "import": "Import",
     "sync": "Sync",
     "send_test_email": "Send Test Email",
-    "test": "Test"
+    "test": "Test",
+    "back": "Back"
   },
   "common": {
     "loading": "Loading…",
@@ -213,7 +214,58 @@
       "empty_batch": "No rows in this batch",
       "no_items_to_commit": "No items ready to commit"
     },
-    "my_imports": "My imports"
+    "my_imports": "My imports",
+    "criticality": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "MISSION_CRITICAL": "Mission Critical"
+    },
+    "environment": {
+      "DEVELOPMENT": "Development",
+      "TESTING": "Testing",
+      "STAGING": "Staging",
+      "PRODUCTION": "Production"
+    },
+    "bulk_update": {
+      "button": "Edit selected",
+      "selected_count": "{count} selected",
+      "clear_selection": "Clear selection",
+      "select_all": "Select all",
+      "title": "Bulk CI update",
+      "hint": "Only fields you fill in will be applied; the rest stays untouched.",
+      "no_change": "— No change —",
+      "clear_value": "Clear value (null)",
+      "set_true": "Yes",
+      "set_false": "No",
+      "apply": "Apply to selection",
+      "error": "Could not apply the bulk update",
+      "field_criticality": "Criticality",
+      "field_environment": "Environment",
+      "field_status": "Status",
+      "field_ciType": "CI Type",
+      "field_branch": "Branch",
+      "field_costCenter": "Cost Center",
+      "field_businessOwner": "Business Owner",
+      "field_technicalLead": "Technical Lead",
+      "field_businessImpact": "Business Impact",
+      "field_dataClassification": "Data Classification",
+      "field_containsPii": "Contains PII",
+      "field_spofRisk": "Single Point of Failure (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Delete selected",
+      "title": "Delete CIs in bulk",
+      "confirm": "Delete the {count} selected CI(s)? This action cannot be undone.",
+      "warning": "Associated hardware/software, relations, and document/contract/licence references will also be removed.",
+      "confirm_button": "Yes, delete",
+      "has_refs_title": "Selected CIs have active relationships",
+      "refs_contracts": "{count} contract relation(s)",
+      "refs_licenses": "{count} licence relation(s)",
+      "refs_documents": "{count} document relation(s)",
+      "has_refs_warning": "If you proceed, those associations will be silently severed (the contracts, licences and documents themselves are not deleted). The reference counts are recorded in the audit log for forensics.",
+      "force_button": "Delete and sever relationships"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnerabilities",
@@ -339,7 +391,14 @@
     "no_match": "No matching CIs.",
     "select_placeholder": "— Select —",
     "edit_contract": "Edit Contract",
-    "edit_error": "Failed to save contract"
+    "edit_error": "Failed to save contract",
+    "delete_button": "Delete contract",
+    "delete_confirm": "Delete contract {number}? This action cannot be undone.",
+    "delete_error": "Could not delete the contract",
+    "delete_blocked_addendums": "This contract has active addendums. Delete those first.",
+    "unlink_document": "Unlink document",
+    "unlink_document_confirm": "Unlink this document from the contract?",
+    "unlink_document_error": "Could not unlink the document"
   },
   "documents": {
     "title": "Document Repository",
@@ -475,7 +534,12 @@
       "open_batch": "Open",
       "filter_all": "All",
       "filter_open": "Open",
-      "filter_done": "Completed/Expired"
+      "filter_done": "Completed/Expired",
+      "status_warning": "Warning",
+      "status_WARNING": "Warning",
+      "status_READY_WITH_WARNINGS": "Ready with warnings",
+      "warning_hint": "Could not extract text from the document. Review and classify manually before confirming.",
+      "col_warnings": "Warnings"
     }
   },
   "licenses": {

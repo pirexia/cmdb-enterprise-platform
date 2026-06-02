@@ -1642,9 +1642,10 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
       return del.count;
     });
 
-    // Purge RAG entries (best-effort, non-blocking on errors).
+    // Fire-and-forget RAG purge — don't block the HTTP response for up to N×latency.
+    // purgeEntityFromRag is idempotent so retries on the next ragQueue tick are safe.
     for (const id of ciIds) {
-      try { await purgeEntityFromRag('ci', id); } catch (e) { console.error('[POST /api/cis/bulk-delete] RAG purge error:', e); }
+      void purgeEntityFromRag('ci', id).catch((e) => console.error('[POST /api/cis/bulk-delete] RAG purge error:', e));
     }
 
     res.json({ deleted: result, notFound: ciIds.length - existing.length, requested: ciIds.length });

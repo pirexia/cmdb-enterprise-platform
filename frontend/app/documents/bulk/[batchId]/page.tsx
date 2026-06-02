@@ -34,7 +34,7 @@ interface BatchItem {
   originalName: string;
   mimeType: string;
   fileSize: number;
-  status: "PENDING_ANALYSIS" | "ANALYZING" | "ANALYZED" | "ERROR" | "COMMITTED" | "DISCARDED";
+  status: "PENDING_ANALYSIS" | "ANALYZING" | "ANALYZED" | "WARNING" | "ERROR" | "COMMITTED" | "DISCARDED";
   analysis: ItemAnalysis | null;
   errorMessage: string | null;
   committedDocumentId: string | null;
@@ -210,7 +210,7 @@ export default function BulkReviewPage() {
     let changed = false;
     for (const item of batch.items) {
       if (seededRef.current.has(item.id)) continue;
-      if (item.status === "ANALYZED" || item.status === "ERROR") {
+      if (item.status === "ANALYZED" || item.status === "ERROR" || item.status === "WARNING") {
         next[item.id] = seedDecision(item, docTypes, vendors);
         seededRef.current.add(item.id);
         changed = true;
@@ -258,7 +258,7 @@ export default function BulkReviewPage() {
 
   const commitAll = async () => {
     const targets = (batch?.items ?? []).filter(
-      (i) => (i.status === "ANALYZED" || i.status === "ERROR") && !rows[i.id]?.done,
+      (i) => (i.status === "ANALYZED" || i.status === "ERROR" || i.status === "WARNING") && !rows[i.id]?.done,
     );
     let ok = 0, fail = 0;
     for (const it of targets) {
@@ -414,6 +414,7 @@ function ItemCard({
     if (committed) return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-3 w-3" />{t("documents.bulk.committed")}</span>;
     if (analyzing) return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"><Loader2 className="h-3 w-3 animate-spin" />{t("documents.bulk.analyzing")}</span>;
     if (item.status === "ERROR") return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"><AlertTriangle className="h-3 w-3" />{t("documents.bulk.status_error")}</span>;
+    if (item.status === "WARNING") return <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-800"><AlertTriangle className="h-3 w-3" />{t("documents.bulk.status_warning")}</span>;
     return <span className="inline-flex items-center gap-1 rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-semibold text-[var(--accent)]"><Sparkles className="h-3 w-3" />{t("documents.bulk.analyzed")}</span>;
   };
 
@@ -449,7 +450,12 @@ function ItemCard({
         <div className="px-4 py-4 text-sm text-emerald-700">{t("documents.bulk.commit_success")}.</div>
       ) : (
         <div className="px-4 py-4 space-y-3">
-          {a.textExtracted === false && (
+          {item.status === "WARNING" && (
+            <p className="flex items-center gap-1.5 rounded border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+              <AlertTriangle className="h-3.5 w-3.5" />{t("documents.bulk.warning_hint")}
+            </p>
+          )}
+          {item.status !== "WARNING" && a.textExtracted === false && (
             <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">{t("documents.bulk.no_text")}</p>
           )}
           {row?.error && (

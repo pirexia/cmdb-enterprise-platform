@@ -14,7 +14,7 @@ import { apiFetch } from "@/lib/apiFetch";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type BatchStatus =
-  | "UPLOADED" | "ANALYZING" | "READY" | "ERROR"
+  | "UPLOADED" | "ANALYZING" | "READY" | "READY_WITH_WARNINGS" | "ERROR"
   | "PARTIALLY_COMMITTED" | "COMMITTED" | "DISCARDED" | "REAPED";
 
 interface BatchSummary {
@@ -26,6 +26,7 @@ interface BatchSummary {
   committed: number;
   pending: number;
   errors: number;
+  warnings: number;
 }
 
 type FilterMode = "all" | "open" | "done";
@@ -57,6 +58,7 @@ function StatusBadge({ status, t }: { status: BatchStatus; t: (k: string) => str
     UPLOADED:             { cls: "bg-slate-100 text-slate-600",      icon: <Clock className="h-3 w-3" /> },
     ANALYZING:            { cls: "bg-amber-100 text-amber-700",      icon: <Loader2 className="h-3 w-3 animate-spin" /> },
     READY:                { cls: "bg-blue-100 text-blue-700",         icon: <FileText className="h-3 w-3" /> },
+    READY_WITH_WARNINGS:  { cls: "bg-yellow-100 text-yellow-800",    icon: <AlertTriangle className="h-3 w-3" /> },
     ERROR:                { cls: "bg-red-100 text-red-700",           icon: <XCircle className="h-3 w-3" /> },
     PARTIALLY_COMMITTED:  { cls: "bg-orange-100 text-orange-700",    icon: <CheckCircle2 className="h-3 w-3" /> },
     COMMITTED:            { cls: "bg-emerald-100 text-emerald-700",  icon: <CheckCircle2 className="h-3 w-3" /> },
@@ -201,6 +203,7 @@ export default function BulkBatchesListPage() {
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_files")}</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_committed")}</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_pending")}</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_warnings")}</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_errors")}</th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("documents.bulk.col_size")}</th>
                   <th className="px-4 py-3"></th>
@@ -226,6 +229,11 @@ export default function BulkBatchesListPage() {
                       <td className="px-4 py-3 text-center">
                         {b.pending > 0 && (
                           <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">{b.pending}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {b.warnings > 0 && (
+                          <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-800">{b.warnings}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">

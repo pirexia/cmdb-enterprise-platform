@@ -1625,12 +1625,15 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
 
     const result = await prisma.$transaction(async (tx) => {
       // Per-CI audit BEFORE delete (so we keep entity_id resolvable to the historical name).
+      // V2.5.1-A09-1: name lives in details.name, NOT concatenated into the action column
+      // (which is VARCHAR(100) and risks truncation + PII leak per GDPR Art.5).
       for (const id of ciIds) {
         const name = existingMap.get(id);
         if (!name) continue;
         await tx.$executeRaw`
-          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-          VALUES(gen_random_uuid(), ${'DELETE_CI:' + name}, 'CI', ${id}::uuid, ${req.user!.email}, now())`;
+          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+          VALUES(gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                 ${JSON.stringify({ name })}::jsonb, now())`;
       }
       // Batch audit (aggregate event for forensic correlation).
       await tx.$executeRaw`
@@ -1671,16 +1674,21 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request,
       return;
     }
 
-    // Delete CI (cascade handles hardware/software via Prisma schema)
-    await prisma.cI.delete({ where: { id } });
+    // V2.5.1-A09-2: wrap delete + audit in a single transaction so the audit row is
+    // never missing when the row is gone (ISO 27001 A.8.15 atomicity).
+    // V2.5.1-A09-1: store name in details.name (structured) instead of concatenated
+    // into the action column (VARCHAR(100), PII risk).
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.delete({ where: { id } });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'DELETE_CI', 'CI', ${id}::uuid, ${req.user!.email},
+                ${JSON.stringify({ name: ci.name })}::jsonb, now())
+      `;
+    });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'DELETE_CI:' + ci.name}, 'CI', ${id}, ${req.user!.email}, now())
-    `;
-
-    // Purge RAG index/chunks for this entity (await before response — cascade safety)
-    await purgeEntityFromRag('ci', id);
+    // Purge RAG asynchronously (don't block the response — RAG is eventually consistent)
+    void purgeEntityFromRag('ci', id).catch((e) => console.error('[DELETE /api/cis/:id] RAG purge error:', e));
 
     res.json({ id, message: `CI "${ci.name}" deleted successfully` });
   } catch (error) {

@@ -3,16 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { Layers } from "lucide-react";
 import {
-  Search, RefreshCw, AlertTriangle, Plus, Download, Upload, FileDown,
-  Shield, ShieldAlert, ShieldCheck, ShieldOff, CheckCircle2, XCircle,
+  Search, RefreshCw, AlertTriangle, Plus, Download,
+  Shield, ShieldAlert, ShieldCheck, ShieldOff,
   ChevronUp, ChevronDown, ChevronsUpDown, FilterX,
   Server, Box, Database, Network, HardDrive, Archive, Package, Cpu,
   Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock,
   Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging,
   Key, Cloud, Terminal, Pencil, Trash2, Link2,
 } from "lucide-react";
-import Papa from "papaparse";
 import AddCIModal from "@/components/AddCIModal";
 import EditCIModal from "@/components/EditCIModal";
 import AddRelationModal from "@/components/AddRelationModal";
@@ -170,6 +170,21 @@ function CriticalityBadge({ level }: { level: Criticality }) {
   return <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold ${CRIT_STYLES[level]}`}>{CRIT_LABEL[level]}</span>;
 }
 
+// ─── CI Status badge ──────────────────────────────────────────────────────────
+
+function CIStatusBadge({ status, t }: { status: string; t: (k: string) => string }) {
+  const cfg: Record<string, string> = {
+    ACTIVO:   "bg-emerald-100 text-emerald-700",
+    INACTIVO: "bg-amber-100 text-amber-700",
+    RETIRADO: "bg-slate-100 text-slate-500",
+  };
+  return (
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cfg[status] ?? "bg-slate-100 text-slate-500"}`}>
+      {t(`inventory.status.${status}`) ?? status}
+    </span>
+  );
+}
+
 // ─── Greenbone vuln badge ──────────────────────────────────────────────────────
 
 function VulnBadge({ vulns }: { vulns: Vulnerability[] | null }) {
@@ -248,13 +263,11 @@ export default function InventoryPage() {
   const [detailCI, setDetailCI]   = useState<CI | null>(null);
   const [deletingCI, setDeletingCI] = useState<string | null>(null);
   const [relatingCI, setRelatingCI] = useState<CI | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; errors: number; message: string } | null>(null);
 
-  type SortCol = "name" | "ciType" | "environment" | "criticality" | null;
+  type SortCol = "name" | "ciType" | "environment" | "criticality" | "status" | null;
   type SortDir = "asc" | "desc";
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
-  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" });
+  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" });
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -264,7 +277,7 @@ export default function InventoryPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
 
-  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
+  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
 
   const fetchCIs = async () => {
     setLoading(true); setError(null);
@@ -306,6 +319,7 @@ export default function InventoryPage() {
       if (filters.ciType && resolvedType !== filters.ciType) return false;
       if (filters.environment && ci.environment !== filters.environment) return false;
       if (filters.criticality && ci.criticality !== filters.criticality) return false;
+      if (filters.status && (ci.status ?? "ACTIVO") !== filters.status) return false;
       if (filters.vulns) {
         if (filters.vulns === "no_data" && ci.vulnerabilities !== null) return false;
         if (filters.vulns === "clean" && (ci.vulnerabilities === null || openVulns.length > 0)) return false;
@@ -327,6 +341,7 @@ export default function InventoryPage() {
         if (sort.col === "name")        return dir * a.name.localeCompare(b.name);
         if (sort.col === "environment") return dir * a.environment.localeCompare(b.environment);
         if (sort.col === "criticality") return dir * ((CRIT_ORDER[a.criticality] ?? 0) - (CRIT_ORDER[b.criticality] ?? 0));
+        if (sort.col === "status")      return dir * (a.status ?? "ACTIVO").localeCompare(b.status ?? "ACTIVO");
         if (sort.col === "ciType") {
           const at = a.ciType ?? (a.hardware ? "HARDWARE" : a.software ? "SOFTWARE" : "OTHER");
           const bt = b.ciType ?? (b.hardware ? "HARDWARE" : b.software ? "SOFTWARE" : "OTHER");
@@ -367,53 +382,6 @@ export default function InventoryPage() {
     );
   };
 
-  const CSV_TEMPLATE_HEADERS = [
-    "name","ciType","criticality","environment","manufacturer","serialNumber","model",
-    "version","licenseType","licenseModel","licenseMetric","licenseQty","licenseExpiry",
-    "ipAddress","description","status",
-  ];
-
-  const handleDownloadTemplate = () => {
-    exportToCSV("plantilla-cis.csv", CSV_TEMPLATE_HEADERS, [
-      // Hardware example
-      ["Server-PRD-01","PHYSICAL_SERVER","HIGH","PRODUCTION","Dell","SN-DL-00001","PowerEdge R740","","","","","","","192.168.1.10","Primary web server","active"],
-      // License example
-      ["Office 365 E3","LICENSE","MEDIUM","PRODUCTION","Microsoft","","","","","subscription","nominal","50","2026-12-31","","Microsoft Office suite","active"],
-    ]);
-  };
-
-  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setImportResult(null);
-
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (result) => {
-        try {
-          const res = await apiFetch("/api/cis/bulk", {
-            method: "POST",
-            body: JSON.stringify(result.data),
-          });
-          const json: { successCount: number; errorCount: number; message: string } = await res.json();
-          setImportResult({ success: json.successCount, errors: json.errorCount, message: json.message });
-          if (json.successCount > 0) fetchCIs();
-        } catch (err) {
-          setImportResult({ success: 0, errors: 1, message: err instanceof Error ? err.message : "Error de red al importar" });
-        } finally {
-          setImporting(false);
-          e.target.value = "";
-        }
-      },
-      error: (err) => {
-        setImportResult({ success: 0, errors: 1, message: `Error al parsear CSV: ${err.message}` });
-        setImporting(false);
-      },
-    });
-  };
-
   return (
     <>
       {showModal && <AddCIModal onClose={() => setShowModal(false)} onCreated={fetchCIs} />}
@@ -443,19 +411,14 @@ export default function InventoryPage() {
             </div>
             {isAdmin && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleDownloadTemplate}
-                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
-                  title="Descargar plantilla CSV para importación masiva"
-                >
-                  <FileDown className="h-3.5 w-3.5" />{t('inventory.download_template')}
+                <button onClick={() => router.push('/inventory/bulk')}
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <Layers className="h-3.5 w-3.5" />{t('inventory.bulk.button')}
                 </button>
-                <label className={`flex items-center gap-1.5 cursor-pointer rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors ${importing ? "opacity-50 pointer-events-none" : ""}`}
-                  title={t('inventory.import_csv')}>
-                  {importing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                  {importing ? t('common.loading') : t('inventory.import_csv')}
-                  <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} disabled={importing} />
-                </label>
+                <button onClick={() => router.push('/inventory/bulk?tab=list')}
+                  className="flex items-center gap-1.5 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <Layers className="h-3.5 w-3.5" />{t('inventory.my_imports')}
+                </button>
                 <button onClick={() => setShowModal(true)} className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm">
                   <Plus className="h-4 w-4" />{t('inventory.add_ci')}
                 </button>
@@ -493,17 +456,6 @@ export default function InventoryPage() {
                 </button>
               </div>
             </div>
-
-            {/* Import result banner */}
-            {importResult && (
-              <div className={`flex items-center justify-between gap-3 px-6 py-3 text-sm border-b ${importResult.errors === 0 ? "bg-emerald-50 border-emerald-200 text-emerald-700" : importResult.success === 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-amber-50 border-amber-200 text-amber-700"}`}>
-                <div className="flex items-center gap-2">
-                  {importResult.errors === 0 ? <CheckCircle2 className="h-4 w-4 flex-shrink-0" /> : <XCircle className="h-4 w-4 flex-shrink-0" />}
-                  <span>{importResult.message}</span>
-                </div>
-                <button onClick={() => setImportResult(null)} className="text-slate-400 hover:text-slate-600 text-xs">✕ Cerrar</button>
-              </div>
-            )}
 
             {loading && <div className="flex items-center justify-center py-20 text-slate-400"><RefreshCw className="mr-2 h-5 w-5 animate-spin" /><span className="text-sm">{t('common.loading')}</span></div>}
 
@@ -548,6 +500,13 @@ export default function InventoryPage() {
                         <button onClick={() => toggleSort("criticality")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
                           {t('inventory.columns.criticality')}
                           {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                        </button>
+                      </th>
+                      {/* Status */}
+                      <th className="px-4 py-3 whitespace-nowrap">
+                        <button onClick={() => toggleSort("status")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
+                          {t('inventory.columns.status')}
+                          {sort.col === "status" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
                       <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div></th>
@@ -599,6 +558,16 @@ export default function InventoryPage() {
                           <option value="HIGH">High</option>
                           <option value="MEDIUM">Medium</option>
                           <option value="LOW">Low</option>
+                        </select>
+                      </td>
+                      {/* Status filter */}
+                      <td className="px-3 py-2">
+                        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
+                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.status ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <option value="">{t('inventory.filter_status_all')}</option>
+                          <option value="ACTIVO">{t('inventory.status.ACTIVO')}</option>
+                          <option value="INACTIVO">{t('inventory.status.INACTIVO')}</option>
+                          <option value="RETIRADO">{t('inventory.status.RETIRADO')}</option>
                         </select>
                       </td>
                       {/* Vulns filter */}
@@ -676,6 +645,7 @@ export default function InventoryPage() {
                             </td>
                             <td className="px-4 py-3"><EnvironmentBadge env={ci.environment} /></td>
                             <td className="px-4 py-3"><CriticalityBadge level={ci.criticality} /></td>
+                            <td className="px-4 py-3"><CIStatusBadge status={ci.status ?? "ACTIVO"} t={t} /></td>
                             <td className="px-4 py-3"><VulnBadge vulns={ci.vulnerabilities} /></td>
                             <td className="px-4 py-3"><AgentBadge agent={ci.agentStatus} /></td>
                             <td className="px-4 py-3">

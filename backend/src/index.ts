@@ -1517,6 +1517,80 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
 });
 
 /**
+ * PATCH /api/cis/bulk-update — apply the same field changes to many CIs at once.
+ * ADMIN only. Body: { ciIds: string[]; updates: Partial<CIBulkUpdateFields> }.
+ * Only enums and FK ids are exposed (no unique-per-CI fields like name,
+ * inventoryNumber, serial, etc., to prevent integrity issues).
+ * Atomic transaction: either all CIs are updated or none. AuditLog stores
+ * { ciIds, changes } per CI for forensic reconstruction.
+ */
+app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const BulkUpdateSchema = z.object({
+    ciIds: z.array(z.string().uuid()).min(1).max(500),
+    updates: z.object({
+      criticality:        z.enum(['LOW','MEDIUM','HIGH','MISSION_CRITICAL']).optional(),
+      environment:        z.enum(['DEVELOPMENT','TESTING','STAGING','PRODUCTION']).optional(),
+      status:             z.enum(['ACTIVO','INACTIVO','RETIRADO']).optional(),
+      ciTypeId:           z.string().uuid().nullable().optional(),
+      locationId:         z.string().uuid().nullable().optional(),
+      costCenterId:       z.string().uuid().nullable().optional(),
+      branchId:           z.string().uuid().nullable().optional(),
+      businessOwnerId:    z.string().uuid().nullable().optional(),
+      technicalLeadId:    z.string().uuid().nullable().optional(),
+      businessImpact:     z.enum(['LOW','MEDIUM','HIGH','CRITICAL']).nullable().optional(),
+      dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).nullable().optional(),
+      containsPii:        z.boolean().optional(),
+      spofRisk:           z.boolean().optional(),
+    }).refine((u) => Object.keys(u).length > 0, { message: 'No fields to update' }),
+  });
+
+  const parsed = BulkUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk update payload' });
+    return;
+  }
+  const { ciIds, updates } = parsed.data;
+
+  // Build the Prisma update data — only set fields the caller actually sent.
+  const data: Record<string, unknown> = {};
+  if (updates.criticality        !== undefined) data.criticality        = updates.criticality;
+  if (updates.environment        !== undefined) data.environment        = updates.environment;
+  if (updates.status             !== undefined) data.status             = updates.status;
+  if (updates.ciTypeId           !== undefined) data.ciTypeId           = updates.ciTypeId;
+  if (updates.locationId         !== undefined) data.locationId         = updates.locationId;
+  if (updates.costCenterId       !== undefined) data.costCenterId       = updates.costCenterId;
+  if (updates.branchId           !== undefined) data.branchId           = updates.branchId;
+  if (updates.businessOwnerId    !== undefined) data.businessOwnerId    = updates.businessOwnerId;
+  if (updates.technicalLeadId    !== undefined) data.technicalLeadId    = updates.technicalLeadId;
+  if (updates.businessImpact     !== undefined) data.businessImpact     = updates.businessImpact;
+  if (updates.dataClassification !== undefined) data.dataClassification = updates.dataClassification;
+  if (updates.containsPii        !== undefined) data.containsPii        = updates.containsPii;
+  if (updates.spofRisk           !== undefined) data.spofRisk           = updates.spofRisk;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const upd = await tx.cI.updateMany({
+        where: { id: { in: ciIds } },
+        data,
+      });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_UPDATE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify({ ciIds, changes: updates, affected: upd.count })}::jsonb, now())`;
+      return upd.count;
+    });
+
+    // Re-index every affected CI for RAG (non-blocking).
+    for (const id of ciIds) void queueEntityForIndexing('ci', id);
+
+    res.json({ updated: result, requested: ciIds.length });
+  } catch (error: unknown) {
+    console.error('[PATCH /api/cis/bulk-update] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * DELETE /api/cis/:id
  * Deletes a Configuration Item (cascade deletes hardware/software).
  * ADMIN only.

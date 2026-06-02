@@ -4011,12 +4011,33 @@ async function processBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
   if (!(await isOllamaHealthy())) return;
 
+  // Safety valve: items stuck in ANALYZING longer than max expected time (OCR + Ollama + margin)
+  // are reset to ERROR so they don't block the queue permanently (e.g. after a crash).
+  const stuckThresholdSecs = Math.ceil((BULK_BATCH_TTL_HOURS * 3600) / 20); // never more than 1/20 of TTL
+  const maxAnalysisSecs = Math.ceil((
+    parseInt(process.env.OCR_DOC_TIMEOUT_MS ?? '600000', 10) +
+    parseInt(process.env.RAG_CHAT_TIMEOUT_MS  ?? '180000', 10)
+  ) / 1000) + 120;
+  const stuckSecs = Math.min(stuckThresholdSecs, maxAnalysisSecs);
+  await prisma.$executeRaw`
+    UPDATE "bulk_import_item"
+    SET status = 'ERROR', error_message = 'Analysis timed out (stuck in ANALYZING)',  updated_at = now()
+    WHERE status = 'ANALYZING'
+      AND updated_at < now() - make_interval(secs => ${stuckSecs}::int)`;
+
+  // Serialisation guard: if any item is still ANALYZING, wait for it to finish
+  // before starting new ones. Prevents concurrent OCR + Ollama calls that saturate
+  // CPU and cause Ollama timeouts when processing large batches.
+  const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
+    SELECT COUNT(*) AS c FROM "bulk_import_item" WHERE status = 'ANALYZING'`;
+  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; staged_file_name: string; mime_type: string; original_name: string }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, staged_file_name, mime_type, original_name
     FROM "bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT ${BULK_ANALYZE_BUDGET}`;
+    LIMIT 1`;
 
   const touchedBatches = new Set<string>();
 
@@ -4072,12 +4093,27 @@ async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
   if (!(await isOllamaHealthy())) return;
 
+  // Safety valve: reset stuck ANALYZING items (mirrors document bulk worker)
+  const maxCISecs = Math.ceil((
+    parseInt(process.env.RAG_CHAT_TIMEOUT_MS ?? '180000', 10)
+  ) / 1000) + 120;
+  await prisma.$executeRaw`
+    UPDATE "ci_bulk_import_item"
+    SET status = 'ERROR', error_message = 'Analysis timed out (stuck in ANALYZING)', updated_at = now()
+    WHERE status = 'ANALYZING'
+      AND updated_at < now() - make_interval(secs => ${maxCISecs}::int)`;
+
+  // Serialisation guard: skip if any CI item is still being analyzed
+  const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
+    SELECT COUNT(*) AS c FROM "ci_bulk_import_item" WHERE status = 'ANALYZING'`;
+  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, raw_data
     FROM "ci_bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT ${BULK_ANALYZE_BUDGET}`;
+    LIMIT 1`;
 
   const touchedBatches = new Set<string>();
 

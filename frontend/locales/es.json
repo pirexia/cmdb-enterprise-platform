@@ -79,12 +79,9 @@
     "search_placeholder": "Buscar por nombre…",
     "total": "{count} activos gestionados",
     "add_ci": "Nuevo CI",
-    "import_csv": "Importar CSV",
-    "download_template": "Plantilla CSV",
     "export_csv": "Exportar CSV",
     "no_cis": "Sin CIs en el inventario.",
     "loading": "Cargando inventario…",
-    "import_success": "{success} CIs importados correctamente, {errors} errores",
     "columns": {
       "ci": "CI / Activo",
       "type": "Tipo",
@@ -216,7 +213,8 @@
       "refresh": "Actualizar",
       "empty_batch": "No hay filas en este lote",
       "no_items_to_commit": "No hay elementos listos para confirmar"
-    }
+    },
+    "my_imports": "Mis importaciones"
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",

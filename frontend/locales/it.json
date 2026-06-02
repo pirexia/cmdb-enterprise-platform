@@ -79,12 +79,9 @@
     "search_placeholder": "Cerca per nome…",
     "total": "{count} asset gestiti",
     "add_ci": "Nuovo CI",
-    "import_csv": "Importa CSV",
-    "download_template": "Modello CSV",
     "export_csv": "Esporta CSV",
     "no_cis": "Nessun CI nell'inventario.",
     "loading": "Caricamento inventario…",
-    "import_success": "{success} CI importati correttamente, {errors} errori",
     "columns": {
       "ci": "CI / Asset",
       "type": "Tipo",
@@ -216,7 +213,8 @@
       "refresh": "Aggiorna",
       "empty_batch": "Nessuna riga in questo batch",
       "no_items_to_commit": "Nessun elemento pronto per confermare"
-    }
+    },
+    "my_imports": "Le mie importazioni"
   },
   "vulnerabilities": {
     "title": "Vulnerabilità",

@@ -79,12 +79,9 @@
     "search_placeholder": "Nach Name suchen…",
     "total": "{count} verwaltete Assets",
     "add_ci": "Neues CI",
-    "import_csv": "CSV importieren",
-    "download_template": "CSV-Vorlage",
     "export_csv": "CSV exportieren",
     "no_cis": "Kein CI im Inventar.",
     "loading": "Inventar wird geladen…",
-    "import_success": "{success} CIs erfolgreich importiert, {errors} Fehler",
     "columns": {
       "ci": "CI / Asset",
       "type": "Typ",
@@ -216,7 +213,8 @@
       "refresh": "Aktualisieren",
       "empty_batch": "Keine Zeilen in diesem Batch",
       "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
-    }
+    },
+    "my_imports": "Meine Importe"
   },
   "vulnerabilities": {
     "title": "Schwachstellen",

@@ -1526,7 +1526,8 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
  */
 app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const BulkUpdateSchema = z.object({
-    ciIds: z.array(z.string().uuid()).min(1).max(500),
+    // Deduplicate to avoid: repeated RAG re-index, inflated audit ciIds, ambiguous affected count
+    ciIds: z.array(z.string().uuid()).min(1).max(500).transform((arr) => Array.from(new Set(arr))),
     updates: z.object({
       criticality:        z.enum(['LOW','MEDIUM','HIGH','MISSION_CRITICAL']).optional(),
       environment:        z.enum(['DEVELOPMENT','TESTING','STAGING','PRODUCTION']).optional(),
@@ -1603,7 +1604,11 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
  */
 app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const BulkDeleteSchema = z.object({
-    ciIds: z.array(z.string().uuid()).min(1).max(200),
+    // Deduplicate: per-CI audit row would be inserted twice for a repeated id while
+    // deleteMany only removes the row once → ghost audit + RAG-purge wasted work
+    ciIds: z.array(z.string().uuid()).min(1).max(200).transform((arr) => Array.from(new Set(arr))),
+    // Opt-in flag to allow destruction of CIs that still have active links
+    force: z.boolean().optional(),
   });
   const parsed = BulkDeleteSchema.safeParse(req.body);
   if (!parsed.success) {

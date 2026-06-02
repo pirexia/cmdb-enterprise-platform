@@ -483,7 +483,12 @@
       "open_batch": "Open",
       "filter_all": "All",
       "filter_open": "Open",
-      "filter_done": "Completed/Expired"
+      "filter_done": "Completed/Expired",
+      "status_warning": "Warning",
+      "status_WARNING": "Warning",
+      "status_READY_WITH_WARNINGS": "Ready with warnings",
+      "warning_hint": "Could not extract text from the document. Review and classify manually before confirming.",
+      "col_warnings": "Warnings"
     }
   },
   "licenses": {

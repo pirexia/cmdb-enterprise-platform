@@ -4049,22 +4049,25 @@ async function matchCIsForImport(hints: string[]): Promise<CiMatch[]> {
  *   REAPED             → set by the TTL cleanup cron (external transition, not computed here)
  */
 async function recomputeBatchStatus(batchId: string): Promise<void> {
-  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
+  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint; warnings: bigint }[]>`
     SELECT COUNT(*) AS total,
            COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
            COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
-           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors
+           COUNT(*) FILTER (WHERE status = 'ERROR') AS errors,
+           COUNT(*) FILTER (WHERE status = 'WARNING') AS warnings
     FROM "bulk_import_item" WHERE batch_id = ${batchId}::uuid`;
   const total     = Number(rows[0]?.total     ?? 0);
   const pending   = Number(rows[0]?.pending   ?? 0);
   const committed = Number(rows[0]?.committed ?? 0);
   const errors    = Number(rows[0]?.errors    ?? 0);
+  const warnings  = Number(rows[0]?.warnings  ?? 0);
   let status: string;
   if (total === 0)               status = 'DISCARDED';
   else if (pending > 0)          status = 'ANALYZING';
   else if (committed === total)  status = 'COMMITTED';
   else if (committed > 0)        status = 'PARTIALLY_COMMITTED';
-  else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
+  else if (errors > 0 && committed === 0 && pending === 0 && warnings === 0) status = 'ERROR';
+  else if (warnings > 0 && committed === 0 && pending === 0) status = 'READY_WITH_WARNINGS';
   else                           status = 'READY';
   await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
@@ -4146,19 +4149,24 @@ async function processBulkImportQueue(): Promise<void> {
       }
 
       let analysis: Record<string, unknown>;
+      let finalStatus: 'ANALYZED' | 'WARNING';
       if (!text) {
-        // No extractable text (e.g. image, empty PDF) — still reviewable manually.
+        // No extractable text (e.g. image, scanned PDF without readable OCR result).
+        // Mark as WARNING so the UI surfaces it for manual review/classification
+        // (legitimately-empty text files keep ANALYZED — they aren't a warning case).
         analysis = { textExtracted: false, ciMatches: [], analyzedAt: new Date().toISOString() };
+        finalStatus = item.mime_type === 'text/plain' ? 'ANALYZED' : 'WARNING';
       } else {
         const raw = await analyzeDocumentForImport(text, { fileName: item.original_name });
         const norm = normalizeAnalysis(raw);
         const ciMatches = await matchCIsForImport(norm.ciHints);
         analysis = { ...norm, ciMatches, textExtracted: true, analyzedAt: new Date().toISOString() };
+        finalStatus = 'ANALYZED';
       }
 
       await prisma.$executeRaw`
         UPDATE "bulk_import_item"
-        SET status='ANALYZED', analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
+        SET status=${finalStatus}, analysis=${JSON.stringify(analysis)}::jsonb, error_message=NULL, updated_at=now()
         WHERE id=${item.id}::uuid`;
     } catch (e) {
       console.error('[RAG] processBulkImportQueue item error:', e);
@@ -5291,12 +5299,13 @@ app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (r
   try {
     const [countRows, rows] = await Promise.all([
       prisma.$queryRaw<{ c: bigint }[]>`SELECT COUNT(*) AS c FROM "bulk_import_batch" WHERE created_by = ${req.user!.email}`,
-      prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdAt: Date; committed: bigint; pending: bigint; errors: bigint }[]>`
+      prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdAt: Date; committed: bigint; pending: bigint; errors: bigint; warnings: bigint }[]>`
         SELECT b.id::text AS id, b.status, b.file_count AS "fileCount", b.total_bytes::text AS "totalBytes",
                b.created_at AS "createdAt",
                COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED') AS committed,
                COUNT(i.id) FILTER (WHERE i.status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
-               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors
+               COUNT(i.id) FILTER (WHERE i.status = 'ERROR') AS errors,
+               COUNT(i.id) FILTER (WHERE i.status = 'WARNING') AS warnings
         FROM "bulk_import_batch" b
         LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
         WHERE b.created_by = ${req.user!.email}
@@ -5305,7 +5314,7 @@ app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (r
         LIMIT 100`,
     ]);
     const total = Number(countRows[0]?.c ?? 0);
-    res.json({ total, truncated: total > 100, batches: rows.map((r) => ({ ...r, totalBytes: Number(r.totalBytes), committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors) })) });
+    res.json({ total, truncated: total > 100, batches: rows.map((r) => ({ ...r, totalBytes: Number(r.totalBytes), committed: Number(r.committed), pending: Number(r.pending), errors: Number(r.errors), warnings: Number(r.warnings) })) });
   } catch (e) { console.error('[GET /api/documents/bulk/batches]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
@@ -5434,7 +5443,7 @@ app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdm
              i.original_name AS original_name, i.mime_type AS mime_type, i.file_size AS file_size,
              i.status, i.analysis
       FROM "bulk_import_item" i
-      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR')
+      WHERE i.batch_id = ${req.params.id}::uuid AND i.status IN ('ANALYZED','ERROR','WARNING')
       ORDER BY i.created_at ASC`;
 
     const results: { itemId: string; ok: boolean; documentId?: string; error?: string }[] = [];
@@ -5463,7 +5472,7 @@ app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAd
       SELECT i.id::text AS id, i.batch_id::text AS batch_id
       FROM "bulk_import_item" i JOIN "bulk_import_batch" b ON b.id = i.batch_id
       WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
-        AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
+        AND i.status IN ('ANALYZED','ERROR','WARNING') LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
     await prisma.$executeRaw`
       UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
@@ -5484,7 +5493,7 @@ app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, require
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
     const result = await prisma.$executeRaw`
       UPDATE "bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR')`;
+      WHERE batch_id = ${req.params.id}::uuid AND status IN ('ANALYZED','ERROR','WARNING')`;
     const count = Number(result);
     await recomputeBatchStatus(req.params.id as string);
     await prisma.$executeRaw`

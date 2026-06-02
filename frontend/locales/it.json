@@ -438,7 +438,12 @@
       "open_batch": "Apri",
       "filter_all": "Tutti",
       "filter_open": "Aperti",
-      "filter_done": "Completati/Scaduti"
+      "filter_done": "Completati/Scaduti",
+      "status_warning": "Avviso",
+      "status_WARNING": "Avviso",
+      "status_READY_WITH_WARNINGS": "Pronto con avvisi",
+      "warning_hint": "Impossibile estrarre il testo dal documento. Rivedi e classifica manualmente prima di confermare.",
+      "col_warnings": "Avvisi"
     }
   },
   "licenses": {

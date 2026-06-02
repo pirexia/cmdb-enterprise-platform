@@ -483,7 +483,12 @@
       "open_batch": "Abrir",
       "filter_all": "Todos",
       "filter_open": "Abiertos",
-      "filter_done": "Completados/Expirados"
+      "filter_done": "Completados/Expirados",
+      "status_warning": "Advertencia",
+      "status_WARNING": "Advertencia",
+      "status_READY_WITH_WARNINGS": "Listo con advertencias",
+      "warning_hint": "No se pudo extraer texto del documento. Revisa y clasifica manualmente antes de confirmar.",
+      "col_warnings": "Advertencias"
     }
   },
   "licenses": {

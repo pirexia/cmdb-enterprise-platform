@@ -438,7 +438,12 @@
       "open_batch": "Ouvrir",
       "filter_all": "Tous",
       "filter_open": "Ouverts",
-      "filter_done": "Terminés/Expirés"
+      "filter_done": "Terminés/Expirés",
+      "status_warning": "Avertissement",
+      "status_WARNING": "Avertissement",
+      "status_READY_WITH_WARNINGS": "Prêt avec avertissements",
+      "warning_hint": "Impossible d'extraire le texte du document. Vérifiez et classifiez manuellement avant de confirmer.",
+      "col_warnings": "Avertissements"
     }
   },
   "licenses": {

@@ -438,7 +438,12 @@
       "open_batch": "Öffnen",
       "filter_all": "Alle",
       "filter_open": "Offen",
-      "filter_done": "Abgeschlossen/Abgelaufen"
+      "filter_done": "Abgeschlossen/Abgelaufen",
+      "status_warning": "Warnung",
+      "status_WARNING": "Warnung",
+      "status_READY_WITH_WARNINGS": "Bereit mit Warnungen",
+      "warning_hint": "Aus dem Dokument konnte kein Text extrahiert werden. Vor der Bestätigung manuell prüfen und klassifizieren.",
+      "col_warnings": "Warnungen"
     }
   },
   "licenses": {

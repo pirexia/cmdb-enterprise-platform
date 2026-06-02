@@ -595,6 +595,18 @@ Haz clic en **"Contratos"** en el menú lateral. La tabla muestra el número de 
 3. Asocia los activos cubiertos por el contrato.
 4. Para crear una **Adenda** (una modificación o anexo vinculado a un contrato principal), selecciona el contrato padre en el campo **"Contrato padre"**.
 
+### Eliminar un contrato o adenda (solo ADMIN)
+
+1. Expande la fila del contrato y pulsa el icono de papelera 🗑 junto al lápiz de editar.
+2. Confirma en el panel rojo que aparece debajo.
+3. **Bloqueo de seguridad:** si el contrato tiene adendas vinculadas, no se puede eliminar — primero hay que borrar las adendas. El sistema mostrará el mensaje correspondiente.
+4. Al eliminar, se desasocian automáticamente los CIs y documentos vinculados (estos **no** se borran, solo deja de existir la relación con el contrato).
+5. La acción queda registrada en el Registro de Auditoría con `action=DELETE` y `entity=Contract`.
+
+### Desasociar un documento de un contrato (solo ADMIN)
+
+Dentro de la fila expandida, en la sección **"Documentos adjuntos"**, junto a cada documento aparece un icono ✕ rojo. Al pulsarlo, se elimina la relación entre el documento y este contrato (sin borrar el documento). Se solicita confirmación antes de proceder.
+
 ### Exportar contratos a CSV
 
 1. Aplica los filtros que necesites en la tabla.

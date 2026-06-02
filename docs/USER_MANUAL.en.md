@@ -595,6 +595,18 @@ Click **"Contracts"** in the sidebar. The table shows the contract number, vendo
 3. Associate the assets covered by the contract.
 4. To create an **Addendum** (a modification or annex linked to a main contract), select the parent contract in the **"Parent contract"** field.
 
+### Deleting a contract or addendum (ADMIN only)
+
+1. Expand the contract row and click the trash icon 🗑 next to the edit pencil.
+2. Confirm in the red panel that appears below.
+3. **Safety lock:** if the contract has linked addendums, deletion is blocked — you must delete the addendums first. The system will show the corresponding message.
+4. On delete, associated CIs and documents are automatically unlinked (they are **not** deleted, only their relation to this contract is removed).
+5. The action is recorded in the Audit Log with `action=DELETE` and `entity=Contract`.
+
+### Unlinking a document from a contract (ADMIN only)
+
+In the expanded row, under **"Attached documents"**, each document has a red ✕ icon. Clicking it removes the relation between the document and this contract (the document itself is not deleted). A confirmation is requested before proceeding.
+
 ### Exporting contracts to CSV
 
 1. Apply the filters you need in the table.

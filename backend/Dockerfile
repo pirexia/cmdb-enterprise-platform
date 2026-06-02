@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Install ALL deps (devDeps needed for tsc + prisma generate)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci && npm cache clean --force
 
 COPY . .
 
@@ -54,7 +54,7 @@ WORKDIR /app
 
 # Install production + prisma CLI deps (prisma migrate deploy runs at startup)
 COPY package*.json ./
-RUN npm ci --omit=dev && npm install prisma
+RUN npm ci --omit=dev && npm install prisma && npm cache clean --force
 
 # Copy Prisma generated client from builder
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma

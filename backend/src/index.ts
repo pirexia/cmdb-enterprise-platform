@@ -788,10 +788,23 @@ app.get('/api/auth/sso/exchange', ssoLimiter, async (req: Request, res: Response
 
 /**
  * POST /api/auth/logout
- * Clears the HttpOnly session cookie. No auth required — if the cookie is
- * missing the call is a no-op.
+ * Clears the HttpOnly session cookie. No auth required — even expired tokens
+ * must be clearable. LOGOUT is logged only when the token is still valid (to
+ * avoid blocking cookie clearance when the JWT has already expired — G-M01).
  */
-app.post('/api/auth/logout', (_req: Request, res: Response) => {
+app.post('/api/auth/logout', async (req: Request, res: Response) => {
+  try {
+    const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
+    const authHeader  = req.headers['authorization'];
+    const bearer      = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const raw         = cookieToken ?? bearer ?? null;
+    if (raw) {
+      const payload = jwt.verify(raw, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'LOGOUT', 'User', ${payload.id}::uuid, ${payload.email}, now())`;
+    }
+  } catch { /* expired/invalid token or DB error — always clear the cookie */ }
   clearAuthCookie(res);
   res.json({ message: 'Logged out.' });
 });
@@ -2276,6 +2289,9 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     await prisma.$executeRaw`
       UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
     `;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
 
     res.json({ secret, qrDataUrl });
   } catch (error) {
@@ -2508,7 +2524,7 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
  * Use this to wipe simulation/test data before a fresh connector import.
  * ADMIN only.
  */
-app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
     const result = await prisma.$executeRaw`
       UPDATE "configuration_items"
@@ -2531,7 +2547,11 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
       }
     }
 
-    res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: result });
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'RESET_VULNERABILITIES', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ affectedCIs: Number(result) })}::jsonb, now())`;
+    res.json({ message: `Vulnerabilities cleared on ${result} configuration item(s)`, reset: Number(result) });
   } catch (error) {
     console.error('[POST /api/admin/reset-vulnerabilities] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2553,9 +2573,13 @@ app.get('/api/masters/manufacturers/debug', authenticateToken, requireAdmin, asy
 });
 
 // ── Clear all manufacturers (test helper) ──────────────────────────────────────
-app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (_req, res) => {
+app.delete('/api/masters/manufacturers/all', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const n = await prisma.$executeRaw`DELETE FROM "manufacturers"`;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'DELETE_ALL_MASTER', 'Manufacturer', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ deleted: Number(n) })}::jsonb, now())`;
     res.json({ deleted: Number(n), message: `${Number(n)} fabricante(s) eliminados` });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3322,10 +3346,15 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       void queueEntityForIndexing('ci', ci.id);
     }
 
+    const totalMatched = processed.filter((p) => p.matched).length;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'Greenbone report processed',
       processed,
-      totalMatched: processed.filter((p) => p.matched).length,
+      totalMatched,
       totalUnmatched: processed.filter((p) => !p.matched).length,
     });
   } catch (error) {
@@ -3405,10 +3434,15 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       log.info(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
     }
 
+    const totalMatched = processed.filter((p) => p.matched).length;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'INTEGRATION_CROWDSTRIKE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'CrowdStrike report processed',
       processed,
-      totalMatched: processed.filter((p) => p.matched).length,
+      totalMatched,
       totalUnmatched: processed.filter((p) => !p.matched).length,
     });
   } catch (error) {
@@ -3995,12 +4029,33 @@ async function processBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
   if (!(await isOllamaHealthy())) return;
 
+  // Safety valve: items stuck in ANALYZING longer than max expected time (OCR + Ollama + margin)
+  // are reset to ERROR so they don't block the queue permanently (e.g. after a crash).
+  const stuckThresholdSecs = Math.ceil((BULK_BATCH_TTL_HOURS * 3600) / 20); // never more than 1/20 of TTL
+  const maxAnalysisSecs = Math.ceil((
+    parseInt(process.env.OCR_DOC_TIMEOUT_MS ?? '600000', 10) +
+    parseInt(process.env.RAG_CHAT_TIMEOUT_MS  ?? '180000', 10)
+  ) / 1000) + 120;
+  const stuckSecs = Math.min(stuckThresholdSecs, maxAnalysisSecs);
+  await prisma.$executeRaw`
+    UPDATE "bulk_import_item"
+    SET status = 'ERROR', error_message = 'Analysis timed out (stuck in ANALYZING)',  updated_at = now()
+    WHERE status = 'ANALYZING'
+      AND updated_at < now() - make_interval(secs => ${stuckSecs}::int)`;
+
+  // Serialisation guard: if any item is still ANALYZING, wait for it to finish
+  // before starting new ones. Prevents concurrent OCR + Ollama calls that saturate
+  // CPU and cause Ollama timeouts when processing large batches.
+  const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
+    SELECT COUNT(*) AS c FROM "bulk_import_item" WHERE status = 'ANALYZING'`;
+  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; staged_file_name: string; mime_type: string; original_name: string }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, staged_file_name, mime_type, original_name
     FROM "bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT ${BULK_ANALYZE_BUDGET}`;
+    LIMIT 1`;
 
   const touchedBatches = new Set<string>();
 
@@ -4056,12 +4111,27 @@ async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
   if (!(await isOllamaHealthy())) return;
 
+  // Safety valve: reset stuck ANALYZING items (mirrors document bulk worker)
+  const maxCISecs = Math.ceil((
+    parseInt(process.env.RAG_CHAT_TIMEOUT_MS ?? '180000', 10)
+  ) / 1000) + 120;
+  await prisma.$executeRaw`
+    UPDATE "ci_bulk_import_item"
+    SET status = 'ERROR', error_message = 'Analysis timed out (stuck in ANALYZING)', updated_at = now()
+    WHERE status = 'ANALYZING'
+      AND updated_at < now() - make_interval(secs => ${maxCISecs}::int)`;
+
+  // Serialisation guard: skip if any CI item is still being analyzed
+  const inFlight = await prisma.$queryRaw<{ c: bigint }[]>`
+    SELECT COUNT(*) AS c FROM "ci_bulk_import_item" WHERE status = 'ANALYZING'`;
+  if (Number(inFlight[0]?.c ?? 0) > 0) return;
+
   const pending = await prisma.$queryRaw<{ id: string; batch_id: string; raw_data: unknown }[]>`
     SELECT id::text AS id, batch_id::text AS batch_id, raw_data
     FROM "ci_bulk_import_item"
     WHERE status = 'PENDING_ANALYSIS'
     ORDER BY created_at ASC
-    LIMIT ${BULK_ANALYZE_BUDGET}`;
+    LIMIT 1`;
 
   const touchedBatches = new Set<string>();
 
@@ -5571,6 +5641,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
       INSERT INTO "document_relations"(id,source_doc_id,target_doc_id,relation_type,created_at)
       VALUES(gen_random_uuid(),${req.params.id}::uuid,${targetDocId}::uuid,${relationType},now())
       ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({targetDocId,relationType})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5579,6 +5650,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
 app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({targetDocId:req.params.targetId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5587,6 +5659,7 @@ app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireA
 app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5595,6 +5668,7 @@ app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (
 app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5603,6 +5677,7 @@ app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async
 app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5611,6 +5686,7 @@ app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAd
 app.delete('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5673,6 +5749,7 @@ app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, async (req, 
       await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${docId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${docId}::uuid,${req.user!.email},${JSON.stringify({ciIds,count:associated})}::jsonb,now())`;
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to document' }); }
 });
@@ -5690,6 +5767,7 @@ app.post('/api/documents/:id/contracts', authenticateToken, requireAdmin, async 
       await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${docId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${docId}::uuid,${req.user!.email},${JSON.stringify({contractIds,count:associated})}::jsonb,now())`;
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate contracts to document' }); }
 });
@@ -5728,8 +5806,8 @@ app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, 
       where: { id: ciId },
       data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
 
-    // Re-index the CI and each affected contract ROOT
     void queueEntityForIndexing('ci', ciId);
     for (const cid of contractIds) {
       const rootId = await getContractRoot(cid);
@@ -5749,8 +5827,8 @@ app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin
       where: { id: ciId },
       data: { contracts: { disconnect: [{ id: contractId }] } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
 
-    // Re-index the CI and the contract root (association removed)
     void queueEntityForIndexing('ci', ciId);
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
@@ -5772,8 +5850,8 @@ app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, 
       await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count:associated})}::jsonb,now())`;
 
-    // Re-index the CI (document list changed)
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ associated });
@@ -5786,8 +5864,8 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
   const docId = req.params.docId as string;
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
 
-    // Re-index the CI (document list changed)
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ ok: true });
@@ -5819,8 +5897,8 @@ app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, 
       where: { id: contractId },
       data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ciIds})}::jsonb,now())`;
 
-    // Re-index the contract ROOT and every newly attached CI
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
     for (const cid of ciIds) {
@@ -5840,8 +5918,8 @@ app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, asyn
       where: { id: contractId },
       data: { cis: { disconnect: [{ id: ciId }] } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ciId})}::jsonb,now())`;
 
-    // Re-index the contract ROOT and the detached CI
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
     void queueEntityForIndexing('ci', ciId);

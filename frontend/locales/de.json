@@ -214,7 +214,45 @@
       "empty_batch": "Keine Zeilen in diesem Batch",
       "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
     },
-    "my_imports": "Meine Importe"
+    "my_imports": "Meine Importe",
+    "criticality": {
+      "LOW": "Niedrig",
+      "MEDIUM": "Mittel",
+      "HIGH": "Hoch",
+      "MISSION_CRITICAL": "Geschäftskritisch"
+    },
+    "environment": {
+      "DEVELOPMENT": "Entwicklung",
+      "TESTING": "Test",
+      "STAGING": "Staging",
+      "PRODUCTION": "Produktion"
+    },
+    "bulk_update": {
+      "button": "Auswahl bearbeiten",
+      "selected_count": "{count} ausgewählt",
+      "clear_selection": "Auswahl aufheben",
+      "select_all": "Alle auswählen",
+      "title": "CI-Massenaktualisierung",
+      "hint": "Nur ausgefüllte Felder werden angewendet; der Rest bleibt unverändert.",
+      "no_change": "— Keine Änderung —",
+      "clear_value": "Wert leeren (null)",
+      "set_true": "Ja",
+      "set_false": "Nein",
+      "apply": "Auf Auswahl anwenden",
+      "error": "Massenaktualisierung konnte nicht angewendet werden",
+      "field_criticality": "Kritikalität",
+      "field_environment": "Umgebung",
+      "field_status": "Status",
+      "field_ciType": "CI-Typ",
+      "field_branch": "Standort",
+      "field_costCenter": "Kostenstelle",
+      "field_businessOwner": "Geschäftsverantwortlicher",
+      "field_technicalLead": "Technischer Verantwortlicher",
+      "field_businessImpact": "Geschäftsauswirkung",
+      "field_dataClassification": "Datenklassifizierung",
+      "field_containsPii": "Enthält personenbezogene Daten",
+      "field_spofRisk": "Single Point of Failure"
+    }
   },
   "vulnerabilities": {
     "title": "Schwachstellen",

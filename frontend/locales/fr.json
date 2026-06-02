@@ -214,7 +214,45 @@
       "empty_batch": "Aucune ligne dans ce lot",
       "no_items_to_commit": "Aucun élément prêt à confirmer"
     },
-    "my_imports": "Mes importations"
+    "my_imports": "Mes importations",
+    "criticality": {
+      "LOW": "Faible",
+      "MEDIUM": "Moyenne",
+      "HIGH": "Élevée",
+      "MISSION_CRITICAL": "Critique"
+    },
+    "environment": {
+      "DEVELOPMENT": "Développement",
+      "TESTING": "Tests",
+      "STAGING": "Préproduction",
+      "PRODUCTION": "Production"
+    },
+    "bulk_update": {
+      "button": "Éditer la sélection",
+      "selected_count": "{count} sélectionnés",
+      "clear_selection": "Effacer la sélection",
+      "select_all": "Tout sélectionner",
+      "title": "Mise à jour groupée des CIs",
+      "hint": "Seuls les champs que vous remplissez sont appliqués ; le reste reste inchangé.",
+      "no_change": "— Aucun changement —",
+      "clear_value": "Vider la valeur (null)",
+      "set_true": "Oui",
+      "set_false": "Non",
+      "apply": "Appliquer à la sélection",
+      "error": "Impossible d'appliquer la mise à jour groupée",
+      "field_criticality": "Criticité",
+      "field_environment": "Environnement",
+      "field_status": "Statut",
+      "field_ciType": "Type de CI",
+      "field_branch": "Site",
+      "field_costCenter": "Centre de coût",
+      "field_businessOwner": "Responsable métier",
+      "field_technicalLead": "Responsable technique",
+      "field_businessImpact": "Impact métier",
+      "field_dataClassification": "Classification des données",
+      "field_containsPii": "Contient des données personnelles",
+      "field_spofRisk": "Point unique de défaillance (SPOF)"
+    }
   },
   "vulnerabilities": {
     "title": "Vulnérabilités",

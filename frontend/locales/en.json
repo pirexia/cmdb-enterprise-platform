@@ -252,6 +252,13 @@
       "field_dataClassification": "Data Classification",
       "field_containsPii": "Contains PII",
       "field_spofRisk": "Single Point of Failure (SPOF)"
+    },
+    "bulk_delete": {
+      "button": "Delete selected",
+      "title": "Delete CIs in bulk",
+      "confirm": "Delete the {count} selected CI(s)? This action cannot be undone.",
+      "warning": "Associated hardware/software, relations, and document/contract/licence references will also be removed.",
+      "confirm_button": "Yes, delete"
     }
   },
   "vulnerabilities": {

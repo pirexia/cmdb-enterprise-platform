@@ -252,6 +252,13 @@
       "field_dataClassification": "Datenklassifizierung",
       "field_containsPii": "Enthält personenbezogene Daten",
       "field_spofRisk": "Single Point of Failure"
+    },
+    "bulk_delete": {
+      "button": "Auswahl löschen",
+      "title": "CIs gesammelt löschen",
+      "confirm": "{count} ausgewählte CI(s) löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "warning": "Zugehörige Hardware/Software, Beziehungen und Verweise auf Dokumente/Verträge/Lizenzen werden ebenfalls entfernt.",
+      "confirm_button": "Ja, löschen"
     }
   },
   "vulnerabilities": {

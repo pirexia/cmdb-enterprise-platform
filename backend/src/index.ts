@@ -1589,6 +1589,67 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
 });
 
 /**
+ * POST /api/cis/bulk-delete — hard-delete many CIs at once (ADMIN only).
+ * Body: { ciIds: string[] (1..200) }. Returns { deleted, notFound, requested }.
+ *
+ * We use POST (not DELETE with body) for broad client compatibility — some
+ * proxies strip DELETE bodies. Lower max (200) than bulk-update because
+ * hard-delete is irreversible and cascades hardware/software/relations.
+ *
+ * Per-CI cascade is handled by Prisma schema (onDelete: Cascade on Hardware,
+ * Software, CIRelation, DocumentCI, etc.). RAG entries are purged after.
+ * Each delete generates an individual DELETE_CI audit entry (alongside the
+ * batch CI_BULK_DELETE record) so forensics can trace which CIs went where.
+ */
+app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const BulkDeleteSchema = z.object({
+    ciIds: z.array(z.string().uuid()).min(1).max(200),
+  });
+  const parsed = BulkDeleteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid bulk-delete payload' });
+    return;
+  }
+  const { ciIds } = parsed.data;
+
+  try {
+    // Snapshot of names for the audit log (lost after the DELETE).
+    const existing = await prisma.$queryRaw<{ id: string; name: string }[]>`
+      SELECT id::text AS id, name FROM "configuration_items" WHERE id IN (${Prisma.join(ciIds.map((i) => Prisma.sql`${i}::uuid`))})`;
+    const existingMap = new Map(existing.map((r) => [r.id, r.name]));
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Per-CI audit BEFORE delete (so we keep entity_id resolvable to the historical name).
+      for (const id of ciIds) {
+        const name = existingMap.get(id);
+        if (!name) continue;
+        await tx.$executeRaw`
+          INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+          VALUES(gen_random_uuid(), ${'DELETE_CI:' + name}, 'CI', ${id}::uuid, ${req.user!.email}, now())`;
+      }
+      // Batch audit (aggregate event for forensic correlation).
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_DELETE', 'CI', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
+               ${JSON.stringify({ ciIds, count: existing.length })}::jsonb, now())`;
+      // Hard delete (cascades via schema).
+      const del = await tx.cI.deleteMany({ where: { id: { in: ciIds } } });
+      return del.count;
+    });
+
+    // Purge RAG entries (best-effort, non-blocking on errors).
+    for (const id of ciIds) {
+      try { await purgeEntityFromRag('ci', id); } catch (e) { console.error('[POST /api/cis/bulk-delete] RAG purge error:', e); }
+    }
+
+    res.json({ deleted: result, notFound: ciIds.length - existing.length, requested: ciIds.length });
+  } catch (error: unknown) {
+    console.error('[POST /api/cis/bulk-delete] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * DELETE /api/cis/:id
  * Deletes a Configuration Item (cascade deletes hardware/software).
  * ADMIN only.

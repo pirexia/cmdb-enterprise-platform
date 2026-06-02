@@ -1532,7 +1532,6 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
       environment:        z.enum(['DEVELOPMENT','TESTING','STAGING','PRODUCTION']).optional(),
       status:             z.enum(['ACTIVO','INACTIVO','RETIRADO']).optional(),
       ciTypeId:           z.string().uuid().nullable().optional(),
-      locationId:         z.string().uuid().nullable().optional(),
       costCenterId:       z.string().uuid().nullable().optional(),
       branchId:           z.string().uuid().nullable().optional(),
       businessOwnerId:    z.string().uuid().nullable().optional(),
@@ -1557,7 +1556,6 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
   if (updates.environment        !== undefined) data.environment        = updates.environment;
   if (updates.status             !== undefined) data.status             = updates.status;
   if (updates.ciTypeId           !== undefined) data.ciTypeId           = updates.ciTypeId;
-  if (updates.locationId         !== undefined) data.locationId         = updates.locationId;
   if (updates.costCenterId       !== undefined) data.costCenterId       = updates.costCenterId;
   if (updates.branchId           !== undefined) data.branchId           = updates.branchId;
   if (updates.businessOwnerId    !== undefined) data.businessOwnerId    = updates.businessOwnerId;

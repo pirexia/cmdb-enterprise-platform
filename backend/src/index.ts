@@ -1682,6 +1682,66 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   }
 });
 
+/**
+ * DELETE /api/contracts/:id — hard delete (ADMIN only).
+ * Blocks (409) if the contract has active addendums — user must delete those first.
+ * Cascades: DocumentContract rows and the implicit ContractToCI M2M are cleaned by Prisma.
+ * Documents and CIs themselves are NOT deleted, only the associations.
+ */
+app.delete('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  const IdSchema = z.string().uuid();
+  const parsedId = IdSchema.safeParse(req.params.id);
+  if (!parsedId.success) {
+    res.status(400).json({ error: 'Invalid contract id' });
+    return;
+  }
+  const contractId = parsedId.data;
+  try {
+    const existing = await prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { id: true, contractNumber: true, parentContractId: true },
+    });
+    if (!existing) { res.status(404).json({ error: 'Contract not found' }); return; }
+
+    // Pre-check: addendums (children) must be deleted first.
+    const addendums = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM "contracts" WHERE parent_contract_id = ${contractId}::uuid`;
+    if (Number(addendums[0]?.c ?? 0) > 0) {
+      res.status(409).json({
+        error: 'Cannot delete contract with active addendums. Delete those first.',
+        addendumCount: Number(addendums[0]?.c ?? 0),
+      });
+      return;
+    }
+
+    // Compute root BEFORE delete so we can re-index after.
+    const rootId = await getContractRoot(contractId);
+
+    await prisma.$transaction(async (tx) => {
+      // Prisma client delete drives cascades for ContractToCI (M2M) and DocumentContract.
+      await tx.contract.delete({ where: { id: contractId } });
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'DELETE', 'Contract', ${contractId}::uuid, ${req.user!.email},
+               ${JSON.stringify({ contractNumber: existing.contractNumber, wasAddendum: !!existing.parentContractId })}::jsonb, now())`;
+    });
+
+    // Drop RAG index entries for this contract (best-effort) and re-index root if it survives.
+    try {
+      await prisma.$executeRaw`DELETE FROM "rag_chunks" WHERE entity_type = 'contract' AND entity_id = ${contractId}::uuid`;
+      await prisma.$executeRaw`DELETE FROM "rag_entity_index" WHERE entity_type = 'contract' AND entity_id = ${contractId}::uuid`;
+    } catch (e) { console.error('[DELETE /api/contracts/:id] RAG cleanup error:', e); }
+    if (rootId && rootId !== contractId) {
+      void queueEntityForIndexing('contract', rootId);
+    }
+
+    res.json({ ok: true, deletedId: contractId });
+  } catch (error: unknown) {
+    console.error('[DELETE /api/contracts/:id] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.patch('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const ContractUpdateSchema = z.object({
     contractNumber:   z.string().min(1).max(100),
@@ -5826,6 +5886,24 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
       ORDER BY d.created_at DESC`;
     res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+});
+
+/**
+ * DELETE /api/contracts/:id/documents/:docId — unlink a document from a contract.
+ * Idempotent: returns 200 even if the link did not exist.
+ */
+app.delete('/api/contracts/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+  const IdSchema = z.object({ id: z.string().uuid(), docId: z.string().uuid() });
+  const parsed = IdSchema.safeParse(req.params);
+  if (!parsed.success) { res.status(400).json({ error: 'Invalid contract or document id' }); return; }
+  const { id: contractId, docId } = parsed.data;
+  try {
+    await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE contract_id = ${contractId}::uuid AND document_id = ${docId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ documentId: docId })}::jsonb,now())`;
+    const rootId = await getContractRoot(contractId);
+    void queueEntityForIndexing('contract', rootId);
+    res.json({ ok: true });
+  } catch (e) { console.error('[DELETE /api/contracts/:id/documents/:docId]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
 // ─── Bulk Association Endpoints ───────────────────────────────────────────────

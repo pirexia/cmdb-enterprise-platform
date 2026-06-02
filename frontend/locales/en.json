@@ -79,12 +79,9 @@
     "search_placeholder": "Search by name…",
     "total": "{count} managed assets",
     "add_ci": "New CI",
-    "import_csv": "Import CSV",
-    "download_template": "CSV Template",
     "export_csv": "Export CSV",
     "no_cis": "No CIs in inventory.",
     "loading": "Loading inventory…",
-    "import_success": "{success} CIs imported successfully, {errors} errors",
     "columns": {
       "ci": "CI / Asset",
       "type": "Type",

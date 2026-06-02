@@ -79,12 +79,9 @@
     "search_placeholder": "Rechercher par nom…",
     "total": "{count} actifs gérés",
     "add_ci": "Nouveau CI",
-    "import_csv": "Importer CSV",
-    "download_template": "Modèle CSV",
     "export_csv": "Exporter CSV",
     "no_cis": "Aucun CI dans l'inventaire.",
     "loading": "Chargement de l'inventaire…",
-    "import_success": "{success} CI importés avec succès, {errors} erreurs",
     "columns": {
       "ci": "CI / Actif",
       "type": "Type",

@@ -79,12 +79,9 @@
     "search_placeholder": "Nach Name suchen…",
     "total": "{count} verwaltete Assets",
     "add_ci": "Neues CI",
-    "import_csv": "CSV importieren",
-    "download_template": "CSV-Vorlage",
     "export_csv": "CSV exportieren",
     "no_cis": "Kein CI im Inventar.",
     "loading": "Inventar wird geladen…",
-    "import_success": "{success} CIs erfolgreich importiert, {errors} Fehler",
     "columns": {
       "ci": "CI / Asset",
       "type": "Typ",

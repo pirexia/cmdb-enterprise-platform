@@ -3338,10 +3338,15 @@ app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (
       void queueEntityForIndexing('ci', ci.id);
     }
 
+    const totalMatched = processed.filter((p) => p.matched).length;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'Greenbone report processed',
       processed,
-      totalMatched: processed.filter((p) => p.matched).length,
+      totalMatched,
       totalUnmatched: processed.filter((p) => !p.matched).length,
     });
   } catch (error) {
@@ -3421,10 +3426,15 @@ app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async
       log.info(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
     }
 
+    const totalMatched = processed.filter((p) => p.matched).length;
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+      VALUES(gen_random_uuid(), 'INTEGRATION_CROWDSTRIKE', 'SYSTEM', gen_random_uuid(), ${req.user!.email},
+             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
     res.json({
       message: 'CrowdStrike report processed',
       processed,
-      totalMatched: processed.filter((p) => p.matched).length,
+      totalMatched,
       totalUnmatched: processed.filter((p) => !p.matched).length,
     });
   } catch (error) {
@@ -5623,6 +5633,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
       INSERT INTO "document_relations"(id,source_doc_id,target_doc_id,relation_type,created_at)
       VALUES(gen_random_uuid(),${req.params.id}::uuid,${targetDocId}::uuid,${relationType},now())
       ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({targetDocId,relationType})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5631,6 +5642,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
 app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({targetDocId:req.params.targetId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5639,6 +5651,7 @@ app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireA
 app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5647,6 +5660,7 @@ app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (
 app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5655,6 +5669,7 @@ app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async
 app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
     res.status(201).json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5663,6 +5678,7 @@ app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAd
 app.delete('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -5725,6 +5741,7 @@ app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, async (req, 
       await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${docId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${docId}::uuid,${req.user!.email},${JSON.stringify({ciIds,count:associated})}::jsonb,now())`;
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate CIs to document' }); }
 });
@@ -5742,6 +5759,7 @@ app.post('/api/documents/:id/contracts', authenticateToken, requireAdmin, async 
       await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${docId}::uuid,${contractId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${docId}::uuid,${req.user!.email},${JSON.stringify({contractIds,count:associated})}::jsonb,now())`;
     res.json({ associated });
   } catch (e) { res.status(500).json({ error: 'Failed to associate contracts to document' }); }
 });
@@ -5780,8 +5798,8 @@ app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, 
       where: { id: ciId },
       data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
 
-    // Re-index the CI and each affected contract ROOT
     void queueEntityForIndexing('ci', ciId);
     for (const cid of contractIds) {
       const rootId = await getContractRoot(cid);
@@ -5801,8 +5819,8 @@ app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin
       where: { id: ciId },
       data: { contracts: { disconnect: [{ id: contractId }] } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
 
-    // Re-index the CI and the contract root (association removed)
     void queueEntityForIndexing('ci', ciId);
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
@@ -5824,8 +5842,8 @@ app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, 
       await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
       associated++;
     }
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count:associated})}::jsonb,now())`;
 
-    // Re-index the CI (document list changed)
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ associated });
@@ -5838,8 +5856,8 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
   const docId = req.params.docId as string;
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
 
-    // Re-index the CI (document list changed)
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ ok: true });
@@ -5871,8 +5889,8 @@ app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, 
       where: { id: contractId },
       data: { cis: { connect: ciIds.map((cid) => ({ id: cid })) } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ciIds})}::jsonb,now())`;
 
-    // Re-index the contract ROOT and every newly attached CI
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
     for (const cid of ciIds) {
@@ -5892,8 +5910,8 @@ app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, asyn
       where: { id: contractId },
       data: { cis: { disconnect: [{ id: ciId }] } },
     });
+    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','Contract',${contractId}::uuid,${req.user!.email},${JSON.stringify({ciId})}::jsonb,now())`;
 
-    // Re-index the contract ROOT and the detached CI
     const rootId = await getContractRoot(contractId);
     void queueEntityForIndexing('contract', rootId);
     void queueEntityForIndexing('ci', ciId);

@@ -338,6 +338,11 @@ Before committing any `fix` or `feat`:
 - Current release: **v2.5.2** (Fix DELETE CI cascade, bulk-import master upsert manufacturer/model, dashboard cards URL filters, OWASP: atomic ON CONFLICT upsert + UNIQUE index device_models — 1H+1M fixed)
 - Previous release: **v2.5.1** (CI bulk import 500 fix, CI bulk concurrency CI_BULK_CONCURRENCY=3, contracts DELETE + unlink docs, bulk-docs WARNING status, CI bulk-update + bulk-delete with brokenRefs pre-check, 7 OWASP fixes — 2H+5M closed)
 
+### Planning documents — active
+
+- **v2.5.3 (bugfixes, in planning)** → `docs/PLAN_v2.5.3.md`
+- **v2.6.0 DCIM Module — 2D MVP (feature, listo para ejecución)** → `docs/SPEC_v2.6.0_dcim.md` (spec con Q1-Q4 resueltas) + `docs/PLAN_v2.6.0.md` (plan M0-M11). Feature branch (a crear cuando v2.5.3 esté mergeada): `feature/dcim-rooms`. Vista 3D movida a v2.7.0 por decisión Q1.
+
 ---
 
 ## Specialist Skills

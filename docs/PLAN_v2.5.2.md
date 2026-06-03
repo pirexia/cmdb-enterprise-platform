@@ -17,8 +17,8 @@
 | **I** | Dashboard cards con filtros URL (`?type=`/`?filter=`) | `task-s/dashboard-filters-url` | ✅ Mergeada (786b344) — frontend desplegado |
 | **J** | Master data `contract_lifecycle_statuses` + integración | `task-t/contract-lifecycle-status` | ⬅ SIGUIENTE |
 | **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ✅ Mergeada (cb91968) — 1H+1M fixed, 1L backlog |
-| **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ⬅ SIGUIENTE |
-| **N** | Backlog v2.6.x documentado en este fichero | docs | ⏳ Pendiente |
+| **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ✅ Completada — PASS, 2 gaps no-bloqueantes (backlog) |
+| **N** | Backlog v2.6.x documentado en este fichero | docs | ⬅ SIGUIENTE |
 | **O** | Release v2.5.2 (merge a main + tag) | — | ⏳ Pendiente |
 
 **Orden estricto:** H → STOP → K → STOP → I → STOP → J → STOP → L → STOP → M → STOP → N → STOP → O
@@ -192,6 +192,7 @@ Output: `docs/security/COMPLIANCE_v2.5.2.md`
 | ID | Categoría | Esfuerzo | Descripción |
 |----|-----------|----------|-------------|
 | V2.5.2-A08-1 | Docs/Recovery | XS | Migración 20260602184003 sin procedimiento SQL de rollback documentado; añadir a PLAN o migration.sql |
+| V2.5.2-NIS2-01 | Audit/NIS2 | S | DELETE_CI audit record sólo guarda `{name}`; atributos hardware (serial, fabricante, modelo) no se capturan en snapshot — gap pre-existente desde v2.5.1 |
 
 ---
 

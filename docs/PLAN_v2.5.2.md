@@ -16,8 +16,8 @@
 | **K** | Bulk import CI: upsert `manufacturer` + `device_model` | `task-r/bulk-import-master-upsert` | ✅ Mergeada (41d578c) — backend desplegado |
 | **I** | Dashboard cards con filtros URL (`?type=`/`?filter=`) | `task-s/dashboard-filters-url` | ✅ Mergeada (786b344) — frontend desplegado |
 | **J** | Master data `contract_lifecycle_statuses` + integración | `task-t/contract-lifecycle-status` | ⬅ SIGUIENTE |
-| **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ⬅ SIGUIENTE (fixes en task-u) |
-| **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ⏳ Pendiente |
+| **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ✅ Mergeada (cb91968) — 1H+1M fixed, 1L backlog |
+| **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ⬅ SIGUIENTE |
 | **N** | Backlog v2.6.x documentado en este fichero | docs | ⏳ Pendiente |
 | **O** | Release v2.5.2 (merge a main + tag) | — | ⏳ Pendiente |
 

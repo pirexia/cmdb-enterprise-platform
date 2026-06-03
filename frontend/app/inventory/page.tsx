@@ -360,6 +360,17 @@ export default function InventoryPage() {
     }
   }, [searchParams, cis, router]);
 
+  // Dashboard deep-link: ?type=hardware|software pre-filters the CI type column.
+  useEffect(() => {
+    const type = searchParams.get("type");
+    if (!type) return;
+    const mapped = type === "hardware" ? "HARDWARE" : type === "software" ? "SOFTWARE" : null;
+    if (mapped) {
+      setFilter("ciType", mapped);
+      router.replace("/inventory", { scroll: false });
+    }
+  }, [searchParams, router]);
+
   const filtered = useMemo(() => {
     const CRIT_ORDER: Record<string, number> = { LOW: 1, MEDIUM: 2, HIGH: 3, MISSION_CRITICAL: 4 };
     let result = cis.filter((ci) => {

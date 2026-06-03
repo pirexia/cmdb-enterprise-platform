@@ -864,6 +864,16 @@ export default function ContractsPage() {
     }
   }, [searchParams, contracts, router]);
 
+  // Dashboard deep-link: ?filter=adenda|active|expiring|expired pre-filters the list.
+  useEffect(() => {
+    const f = searchParams.get("filter");
+    if (!f) return;
+    if (f === "adenda")   { setFilter("type",   "adenda");      router.replace("/contracts", { scroll: false }); }
+    else if (f === "active")   { setFilter("status", "activo");      router.replace("/contracts", { scroll: false }); }
+    else if (f === "expiring") { setFilter("status", "vence_pronto"); router.replace("/contracts", { scroll: false }); }
+    else if (f === "expired")  { setFilter("status", "vencido");     router.replace("/contracts", { scroll: false }); }
+  }, [searchParams, router]);
+
   const filteredContracts = useMemo(() => {
     return contracts.filter((c) => {
       if (filters.contractNumber && !c.contractNumber.toLowerCase().includes(filters.contractNumber.toLowerCase())) return false;

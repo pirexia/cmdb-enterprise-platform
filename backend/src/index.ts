@@ -1551,6 +1551,15 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
   }
   const { ciIds, updates } = parsed.data;
 
+  // Validate FK references before entering the transaction to return 400 instead of 500.
+  if (updates.ciTypeId) {
+    const typeExists = await prisma.cIType.findUnique({ where: { id: updates.ciTypeId }, select: { id: true } });
+    if (!typeExists) {
+      res.status(400).json({ error: 'El tipo de CI seleccionado no existe. Recargue la página e inténtelo de nuevo.' });
+      return;
+    }
+  }
+
   // Build the Prisma update data — only set fields the caller actually sent.
   const data: Record<string, unknown> = {};
   if (updates.criticality        !== undefined) data.criticality        = updates.criticality;

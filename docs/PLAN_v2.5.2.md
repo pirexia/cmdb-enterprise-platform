@@ -16,7 +16,7 @@
 | **K** | Bulk import CI: upsert `manufacturer` + `device_model` | `task-r/bulk-import-master-upsert` | ✅ Mergeada (41d578c) — backend desplegado |
 | **I** | Dashboard cards con filtros URL (`?type=`/`?filter=`) | `task-s/dashboard-filters-url` | ✅ Mergeada (786b344) — frontend desplegado |
 | **J** | Master data `contract_lifecycle_statuses` + integración | `task-t/contract-lifecycle-status` | ⬅ SIGUIENTE |
-| **L** | OWASP `differential-review` global | (sobre `develop`) | ⏳ Pendiente |
+| **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ⬅ SIGUIENTE (fixes en task-u) |
 | **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ⏳ Pendiente |
 | **N** | Backlog v2.6.x documentado en este fichero | docs | ⏳ Pendiente |
 | **O** | Release v2.5.2 (merge a main + tag) | — | ⏳ Pendiente |
@@ -187,11 +187,11 @@ Output: `docs/security/COMPLIANCE_v2.5.2.md`
 | V2.5.1-A04-7 | Concurrency | M | Pre-check adendas dentro de transaction con `FOR UPDATE` |
 
 ### Findings Low nuevos de v2.5.2
-> Se irán añadiendo conforme L y M arrojen resultados
+> De informe `docs/security-audit/owasp-v2.5.2.md`
 
 | ID | Categoría | Esfuerzo | Descripción |
 |----|-----------|----------|-------------|
-| — | — | — | _(pendiente OWASP/Compliance review)_ |
+| V2.5.2-A08-1 | Docs/Recovery | XS | Migración 20260602184003 sin procedimiento SQL de rollback documentado; añadir a PLAN o migration.sql |
 
 ---
 

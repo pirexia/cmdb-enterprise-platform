@@ -188,17 +188,17 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
           <p className="text-lg font-bold text-[var(--accent)]">{contracts.length}</p>
           <p className="text-[11px] text-[var(--accent)]">{t("dashboard.total_contracts_label")}</p>
         </Link>
-        <Link href="/contracts" className="bg-violet-50 p-3 text-center ring-1 ring-violet-100 hover:ring-violet-300 transition-all">
+        <Link href="/contracts?filter=adenda" className="bg-violet-50 p-3 text-center ring-1 ring-violet-100 hover:ring-violet-300 transition-all">
           <BarChart3 className="mx-auto h-5 w-5 text-violet-600 mb-1" />
           <p className="text-lg font-bold text-violet-700">{addendums}</p>
           <p className="text-[11px] text-violet-600">{t("dashboard.addendum_label")}</p>
         </Link>
-        <Link href="/contracts" className="bg-emerald-50 p-3 text-center ring-1 ring-emerald-100 hover:ring-emerald-300 transition-all">
+        <Link href="/contracts?filter=active" className="bg-emerald-50 p-3 text-center ring-1 ring-emerald-100 hover:ring-emerald-300 transition-all">
           <ShieldCheck className="mx-auto h-5 w-5 text-emerald-600 mb-1" />
           <p className="text-lg font-bold text-emerald-700">{active}</p>
           <p className="text-[11px] text-emerald-600">{t("dashboard.active_label")}</p>
         </Link>
-        <Link href="/contracts" className={`p-3 text-center ring-1 transition-all ${expiring > 0 || expired > 0 ? "bg-orange-50 ring-orange-100 hover:ring-orange-300" : "bg-slate-50 ring-slate-100"}`}>
+        <Link href={expired > 0 ? "/contracts?filter=expired" : "/contracts?filter=expiring"} className={`p-3 text-center ring-1 transition-all ${expiring > 0 || expired > 0 ? "bg-orange-50 ring-orange-100 hover:ring-orange-300" : "bg-slate-50 ring-slate-100"}`}>
           <CalendarX2 className={`mx-auto h-5 w-5 mb-1 ${expiring > 0 || expired > 0 ? "text-orange-500" : "text-slate-400"}`} />
           <p className={`text-lg font-bold ${expired > 0 ? "text-red-700" : expiring > 0 ? "text-orange-700" : "text-slate-600"}`}>
             {expired > 0 ? expired : expiring}
@@ -210,7 +210,7 @@ function ContractsWidget({ contracts, loading }: { contracts: Contract[]; loadin
       </div>
 
       {(expiring > 0 || expired > 0) && (
-        <Link href="/contracts" className="mt-4 flex items-start gap-2 bg-orange-50 px-4 py-3 text-xs text-orange-700 hover:bg-orange-100 transition-colors">
+        <Link href={expired > 0 ? "/contracts?filter=expired" : "/contracts?filter=expiring"} className="mt-4 flex items-start gap-2 bg-orange-50 px-4 py-3 text-xs text-orange-700 hover:bg-orange-100 transition-colors">
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <span>
             {expired > 0 && <><strong>{expired}</strong> contrato{expired !== 1 ? "s" : ""} vencido{expired !== 1 ? "s" : ""}. </>}
@@ -306,8 +306,8 @@ export default function DashboardPage() {
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-400">{t("dashboard.totals_section")}</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <StatCard label={t("dashboard.total_cis")} value={total}    loading={loading} color="bg-[var(--accent)]/5"  href="/inventory" icon={<Server  className="h-6 w-6 text-[var(--accent)]" />} />
-            <StatCard label={t("dashboard.hardware_label")}  value={hardware} loading={loading} color="bg-emerald-50" href="/inventory" icon={<Cpu     className="h-6 w-6 text-emerald-600" />} />
-            <StatCard label={t("dashboard.software_label")}  value={software} loading={loading} color="bg-violet-50"  href="/inventory" icon={<Package className="h-6 w-6 text-violet-600" />} />
+            <StatCard label={t("dashboard.hardware_label")}  value={hardware} loading={loading} color="bg-emerald-50" href="/inventory?type=hardware" icon={<Cpu     className="h-6 w-6 text-emerald-600" />} />
+            <StatCard label={t("dashboard.software_label")}  value={software} loading={loading} color="bg-violet-50"  href="/inventory?type=software" icon={<Package className="h-6 w-6 text-violet-600" />} />
           </div>
         </section>
 

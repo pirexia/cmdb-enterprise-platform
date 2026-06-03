@@ -19,7 +19,7 @@
 | **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ✅ Mergeada (cb91968) — 1H+1M fixed, 1L backlog |
 | **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ✅ Completada — PASS, 2 gaps no-bloqueantes (backlog) |
 | **N** | Backlog v2.6.x documentado en este fichero | docs | ✅ Completada — 5 Lows heredados + 2 nuevos documentados |
-| **O** | Release v2.5.2 (merge a main + tag) | — | ⬅ SIGUIENTE |
+| **O** | Release v2.5.2 (merge a main + tag) | — | 🔄 En progreso |
 
 **Orden estricto:** H → STOP → K → STOP → I → STOP → J → STOP → L → STOP → M → STOP → N → STOP → O
 

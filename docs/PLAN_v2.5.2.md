@@ -14,8 +14,8 @@
 |----|-------|------|--------|
 | **H** | 🔴 Fix DELETE CI cascade — `hardware_cis`/`software_cis` FK CASCADE | `task-q/fix-delete-ci-cascade` | ✅ Mergeada (73abef6) — migración aplicada |
 | **K** | Bulk import CI: upsert `manufacturer` + `device_model` | `task-r/bulk-import-master-upsert` | ✅ Mergeada (41d578c) — backend desplegado |
-| **I** | Dashboard cards con filtros URL (`?type=`/`?filter=`) | `task-s/dashboard-filters-url` | ⬅ SIGUIENTE |
-| **J** | Master data `contract_lifecycle_statuses` + integración | `task-t/contract-lifecycle-status` | ⏳ Pendiente |
+| **I** | Dashboard cards con filtros URL (`?type=`/`?filter=`) | `task-s/dashboard-filters-url` | ✅ Mergeada (786b344) — frontend desplegado |
+| **J** | Master data `contract_lifecycle_statuses` + integración | `task-t/contract-lifecycle-status` | ⬅ SIGUIENTE |
 | **L** | OWASP `differential-review` global | (sobre `develop`) | ⏳ Pendiente |
 | **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ⏳ Pendiente |
 | **N** | Backlog v2.6.x documentado en este fichero | docs | ⏳ Pendiente |

@@ -198,6 +198,8 @@
       "col_conflict": "Conflictos",
       "col_actions": "Acciones",
       "conflict_warning": "Duplicado: {field}",
+      "possible_duplicate": "Posible duplicado",
+      "ai_skipped": "IA omitida",
       "force_create": "Crear igualmente",
       "commit": "Crear CI",
       "commit_all": "Crear todos",

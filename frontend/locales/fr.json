@@ -198,6 +198,8 @@
       "col_conflict": "Conflits",
       "col_actions": "Actions",
       "conflict_warning": "Doublon: {field}",
+      "possible_duplicate": "Doublon possible",
+      "ai_skipped": "IA ignorée",
       "force_create": "Créer quand même",
       "commit": "Créer CI",
       "commit_all": "Créer tout",

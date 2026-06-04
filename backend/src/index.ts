@@ -4485,9 +4485,26 @@ async function withConcurrency<T>(
  * Concurrency model: up to CI_BULK_CONCURRENCY items processed in parallel,
  * each new item starting as soon as a slot frees (not in batches).
  */
+/**
+ * Returns true when the raw XLSX row already carries enough well-formed data
+ * that calling the LLM is unnecessary: a non-empty name and at least one of
+ * serialNumber / ipAddress / inventoryNumber.
+ */
+function isWellFormedCIRow(raw: CIRowRaw): boolean {
+  const name = (raw['name'] ?? '').toString().trim();
+  if (!name) return false;
+  const serial = (raw['serialNumber'] ?? '').toString().trim();
+  const ip = (raw['ipAddress'] ?? '').toString().trim();
+  const inv = (raw['inventoryNumber'] ?? '').toString().trim();
+  return Boolean(serial || ip || inv);
+}
+
 async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
-  if (!(await isOllamaHealthy())) return;
+  // NOTE: Ollama is no longer a hard gate — well-formed XLSX rows skip the LLM.
+  // Rows that need AI normalization will still fail gracefully (analyzeCIRowForImport
+  // falls back to raw if the service is unreachable).
+  const ollamaUp = await isOllamaHealthy();
 
   // Safety valve: reset stuck ANALYZING items (mirrors document bulk worker)
   const maxCISecs = Math.ceil((
@@ -4554,11 +4571,30 @@ async function processCIBulkImportQueue(): Promise<void> {
           SELECT id::text AS id, name FROM "configuration_items" WHERE LOWER(inventory_number) = LOWER(${inv}) LIMIT 3`;
         for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'inventoryNumber', existingId: m.id, existingName: m.name }); }
       }
+      // ipAddress is persisted on CI.consoleIp (column console_ip on configuration_items),
+      // not on hardware_cis — see commit logic in this file around line 4950.
+      const ipAddr = (raw['ipAddress'] ?? '').trim();
+      if (ipAddr) {
+        const ms = await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id::text AS id, name FROM "configuration_items"
+          WHERE console_ip = ${ipAddr} LIMIT 3`;
+        for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'ipAddress', existingId: m.id, existingName: m.name }); }
+      }
 
-      // AI normalization (graceful: falls back to raw if Ollama unavailable)
-      const normalized = await analyzeCIRowForImport(raw);
+      // Skip AI when the row already carries name + serial/IP/inv. Otherwise
+      // try the LLM (which itself falls back to raw if unreachable).
+      const wellFormed = isWellFormedCIRow(raw);
+      const aiSkipped = wellFormed || !ollamaUp;
+      const normalized = aiSkipped ? { ...raw } : await analyzeCIRowForImport(raw);
 
-      const analysis = { normalized, conflicts, analyzedAt: new Date().toISOString() };
+      const possibleDuplicate = conflicts.length > 0;
+      const analysis = {
+        normalized,
+        conflicts,
+        possibleDuplicate,
+        aiSkipped,
+        analyzedAt: new Date().toISOString(),
+      };
 
       await prisma.$executeRaw`
         UPDATE "ci_bulk_import_item"

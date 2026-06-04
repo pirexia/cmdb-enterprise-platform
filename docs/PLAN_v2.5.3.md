@@ -18,7 +18,7 @@
 | **Q** | CIDetailModal: botón inferior "Editar CI" → "Guardar cambios" + edición inline | `task-w/ci-detail-inline-save` | ✅ Mergeada |
 | **R** | Bulk import XLSX: skip análisis IA + detección dup ampliada (name/serial/IP) + flag WARNING | `task-x/bulk-import-skip-ai` | ✅ Mergeada (32da8d2) |
 | **S** | Datos Maestros > Modelos: exponer campos `eolDate` / `eosDate` en UI | `task-y/masters-models-eol-eos` | ✅ Mergeada (4489a83) |
-| **T** | OWASP `differential-review` + Compliance review (ISO/GDPR/NIS2) | (sobre `develop`) | ⏳ Pendiente |
+| **T** | OWASP `differential-review` + Compliance review (ISO/GDPR/NIS2) | `task-z/owasp-v2.5.3-fixes` | ✅ Completada — F-01 fix incluido; F-02/F-03 → backlog v2.6.x |
 | **U** | Release v2.5.3 (merge a main + tag + push) | — | ⏳ Pendiente |
 
 **Orden estricto:** P → STOP → Q → STOP → R → STOP → S → STOP → T → STOP → U
@@ -165,6 +165,11 @@ Política:
 ## Backlog v2.6.x (heredado)
 
 Ver `docs/PLAN_v2.5.2.md` § Tarea N (7 Lows pendientes).
+
+### Nuevos Lows de v2.5.3 (Tarea T — OWASP/Compliance review)
+
+- **F-02 (A04 — Insecure Design):** aplicar `requireUuidParam` también a `/api/contracts/:id`, `/api/documents/:id`, `/api/licenses/:id` para uniformidad defensiva. No hay vector activo (no hay rutas literales declaradas después), pero cierra cualquier regresión futura por route-ordering.
+- **F-03 (A04 — Insecure Design):** `/api/users` devuelve la lista completa para selectores de owner/lead. Paginar / limitar a 100 por defecto cuando el CMDB crezca.
 
 ---
 

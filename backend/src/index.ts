@@ -3236,6 +3236,11 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
             updated_at = now()
         WHERE id = ${id}::uuid
       `;
+      // ISO 27001 A.8.15 — every data-modifying operation produces an AuditLog record.
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at)
+        VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${id}::uuid,${req.user!.email},now())
+      `;
     }
 
     // Update all CIs linked to this device model

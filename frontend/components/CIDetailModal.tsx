@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check } from "lucide-react";
+import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -55,6 +55,7 @@ interface Props {
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onUpdated?: () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -100,6 +101,8 @@ const ENV_STYLES: Record<Environment, string> = {
   TESTING: "bg-blue-100 text-blue-800", DEVELOPMENT: "bg-green-100 text-green-800",
 };
 
+const selectCls = "w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100";
+
 function Field({ label, value, icon }: { label: string; value: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -129,7 +132,7 @@ function Section({ title, children, color = "slate" }: { title: string; children
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) {
+export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated }: Props) {
   const { t } = useLanguage();
   const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
   const typeLabel = t(`inventory.ci_types.${resolvedType}`) !== `inventory.ci_types.${resolvedType}`
@@ -143,6 +146,47 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
   const [contracts, setContracts] = useState<ContractRef[]>(ci.contracts ?? []);
   const [showAddDocs, setShowAddDocs] = useState(false);
   const [showAddContracts, setShowAddContracts] = useState(false);
+
+  // Inline editing state (admin only)
+  const [users, setUsers]         = useState<UserRef[]>([]);
+  const [saving, setSaving]       = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [edited, setEdited]       = useState({
+    status:          ci.status ?? "ACTIVO",
+    criticality:     ci.criticality as string,
+    environment:     ci.environment as string,
+    businessOwnerId: ci.businessOwnerId,
+    technicalLeadId: ci.technicalLeadId,
+  });
+
+  // Compute changed fields (only send what actually changed)
+  const changedFields: Record<string, unknown> = {};
+  if (edited.status          !== (ci.status ?? "ACTIVO"))    changedFields.status          = edited.status;
+  if (edited.criticality     !== ci.criticality)             changedFields.criticality     = edited.criticality;
+  if (edited.environment     !== ci.environment)             changedFields.environment     = edited.environment;
+  if (edited.businessOwnerId !== ci.businessOwnerId)         changedFields.businessOwnerId = edited.businessOwnerId;
+  if (edited.technicalLeadId !== ci.technicalLeadId)         changedFields.technicalLeadId = edited.technicalLeadId;
+  const hasChanges = Object.keys(changedFields).length > 0;
+
+  const handleSave = async () => {
+    if (!hasChanges || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await apiFetch(`/api/cis/${ci.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(changedFields),
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `Error ${res.status}`);
+      onUpdated?.();
+      onClose();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : t("ci_detail.save_error"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const loadDocs = () => {
     setDocsLoading(true);
@@ -162,6 +206,12 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
 
   useEffect(() => {
     loadDocs();
+    if (isAdmin) {
+      apiFetch("/api/users")
+        .then((r) => (r.ok ? r.json() : []))
+        .then((data) => setUsers(Array.isArray(data) ? data : (data.data ?? [])))
+        .catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ci.id]);
 
@@ -275,7 +325,6 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
           {/* General info */}
           <Section title={t("ci_detail.section_general")} color="slate">
             <Field label={t("ci_detail.field_inventory")} value={ci.inventoryNumber} icon={<Hash className="h-3 w-3" />} />
-            <Field label={t("ci_detail.field_tech_lead")} value={ci.technicalLead ? `${ci.technicalLead.username} (${ci.technicalLead.email})` : null} icon={<User className="h-3 w-3" />} />
             <Field label={t("ci_detail.field_type")} value={typeLabel} icon={<Tag className="h-3 w-3" />} />
             <Field
               label={t("ci_detail.field_eol_eos")}
@@ -290,7 +339,51 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
                 ) : null
               }
             />
-            <Field label={t("ci_detail.field_status")} value={ci.status} icon={<Activity className="h-3 w-3" />} />
+            <Field label={t("ci_detail.field_status")} icon={<Activity className="h-3 w-3" />} value={
+              isAdmin ? (
+                <select value={edited.status} onChange={(e) => setEdited((p) => ({ ...p, status: e.target.value }))} className={selectCls}>
+                  <option value="ACTIVO">{t("inventory.status.ACTIVO")}</option>
+                  <option value="INACTIVO">{t("inventory.status.INACTIVO")}</option>
+                  <option value="RETIRADO">{t("inventory.status.RETIRADO")}</option>
+                </select>
+              ) : ci.status
+            } />
+            <Field label={t("ci_detail.field_criticality")} icon={<Tag className="h-3 w-3" />} value={
+              isAdmin ? (
+                <select value={edited.criticality} onChange={(e) => setEdited((p) => ({ ...p, criticality: e.target.value }))} className={selectCls}>
+                  <option value="LOW">{t("inventory.criticality.LOW")}</option>
+                  <option value="MEDIUM">{t("inventory.criticality.MEDIUM")}</option>
+                  <option value="HIGH">{t("inventory.criticality.HIGH")}</option>
+                  <option value="MISSION_CRITICAL">{t("inventory.criticality.MISSION_CRITICAL")}</option>
+                </select>
+              ) : ci.criticality
+            } />
+            <Field label={t("ci_detail.field_environment")} icon={<Server className="h-3 w-3" />} value={
+              isAdmin ? (
+                <select value={edited.environment} onChange={(e) => setEdited((p) => ({ ...p, environment: e.target.value }))} className={selectCls}>
+                  <option value="DEVELOPMENT">{t("inventory.environment.DEVELOPMENT")}</option>
+                  <option value="TESTING">{t("inventory.environment.TESTING")}</option>
+                  <option value="STAGING">{t("inventory.environment.STAGING")}</option>
+                  <option value="PRODUCTION">{t("inventory.environment.PRODUCTION")}</option>
+                </select>
+              ) : ci.environment
+            } />
+            <Field label={t("ci_detail.field_business_owner")} icon={<Briefcase className="h-3 w-3" />} value={
+              isAdmin ? (
+                <select value={edited.businessOwnerId ?? ""} onChange={(e) => setEdited((p) => ({ ...p, businessOwnerId: e.target.value || null }))} className={selectCls}>
+                  <option value="">—</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
+                </select>
+              ) : null
+            } />
+            <Field label={t("ci_detail.field_tech_lead")} icon={<User className="h-3 w-3" />} value={
+              isAdmin ? (
+                <select value={edited.technicalLeadId ?? ""} onChange={(e) => setEdited((p) => ({ ...p, technicalLeadId: e.target.value || null }))} className={selectCls}>
+                  <option value="">—</option>
+                  {users.map((u) => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
+                </select>
+              ) : (ci.technicalLead ? `${ci.technicalLead.username} (${ci.technicalLead.email})` : null)
+            } />
           </Section>
 
           {/* Hardware / Software details */}
@@ -469,13 +562,27 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete }: Props) 
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
-            {t("ci_detail.btn_close")}
-          </button>
-          <button onClick={onEdit} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors">
-            <Pencil className="h-4 w-4" />{t("ci_detail.btn_edit_ci")}
-          </button>
+        <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 space-y-2">
+          {saveError && (
+            <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />{saveError}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors">
+              {t("ci_detail.btn_close")}
+            </button>
+            {isAdmin && (
+              <button
+                onClick={handleSave}
+                disabled={saving || !hasChanges}
+                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                {t("ci_detail.btn_save_changes")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

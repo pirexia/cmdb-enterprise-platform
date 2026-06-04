@@ -198,6 +198,8 @@
       "col_conflict": "Conflits",
       "col_actions": "Actions",
       "conflict_warning": "Doublon: {field}",
+      "possible_duplicate": "Doublon possible",
+      "ai_skipped": "IA ignorée",
       "force_create": "Créer quand même",
       "commit": "Créer CI",
       "commit_all": "Créer tout",
@@ -579,6 +581,10 @@
     "doc_types": "Types de document",
     "license_metrics": "Métriques de licence",
     "license_types": "Types de licence",
+    "models": {
+      "eol_date": "EOL",
+      "eos_date": "EOS"
+    },
     "support_areas": {
       "new": "Nouvelle zone de support",
       "placeholder": "Ex : Zone Centre",
@@ -1152,7 +1158,12 @@
     "subcontract_search": "Rechercher un contrat par numéro ou fournisseur…",
     "subcontract_no_contracts": "Aucun contrat disponible à ajouter.",
     "loading_data": "Chargement des données…",
-    "unknown_error": "Erreur inconnue"
+    "unknown_error": "Erreur inconnue",
+    "btn_save_changes": "Enregistrer les modifications",
+    "save_error": "Erreur lors de la sauvegarde. Veuillez réessayer.",
+    "field_criticality": "Criticité",
+    "field_environment": "Environnement",
+    "field_business_owner": "Responsable Métier"
   },
   "auth": {
     "completing_signin": "Finalisation de la connexion…"

@@ -374,6 +374,26 @@ function requireAudit(req: Request, res: Response, next: NextFunction): void {
   next();
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Defensive guard for `:id`-style path params. Express matches routes in
+ * declaration order, so if a literal route (e.g. /api/cis/bulk-update) is
+ * declared AFTER a `:id` route, the literal request gets captured by `:id`
+ * and Prisma crashes with P2023 when trying to parse the literal as a UUID.
+ * Apply this middleware to every `:id` handler whose param is fed into Prisma.
+ */
+function requireUuidParam(paramName: string) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const value = req.params[paramName];
+    if (typeof value !== 'string' || !UUID_RE.test(value)) {
+      res.status(400).json({ error: `Invalid ${paramName} parameter (expected UUID).` });
+      return;
+    }
+    next();
+  };
+}
+
 // ─── Password Policy ──────────────────────────────────────────────────────────
 
 /** Common/weak passwords dictionary (case-insensitive check). */
@@ -1446,83 +1466,16 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
 });
 
 /**
- * PATCH /api/cis/:id
- * Updates a Configuration Item.
- * ADMIN only.
- */
-app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const id = req.params.id as string;
-  log.info(`[PATCH /api/cis/${id}] Body received:`, JSON.stringify(req.body, null, 2));
-
-  try {
-    const {
-      name, criticality, environment, ciTypeId, status, inventoryNumber,
-      branchId, ciModelId, businessOwnerId, technicalLeadId,
-      eolDate: eolDateRaw, eosDate: eosDateRaw,
-      businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
-    } = req.body as {
-      name?: string; criticality?: Criticality; environment?: Environment;
-      ciTypeId?: string | null; status?: string; inventoryNumber?: string;
-      branchId?: string | null; ciModelId?: string | null;
-      businessOwnerId?: string | null; technicalLeadId?: string | null;
-      eolDate?: string | null; eosDate?: string | null;
-      businessImpact?: string | null; recoveryPriority?: number | null; rto?: number | null; rpo?: number | null;
-      spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
-    };
-
-    const updateData: Record<string, unknown> = {};
-    if (name) updateData.name = name;
-    if (criticality) updateData.criticality = criticality;
-    if (environment) updateData.environment = environment;
-    if (ciTypeId !== undefined) updateData.ciTypeId = ciTypeId || null;
-    if (status) updateData.status = status;
-    if (inventoryNumber !== undefined) updateData.inventoryNumber = inventoryNumber || null;
-    if (branchId !== undefined) updateData.branchId = branchId || null;
-    if (ciModelId !== undefined) updateData.ciModelId = ciModelId || null;
-    if (businessOwnerId !== undefined) updateData.businessOwnerId = businessOwnerId || null;
-    if (technicalLeadId !== undefined) updateData.technicalLeadId = technicalLeadId || null;
-    if (eolDateRaw !== undefined) updateData.eolDate = eolDateRaw ? new Date(eolDateRaw) : null;
-    if (eosDateRaw !== undefined) updateData.eosDate = eosDateRaw ? new Date(eosDateRaw) : null;
-    if (businessImpact     !== undefined) updateData.businessImpact     = businessImpact     || null;
-    if (recoveryPriority   !== undefined) updateData.recoveryPriority   = recoveryPriority   ?? null;
-    if (rto                !== undefined) updateData.rto                = rto                ?? null;
-    if (rpo                !== undefined) updateData.rpo                = rpo                ?? null;
-    if (spofRisk           !== undefined) updateData.spofRisk           = spofRisk;
-    if (containsPii        !== undefined) updateData.containsPii        = containsPii;
-    if (dataClassification !== undefined) updateData.dataClassification = dataClassification || null;
-
-    const ci = await prisma.cI.update({
-      where: { id },
-      data: updateData,
-      include: CI_INCLUDE,
-    });
-
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
-    `;
-
-    // Re-index this entity for the RAG (queue, non-blocking on errors)
-    void queueEntityForIndexing('ci', id);
-
-    res.json(flattenCI(ci));
-  } catch (error: unknown) {
-    console.error('[PATCH /api/cis/:id] Error:', error);
-    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2025') {
-      res.status(404).json({ error: 'CI not found' });
-      return;
-    }
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
  * PATCH /api/cis/bulk-update — apply the same field changes to many CIs at once.
  * ADMIN only. Body: { ciIds: string[]; updates: Partial<CIBulkUpdateFields> }.
  * Only enums and FK ids are exposed (no unique-per-CI fields like name,
  * inventoryNumber, serial, etc., to prevent integrity issues).
  * Atomic transaction: either all CIs are updated or none. AuditLog stores
  * { ciIds, changes } per CI for forensic reconstruction.
+ *
+ * IMPORTANT: this route MUST be declared before `/api/cis/:id` so Express
+ * matches the literal path first — otherwise `:id` captures "bulk-update"
+ * and Prisma fails with P2023 (cannot parse as UUID).
  */
 app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const BulkUpdateSchema = z.object({
@@ -1567,6 +1520,12 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
   if (updates.spofRisk           !== undefined) data.spofRisk           = updates.spofRisk;
 
   try {
+    // Validate that non-null FK UUIDs reference existing records (prevents P2003 → 500).
+    if (updates.ciTypeId) {
+      const exists = await prisma.cIType.findUnique({ where: { id: updates.ciTypeId }, select: { id: true } });
+      if (!exists) { res.status(400).json({ error: 'El tipo de CI seleccionado no existe. Recargue la página e inténtelo de nuevo.' }); return; }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const upd = await tx.cI.updateMany({
         where: { id: { in: ciIds } },
@@ -1595,6 +1554,92 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
     res.json({ updated: result, requested: ciIds.length });
   } catch (error: unknown) {
     console.error('[PATCH /api/cis/bulk-update] Error:', error);
+    // P2003 = FK constraint violation (referenced record does not exist)
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2003') {
+      res.status(400).json({ error: 'Uno de los valores seleccionados ya no existe. Recargue la página e inténtelo de nuevo.' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/cis/:id
+ * Updates a Configuration Item.
+ * ADMIN only. `requireUuidParam('id')` rejects non-UUID path params with 400
+ * before they reach Prisma (defensive against future route-ordering mistakes).
+ */
+app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  log.info(`[PATCH /api/cis/${id}] Body received:`, JSON.stringify(req.body, null, 2));
+
+  try {
+    const {
+      name, criticality, environment, ciTypeId, status, inventoryNumber,
+      branchId, ciModelId, businessOwnerId, technicalLeadId,
+      eolDate: eolDateRaw, eosDate: eosDateRaw,
+      businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
+    } = req.body as {
+      name?: string; criticality?: Criticality; environment?: Environment;
+      ciTypeId?: string | null; status?: string; inventoryNumber?: string;
+      branchId?: string | null; ciModelId?: string | null;
+      businessOwnerId?: string | null; technicalLeadId?: string | null;
+      eolDate?: string | null; eosDate?: string | null;
+      businessImpact?: string | null; recoveryPriority?: number | null; rto?: number | null; rpo?: number | null;
+      spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
+    };
+
+    // Reject any FK field that is a non-null, non-empty string but not a valid UUID
+    // (prevents P2023 "invalid UUID" from Prisma when callers send "null"/garbage strings)
+    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId })) {
+      if (val !== undefined && val !== null && !UUID_RE.test(val)) {
+        res.status(400).json({ error: `El campo ${field} contiene un valor inválido.` });
+        return;
+      }
+    }
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (criticality) updateData.criticality = criticality;
+    if (environment) updateData.environment = environment;
+    if (ciTypeId !== undefined) updateData.ciTypeId = ciTypeId || null;
+    if (status) updateData.status = status;
+    if (inventoryNumber !== undefined) updateData.inventoryNumber = inventoryNumber || null;
+    if (branchId !== undefined) updateData.branchId = branchId || null;
+    if (ciModelId !== undefined) updateData.ciModelId = ciModelId || null;
+    if (businessOwnerId !== undefined) updateData.businessOwnerId = businessOwnerId || null;
+    if (technicalLeadId !== undefined) updateData.technicalLeadId = technicalLeadId || null;
+    if (eolDateRaw !== undefined) updateData.eolDate = eolDateRaw ? new Date(eolDateRaw) : null;
+    if (eosDateRaw !== undefined) updateData.eosDate = eosDateRaw ? new Date(eosDateRaw) : null;
+    if (businessImpact     !== undefined) updateData.businessImpact     = businessImpact     || null;
+    if (recoveryPriority   !== undefined) updateData.recoveryPriority   = recoveryPriority   ?? null;
+    if (rto                !== undefined) updateData.rto                = rto                ?? null;
+    if (rpo                !== undefined) updateData.rpo                = rpo                ?? null;
+    if (spofRisk           !== undefined) updateData.spofRisk           = spofRisk;
+    if (containsPii        !== undefined) updateData.containsPii        = containsPii;
+    if (dataClassification !== undefined) updateData.dataClassification = dataClassification || null;
+
+    const ci = await prisma.cI.update({
+      where: { id },
+      data: updateData,
+      include: CI_INCLUDE,
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
+    `;
+
+    // Re-index this entity for the RAG (queue, non-blocking on errors)
+    void queueEntityForIndexing('ci', id);
+
+    res.json(flattenCI(ci));
+  } catch (error: unknown) {
+    console.error('[PATCH /api/cis/:id] Error:', error);
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2025') {
+      res.status(404).json({ error: 'CI not found' });
+      return;
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1716,7 +1761,7 @@ app.post('/api/cis/bulk-delete', authenticateToken, requireAdmin, async (req: Re
  * Deletes a Configuration Item (cascade deletes hardware/software).
  * ADMIN only.
  */
-app.delete('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const id = req.params.id as string;
 
   try {
@@ -2964,31 +3009,52 @@ app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, as
 });
 
 // Device Models
+// Accepts EOL/EOS as YYYY-MM-DD strings or null. Empty string normalised to null.
+const isoDateOrNull = (v: unknown): Date | null => {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'string') return null;
+  // Strict YYYY-MM-DD (no time) to avoid TZ ambiguity from the date picker.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
   try {
-    const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string })[]>`
-      SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name
+    const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string; eol_date: Date | null; eos_date: Date | null })[]>`
+      SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name,
+             dm.eol_date, dm.eos_date
       FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
-    res.json(rows);
+    res.json(rows.map(r => ({
+      ...r,
+      eolDate: r.eol_date ? r.eol_date.toISOString().slice(0, 10) : null,
+      eosDate: r.eos_date ? r.eos_date.toISOString().slice(0, 10) : null,
+    })));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (req, res) => {
-  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  const eol = isoDateOrNull(eolDate);
+  const eos = isoDateOrNull(eosDate);
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
-      INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
-      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
+      INSERT INTO "device_models"(id,name,manufacturer_id,eol_date,eos_date,created_at,updated_at)
+      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,${eol},${eos},now(),now()) RETURNING id::text AS id, name`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  const eol = isoDateOrNull(eolDate);
+  const eos = isoDateOrNull(eosDate);
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
-      UPDATE "device_models" SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid, updated_at=now()
+      UPDATE "device_models"
+      SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid,
+          eol_date=${eol}, eos_date=${eos}, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
@@ -3158,6 +3224,23 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
     if (!eolInfo?.eolDate && !eolInfo?.supportDate) {
       res.json({ message: `No EOL data found for "${model.name}" on endoflife.date`, updated: 0 });
       return;
+    }
+
+    // Persist on the DeviceModel itself (canonical default for the vendor model)
+    // and propagate to all CIs linked to it that don't already carry a date.
+    if (eolInfo.eolDate || eolInfo.supportDate) {
+      await prisma.$executeRaw`
+        UPDATE "device_models"
+        SET eol_date = COALESCE(${eolInfo.eolDate ?? null}::timestamp, eol_date),
+            eos_date = COALESCE(${eolInfo.supportDate ?? null}::timestamp, eos_date),
+            updated_at = now()
+        WHERE id = ${id}::uuid
+      `;
+      // ISO 27001 A.8.15 — every data-modifying operation produces an AuditLog record.
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at)
+        VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${id}::uuid,${req.user!.email},now())
+      `;
     }
 
     // Update all CIs linked to this device model
@@ -4440,9 +4523,26 @@ async function withConcurrency<T>(
  * Concurrency model: up to CI_BULK_CONCURRENCY items processed in parallel,
  * each new item starting as soon as a slot frees (not in batches).
  */
+/**
+ * Returns true when the raw XLSX row already carries enough well-formed data
+ * that calling the LLM is unnecessary: a non-empty name and at least one of
+ * serialNumber / ipAddress / inventoryNumber.
+ */
+function isWellFormedCIRow(raw: CIRowRaw): boolean {
+  const name = (raw['name'] ?? '').toString().trim();
+  if (!name) return false;
+  const serial = (raw['serialNumber'] ?? '').toString().trim();
+  const ip = (raw['ipAddress'] ?? '').toString().trim();
+  const inv = (raw['inventoryNumber'] ?? '').toString().trim();
+  return Boolean(serial || ip || inv);
+}
+
 async function processCIBulkImportQueue(): Promise<void> {
   if (process.env.RAG_ENABLED !== 'true') return;
-  if (!(await isOllamaHealthy())) return;
+  // NOTE: Ollama is no longer a hard gate — well-formed XLSX rows skip the LLM.
+  // Rows that need AI normalization will still fail gracefully (analyzeCIRowForImport
+  // falls back to raw if the service is unreachable).
+  const ollamaUp = await isOllamaHealthy();
 
   // Safety valve: reset stuck ANALYZING items (mirrors document bulk worker)
   const maxCISecs = Math.ceil((
@@ -4509,11 +4609,30 @@ async function processCIBulkImportQueue(): Promise<void> {
           SELECT id::text AS id, name FROM "configuration_items" WHERE LOWER(inventory_number) = LOWER(${inv}) LIMIT 3`;
         for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'inventoryNumber', existingId: m.id, existingName: m.name }); }
       }
+      // ipAddress is persisted on CI.consoleIp (column console_ip on configuration_items),
+      // not on hardware_cis — see commit logic in this file around line 4950.
+      const ipAddr = (raw['ipAddress'] ?? '').trim();
+      if (ipAddr) {
+        const ms = await prisma.$queryRaw<{ id: string; name: string }[]>`
+          SELECT id::text AS id, name FROM "configuration_items"
+          WHERE console_ip = ${ipAddr} LIMIT 3`;
+        for (const m of ms) { if (!conflicts.find(c => c.existingId === m.id)) conflicts.push({ field: 'ipAddress', existingId: m.id, existingName: m.name }); }
+      }
 
-      // AI normalization (graceful: falls back to raw if Ollama unavailable)
-      const normalized = await analyzeCIRowForImport(raw);
+      // Skip AI when the row already carries name + serial/IP/inv. Otherwise
+      // try the LLM (which itself falls back to raw if unreachable).
+      const wellFormed = isWellFormedCIRow(raw);
+      const aiSkipped = wellFormed || !ollamaUp;
+      const normalized = aiSkipped ? { ...raw } : await analyzeCIRowForImport(raw);
 
-      const analysis = { normalized, conflicts, analyzedAt: new Date().toISOString() };
+      const possibleDuplicate = conflicts.length > 0;
+      const analysis = {
+        normalized,
+        conflicts,
+        possibleDuplicate,
+        aiSkipped,
+        analyzedAt: new Date().toISOString(),
+      };
 
       await prisma.$executeRaw`
         UPDATE "ci_bulk_import_item"

@@ -335,8 +335,13 @@ Before committing any `fix` or `feat`:
 - `main` — production releases (tagged `vX.Y.Z`)
 - `develop` — active development; PRs merge here first
 - Feature branches cut from `develop`, merged back via PR
-- Current release: **v2.5.2** (Fix DELETE CI cascade, bulk-import master upsert manufacturer/model, dashboard cards URL filters, OWASP: atomic ON CONFLICT upsert + UNIQUE index device_models — 1H+1M fixed)
-- Previous release: **v2.5.1** (CI bulk import 500 fix, CI bulk concurrency CI_BULK_CONCURRENCY=3, contracts DELETE + unlink docs, bulk-docs WARNING status, CI bulk-update + bulk-delete with brokenRefs pre-check, 7 OWASP fixes — 2H+5M closed)
+- Current release: **v2.5.3** (Express route-order fix for bulk-update + UUID guard, CIDetailModal inline edit + Guardar cambios, bulk-import XLSX skip-AI + IP duplicate detection + possibleDuplicate flag, DeviceModel EOL/EOS exposed in masters UI + sync-eol persistence, OWASP/Compliance review — 0 Critical/High/Medium, 1 LOW fixed in-branch + 2 deferred to v2.6.x backlog)
+- Previous release: **v2.5.2** (Fix DELETE CI cascade, bulk-import master upsert manufacturer/model, dashboard cards URL filters, OWASP: atomic ON CONFLICT upsert + UNIQUE index device_models — 1H+1M fixed)
+
+### Planning documents — active
+
+- **v2.5.3 — RELEASED** → `docs/PLAN_v2.5.3.md` (P–U completed; OWASP `docs/security-audit/owasp-v2.5.3.md` + Compliance `docs/security/COMPLIANCE_v2.5.3.md`)
+- **v2.6.0 DCIM Module — 2D MVP (feature, listo para ejecución)** → `docs/SPEC_v2.6.0_dcim.md` (spec con Q1-Q4 resueltas) + `docs/PLAN_v2.6.0.md` (plan M0-M11). Feature branch: `feature/dcim-rooms`. Vista 3D movida a v2.7.0 por decisión Q1.
 
 ---
 
@@ -361,3 +366,13 @@ Project-local skills (`.claude/skills/`):
 | `find-skills` | Discover a skill when you're not sure which one applies |
 
 If no project skill matches, fall back to the superpowers skills (see Work Methodology section).
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

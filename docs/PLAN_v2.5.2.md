@@ -1,9 +1,9 @@
 # Plan de desarrollo v2.5.2
 
-> Estado: 🟡 En progreso
+> Estado: ✅ COMPLETO
 > Rama base: `develop` (HEAD post-v2.5.1)
 > Target: `main` tag `v2.5.2`
-> Última actualización: 2026-06-02
+> Última actualización: 2026-06-03
 > Tipo: bugfixes (3 críticos/altos) + 1 feature pequeña + OWASP/Compliance review
 
 ---
@@ -19,7 +19,7 @@
 | **L** | OWASP `differential-review` global | `task-u/owasp-v2.5.2-fixes` | ✅ Mergeada (cb91968) — 1H+1M fixed, 1L backlog |
 | **M** | Compliance ISO 27001 / GDPR / NIS2 | (sobre `develop`) | ✅ Completada — PASS, 2 gaps no-bloqueantes (backlog) |
 | **N** | Backlog v2.6.x documentado en este fichero | docs | ✅ Completada — 5 Lows heredados + 2 nuevos documentados |
-| **O** | Release v2.5.2 (merge a main + tag) | — | 🔄 En progreso |
+| **O** | Release v2.5.2 (merge a main + tag) | — | ✅ Completada — tag v2.5.2 en main (e3eefe5) |
 
 **Orden estricto:** H → STOP → K → STOP → I → STOP → J → STOP → L → STOP → M → STOP → N → STOP → O
 

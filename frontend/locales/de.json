@@ -198,6 +198,8 @@
       "col_conflict": "Konflikte",
       "col_actions": "Aktionen",
       "conflict_warning": "Duplikat: {field}",
+      "possible_duplicate": "Mögliches Duplikat",
+      "ai_skipped": "KI übersprungen",
       "force_create": "Trotzdem erstellen",
       "commit": "CI erstellen",
       "commit_all": "Alle erstellen",
@@ -579,6 +581,10 @@
     "doc_types": "Dokumenttypen",
     "license_metrics": "Lizenzmetriken",
     "license_types": "Lizenztypen",
+    "models": {
+      "eol_date": "EOL",
+      "eos_date": "EOS"
+    },
     "support_areas": {
       "new": "Neuer Supportbereich",
       "placeholder": "z.B.: Zentrum",
@@ -1152,7 +1158,12 @@
     "subcontract_search": "Vertrag nach Nummer oder Lieferant suchen…",
     "subcontract_no_contracts": "Keine Verträge zum Hinzufügen verfügbar.",
     "loading_data": "Daten laden…",
-    "unknown_error": "Unbekannter Fehler"
+    "unknown_error": "Unbekannter Fehler",
+    "btn_save_changes": "Änderungen speichern",
+    "save_error": "Fehler beim Speichern. Bitte erneut versuchen.",
+    "field_criticality": "Kritikalität",
+    "field_environment": "Umgebung",
+    "field_business_owner": "Fachverantwortlicher"
   },
   "auth": {
     "completing_signin": "Anmeldung wird abgeschlossen…"

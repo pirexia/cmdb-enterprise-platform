@@ -20,6 +20,8 @@ interface Conflict { field: string; existingId: string; existingName: string; }
 interface CIItemAnalysis {
   normalized?: Record<string, string | null | undefined>;
   conflicts?: Conflict[];
+  possibleDuplicate?: boolean;
+  aiSkipped?: boolean;
   analyzedAt?: string;
   decision?: CIDecision;
 }
@@ -135,6 +137,8 @@ function ItemRow({
 }) {
   const conflicts = item.analysis?.conflicts ?? [];
   const hasConflicts = conflicts.length > 0;
+  const possibleDuplicate = item.analysis?.possibleDuplicate ?? hasConflicts;
+  const aiSkipped = item.analysis?.aiSkipped ?? false;
   const norm = item.analysis?.normalized;
 
   const statusCfg: Record<ItemStatus, { cls: string; label: string; icon: React.ReactNode }> = {
@@ -172,11 +176,26 @@ function ItemRow({
         <td className="px-3 py-2.5 text-xs text-slate-600">{decision?.criticality || "—"}</td>
         <td className="px-3 py-2.5 text-xs text-slate-600">{decision?.environment || "—"}</td>
         <td className="px-3 py-2.5">
-          {hasConflicts && !isCommitted && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-              <AlertCircle className="h-3 w-3" />{conflicts.length}
-            </span>
-          )}
+          <div className="flex flex-col gap-1">
+            {possibleDuplicate && !isCommitted && (
+              <span
+                title={t("inventory.bulk.possible_duplicate")}
+                className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700"
+              >
+                <AlertCircle className="h-3 w-3" />
+                {t("inventory.bulk.possible_duplicate")}
+                {conflicts.length > 0 && ` (${conflicts.length})`}
+              </span>
+            )}
+            {aiSkipped && !isCommitted && (
+              <span
+                title={t("inventory.bulk.ai_skipped")}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600"
+              >
+                {t("inventory.bulk.ai_skipped")}
+              </span>
+            )}
+          </div>
         </td>
         <td className="px-3 py-2.5">
           <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>

@@ -198,6 +198,8 @@
       "col_conflict": "Conflitti",
       "col_actions": "Azioni",
       "conflict_warning": "Duplicato: {field}",
+      "possible_duplicate": "Possibile duplicato",
+      "ai_skipped": "IA saltata",
       "force_create": "Crea comunque",
       "commit": "Crea CI",
       "commit_all": "Crea tutti",
@@ -579,6 +581,10 @@
     "doc_types": "Tipi di documento",
     "license_metrics": "Metriche di licenza",
     "license_types": "Tipi di licenza",
+    "models": {
+      "eol_date": "EOL",
+      "eos_date": "EOS"
+    },
     "support_areas": {
       "new": "Nuova area di supporto",
       "placeholder": "Es: Zona Centro",
@@ -1152,7 +1158,12 @@
     "subcontract_search": "Cerca contratto per numero o fornitore…",
     "subcontract_no_contracts": "Nessun contratto disponibile da aggiungere.",
     "loading_data": "Caricamento dati…",
-    "unknown_error": "Errore sconosciuto"
+    "unknown_error": "Errore sconosciuto",
+    "btn_save_changes": "Salva modifiche",
+    "save_error": "Errore durante il salvataggio. Riprovare.",
+    "field_criticality": "Criticità",
+    "field_environment": "Ambiente",
+    "field_business_owner": "Responsabile Business"
   },
   "auth": {
     "completing_signin": "Completamento accesso…"

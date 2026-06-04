@@ -13,7 +13,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 interface SupportArea  { id: string; name: string }
 interface Branch       { id: string; name: string; branch_code: string; physical_address: string | null; support_area_id: string; support_area_name: string }
 interface Manufacturer { id: string; name: string }
-interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
+interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string; eolDate: string | null; eosDate: string | null }
 interface Provider     { id: string; name: string }
 interface CostCenter   { id: string; code: string; name: string }
 interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean; categoryCode: string }
@@ -29,7 +29,7 @@ type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "provid
 type EditState =
   | { kind: "simple";    path: string; id: string; name: string }
   | { kind: "branch";    id: string; name: string; code: string; address: string; supportAreaId: string }
-  | { kind: "model";     id: string; name: string; manufacturerId: string }
+  | { kind: "model";     id: string; name: string; manufacturerId: string; eolDate: string; eosDate: string }
   | { kind: "cc";        id: string; code: string; name: string }
   | { kind: "citype";    id: string; name: string; categoryCode: string }
   | { kind: "doctype";   id: string; name: string }
@@ -717,7 +717,15 @@ export default function MastersPage() {
                             <option value="">— Fabricante —</option>
                             {manufacturers.map((mfr) => <option key={mfr.id} value={mfr.id}>{mfr.name}</option>)}
                           </Sel>
-                          <button onClick={async () => { try { await patch(`/api/masters/device-models/${m.id}`, { name: editState.name, manufacturerId: editState.manufacturerId }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
+                          <label className="flex items-center gap-1 text-xs text-slate-500">
+                            {t("masters.models.eol_date")}
+                            <input type="date" value={editState.eolDate} onChange={(e) => setEditState({ ...editState, eolDate: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                          </label>
+                          <label className="flex items-center gap-1 text-xs text-slate-500">
+                            {t("masters.models.eos_date")}
+                            <input type="date" value={editState.eosDate} onChange={(e) => setEditState({ ...editState, eosDate: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
+                          </label>
+                          <button onClick={async () => { try { await patch(`/api/masters/device-models/${m.id}`, { name: editState.name, manufacturerId: editState.manufacturerId, eolDate: editState.eolDate || null, eosDate: editState.eosDate || null }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
                           <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
                         </div>
                       );
@@ -734,7 +742,15 @@ export default function MastersPage() {
                             {consultModel?.id === m.id && <span className="text-[var(--accent)] text-xs">Ver</span>}
                             {m.name}
                           </p>
-                          <p className="text-xs text-slate-400">{m.manufacturer_name}</p>
+                          <p className="text-xs text-slate-400">
+                            {m.manufacturer_name}
+                            {(m.eolDate || m.eosDate) && (
+                              <span className="ml-2 text-slate-500">
+                                {m.eolDate && <> · EOL <span className="font-mono text-slate-600">{m.eolDate}</span></>}
+                                {m.eosDate && <> · EOS <span className="font-mono text-slate-600">{m.eosDate}</span></>}
+                              </span>
+                            )}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -757,7 +773,7 @@ export default function MastersPage() {
                           >
                             Consultar
                           </button>
-                          <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id })}
+                          <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id, eolDate: m.eolDate ?? "", eosDate: m.eosDate ?? "" })}
                             className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors" title="Editar modelo">
                             <Pencil className="h-4 w-4" />
                           </button>

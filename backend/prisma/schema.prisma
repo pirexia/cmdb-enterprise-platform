@@ -258,6 +258,10 @@ model DeviceModel {
   name           String
   manufacturerId String       @db.Uuid @map("manufacturer_id")
 
+  // Vendor-level support dates (defaults inherited by linked CIs via sync-eol).
+  eolDate        DateTime?    @map("eol_date")
+  eosDate        DateTime?    @map("eos_date")
+
   manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cis            CI[]
 

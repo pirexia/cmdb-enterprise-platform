@@ -581,6 +581,10 @@
     "doc_types": "Dokumenttypen",
     "license_metrics": "Lizenzmetriken",
     "license_types": "Lizenztypen",
+    "models": {
+      "eol_date": "EOL",
+      "eos_date": "EOS"
+    },
     "support_areas": {
       "new": "Neuer Supportbereich",
       "placeholder": "z.B.: Zentrum",

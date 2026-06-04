@@ -3009,31 +3009,52 @@ app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, as
 });
 
 // Device Models
+// Accepts EOL/EOS as YYYY-MM-DD strings or null. Empty string normalised to null.
+const isoDateOrNull = (v: unknown): Date | null => {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v !== 'string') return null;
+  // Strict YYYY-MM-DD (no time) to avoid TZ ambiguity from the date picker.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = new Date(`${v}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 app.get('/api/masters/device-models', authenticateToken, async (_req, res) => {
   try {
-    const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string })[]>`
-      SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name
+    const rows = await prisma.$queryRaw<(MasterRow & { manufacturer_id: string; manufacturer_name: string; eol_date: Date | null; eos_date: Date | null })[]>`
+      SELECT dm.id::text AS id, dm.name, dm.manufacturer_id::text AS manufacturer_id, m.name AS manufacturer_name,
+             dm.eol_date, dm.eos_date
       FROM "device_models" dm LEFT JOIN "manufacturers" m ON dm.manufacturer_id = m.id ORDER BY m.name, dm.name`;
-    res.json(rows);
+    res.json(rows.map(r => ({
+      ...r,
+      eolDate: r.eol_date ? r.eol_date.toISOString().slice(0, 10) : null,
+      eosDate: r.eos_date ? r.eos_date.toISOString().slice(0, 10) : null,
+    })));
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (req, res) => {
-  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  const eol = isoDateOrNull(eolDate);
+  const eos = isoDateOrNull(eosDate);
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
-      INSERT INTO "device_models"(id,name,manufacturer_id,created_at,updated_at)
-      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,now(),now()) RETURNING id::text AS id, name`;
+      INSERT INTO "device_models"(id,name,manufacturer_id,eol_date,eos_date,created_at,updated_at)
+      VALUES(gen_random_uuid(),${name.trim()},${manufacturerId}::uuid,${eol},${eos},now(),now()) RETURNING id::text AS id, name`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
-  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
+  const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
+  const eol = isoDateOrNull(eolDate);
+  const eos = isoDateOrNull(eosDate);
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
-      UPDATE "device_models" SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid, updated_at=now()
+      UPDATE "device_models"
+      SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid,
+          eol_date=${eol}, eos_date=${eos}, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;
@@ -3203,6 +3224,18 @@ app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAd
     if (!eolInfo?.eolDate && !eolInfo?.supportDate) {
       res.json({ message: `No EOL data found for "${model.name}" on endoflife.date`, updated: 0 });
       return;
+    }
+
+    // Persist on the DeviceModel itself (canonical default for the vendor model)
+    // and propagate to all CIs linked to it that don't already carry a date.
+    if (eolInfo.eolDate || eolInfo.supportDate) {
+      await prisma.$executeRaw`
+        UPDATE "device_models"
+        SET eol_date = COALESCE(${eolInfo.eolDate ?? null}::timestamp, eol_date),
+            eos_date = COALESCE(${eolInfo.supportDate ?? null}::timestamp, eos_date),
+            updated_at = now()
+        WHERE id = ${id}::uuid
+      `;
     }
 
     // Update all CIs linked to this device model

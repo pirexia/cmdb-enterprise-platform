@@ -15,7 +15,7 @@
 | ID | Tarea | Rama | Estado |
 |----|-------|------|--------|
 | **P** | Fix bulk-update CI 500 al cambiar `ciTypeId` | `task-v/fix-bulk-update-ci-type` | ✅ Mergeada (51d84ea) |
-| **Q** | CIDetailModal: botón inferior "Editar CI" → "Guardar cambios" + edición inline | `task-w/ci-detail-inline-save` | ⏳ Pendiente |
+| **Q** | CIDetailModal: botón inferior "Editar CI" → "Guardar cambios" + edición inline | `task-w/ci-detail-inline-save` | ✅ Mergeada |
 | **R** | Bulk import XLSX: skip análisis IA + detección dup ampliada (name/serial/IP) + flag WARNING | `task-x/bulk-import-skip-ai` | ⏳ Pendiente |
 | **S** | Datos Maestros > Modelos: exponer campos `eolDate` / `eosDate` en UI | `task-y/masters-models-eol-eos` | ⏳ Pendiente |
 | **T** | OWASP `differential-review` + Compliance review (ISO/GDPR/NIS2) | (sobre `develop`) | ⏳ Pendiente |

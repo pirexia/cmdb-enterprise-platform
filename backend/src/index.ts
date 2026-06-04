@@ -1470,6 +1470,16 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, async (req: Request, 
       spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
     };
 
+    // Reject any FK field that is a non-null, non-empty string but not a valid UUID
+    // (prevents P2023 "invalid UUID" from Prisma when callers send "null"/garbage strings)
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId })) {
+      if (val !== undefined && val !== null && !UUID_RE.test(val)) {
+        res.status(400).json({ error: `El campo ${field} contiene un valor inválido.` });
+        return;
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (name) updateData.name = name;
     if (criticality) updateData.criticality = criticality;
@@ -1551,15 +1561,6 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
   }
   const { ciIds, updates } = parsed.data;
 
-  // Validate FK references before entering the transaction to return 400 instead of 500.
-  if (updates.ciTypeId) {
-    const typeExists = await prisma.cIType.findUnique({ where: { id: updates.ciTypeId }, select: { id: true } });
-    if (!typeExists) {
-      res.status(400).json({ error: 'El tipo de CI seleccionado no existe. Recargue la página e inténtelo de nuevo.' });
-      return;
-    }
-  }
-
   // Build the Prisma update data — only set fields the caller actually sent.
   const data: Record<string, unknown> = {};
   if (updates.criticality        !== undefined) data.criticality        = updates.criticality;
@@ -1576,6 +1577,12 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
   if (updates.spofRisk           !== undefined) data.spofRisk           = updates.spofRisk;
 
   try {
+    // Validate that non-null FK UUIDs reference existing records (prevents P2003 → 500).
+    if (updates.ciTypeId) {
+      const exists = await prisma.cIType.findUnique({ where: { id: updates.ciTypeId }, select: { id: true } });
+      if (!exists) { res.status(400).json({ error: 'El tipo de CI seleccionado no existe. Recargue la página e inténtelo de nuevo.' }); return; }
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       const upd = await tx.cI.updateMany({
         where: { id: { in: ciIds } },
@@ -1604,6 +1611,11 @@ app.patch('/api/cis/bulk-update', authenticateToken, requireAdmin, async (req: R
     res.json({ updated: result, requested: ciIds.length });
   } catch (error: unknown) {
     console.error('[PATCH /api/cis/bulk-update] Error:', error);
+    // P2003 = FK constraint violation (referenced record does not exist)
+    if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === 'P2003') {
+      res.status(400).json({ error: 'Uno de los valores seleccionados ya no existe. Recargue la página e inténtelo de nuevo.' });
+      return;
+    }
     res.status(500).json({ error: 'Internal server error' });
   }
 });

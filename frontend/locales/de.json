@@ -1152,7 +1152,12 @@
     "subcontract_search": "Vertrag nach Nummer oder Lieferant suchen…",
     "subcontract_no_contracts": "Keine Verträge zum Hinzufügen verfügbar.",
     "loading_data": "Daten laden…",
-    "unknown_error": "Unbekannter Fehler"
+    "unknown_error": "Unbekannter Fehler",
+    "btn_save_changes": "Änderungen speichern",
+    "save_error": "Fehler beim Speichern. Bitte erneut versuchen.",
+    "field_criticality": "Kritikalität",
+    "field_environment": "Umgebung",
+    "field_business_owner": "Fachverantwortlicher"
   },
   "auth": {
     "completing_signin": "Anmeldung wird abgeschlossen…"

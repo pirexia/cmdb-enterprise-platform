@@ -1152,7 +1152,12 @@
     "subcontract_search": "Pesquisar contrato por número ou fornecedor…",
     "subcontract_no_contracts": "Sem contratos disponíveis para adicionar.",
     "loading_data": "A carregar dados…",
-    "unknown_error": "Erro desconhecido"
+    "unknown_error": "Erro desconhecido",
+    "btn_save_changes": "Guardar alterações",
+    "save_error": "Erro ao guardar. Tente novamente.",
+    "field_criticality": "Criticidade",
+    "field_environment": "Ambiente",
+    "field_business_owner": "Responsável de Negócio"
   },
   "auth": {
     "completing_signin": "Concluindo o acesso…"

@@ -516,6 +516,7 @@ export default function InventoryPage() {
           onClose={() => setDetailCI(null)}
           onEdit={() => { setEditingCI(detailCI); setDetailCI(null); }}
           onDelete={() => { handleDelete(detailCI.id, detailCI.name); setDetailCI(null); }}
+          onUpdated={() => { fetchCIs(); setDetailCI(null); }}
         />
       )}
       {relatingCI && (

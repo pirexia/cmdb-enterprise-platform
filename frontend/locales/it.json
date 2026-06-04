@@ -1152,7 +1152,12 @@
     "subcontract_search": "Cerca contratto per numero o fornitore…",
     "subcontract_no_contracts": "Nessun contratto disponibile da aggiungere.",
     "loading_data": "Caricamento dati…",
-    "unknown_error": "Errore sconosciuto"
+    "unknown_error": "Errore sconosciuto",
+    "btn_save_changes": "Salva modifiche",
+    "save_error": "Errore durante il salvataggio. Riprovare.",
+    "field_criticality": "Criticità",
+    "field_environment": "Ambiente",
+    "field_business_owner": "Responsabile Business"
   },
   "auth": {
     "completing_signin": "Completamento accesso…"

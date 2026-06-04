@@ -1271,7 +1271,12 @@
     "subcontract_search": "Search contract by number or vendor…",
     "subcontract_no_contracts": "No contracts available to add.",
     "loading_data": "Loading data…",
-    "unknown_error": "Unknown error"
+    "unknown_error": "Unknown error",
+    "btn_save_changes": "Save changes",
+    "save_error": "Error saving. Please try again.",
+    "field_criticality": "Criticality",
+    "field_environment": "Environment",
+    "field_business_owner": "Business Owner"
   },
   "auth": {
     "completing_signin": "Completing sign-in…"

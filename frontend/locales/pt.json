@@ -1353,6 +1353,32 @@
       "edit": "Editar",
       "add": "Adicionar"
     },
-    "confirm_delete": "Confirmar eliminação?"
+    "confirm_delete": "Confirmar eliminação?",
+    "place": {
+      "title": "Colocar em rack",
+      "remove": "Remover do rack",
+      "branch": "Sede",
+      "building": "Edifício",
+      "floor": "Andar",
+      "room": "Sala",
+      "rack": "Rack",
+      "u_position": "Posição U (de baixo)",
+      "size_u": "Tamanho (U)",
+      "power_w": "Consumo (W)",
+      "orientation": "Orientação",
+      "front": "Frente",
+      "rear": "Traseira",
+      "conflict": "Conflito: slots U ocupados nessa orientação",
+      "capacity": "Excede capacidade do rack",
+      "save": "Confirmar posição",
+      "remove_confirm": "Remover CI do rack?",
+      "select_branch": "Selecionar sede...",
+      "select_building": "Selecionar edifício...",
+      "select_floor": "Selecionar andar...",
+      "select_room": "Selecionar sala...",
+      "select_rack": "Selecionar rack...",
+      "no_racks": "Sem racks nesta sala",
+      "current": "Posição atual"
+    }
   }
 }

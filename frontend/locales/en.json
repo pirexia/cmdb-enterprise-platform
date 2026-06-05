@@ -1472,6 +1472,32 @@
       "edit": "Edit",
       "add": "Add"
     },
-    "confirm_delete": "Confirm deletion?"
+    "confirm_delete": "Confirm deletion?",
+    "place": {
+      "title": "Place in rack",
+      "remove": "Remove from rack",
+      "branch": "Branch",
+      "building": "Building",
+      "floor": "Floor",
+      "room": "Room",
+      "rack": "Rack",
+      "u_position": "U position (from bottom)",
+      "size_u": "Size (U)",
+      "power_w": "Power (W)",
+      "orientation": "Orientation",
+      "front": "Front",
+      "rear": "Rear",
+      "conflict": "Conflict: U slots already occupied at that orientation",
+      "capacity": "Exceeds rack capacity",
+      "save": "Confirm placement",
+      "remove_confirm": "Remove CI from rack?",
+      "select_branch": "Select branch...",
+      "select_building": "Select building...",
+      "select_floor": "Select floor...",
+      "select_room": "Select room...",
+      "select_rack": "Select rack...",
+      "no_racks": "No racks in this room",
+      "current": "Current placement"
+    }
   }
 }

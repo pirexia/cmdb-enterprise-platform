@@ -1353,6 +1353,32 @@
       "edit": "Bearbeiten",
       "add": "Hinzufügen"
     },
-    "confirm_delete": "Löschen bestätigen?"
+    "confirm_delete": "Löschen bestätigen?",
+    "place": {
+      "title": "In Rack einbauen",
+      "remove": "Aus Rack entfernen",
+      "branch": "Niederlassung",
+      "building": "Gebäude",
+      "floor": "Etage",
+      "room": "Raum",
+      "rack": "Rack",
+      "u_position": "U-Position (von unten)",
+      "size_u": "Größe (U)",
+      "power_w": "Verbrauch (W)",
+      "orientation": "Ausrichtung",
+      "front": "Vorne",
+      "rear": "Hinten",
+      "conflict": "Konflikt: U-Slots in dieser Ausrichtung belegt",
+      "capacity": "Überschreitet Rack-Kapazität",
+      "save": "Platzierung bestätigen",
+      "remove_confirm": "CI aus Rack entfernen?",
+      "select_branch": "Niederlassung wählen...",
+      "select_building": "Gebäude wählen...",
+      "select_floor": "Etage wählen...",
+      "select_room": "Raum wählen...",
+      "select_rack": "Rack wählen...",
+      "no_racks": "Keine Racks in diesem Raum",
+      "current": "Aktuelle Position"
+    }
   }
 }

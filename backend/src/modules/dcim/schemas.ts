@@ -60,8 +60,8 @@ export const DcimFootprintCreateSchema = z.object({
   label    : z.string().min(1).max(50),
   kind     : z.enum(DCIM_FOOTPRINT_KINDS),
   active   : z.boolean().default(true),
-  gridX    : z.number().int().min(0),
-  gridY    : z.number().int().min(0),
+  gridX    : z.number().int().min(0).max(999),
+  gridY    : z.number().int().min(0).max(999),
 });
 
 export const DcimFootprintUpdateSchema = DcimFootprintCreateSchema.partial();
@@ -76,8 +76,8 @@ export const AssignRackSchema = z.object({
 
 export const CIPlacementSchema = z.object({
   parentRackCiId : z.string().uuid().nullable(),
-  uPosition      : z.number().int().min(1).nullable(),
+  uPosition      : z.number().int().min(1).max(1000).nullable(),
   orientation    : z.enum(['FRONT', 'REAR']).nullable(),
-  sizeU          : z.number().int().min(1).nullable(),
-  powerW         : z.number().int().min(0).nullable(),
+  sizeU          : z.number().int().min(1).max(100).nullable(),
+  powerW         : z.number().int().min(0).max(1_000_000).nullable(),
 });

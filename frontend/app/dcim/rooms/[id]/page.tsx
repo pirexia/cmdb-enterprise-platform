@@ -10,8 +10,11 @@ import {
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import RoomPlan2D, { type FpData, type AisleOption, type HeatmapPoint } from "@/components/dcim/RoomPlan2D";
-import RackElevation2D from "@/components/dcim/RackElevation2D";
+import dynamic from "next/dynamic";
+import type { FpData, AisleOption, HeatmapPoint } from "@/components/dcim/RoomPlan2D";
+
+const RoomPlan2D = dynamic(() => import("@/components/dcim/RoomPlan2D"), { ssr: false });
+const RackElevation2D = dynamic(() => import("@/components/dcim/RackElevation2D"), { ssr: false });
 import CIDetailModal from "@/components/CIDetailModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

@@ -622,7 +622,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
           ciId={ci.id}
           ciName={ci.name}
           onClose={() => setShowPlaceModal(false)}
-          onPlaced={() => { setShowPlaceModal(false); onUpdated(); }}
+          onPlaced={() => { setShowPlaceModal(false); onUpdated?.(); }}
         />
       )}
     </div>

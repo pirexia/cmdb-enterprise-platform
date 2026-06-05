@@ -5,32 +5,16 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Server, ArrowLeft, Pencil, Check, X, RefreshCw,
-  AlertTriangle, LayoutGrid, Zap,
+  AlertTriangle, LayoutGrid, Zap, Edit3,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import RoomPlan2D, { type FpData, type AisleOption } from "@/components/dcim/RoomPlan2D";
 import RackElevation2D from "@/components/dcim/RackElevation2D";
 import CIDetailModal from "@/components/CIDetailModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Footprint {
-  id: string;
-  label: string;
-  kind: string;
-  active: boolean;
-  gridX: number;
-  gridY: number;
-  rackCiId: string | null;
-  aisle: { id: string; name: string } | null;
-  rackCi?: {
-    id: string;
-    name: string;
-    status: string;
-    hardware: { rackTotalU: number | null; rackPowerMaxW: number | null } | null;
-  } | null;
-}
 
 interface RoomPlan {
   id: string;
@@ -45,42 +29,15 @@ interface RoomPlan {
     levelNumber: number;
     building: { id: string; name: string };
   };
-  aisles: { id: string; name: string; kind: string | null; orderIdx: number }[];
-  footprints: Footprint[];
+  aisles: AisleOption[];
+  footprints: (FpData & { rackCi?: { id: string; name: string; status: string } | null })[];
 }
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`rounded-none border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/30 ${props.className ?? ""}`} />;
+  return <input {...props} className={`rounded-none border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/30 ${props.className ?? ""}`} />;
 }
 function Sel(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={`rounded-none border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/30 ${props.className ?? ""}`} />;
-}
-
-// ─── Footprint grid cell ──────────────────────────────────────────────────────
-
-function FootprintCell({ fp, selected, onClick }: {
-  fp: Footprint;
-  selected: boolean;
-  onClick?: () => void;
-}) {
-  const isRack = fp.kind === "RACK_SLOT" && fp.rackCiId;
-  const kindColor: Record<string, string> = {
-    RACK_SLOT:      isRack ? "bg-green-100 border-green-400 text-green-700 hover:bg-green-200" : "bg-white border-dashed border-green-300 text-green-400",
-    INFRASTRUCTURE: "bg-slate-200 border-slate-400 text-slate-600",
-    EMPTY:          "bg-white border-slate-200 text-slate-300",
-  };
-  const cls = kindColor[fp.kind] ?? "bg-white border-slate-200";
-  const selectedCls = selected ? "ring-2 ring-[var(--accent)] ring-offset-1" : "";
-
-  return (
-    <button
-      onClick={isRack ? onClick : undefined}
-      title={fp.rackCi ? fp.rackCi.name : fp.label}
-      className={`flex h-12 w-12 items-center justify-center border text-xs font-medium transition-colors ${cls} ${selectedCls} ${isRack ? "cursor-pointer" : "cursor-default"} ${!fp.active ? "opacity-40" : ""}`}
-    >
-      {isRack ? <Server className="h-4 w-4" /> : fp.label}
-    </button>
-  );
+  return <select {...props} className={`rounded-none border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/30 ${props.className ?? ""}`} />;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -90,22 +47,31 @@ export default function RoomPage() {
   const { user } = useAuth();
   const { t } = useLanguage();
 
-  const [room, setRoom]       = useState<RoomPlan | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving]   = useState(false);
+  const [room, setRoom]         = useState<RoomPlan | null>(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState<string | null>(null);
 
-  // Edit state
-  const [editName, setEditName]   = useState("");
-  const [editKind, setEditKind]   = useState("CPD");
-  const [editWidth, setEditWidth] = useState("");
-  const [editDepth, setEditDepth] = useState("");
+  // Room info edit
+  const [editingRoom, setEditingRoom] = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [editName, setEditName]       = useState("");
+  const [editKind, setEditKind]       = useState("CPD");
+  const [editWidth, setEditWidth]     = useState("");
+  const [editDepth, setEditDepth]     = useState("");
+
+  // Floor plan edit mode
+  const [planEditMode, setPlanEditMode] = useState(false);
+
+  // Footprint creation form
+  const [addForm, setAddForm] = useState<{ gridX: number; gridY: number } | null>(null);
+  const [addLabel, setAddLabel]   = useState("A1");
+  const [addKind, setAddKind]     = useState("RACK_SLOT");
+  const [addAisleId, setAddAisleId] = useState("");
 
   // Rack drawer
-  const [selectedRack, setSelectedRack] = useState<{ ciId: string; name: string } | null>(null);
+  const [selectedRack, setSelectedRack] = useState<FpData | null>(null);
 
-  // CI detail modal (opened from RackElevation2D slot click)
+  // CI detail modal
   const [detailCI, setDetailCI] = useState<any | null>(null);
 
   const load = useCallback(async () => {
@@ -115,8 +81,7 @@ export default function RoomPage() {
       if (!r.ok) { setError(t("dcim.error")); return; }
       const data: RoomPlan = await r.json();
       setRoom(data);
-      setEditName(data.name);
-      setEditKind(data.kind);
+      setEditName(data.name); setEditKind(data.kind);
       setEditWidth(data.widthMm?.toString() ?? "");
       setEditDepth(data.depthMm?.toString() ?? "");
     } catch { setError(t("dcim.error")); }
@@ -125,42 +90,72 @@ export default function RoomPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const startEdit  = () => setEditing(true);
-  const cancelEdit = () => {
-    setEditing(false);
-    if (room) { setEditName(room.name); setEditKind(room.kind); setEditWidth(room.widthMm?.toString() ?? ""); setEditDepth(room.depthMm?.toString() ?? ""); }
-  };
-
-  const saveEdit = async () => {
+  // ── Room info save ─────────────────────────────────────────────────────────
+  const saveRoom = async () => {
     setSaving(true);
     try {
       await apiFetch(`/api/dcim/rooms/${id}`, {
-        method : "PATCH",
-        body   : JSON.stringify({ name: editName, kind: editKind, widthMm: editWidth ? parseInt(editWidth) : null, depthMm: editDepth ? parseInt(editDepth) : null }),
+        method: "PATCH",
+        body: JSON.stringify({ name: editName, kind: editKind, widthMm: editWidth ? parseInt(editWidth) : null, depthMm: editDepth ? parseInt(editDepth) : null }),
       });
-      setEditing(false);
-      await load();
-    } catch { setError(t("dcim.error")); }
-    finally { setSaving(false); }
+      setEditingRoom(false); await load();
+    } catch { setError(t("dcim.error")); } finally { setSaving(false); }
   };
 
-  // Fetch full CI to open detail modal
+  // ── Footprint CRUD ─────────────────────────────────────────────────────────
+  const handleCreateFootprint = useCallback(async (gridX: number, gridY: number) => {
+    setAddForm({ gridX, gridY });
+    setAddLabel(`${String.fromCharCode(65 + gridY)}${gridX + 1}`);
+  }, []);
+
+  const submitCreateFootprint = async () => {
+    if (!addForm) return;
+    await apiFetch("/api/dcim/footprints", {
+      method: "POST",
+      body: JSON.stringify({
+        roomId  : id,
+        gridX   : addForm.gridX,
+        gridY   : addForm.gridY,
+        label   : addLabel,
+        kind    : addKind,
+        aisleId : addAisleId || null,
+        active  : true,
+      }),
+    });
+    setAddForm(null); setAddLabel("A1"); setAddKind("RACK_SLOT"); setAddAisleId("");
+    await load();
+  };
+
+  const handleDeleteFootprint = useCallback(async (fpId: string) => {
+    if (!confirm(t("dcim.confirm_delete"))) return;
+    await apiFetch(`/api/dcim/footprints/${fpId}`, { method: "DELETE" });
+    await load();
+  }, [id, t, load]);
+
+  const handleUpdateFootprint = useCallback(async (fpId: string, updates: Partial<FpData>) => {
+    await apiFetch(`/api/dcim/footprints/${fpId}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+    await load();
+  }, [load]);
+
+  // ── CI detail ──────────────────────────────────────────────────────────────
   const openCIDetail = useCallback(async (ciId: string) => {
     try {
       const r = await apiFetch(`/api/cis/${ciId}`);
       if (!r.ok) return;
-      const ci = await r.json();
-      setDetailCI(ci);
+      setDetailCI(await r.json());
     } catch { /* ignore */ }
   }, []);
 
-  // Grid
-  const maxX = room ? Math.max(0, ...room.footprints.map((f) => f.gridX)) : 0;
-  const maxY = room ? Math.max(0, ...room.footprints.map((f) => f.gridY)) : 0;
-  const fpMap: Record<string, Footprint> = {};
-  if (room) room.footprints.forEach((f) => { fpMap[`${f.gridX},${f.gridY}`] = f; });
+  // ── Derived data ───────────────────────────────────────────────────────────
+  const footprintData: FpData[] = (room?.footprints ?? []).map((fp) => ({
+    ...fp,
+    rackName: fp.rackCi?.name ?? null,
+  }));
 
-  const racksAssigned = room?.footprints.filter((f) => f.kind === "RACK_SLOT" && f.rackCiId).length ?? 0;
+  const racksAssigned = footprintData.filter((f) => f.kind === "RACK_SLOT" && f.rackCiId).length;
 
   if (loading) return (
     <div className="flex h-64 items-center justify-center text-slate-400">
@@ -176,167 +171,157 @@ export default function RoomPage() {
   );
 
   return (
-    <div className="flex h-full gap-0">
+    <div className="flex h-full flex-col overflow-hidden">
 
-      {/* ── Main content ── */}
-      <div className={`flex-1 space-y-6 overflow-auto p-6 transition-all ${selectedRack ? "pr-3" : ""}`}>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between border-b border-slate-200 bg-white px-6 py-4">
+        <div className="flex items-center gap-3">
+          <Link href="/dcim" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="h-5 w-5" /></Link>
+          <div>
+            {editingRoom ? (
+              <div className="flex flex-wrap items-end gap-2">
+                <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-48 font-bold" />
+                <Sel value={editKind} onChange={(e) => setEditKind(e.target.value)} className="w-36">
+                  <option value="CPD">{t("dcim.room.kind_cpd")}</option>
+                  <option value="TECHNICAL_ROOM">{t("dcim.room.kind_technical")}</option>
+                </Sel>
+                <Input type="number" value={editWidth} onChange={(e) => setEditWidth(e.target.value)} placeholder="Ancho mm" className="w-24" />
+                <Input type="number" value={editDepth} onChange={(e) => setEditDepth(e.target.value)} placeholder="Fondo mm" className="w-24" />
+              </div>
+            ) : (
+              <>
+                <h1 className="text-xl font-bold text-slate-800">{room.name}</h1>
+                <p className="text-sm text-slate-500">
+                  {room.floor.building.name} · {room.floor.name} ·{" "}
+                  <span className={`font-medium ${room.kind === "CPD" ? "text-indigo-600" : "text-slate-600"}`}>
+                    {room.kind === "CPD" ? t("dcim.room.kind_cpd") : t("dcim.room.kind_technical")}
+                  </span>
+                  {room.widthMm && <span className="ml-2 text-slate-400">{room.widthMm}×{room.depthMm}mm</span>}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
 
-        {/* Header */}
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/dcim" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="h-5 w-5" /></Link>
-            <div>
-              {editing ? (
-                <div className="flex flex-wrap items-end gap-2">
-                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} className="w-56 text-lg font-bold" />
-                  <Sel value={editKind} onChange={(e) => setEditKind(e.target.value)} className="w-36">
-                    <option value="CPD">{t("dcim.room.kind_cpd")}</option>
-                    <option value="TECHNICAL_ROOM">{t("dcim.room.kind_technical")}</option>
-                  </Sel>
-                  <Input type="number" value={editWidth} onChange={(e) => setEditWidth(e.target.value)} placeholder="Ancho mm" className="w-28" />
-                  <Input type="number" value={editDepth} onChange={(e) => setEditDepth(e.target.value)} placeholder="Fondo mm" className="w-28" />
-                </div>
+        <div className="flex items-center gap-2">
+          {/* Stats */}
+          <div className="hidden items-center gap-4 text-xs text-slate-500 md:flex">
+            <span className="flex items-center gap-1"><LayoutGrid className="h-3.5 w-3.5" /> {footprintData.length} fp</span>
+            <span className="flex items-center gap-1"><Server className="h-3.5 w-3.5 text-green-500" /> {racksAssigned} racks</span>
+            <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5 text-amber-500" /> {room.aisles.length} pasillos</span>
+          </div>
+
+          {user?.role === "ADMIN" && (
+            <>
+              {editingRoom ? (
+                <>
+                  <button onClick={saveRoom} disabled={saving} className="flex items-center gap-1 rounded-none bg-green-600 px-3 py-1.5 text-sm text-white hover:bg-green-700 disabled:opacity-50">
+                    <Check className="h-3.5 w-3.5" /> {t("dcim.room.save")}
+                  </button>
+                  <button onClick={() => setEditingRoom(false)} className="flex items-center gap-1 rounded-none border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">
+                    <X className="h-3.5 w-3.5" /> {t("dcim.room.cancel")}
+                  </button>
+                </>
               ) : (
                 <>
-                  <h1 className="text-2xl font-bold text-slate-800">{room.name}</h1>
-                  <p className="text-sm text-slate-500">
-                    {room.floor.building.name} · {room.floor.name} ·{" "}
-                    <span className={`font-medium ${room.kind === "CPD" ? "text-indigo-600" : "text-slate-600"}`}>
-                      {room.kind === "CPD" ? t("dcim.room.kind_cpd") : t("dcim.room.kind_technical")}
-                    </span>
-                    {room.widthMm && <span className="ml-2 text-slate-400">{room.widthMm}×{room.depthMm}mm</span>}
-                  </p>
+                  <button onClick={() => setEditingRoom(true)} className="flex items-center gap-1 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50">
+                    <Pencil className="h-3.5 w-3.5" /> {t("dcim.room.edit_toggle")}
+                  </button>
+                  <button
+                    onClick={() => { setPlanEditMode((v) => !v); setSelectedRack(null); }}
+                    className={`flex items-center gap-1 rounded-none px-3 py-1.5 text-sm border ${planEditMode ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+                  >
+                    <Edit3 className="h-3.5 w-3.5" /> {planEditMode ? "Salir de edición" : "Editar plano"}
+                  </button>
                 </>
               )}
-            </div>
-          </div>
-          {user?.role === "ADMIN" && (
-            <div className="flex gap-2">
-              {editing ? (
-                <>
-                  <button onClick={saveEdit} disabled={saving} className="flex items-center gap-1 rounded-none bg-green-600 px-3 py-2 text-sm text-white hover:bg-green-700 disabled:opacity-50">
-                    <Check className="h-4 w-4" /> {t("dcim.room.save")}
-                  </button>
-                  <button onClick={cancelEdit} className="flex items-center gap-1 rounded-none border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
-                    <X className="h-4 w-4" /> {t("dcim.room.cancel")}
-                  </button>
-                </>
-              ) : (
-                <button onClick={startEdit} className="flex items-center gap-1 rounded-none border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
-                  <Pencil className="h-4 w-4" /> {t("dcim.room.edit_toggle")}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ── Edit mode banner ── */}
+      {planEditMode && (
+        <div className="flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-700">
+          <Edit3 className="h-3.5 w-3.5 shrink-0" />
+          <span>Modo edición — Haz clic en <strong>+</strong> para añadir una huella. Haz clic en una huella existente para cambiar su tipo o eliminarla.</span>
+        </div>
+      )}
+
+      {/* ── Footprint creation form (inline modal) ── */}
+      {addForm && (
+        <div className="flex items-center gap-3 border-b border-blue-200 bg-blue-50 px-6 py-2">
+          <span className="text-xs font-medium text-blue-700">Nueva huella ({addForm.gridX},{addForm.gridY})</span>
+          <Input value={addLabel} onChange={(e) => setAddLabel(e.target.value)} className="w-20 text-xs" placeholder="Label" />
+          <Sel value={addKind} onChange={(e) => setAddKind(e.target.value)} className="w-36 text-xs">
+            <option value="RACK_SLOT">Rack slot</option>
+            <option value="INFRASTRUCTURE">Infraestructura</option>
+            <option value="EMPTY">Vacío</option>
+          </Sel>
+          {room.aisles.length > 0 && (
+            <Sel value={addAisleId} onChange={(e) => setAddAisleId(e.target.value)} className="w-36 text-xs">
+              <option value="">Sin pasillo</option>
+              {room.aisles.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </Sel>
+          )}
+          <button onClick={submitCreateFootprint} className="flex items-center gap-1 rounded-none bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700">
+            <Check className="h-3 w-3" /> Añadir
+          </button>
+          <button onClick={() => setAddForm(null)} className="flex items-center gap-1 rounded-none border border-slate-300 px-2 py-1 text-xs hover:bg-white">
+            <X className="h-3 w-3" /> Cancelar
+          </button>
+        </div>
+      )}
+
+      {/* ── Main: floor plan + drawer ── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ReactFlow floor plan */}
+        <div className="relative flex-1">
+          {footprintData.length === 0 && !planEditMode ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
+              <LayoutGrid className="h-16 w-16 opacity-20" />
+              <p className="text-sm">{t("dcim.room.no_footprints")}</p>
+              <p className="text-xs text-slate-300">{t("dcim.room.plan_placeholder")}</p>
+              {user?.role === "ADMIN" && (
+                <button onClick={() => setPlanEditMode(true)} className="mt-2 rounded-none border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50">
+                  Activar modo edición
                 </button>
               )}
             </div>
-          )}
-        </div>
-
-        {/* Stats */}
-        <div className="flex flex-wrap gap-4">
-          {[
-            { icon: LayoutGrid, label: `${room.footprints.length} ${t("dcim.room.footprints")}`, color: "text-slate-400" },
-            { icon: Server,     label: `${racksAssigned} racks asignados`,                        color: "text-green-500" },
-            { icon: Zap,        label: `${room.aisles.length} pasillos`,                          color: "text-amber-500" },
-          ].map(({ icon: Icon, label, color }) => (
-            <div key={label} className="flex items-center gap-2 rounded-none border border-slate-200 bg-white px-4 py-2 shadow-sm">
-              <Icon className={`h-4 w-4 ${color}`} />
-              <span className="text-sm text-slate-700">{label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* 2D footprint grid */}
-        <div className="rounded-none border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-            <h2 className="font-semibold text-slate-700">{t("dcim.room.footprints")}</h2>
-            {selectedRack && (
-              <button onClick={() => setSelectedRack(null)} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1">
-                <X className="h-3 w-3" /> Cerrar rack
-              </button>
-            )}
-          </div>
-
-          {room.footprints.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-16 text-slate-400">
-              <LayoutGrid className="h-12 w-12 opacity-30" />
-              <p className="text-sm">{t("dcim.room.no_footprints")}</p>
-              <p className="text-xs text-slate-300">{t("dcim.room.plan_placeholder")}</p>
-            </div>
           ) : (
-            <div className="overflow-auto p-4">
-              <div className="inline-block">
-                {Array.from({ length: maxY + 1 }, (_, y) => (
-                  <div key={y} className="flex gap-1 mb-1">
-                    {Array.from({ length: maxX + 1 }, (_, x) => {
-                      const fp = fpMap[`${x},${y}`];
-                      return fp ? (
-                        <FootprintCell
-                          key={x} fp={fp}
-                          selected={selectedRack?.ciId === fp.rackCiId}
-                          onClick={() => {
-                            if (fp.rackCiId && fp.rackCi) {
-                              setSelectedRack({ ciId: fp.rackCiId, name: fp.rackCi.name });
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div key={x} className="h-12 w-12 border border-dashed border-slate-100" />
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 border border-green-400 bg-green-100" /> Rack asignado</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 border border-dashed border-green-300 bg-white" /> Rack slot libre</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 border border-slate-400 bg-slate-200" /> Infra</span>
-                <span className="flex items-center gap-1"><span className="inline-block h-3 w-3 border border-slate-200 bg-white" /> Vacío</span>
-              </div>
-            </div>
+            <RoomPlan2D
+              footprints={footprintData}
+              aisles={room.aisles}
+              selectedRackCiId={selectedRack?.rackCiId ?? null}
+              editMode={planEditMode}
+              onClickRack={(fp) => { setSelectedRack(fp); }}
+              onCreateFootprint={handleCreateFootprint}
+              onDeleteFootprint={handleDeleteFootprint}
+              onUpdateFootprint={handleUpdateFootprint}
+            />
           )}
         </div>
 
-        {/* Aisles */}
-        {room.aisles.length > 0 && (
-          <div className="rounded-none border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-4 py-3">
-              <h2 className="font-semibold text-slate-700">Pasillos</h2>
+        {/* Rack elevation drawer */}
+        {selectedRack && (
+          <div className="w-80 shrink-0 overflow-auto border-l border-slate-200 bg-white p-4 shadow-lg">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Elevación de rack</span>
+              <button onClick={() => setSelectedRack(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <div className="divide-y divide-slate-100">
-              {room.aisles.map((aisle) => (
-                <div key={aisle.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="flex-1 text-sm text-slate-700">{aisle.name}</span>
-                  {aisle.kind && (
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      aisle.kind === "HOT"  ? "bg-red-100 text-red-700"  :
-                      aisle.kind === "COLD" ? "bg-blue-100 text-blue-700" :
-                                              "bg-slate-100 text-slate-600"
-                    }`}>
-                      {aisle.kind}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+            {selectedRack.rackCiId && (
+              <RackElevation2D
+                rackCiId={selectedRack.rackCiId}
+                rackName={selectedRack.rackName ?? selectedRack.label}
+                onClickCI={openCIDetail}
+              />
+            )}
           </div>
         )}
       </div>
-
-      {/* ── Rack elevation drawer ── */}
-      {selectedRack && (
-        <div className="w-80 shrink-0 overflow-auto border-l border-slate-200 bg-white p-4 shadow-lg">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Elevación de rack</span>
-            <button onClick={() => setSelectedRack(null)} className="text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <RackElevation2D
-            rackCiId={selectedRack.ciId}
-            rackName={selectedRack.name}
-            onClickCI={openCIDetail}
-          />
-        </div>
-      )}
 
       {/* CI detail modal */}
       {detailCI && (

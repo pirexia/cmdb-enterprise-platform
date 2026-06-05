@@ -41,6 +41,9 @@ import {
   vulnUuid, getContractRoot, getLicenseRoot,
   serializeCI, serializeContract, serializeLicense, serializeVulnerability, type EntityParseResult,
 } from './services/entitySerializer';
+import { createDcimRouter } from './modules/dcim/router';
+import { requireDcimAccess } from './modules/dcim/middleware';
+import { CIPlacementSchema } from './modules/dcim/schemas';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -232,6 +235,9 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api/', apiLimiter);
+
+// DCIM module — VIEWER role blocked at router level via requireDcimAccess
+app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
 
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({
@@ -3593,6 +3599,56 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
     res.json({ id, lastCheckDate: checkDate, verificationSource: source, message: 'Verification updated' });
   } catch (error) {
     console.error('[PATCH /api/cis/:id/verification] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── DCIM — CI physical placement ────────────────────────────────────────────
+
+/**
+ * PATCH /api/cis/:id/placement
+ * Set or clear the physical location of a hardware CI within a rack.
+ * Fields: parentRackCiId, uPosition, orientation, sizeU, powerW (all nullable to clear).
+ * ADMIN only. Audit log: CI_PLACEMENT.
+ */
+app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const parsed = CIPlacementSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const { parentRackCiId, uPosition, orientation, sizeU, powerW } = parsed.data;
+
+  try {
+    // Verify the CI exists and is a hardware CI
+    const hw = await prisma.hardwareCI.findUnique({ where: { ciId: id } });
+    if (!hw) { res.status(404).json({ error: 'Hardware CI not found' }); return; }
+
+    // If placing in a rack, validate rack exists and has capacity
+    if (parentRackCiId) {
+      const rack = await prisma.hardwareCI.findUnique({ where: { ciId: parentRackCiId } });
+      if (!rack) { res.status(400).json({ error: 'Rack CI not found' }); return; }
+      if (rack.rackTotalU && uPosition) {
+        const slotEnd = uPosition + (sizeU ?? 1) - 1;
+        if (slotEnd > rack.rackTotalU) {
+          res.status(400).json({ error: `U position ${uPosition}+${sizeU ?? 1}U exceeds rack capacity (${rack.rackTotalU}U)` });
+          return;
+        }
+      }
+    }
+
+    await prisma.hardwareCI.update({
+      where : { ciId: id },
+      data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, parentRackCiId, uPosition, orientation, sizeU, powerW });
+  } catch (error) {
+    console.error('[PATCH /api/cis/:id/placement] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

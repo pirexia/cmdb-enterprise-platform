@@ -335,13 +335,13 @@ Before committing any `fix` or `feat`:
 - `main` — production releases (tagged `vX.Y.Z`)
 - `develop` — active development; PRs merge here first
 - Feature branches cut from `develop`, merged back via PR
-- Current release: **v2.5.3** (Express route-order fix for bulk-update + UUID guard, CIDetailModal inline edit + Guardar cambios, bulk-import XLSX skip-AI + IP duplicate detection + possibleDuplicate flag, DeviceModel EOL/EOS exposed in masters UI + sync-eol persistence, OWASP/Compliance review — 0 Critical/High/Medium, 1 LOW fixed in-branch + 2 deferred to v2.6.x backlog)
-- Previous release: **v2.5.2** (Fix DELETE CI cascade, bulk-import master upsert manufacturer/model, dashboard cards URL filters, OWASP: atomic ON CONFLICT upsert + UNIQUE index device_models — 1H+1M fixed)
+- Current release: **v2.6.0** (DCIM Module 2D MVP: Buildings/Floors/Rooms/Aisles/Footprints, RackElevation2D SVG, RoomPlan2D ReactFlow, PlaceCIModal, power alerts cron + heatmap overlay, requireUuidParam blanket F-02 closed, OWASP 0 C/H/M — 4 Low, 2 fixed in-branch)
+- Previous release: **v2.5.3** (Express route-order fix, CIDetailModal inline edit, bulk-import skip-AI + IP dup, DeviceModel EOL/EOS in masters UI, OWASP 0 C/H/M — 1 LOW fixed)
 
 ### Planning documents — active
 
-- **v2.5.3 — RELEASED** → `docs/PLAN_v2.5.3.md` (P–U completed; OWASP `docs/security-audit/owasp-v2.5.3.md` + Compliance `docs/security/COMPLIANCE_v2.5.3.md`)
-- **v2.6.0 DCIM Module — 2D MVP (feature, listo para ejecución)** → `docs/SPEC_v2.6.0_dcim.md` (spec con Q1-Q4 resueltas) + `docs/PLAN_v2.6.0.md` (plan M0-M11). Feature branch: `feature/dcim-rooms`. Vista 3D movida a v2.7.0 por decisión Q1.
+- **v2.5.3 — RELEASED** → `docs/PLAN_v2.5.3.md`
+- **v2.6.0 — RELEASED** → `docs/SPEC_v2.6.0_dcim.md` + `docs/PLAN_v2.6.0.md` (M0–M11 completados; OWASP `docs/security-audit/owasp-v2.6.0.md` + Compliance `docs/security/COMPLIANCE_v2.6.0.md`)
 
 ---
 

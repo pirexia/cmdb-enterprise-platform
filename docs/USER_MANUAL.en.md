@@ -1216,3 +1216,63 @@ The citations returned by the assistant include an icon indicating the source ty
 > The assistant always responds in the **interface language** (configurable in your profile). If documents are in English and the interface is in Spanish, responses are generated in Spanish.
 
 > For server hardware requirements, Ollama configuration, and GPU acceleration options, refer to the **System Administrator Manual, §19 and §21**.
+
+---
+
+## 25. DCIM Module — Technical Rooms & Data Centers (v2.6.0)
+
+The DCIM (Data Center Infrastructure Management) module lets you model and visualise the physical infrastructure of your data centers.
+
+### 25.1 Access & permissions
+
+| Role | Dashboard | Admin | Edit plan | Place CIs |
+|------|-----------|-------|-----------|-----------|
+| ADMIN | ✅ | ✅ | ✅ | ✅ |
+| AUDITOR | ✅ | — | — | — |
+| VIEWER | — | — | — | — |
+
+### 25.2 Physical hierarchy
+
+```
+Branch → Building → Floor → Room/DC → Aisle → Footprint → Rack (CI)
+```
+
+### 25.3 Dashboard `/dcim`
+
+KPI cards (buildings, rooms, active racks, power alerts), room list with click-through, power alert widget, and a "Manage" button (ADMIN only → `/dcim/admin`).
+
+### 25.4 Administration `/dcim/admin`
+
+Hierarchical inline CRUD — expand a building to manage its floors, expand a floor to manage its rooms.
+
+### 25.5 Room view `/dcim/rooms/[id]`
+
+- **2D floor plan** (ReactFlow): pan and zoom. Cells represent footprints.
+  - 🟩 Green: rack slot with an assigned rack CI.
+  - ⬜ White dashed: free rack slot.
+  - 🔲 Grey: infrastructure (PDU, patch panel, etc.).
+- **Click a rack** → opens the **rack elevation** side panel (SVG, U slots from bottom to top).
+- **FRONT/REAR toggle** in the elevation panel.
+- **Power heatmap** (🔥 button): colours racks by % power usage vs. capacity.
+- **Edit plan** (ADMIN): add, modify or delete footprints.
+- **Edit room**: update name, type and physical dimensions.
+
+### 25.6 Placing a CI in a rack
+
+From any hardware CI detail (button **"Place in rack"** in CIDetailModal or EditCIModal):
+
+1. Select **Branch → Building → Floor → Room → Rack**.
+2. Enter **U position** (from bottom), **Size (U)**, **Power (W)** and **Orientation** (FRONT/REAR).
+3. The system checks for slot conflicts before confirming.
+4. Click **Confirm placement** — a `CI_PLACEMENT` audit event is recorded.
+
+To remove a CI from its rack, open the same modal and click **"Remove from rack"**.
+
+### 25.7 Power alerts
+
+A daily job at 04:00 (Europe/Madrid) scans for over-capacity racks and writes `DCIM_POWER_ALERT` audit records. Query them in the Audit Log filtered by action `DCIM_POWER_ALERT`.
+
+### 25.8 Notes
+
+> ⚠️ Do not include personal data in the notes fields of buildings, floors or rooms (GDPR).
+> The 3D room view is planned for **v2.7.0**.

@@ -22,7 +22,8 @@
     "certificates": "Certificados SSL",
     "audit": "Auditoría",
     "settings": "Configuración",
-    "assistant": "Asistente IA"
+    "assistant": "Asistente IA",
+    "dcim": "Salas técnicas y CPD"
   },
   "actions": {
     "logout": "Cerrar sesión",
@@ -627,8 +628,19 @@
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
     "models": {
-      "eol_date": "EOL",
-      "eos_date": "EOS"
+      "new": "Nuevo Modelo",
+      "placeholder": "Ej: PowerEdge R740",
+      "manufacturer_label": "— Fabricante —",
+      "type_label": "— Tipo —",
+      "type_software": "Software",
+      "type_hardware": "Hardware",
+      "suggest_dates": "Sugerir Fechas Estándar",
+      "eol_search": "Catálogo EOL",
+      "empty": "Sin modelos registrados.",
+      "consult_btn": "Consultar",
+      "sync_eol": "EOL",
+      "consultation_center": "Centro de Consulta de Ciclo de Vida",
+      "suggested_dates": "Fechas Sugeridas"
     },
     "support_areas": {
       "new": "Nueva Área de Soporte",
@@ -651,21 +663,6 @@
       "delete_all": "Borrar todo",
       "empty": "Sin fabricantes registrados.",
       "confirm_delete_all": "¿Insertar 30 fabricantes populares de TI? Los duplicados se omitirán."
-    },
-    "models": {
-      "new": "Nuevo Modelo",
-      "placeholder": "Ej: PowerEdge R740",
-      "manufacturer_label": "— Fabricante —",
-      "type_label": "— Tipo —",
-      "type_software": "Software",
-      "type_hardware": "Hardware",
-      "suggest_dates": "Sugerir Fechas Estándar",
-      "eol_search": "Catálogo EOL",
-      "empty": "Sin modelos registrados.",
-      "consult_btn": "Consultar",
-      "sync_eol": "EOL",
-      "consultation_center": "Centro de Consulta de Ciclo de Vida",
-      "suggested_dates": "Fechas Sugeridas"
     },
     "providers": {
       "new": "Nuevo Proveedor",
@@ -1403,5 +1400,104 @@
     "reindex": "Re-indexar",
     "reindexConfirm": "¿Volver a indexar este documento?",
     "reindexQueued": "Documento puesto en cola para re-indexar"
+  },
+  "dcim": {
+    "title": "DCIM",
+    "loading": "Cargando...",
+    "error": "Error al cargar datos",
+    "dashboard": {
+      "title": "Centro de Datos — DCIM",
+      "subtitle": "Gestión de infraestructura física",
+      "buildings": "Edificios",
+      "rooms": "Salas / CPD",
+      "racks": "Racks activos",
+      "alerts": "Alertas activas",
+      "no_alerts": "Sin alertas de potencia",
+      "manage": "Gestionar edificios y salas",
+      "view_all_alerts": "Ver todas las alertas"
+    },
+    "building": {
+      "title": "Edificios",
+      "new": "Nuevo edificio",
+      "name": "Nombre",
+      "code": "Código",
+      "branch": "Sede"
+    },
+    "floor": {
+      "title": "Plantas",
+      "new": "Nueva planta",
+      "name": "Nombre",
+      "level": "Nivel"
+    },
+    "room": {
+      "title": "Salas / CPD",
+      "new": "Nueva sala",
+      "name": "Nombre",
+      "kind": "Tipo",
+      "kind_cpd": "CPD",
+      "kind_technical": "Sala técnica",
+      "width": "Ancho (mm)",
+      "depth": "Profundo (mm)",
+      "view": "Ver plano",
+      "no_rooms": "No hay salas configuradas",
+      "footprints": "Huellas en el plano",
+      "no_footprints": "Sin huellas definidas",
+      "plan_placeholder": "Plano 2D — disponible en la próxima versión",
+      "edit_toggle": "Editar sala",
+      "save": "Guardar cambios",
+      "cancel": "Cancelar",
+      "heatmap": "Mapa de calor",
+      "heatmap_on": "Mapa de calor ON"
+    },
+    "admin": {
+      "title": "Administración DCIM",
+      "subtitle": "Gestionar edificios, plantas y salas",
+      "select_branch": "Selecciona una sede",
+      "select_building": "Selecciona un edificio",
+      "select_floor": "Selecciona una planta",
+      "no_buildings": "Sin edificios",
+      "no_floors": "Sin plantas",
+      "no_rooms": "Sin salas"
+    },
+    "alert": {
+      "title": "Alertas de potencia",
+      "rack": "Rack",
+      "usage": "Consumo",
+      "max": "Máx."
+    },
+    "actions": {
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "edit": "Editar",
+      "add": "Añadir"
+    },
+    "confirm_delete": "¿Confirmar eliminación?",
+    "place": {
+      "title": "Ubicar en rack",
+      "remove": "Quitar del rack",
+      "branch": "Sede",
+      "building": "Edificio",
+      "floor": "Planta",
+      "room": "Sala",
+      "rack": "Rack",
+      "u_position": "Posición U (desde abajo)",
+      "size_u": "Tamaño (U)",
+      "power_w": "Consumo (W)",
+      "orientation": "Orientación",
+      "front": "Frente",
+      "rear": "Trasera",
+      "conflict": "Conflicto: slots U ocupados en esa orientación",
+      "capacity": "Excede la capacidad del rack",
+      "save": "Confirmar ubicación",
+      "remove_confirm": "¿Quitar el CI del rack?",
+      "select_branch": "Seleccionar sede...",
+      "select_building": "Seleccionar edificio...",
+      "select_floor": "Seleccionar planta...",
+      "select_room": "Seleccionar sala...",
+      "select_rack": "Seleccionar rack...",
+      "no_racks": "Sin racks en esta sala",
+      "current": "Ubicación actual"
+    }
   }
 }

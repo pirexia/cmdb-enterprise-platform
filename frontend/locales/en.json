@@ -22,7 +22,8 @@
     "certificates": "SSL Certificates",
     "audit": "Audit Log",
     "settings": "Settings",
-    "assistant": "AI Assistant"
+    "assistant": "AI Assistant",
+    "dcim": "Technical Rooms & DCs"
   },
   "actions": {
     "logout": "Sign out",
@@ -627,8 +628,19 @@
     "license_metrics": "License Metrics",
     "license_types": "License Types",
     "models": {
-      "eol_date": "EOL",
-      "eos_date": "EOS"
+      "new": "New Model",
+      "placeholder": "E.g.: PowerEdge R740",
+      "manufacturer_label": "— Manufacturer —",
+      "type_label": "— Type —",
+      "type_software": "Software",
+      "type_hardware": "Hardware",
+      "suggest_dates": "Suggest Standard Dates",
+      "eol_search": "EOL Catalog",
+      "empty": "No models registered.",
+      "consult_btn": "Consult",
+      "sync_eol": "EOL",
+      "consultation_center": "Lifecycle Consultation Center",
+      "suggested_dates": "Suggested Dates"
     },
     "support_areas": {
       "new": "New Support Area",
@@ -651,21 +663,6 @@
       "delete_all": "Delete all",
       "empty": "No manufacturers registered.",
       "confirm_delete_all": "Insert 30 popular IT manufacturers? Duplicates will be skipped."
-    },
-    "models": {
-      "new": "New Model",
-      "placeholder": "E.g.: PowerEdge R740",
-      "manufacturer_label": "— Manufacturer —",
-      "type_label": "— Type —",
-      "type_software": "Software",
-      "type_hardware": "Hardware",
-      "suggest_dates": "Suggest Standard Dates",
-      "eol_search": "EOL Catalog",
-      "empty": "No models registered.",
-      "consult_btn": "Consult",
-      "sync_eol": "EOL",
-      "consultation_center": "Lifecycle Consultation Center",
-      "suggested_dates": "Suggested Dates"
     },
     "providers": {
       "new": "New Provider",
@@ -1403,5 +1400,104 @@
     "reindex": "Reindex",
     "reindexConfirm": "Reindex this document?",
     "reindexQueued": "Document queued for reindexing"
+  },
+  "dcim": {
+    "title": "DCIM",
+    "loading": "Loading...",
+    "error": "Error loading data",
+    "dashboard": {
+      "title": "Data Center — DCIM",
+      "subtitle": "Physical infrastructure management",
+      "buildings": "Buildings",
+      "rooms": "Rooms / DCs",
+      "racks": "Active racks",
+      "alerts": "Active alerts",
+      "no_alerts": "No power alerts",
+      "manage": "Manage buildings and rooms",
+      "view_all_alerts": "View all alerts"
+    },
+    "building": {
+      "title": "Buildings",
+      "new": "New building",
+      "name": "Name",
+      "code": "Code",
+      "branch": "Branch"
+    },
+    "floor": {
+      "title": "Floors",
+      "new": "New floor",
+      "name": "Name",
+      "level": "Level"
+    },
+    "room": {
+      "title": "Rooms / DCs",
+      "new": "New room",
+      "name": "Name",
+      "kind": "Type",
+      "kind_cpd": "Data Center",
+      "kind_technical": "Technical room",
+      "width": "Width (mm)",
+      "depth": "Depth (mm)",
+      "view": "View plan",
+      "no_rooms": "No rooms configured",
+      "footprints": "Grid footprints",
+      "no_footprints": "No footprints defined",
+      "plan_placeholder": "2D floor plan — coming in next release",
+      "edit_toggle": "Edit room",
+      "save": "Save changes",
+      "cancel": "Cancel",
+      "heatmap": "Heatmap",
+      "heatmap_on": "Heatmap ON"
+    },
+    "admin": {
+      "title": "DCIM Administration",
+      "subtitle": "Manage buildings, floors and rooms",
+      "select_branch": "Select a branch",
+      "select_building": "Select a building",
+      "select_floor": "Select a floor",
+      "no_buildings": "No buildings",
+      "no_floors": "No floors",
+      "no_rooms": "No rooms"
+    },
+    "alert": {
+      "title": "Power alerts",
+      "rack": "Rack",
+      "usage": "Usage",
+      "max": "Max"
+    },
+    "actions": {
+      "save": "Save",
+      "cancel": "Cancel",
+      "delete": "Delete",
+      "edit": "Edit",
+      "add": "Add"
+    },
+    "confirm_delete": "Confirm deletion?",
+    "place": {
+      "title": "Place in rack",
+      "remove": "Remove from rack",
+      "branch": "Branch",
+      "building": "Building",
+      "floor": "Floor",
+      "room": "Room",
+      "rack": "Rack",
+      "u_position": "U position (from bottom)",
+      "size_u": "Size (U)",
+      "power_w": "Power (W)",
+      "orientation": "Orientation",
+      "front": "Front",
+      "rear": "Rear",
+      "conflict": "Conflict: U slots already occupied at that orientation",
+      "capacity": "Exceeds rack capacity",
+      "save": "Confirm placement",
+      "remove_confirm": "Remove CI from rack?",
+      "select_branch": "Select branch...",
+      "select_building": "Select building...",
+      "select_floor": "Select floor...",
+      "select_room": "Select room...",
+      "select_rack": "Select rack...",
+      "no_racks": "No racks in this room",
+      "current": "Current placement"
+    }
   }
 }

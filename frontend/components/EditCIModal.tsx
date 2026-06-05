@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X, Loader2, AlertTriangle } from "lucide-react";
+import { X, Loader2, AlertTriangle, MapPin } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
+import PlaceCIModal from "@/components/dcim/PlaceCIModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,7 @@ interface CI {
   spofRisk: boolean;
   containsPii: boolean;
   dataClassification: string | null;
+  hardware?: { serialNumber: string } | null;
 }
 
 interface FormState {
@@ -88,6 +91,8 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClose: () => void; onUpdated: () => void }): React.ReactElement {
   const { t } = useLanguage();
+  const { isAdmin } = useAuth();
+  const [showPlaceModal, setShowPlaceModal] = useState(false);
   const [form, setForm] = useState<FormState>({
     name: ci.name,
     criticality: ci.criticality,
@@ -391,15 +396,34 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>
-            <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? t("common.saving") : t("add_ci_modal.save_changes")}
-            </button>
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            <div>
+              {isAdmin && ci.hardware && (
+                <button type="button" onClick={() => setShowPlaceModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                  <MapPin className="h-4 w-4" /> {t("dcim.place.title")}
+                </button>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">{t("actions.cancel")}</button>
+              <button type="submit" disabled={submitting} className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
+                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitting ? t("common.saving") : t("add_ci_modal.save_changes")}
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      {showPlaceModal && (
+        <PlaceCIModal
+          ciId={ci.id}
+          ciName={ci.name}
+          onClose={() => setShowPlaceModal(false)}
+          onPlaced={() => { setShowPlaceModal(false); onUpdated(); }}
+        />
+      )}
     </div>
   );
 }

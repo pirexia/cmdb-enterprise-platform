@@ -232,11 +232,12 @@ model Branch {
   physicalAddress String?     @map("physical_address") @db.VarChar(500)
   supportAreaId   String      @db.Uuid @map("support_area_id")
 
-  supportArea     SupportArea @relation(fields: [supportAreaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  supportArea     SupportArea    @relation(fields: [supportAreaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cis             CI[]
+  buildings       DcimBuilding[]
 
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   @@index([supportAreaId])
   @@map("branches")
@@ -328,6 +329,8 @@ model CI {
 
   hardware        HardwareCI?
   software        SoftwareCI?
+  rackContents    HardwareCI[]   @relation("CIRackContents")
+  dcimFootprint   DcimFootprint? @relation("DCIMFootprintRack")
 
   vulnerabilities Json?        @map("vulnerabilities")
   agentStatus     Json?        @map("agent_status")
@@ -389,13 +392,30 @@ model CIRelation {
 }
 
 model HardwareCI {
-  ciId         String @id @db.Uuid @map("ci_id")
-  serialNumber String @unique @map("serial_number") @db.VarChar(255)
-  model        String @db.VarChar(255)
-  manufacturer String @db.VarChar(255)
-  
-  ci           CI     @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ciId            String  @id @db.Uuid @map("ci_id")
+  serialNumber    String  @unique @map("serial_number") @db.VarChar(255)
+  model           String  @db.VarChar(255)
+  manufacturer    String  @db.VarChar(255)
 
+  // DCIM — U occupancy & power (applies to all hardware CIs placed in a rack)
+  sizeU           Int?    @map("size_u")
+  powerW          Int?    @map("power_w")
+
+  // DCIM — Rack-specific dimensions & capacity (only set when ciType = RACK)
+  rackTotalU      Int?    @map("rack_total_u")
+  rackPowerMaxW   Int?    @map("rack_power_max_w")
+  rackWidthMm     Int?    @map("rack_width_mm")
+  rackDepthMm     Int?    @map("rack_depth_mm")
+
+  // DCIM — Positioning within a parent rack
+  parentRackCiId  String? @db.Uuid @map("parent_rack_ci_id")
+  uPosition       Int?    @map("u_position")
+  orientation     String? @db.VarChar(10)
+
+  ci              CI      @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  parentRackCi    CI?     @relation("CIRackContents", fields: [parentRackCiId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([parentRackCiId])
   @@map("hardware_cis")
 }
 
@@ -853,4 +873,101 @@ model BulkImportItem {
   @@index([batchId])
   @@index([status])
   @@map("bulk_import_item")
+}
+
+// ─── DCIM — Data Center Infrastructure Management ─────────────────────────────
+
+model DcimBuilding {
+  id        String      @id @default(uuid()) @db.Uuid
+  branchId  String      @db.Uuid @map("branch_id")
+  name      String      @db.VarChar(255)
+  code      String?     @db.VarChar(50)
+  notes     String?
+
+  branch    Branch      @relation(fields: [branchId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  floors    DcimFloor[]
+
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("dcim_buildings")
+}
+
+model DcimFloor {
+  id          String       @id @default(uuid()) @db.Uuid
+  buildingId  String       @db.Uuid @map("building_id")
+  name        String       @db.VarChar(255)
+  levelNumber Int          @map("level_number")
+  notes       String?
+
+  building    DcimBuilding @relation(fields: [buildingId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  rooms       DcimRoom[]
+
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  @@unique([buildingId, levelNumber])
+  @@map("dcim_floors")
+}
+
+model DcimRoom {
+  id          String          @id @default(uuid()) @db.Uuid
+  floorId     String          @db.Uuid @map("floor_id")
+  name        String          @db.VarChar(255)
+  kind        String          @db.VarChar(30)
+  widthMm     Int?            @map("width_mm")
+  depthMm     Int?            @map("depth_mm")
+  notes       String?
+
+  floor       DcimFloor       @relation(fields: [floorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  aisles      DcimAisle[]
+  footprints  DcimFootprint[]
+
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@unique([floorId, name])
+  @@map("dcim_rooms")
+}
+
+model DcimAisle {
+  id         String          @id @default(uuid()) @db.Uuid
+  roomId     String          @db.Uuid @map("room_id")
+  name       String          @db.VarChar(255)
+  kind       String?         @db.VarChar(20)
+  orderIdx   Int             @map("order_idx")
+
+  room       DcimRoom        @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  footprints DcimFootprint[]
+
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+
+  @@unique([roomId, name])
+  @@map("dcim_aisles")
+}
+
+model DcimFootprint {
+  id         String     @id @default(uuid()) @db.Uuid
+  roomId     String     @db.Uuid @map("room_id")
+  aisleId    String?    @db.Uuid @map("aisle_id")
+  label      String     @db.VarChar(50)
+  kind       String     @db.VarChar(30)
+  active     Boolean    @default(true)
+  gridX      Int        @map("grid_x")
+  gridY      Int        @map("grid_y")
+  rackCiId   String?    @unique @db.Uuid @map("rack_ci_id")
+
+  room       DcimRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  aisle      DcimAisle? @relation(fields: [aisleId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  rackCi     CI?        @relation("DCIMFootprintRack", fields: [rackCiId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  @@unique([roomId, gridX, gridY])
+  @@index([roomId])
+  @@map("dcim_footprints")
 }

@@ -267,12 +267,21 @@ export default function RoomPage() {
       </div>
 
       {/* ── Edit mode banner ── */}
-      {planEditMode && (
-        <div className="flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-700">
-          <Edit3 className="h-3.5 w-3.5 shrink-0" />
-          <span>Modo edición — Haz clic en <strong>+</strong> para añadir una huella. Haz clic en una huella existente para cambiar su tipo o eliminarla.</span>
-        </div>
-      )}
+      {planEditMode && (() => {
+        const cols = room.widthMm ? Math.ceil(room.widthMm / 1200) : 8;
+        const rows = room.depthMm ? Math.ceil(room.depthMm / 1200) : 8;
+        return (
+          <div className="flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-700">
+            <Edit3 className="h-3.5 w-3.5 shrink-0" />
+            <span>
+              Modo edición — Grid <strong>{cols}×{rows}</strong> (cada celda 1200mm — rack 600/800mm o pasillo frío/caliente).
+              Clic en <strong>+</strong> para añadir huella; clic en una huella existente para cambiar tipo o eliminar.
+              {!room.widthMm && <span className="ml-1 text-amber-600">⚠ Define ancho/fondo de la sala para un grid ajustado.</span>}
+              <span className="ml-2 text-amber-600">Pan con botón medio/derecho del ratón.</span>
+            </span>
+          </div>
+        );
+      })()}
 
       {/* ── Footprint creation form (inline modal) ── */}
       {addForm && (
@@ -320,6 +329,8 @@ export default function RoomPage() {
             <RoomPlan2D
               footprints={footprintData}
               aisles={room.aisles}
+              roomWidthMm={room.widthMm}
+              roomDepthMm={room.depthMm}
               selectedRackCiId={selectedRack?.rackCiId ?? null}
               editMode={planEditMode}
               heatmapData={showHeatmap ? (heatmapData ?? undefined) : undefined}

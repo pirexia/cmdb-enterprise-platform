@@ -46,6 +46,8 @@ interface Props {
   footprints:          FpData[];
   aisles:              AisleOption[];
   heatmapData?:        HeatmapPoint[];
+  roomWidthMm?:        number | null;
+  roomDepthMm?:        number | null;
   selectedRackCiId?:   string | null;
   editMode:            boolean;
   onClickRack:         (fp: FpData) => void;
@@ -56,8 +58,11 @@ interface Props {
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
-const CELL = 72;    // px per grid cell
-const GAP  = 4;
+const CELL    = 72;    // px per grid cell on screen
+const GAP     = 4;
+const CELL_MM = 1200;  // DCIM standard: 1200mm per grid cell — fits a rack (600/800mm) or a cold/hot aisle (1200mm)
+const DEFAULT_GRID_COLS = 8;
+const DEFAULT_GRID_ROWS = 8;
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -190,6 +195,7 @@ const NODE_TYPES = { footprint: FootprintNode, addCell: AddCellNode };
 
 function PlanInner({
   footprints, aisles, selectedRackCiId, editMode, heatmapData,
+  roomWidthMm, roomDepthMm,
   onClickRack, onCreateFootprint, onDeleteFootprint, onUpdateFootprint,
 }: Props) {
   // Build a lookup: gridX,gridY → usagePct (only for rack footprints)
@@ -201,9 +207,20 @@ function PlanInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
-  // Track grid size for add-cell overlay
-  const maxX = footprints.length ? Math.max(...footprints.map((f) => f.gridX)) : 3;
-  const maxY = footprints.length ? Math.max(...footprints.map((f) => f.gridY)) : 3;
+  // Grid size derives from room dimensions when available.
+  // Each cell = CELL_MM (1200mm) — fits a rack (600/800mm) + a 1200mm cold/hot aisle.
+  // Footprints outside the calculated grid are still rendered (in case a room was resized smaller).
+  const gridCols = useMemo(() => {
+    const fromRoom = roomWidthMm ? Math.ceil(roomWidthMm / CELL_MM) : 0;
+    const fromFps  = footprints.length ? Math.max(...footprints.map((f) => f.gridX)) + 1 : 0;
+    return Math.max(fromRoom, fromFps, DEFAULT_GRID_COLS);
+  }, [roomWidthMm, footprints]);
+
+  const gridRows = useMemo(() => {
+    const fromRoom = roomDepthMm ? Math.ceil(roomDepthMm / CELL_MM) : 0;
+    const fromFps  = footprints.length ? Math.max(...footprints.map((f) => f.gridY)) + 1 : 0;
+    return Math.max(fromRoom, fromFps, DEFAULT_GRID_ROWS);
+  }, [roomDepthMm, footprints]);
 
   const occupiedSet = useMemo(
     () => new Set(footprints.map((f) => `${f.gridX},${f.gridY}`)),
@@ -226,33 +243,33 @@ function PlanInner({
       },
     }));
 
-    // Add-cell nodes in edit mode for cells adjacent to existing footprints
+    // Add-cell nodes in edit mode: fill the whole grid (within room bounds).
     const addNodes: Node[] = [];
     if (editMode) {
-      for (let y = 0; y <= maxY + 1; y++) {
-        for (let x = 0; x <= maxX + 1; x++) {
+      for (let y = 0; y < gridRows; y++) {
+        for (let x = 0; x < gridCols; x++) {
           if (!occupiedSet.has(`${x},${y}`)) {
-            // only show add nodes near existing footprints (within 1 cell) or always in small grids
-            const nearFp = footprints.some((f) => Math.abs(f.gridX - x) <= 1 && Math.abs(f.gridY - y) <= 1);
-            if (nearFp || footprints.length === 0) {
-              addNodes.push({
-                id       : `add-${x}-${y}`,
-                type     : "addCell",
-                position : { x: x * (CELL + GAP), y: y * (CELL + GAP) },
-                draggable: false,
-                selectable: false,
-                data     : { onAdd: () => onCreateFootprint(x, y) },
-              });
-            }
+            addNodes.push({
+              id        : `add-${x}-${y}`,
+              type      : "addCell",
+              position  : { x: x * (CELL + GAP), y: y * (CELL + GAP) },
+              draggable : false,
+              selectable: false,
+              data      : { onAdd: () => onCreateFootprint(x, y) },
+            });
           }
         }
       }
     }
 
     setNodes([...fpNodes, ...addNodes]);
-  }, [footprints, editMode, selectedRackCiId, maxX, maxY, occupiedSet, onClickRack, onDeleteFootprint, onUpdateFootprint, onCreateFootprint, setNodes]);
+  }, [footprints, editMode, selectedRackCiId, gridCols, gridRows, occupiedSet, heatmapData, heatMap, onClickRack, onDeleteFootprint, onUpdateFootprint, onCreateFootprint, setNodes]);
 
   useEffect(() => { buildNodes(); }, [buildNodes]);
+
+  // In edit mode: pan with middle/right mouse button only — keeps left-click free for AddCell + FootprintNode clicks.
+  // In read mode: standard pan with left button (no clickable add cells anyway).
+  const panOnDragModes = editMode ? [1, 2] : true;
 
   return (
     <ReactFlow
@@ -264,11 +281,12 @@ function PlanInner({
       fitViewOptions={{ padding: 0.2 }}
       minZoom={0.3}
       maxZoom={3}
-      panOnDrag
+      panOnDrag={panOnDragModes as any}
       zoomOnScroll
       nodesDraggable={false}
       nodesConnectable={false}
       elementsSelectable={false}
+      selectNodesOnDrag={false}
       style={{ background: "#f8fafc" }}
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e2e8f0" />

@@ -313,6 +313,7 @@ export default function RoomPage() {
               )}
             </div>
           ) : (
+            <>
             <RoomPlan2D
               footprints={footprintData}
               aisles={room.aisles}
@@ -337,6 +338,7 @@ export default function RoomPage() {
                 ))}
               </div>
             )}
+            </>
           )}
         </div>
 

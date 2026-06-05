@@ -103,6 +103,7 @@ function FootprintNode({ data, selected }: NodeProps) {
 
   return (
     <div
+      className="nopan nodrag"
       style={{
         width      : CELL_W,
         height     : CELL_H,
@@ -121,9 +122,7 @@ function FootprintNode({ data, selected }: NodeProps) {
         borderRadius: 2,
         transition : "border-color 0.15s",
       }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => {
-        e.stopPropagation();
+      onClick={() => {
         if (isRack && !editMode) onClickRack(fp);
         if (editMode) setShowKindPicker((v) => !v);
       }}
@@ -149,10 +148,9 @@ function FootprintNode({ data, selected }: NodeProps) {
 
       {/* Edit mode overlay */}
       {editMode && (
-        <div style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2 }}
-             onMouseDown={(e) => e.stopPropagation()}>
+        <div className="nopan nodrag" style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2 }}>
           <button
-            onMouseDown={(e) => e.stopPropagation()}
+            className="nopan nodrag"
             onClick={(e) => { e.stopPropagation(); onDelete(fp.id); }}
             style={{ background: "#fee2e2", border: "none", borderRadius: 2, padding: "1px 3px", cursor: "pointer" }}
           >
@@ -164,13 +162,12 @@ function FootprintNode({ data, selected }: NodeProps) {
       {/* Kind picker popup */}
       {editMode && showKindPicker && (
         <div
+          className="nopan nodrag"
           style={{ position: "absolute", top: CELL_H + 4, left: 0, zIndex: 100, background: "white", border: "1px solid #e2e8f0", borderRadius: 4, padding: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 130 }}
-          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           {["RACK_SLOT", "INFRASTRUCTURE", "EMPTY"].map((k) => (
-            <button key={k}
-              onMouseDown={(e) => e.stopPropagation()}
+            <button key={k} className="nopan nodrag"
               onClick={(e) => { e.stopPropagation(); onChangeKind(fp.id, k); setShowKindPicker(false); }}
               style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11,
                 background: fp.kind === k ? "#f0f9ff" : "transparent", border: "none", cursor: "pointer",
@@ -179,7 +176,7 @@ function FootprintNode({ data, selected }: NodeProps) {
             </button>
           ))}
           <hr style={{ margin: "4px 0", borderColor: "#f1f5f9" }} />
-          <button onMouseDown={(e) => e.stopPropagation()}
+          <button className="nopan nodrag"
                   onClick={(e) => { e.stopPropagation(); setShowKindPicker(false); }}
                   style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11, background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8" }}>
             Cerrar
@@ -196,10 +193,9 @@ function AddCellNode({ data }: NodeProps) {
   const { onAdd } = data as { onAdd: () => void };
   return (
     <div
+      className="nopan nodrag"
       style={{ width: CELL_W, height: CELL_H, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "rgba(255,255,255,0.4)" }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onAdd(); }}
-      onPointerDown={(e) => e.stopPropagation()}
+      onClick={onAdd}
     >
       <Plus size={20} color="#64748b" strokeWidth={2.5} />
     </div>
@@ -285,9 +281,8 @@ function PlanInner({
 
   useEffect(() => { buildNodes(); }, [buildNodes]);
 
-  // In edit mode: pan with middle/right mouse button only — keeps left-click free for AddCell + FootprintNode clicks.
-  // In read mode: standard pan with left button (no clickable add cells anyway).
-  const panOnDragModes = editMode ? [1, 2] : true;
+  // Custom nodes use className="nopan nodrag" to opt out of ReactFlow's pan/drag
+  // → clicks are processed normally. We can leave panOnDrag at default everywhere.
 
   return (
     <ReactFlow
@@ -299,7 +294,7 @@ function PlanInner({
       fitViewOptions={{ padding: 0.2 }}
       minZoom={0.3}
       maxZoom={3}
-      panOnDrag={panOnDragModes as any}
+      panOnDrag
       zoomOnScroll
       nodesDraggable={false}
       nodesConnectable={false}

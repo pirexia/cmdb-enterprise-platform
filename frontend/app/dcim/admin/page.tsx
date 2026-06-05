@@ -147,9 +147,11 @@ export default function DcimAdminPage() {
     if (!f("name").trim() || !f("floorId")) return;
     setLoading(true);
     try {
-      const body = { floorId: f("floorId"), name: f("name"), kind: f("kind") || "CPD", widthMm: f("widthMm") ? parseInt(f("widthMm")) : null, depthMm: f("depthMm") ? parseInt(f("depthMm")) : null };
+      const widthMm = f("widthM") ? Math.round(parseFloat(f("widthM")) * 1000) : null;
+      const depthMm = f("depthM") ? Math.round(parseFloat(f("depthM")) * 1000) : null;
+      const body = { floorId: f("floorId"), name: f("name"), kind: f("kind") || "CPD", widthMm, depthMm };
       if (editKind === "room" && editId) {
-        await apiFetch(`/api/dcim/rooms/${editId}`, { method: "PATCH", body: JSON.stringify({ name: f("name"), kind: f("kind"), widthMm: body.widthMm, depthMm: body.depthMm }) });
+        await apiFetch(`/api/dcim/rooms/${editId}`, { method: "PATCH", body: JSON.stringify({ name: f("name"), kind: f("kind"), widthMm, depthMm }) });
       } else {
         await apiFetch("/api/dcim/rooms", { method: "POST", body: JSON.stringify(body) });
       }
@@ -347,8 +349,8 @@ export default function DcimAdminPage() {
                                           <option value="CPD">{t("dcim.room.kind_cpd")}</option>
                                           <option value="TECHNICAL_ROOM">{t("dcim.room.kind_technical")}</option>
                                         </Sel>
-                                        <Input type="number" value={f("widthMm")} onChange={(e) => setForm((p) => ({ ...p, widthMm: e.target.value }))} className="w-24" placeholder="Ancho mm" />
-                                        <Input type="number" value={f("depthMm")} onChange={(e) => setForm((p) => ({ ...p, depthMm: e.target.value }))} className="w-24" placeholder="Fondo mm" />
+                                        <Input type="number" step="0.1" min="0" value={f("widthM")} onChange={(e) => setForm((p) => ({ ...p, widthM: e.target.value }))} className="w-24" placeholder="Ancho (m)" />
+                                        <Input type="number" step="0.1" min="0" value={f("depthM")} onChange={(e) => setForm((p) => ({ ...p, depthM: e.target.value }))} className="w-24" placeholder="Fondo (m)" />
                                         <button onClick={saveRoom} disabled={loading} className="rounded-none bg-green-600 px-2 py-1 text-xs text-white"><Check className="h-3 w-3" /></button>
                                         <button onClick={cancelEdit} className="rounded-none border border-slate-300 px-2 py-1 text-xs"><X className="h-3 w-3" /></button>
                                       </div>
@@ -367,8 +369,8 @@ export default function DcimAdminPage() {
                                                   <option value="CPD">{t("dcim.room.kind_cpd")}</option>
                                                   <option value="TECHNICAL_ROOM">{t("dcim.room.kind_technical")}</option>
                                                 </Sel>
-                                                <Input type="number" value={f("widthMm")} onChange={(e) => setForm((p) => ({ ...p, widthMm: e.target.value }))} className="w-24" placeholder="Ancho mm" />
-                                                <Input type="number" value={f("depthMm")} onChange={(e) => setForm((p) => ({ ...p, depthMm: e.target.value }))} className="w-24" placeholder="Fondo mm" />
+                                                <Input type="number" step="0.1" min="0" value={f("widthM")} onChange={(e) => setForm((p) => ({ ...p, widthM: e.target.value }))} className="w-24" placeholder="Ancho (m)" />
+                                                <Input type="number" step="0.1" min="0" value={f("depthM")} onChange={(e) => setForm((p) => ({ ...p, depthM: e.target.value }))} className="w-24" placeholder="Fondo (m)" />
                                                 <button onClick={saveRoom} disabled={loading} className="rounded-none bg-green-600 px-2 py-1 text-xs text-white"><Check className="h-3 w-3" /></button>
                                                 <button onClick={cancelEdit} className="rounded-none border border-slate-300 px-2 py-1 text-xs"><X className="h-3 w-3" /></button>
                                               </div>
@@ -379,10 +381,10 @@ export default function DcimAdminPage() {
                                                   <span className={`ml-2 rounded-full px-1.5 py-0.5 text-xs ${room.kind === "CPD" ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
                                                     {room.kind === "CPD" ? t("dcim.room.kind_cpd") : t("dcim.room.kind_technical")}
                                                   </span>
-                                                  {room.widthMm && <span className="ml-2 text-xs text-slate-400">{room.widthMm}×{room.depthMm}mm</span>}
+                                                  {room.widthMm && <span className="ml-2 text-xs text-slate-400">{(room.widthMm / 1000).toFixed(1)}×{((room.depthMm ?? 0) / 1000).toFixed(1)}m</span>}
                                                 </div>
                                                 <div className="flex gap-1">
-                                                  <button onClick={() => startEdit("room", room.id, { name: room.name, kind: room.kind, widthMm: String(room.widthMm ?? ""), depthMm: String(room.depthMm ?? ""), floorId: floor.id })}
+                                                  <button onClick={() => startEdit("room", room.id, { name: room.name, kind: room.kind, widthM: room.widthMm ? (room.widthMm / 1000).toString() : "", depthM: room.depthMm ? (room.depthMm / 1000).toString() : "", floorId: floor.id })}
                                                     className="p-1 text-slate-400 hover:text-blue-600"><Pencil className="h-3 w-3" /></button>
                                                   <button onClick={() => deleteRoom(room.id, floor.id)} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="h-3 w-3" /></button>
                                                 </div>

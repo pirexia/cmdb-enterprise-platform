@@ -90,8 +90,8 @@ export default function RoomPage() {
       const data: RoomPlan = await r.json();
       setRoom(data);
       setEditName(data.name); setEditKind(data.kind);
-      setEditWidth(data.widthMm?.toString() ?? "");
-      setEditDepth(data.depthMm?.toString() ?? "");
+      setEditWidth(data.widthMm ? (data.widthMm / 1000).toString() : "");
+      setEditDepth(data.depthMm ? (data.depthMm / 1000).toString() : "");
     } catch { setError(t("dcim.error")); }
     finally { setLoading(false); }
   }, [id, t]);
@@ -104,7 +104,12 @@ export default function RoomPage() {
     try {
       await apiFetch(`/api/dcim/rooms/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ name: editName, kind: editKind, widthMm: editWidth ? parseInt(editWidth) : null, depthMm: editDepth ? parseInt(editDepth) : null }),
+        body: JSON.stringify({
+          name    : editName,
+          kind    : editKind,
+          widthMm : editWidth ? Math.round(parseFloat(editWidth) * 1000) : null,
+          depthMm : editDepth ? Math.round(parseFloat(editDepth) * 1000) : null,
+        }),
       });
       setEditingRoom(false); await load();
     } catch { setError(t("dcim.error")); } finally { setSaving(false); }
@@ -204,8 +209,9 @@ export default function RoomPage() {
                   <option value="CPD">{t("dcim.room.kind_cpd")}</option>
                   <option value="TECHNICAL_ROOM">{t("dcim.room.kind_technical")}</option>
                 </Sel>
-                <Input type="number" value={editWidth} onChange={(e) => setEditWidth(e.target.value)} placeholder="Ancho mm" className="w-24" />
-                <Input type="number" value={editDepth} onChange={(e) => setEditDepth(e.target.value)} placeholder="Fondo mm" className="w-24" />
+                <Input type="number" step="0.1" min="0" value={editWidth} onChange={(e) => setEditWidth(e.target.value)} placeholder="Ancho (m)" className="w-24" />
+                <Input type="number" step="0.1" min="0" value={editDepth} onChange={(e) => setEditDepth(e.target.value)} placeholder="Fondo (m)" className="w-24" />
+                <span className="text-xs text-slate-400">en metros</span>
               </div>
             ) : (
               <>
@@ -215,7 +221,7 @@ export default function RoomPage() {
                   <span className={`font-medium ${room.kind === "CPD" ? "text-indigo-600" : "text-slate-600"}`}>
                     {room.kind === "CPD" ? t("dcim.room.kind_cpd") : t("dcim.room.kind_technical")}
                   </span>
-                  {room.widthMm && <span className="ml-2 text-slate-400">{room.widthMm}×{room.depthMm}mm</span>}
+                  {room.widthMm && <span className="ml-2 text-slate-400">{(room.widthMm / 1000).toFixed(1)} × {((room.depthMm ?? 0) / 1000).toFixed(1)} m</span>}
                 </p>
               </>
             )}
@@ -270,14 +276,18 @@ export default function RoomPage() {
       {planEditMode && (() => {
         const cols = room.widthMm ? Math.ceil(room.widthMm / 800) : 8;
         const rows = room.depthMm ? Math.ceil(room.depthMm / 1200) : 6;
+        const wM = room.widthMm ? (room.widthMm / 1000).toFixed(1) : null;
+        const dM = room.depthMm ? (room.depthMm / 1000).toFixed(1) : null;
         return (
           <div className="flex items-center gap-2 bg-amber-50 border-b border-amber-200 px-6 py-2 text-xs text-amber-700">
             <Edit3 className="h-3.5 w-3.5 shrink-0" />
             <span>
-              Modo edición — Grid <strong>{cols}×{rows}</strong> · celda <strong>800mm ancho × 1200mm fondo</strong> (rack estándar; los pasillos frío/caliente ocupan una fila entera = 1200mm).
-              Clic en <strong>+</strong> para añadir huella; clic en una huella existente para cambiar tipo o eliminar.
-              {!room.widthMm && <span className="ml-1 text-amber-600">⚠ Define ancho/fondo de la sala para un grid ajustado.</span>}
-              <span className="ml-2 text-amber-600">Pan con botón medio/derecho del ratón.</span>
+              Modo edición — Grid <strong>{cols}×{rows}</strong>
+              {wM && <span> ({wM}×{dM}m)</span>}
+              · celda <strong>800mm × 1200mm</strong> (rack estándar; los pasillos frío/caliente ocupan una fila entera = 1200mm de fondo).
+              Clic izquierdo en <strong>+</strong> para añadir huella; clic en una huella existente para cambiar tipo o eliminar.
+              {!room.widthMm && <span className="ml-1 text-amber-600">⚠ Define ancho/fondo de la sala (en metros) para un grid ajustado.</span>}
+              <span className="ml-2 text-amber-600">Pan con botón medio/derecho del ratón. Zoom con la rueda.</span>
             </span>
           </div>
         );

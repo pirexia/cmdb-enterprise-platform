@@ -121,7 +121,9 @@ function FootprintNode({ data, selected }: NodeProps) {
         borderRadius: 2,
         transition : "border-color 0.15s",
       }}
-      onClick={() => {
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
         if (isRack && !editMode) onClickRack(fp);
         if (editMode) setShowKindPicker((v) => !v);
       }}
@@ -147,8 +149,10 @@ function FootprintNode({ data, selected }: NodeProps) {
 
       {/* Edit mode overlay */}
       {editMode && (
-        <div style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2 }}>
+        <div style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2 }}
+             onMouseDown={(e) => e.stopPropagation()}>
           <button
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); onDelete(fp.id); }}
             style={{ background: "#fee2e2", border: "none", borderRadius: 2, padding: "1px 3px", cursor: "pointer" }}
           >
@@ -161,10 +165,13 @@ function FootprintNode({ data, selected }: NodeProps) {
       {editMode && showKindPicker && (
         <div
           style={{ position: "absolute", top: CELL_H + 4, left: 0, zIndex: 100, background: "white", border: "1px solid #e2e8f0", borderRadius: 4, padding: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 130 }}
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           {["RACK_SLOT", "INFRASTRUCTURE", "EMPTY"].map((k) => (
-            <button key={k} onClick={() => { onChangeKind(fp.id, k); setShowKindPicker(false); }}
+            <button key={k}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onChangeKind(fp.id, k); setShowKindPicker(false); }}
               style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11,
                 background: fp.kind === k ? "#f0f9ff" : "transparent", border: "none", cursor: "pointer",
                 color: fp.kind === k ? "#0ea5e9" : "#374151", borderRadius: 2 }}>
@@ -172,7 +179,9 @@ function FootprintNode({ data, selected }: NodeProps) {
             </button>
           ))}
           <hr style={{ margin: "4px 0", borderColor: "#f1f5f9" }} />
-          <button onClick={() => setShowKindPicker(false)} style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11, background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8" }}>
+          <button onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setShowKindPicker(false); }}
+                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11, background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8" }}>
             Cerrar
           </button>
         </div>
@@ -187,10 +196,12 @@ function AddCellNode({ data }: NodeProps) {
   const { onAdd } = data as { onAdd: () => void };
   return (
     <div
-      style={{ width: CELL_W, height: CELL_H, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "transparent" }}
-      onClick={onAdd}
+      style={{ width: CELL_W, height: CELL_H, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "rgba(255,255,255,0.4)" }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onAdd(); }}
+      onPointerDown={(e) => e.stopPropagation()}
     >
-      <Plus size={16} color="#94a3b8" />
+      <Plus size={20} color="#64748b" strokeWidth={2.5} />
     </div>
   );
 }

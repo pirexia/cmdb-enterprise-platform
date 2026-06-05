@@ -22,7 +22,8 @@
     "certificates": "SSL-Zertifikate",
     "audit": "Audit",
     "settings": "Einstellungen",
-    "assistant": "KI-Assistent"
+    "assistant": "KI-Assistent",
+    "dcim": "Technikräume & RZ"
   },
   "actions": {
     "logout": "Abmelden",
@@ -582,8 +583,19 @@
     "license_metrics": "Lizenzmetriken",
     "license_types": "Lizenztypen",
     "models": {
-      "eol_date": "EOL",
-      "eos_date": "EOS"
+      "new": "Neues Modell",
+      "placeholder": "z.B.: PowerEdge R740",
+      "manufacturer_label": "— Hersteller —",
+      "type_label": "— Typ —",
+      "type_software": "Software",
+      "type_hardware": "Hardware",
+      "suggest_dates": "Standarddaten vorschlagen",
+      "eol_search": "EOL-Katalog",
+      "empty": "Keine Modelle erfasst.",
+      "consult_btn": "Abfragen",
+      "sync_eol": "EOL",
+      "consultation_center": "Lebenszyklusberatungszentrum",
+      "suggested_dates": "Vorgeschlagene Daten"
     },
     "support_areas": {
       "new": "Neuer Supportbereich",
@@ -606,21 +618,6 @@
       "delete_all": "Alle löschen",
       "empty": "Keine Hersteller erfasst.",
       "confirm_delete_all": "30 beliebte IT-Hersteller einfügen? Duplikate werden übersprungen."
-    },
-    "models": {
-      "new": "Neues Modell",
-      "placeholder": "z.B.: PowerEdge R740",
-      "manufacturer_label": "— Hersteller —",
-      "type_label": "— Typ —",
-      "type_software": "Software",
-      "type_hardware": "Hardware",
-      "suggest_dates": "Standarddaten vorschlagen",
-      "eol_search": "EOL-Katalog",
-      "empty": "Keine Modelle erfasst.",
-      "consult_btn": "Abfragen",
-      "sync_eol": "EOL",
-      "consultation_center": "Lebenszyklusberatungszentrum",
-      "suggested_dates": "Vorgeschlagene Daten"
     },
     "providers": {
       "new": "Neuer Anbieter",
@@ -1284,5 +1281,76 @@
     "reindex": "Neu indexieren",
     "reindexConfirm": "Dieses Dokument neu indexieren?",
     "reindexQueued": "Dokument zur Neuindexierung in Warteschlange"
+  },
+  "dcim": {
+    "title": "DCIM",
+    "loading": "Laden...",
+    "error": "Fehler beim Laden",
+    "dashboard": {
+      "title": "Rechenzentrum — DCIM",
+      "subtitle": "Physische Infrastrukturverwaltung",
+      "buildings": "Gebäude",
+      "rooms": "Räume / RZ",
+      "racks": "Aktive Racks",
+      "alerts": "Aktive Warnungen",
+      "no_alerts": "Keine Leistungswarnungen",
+      "manage": "Gebäude und Räume verwalten",
+      "view_all_alerts": "Alle Warnungen anzeigen"
+    },
+    "building": {
+      "title": "Gebäude",
+      "new": "Neues Gebäude",
+      "name": "Name",
+      "code": "Code",
+      "branch": "Niederlassung"
+    },
+    "floor": {
+      "title": "Etagen",
+      "new": "Neue Etage",
+      "name": "Name",
+      "level": "Ebene"
+    },
+    "room": {
+      "title": "Räume / RZ",
+      "new": "Neuer Raum",
+      "name": "Name",
+      "kind": "Typ",
+      "kind_cpd": "Rechenzentrum",
+      "kind_technical": "Technikraum",
+      "width": "Breite (mm)",
+      "depth": "Tiefe (mm)",
+      "view": "Plan anzeigen",
+      "no_rooms": "Keine Räume konfiguriert",
+      "footprints": "Rasterfelder",
+      "no_footprints": "Keine Felder definiert",
+      "plan_placeholder": "2D-Raumplan — in nächster Version verfügbar",
+      "edit_toggle": "Raum bearbeiten",
+      "save": "Änderungen speichern",
+      "cancel": "Abbrechen"
+    },
+    "admin": {
+      "title": "DCIM-Verwaltung",
+      "subtitle": "Gebäude, Etagen und Räume verwalten",
+      "select_branch": "Niederlassung auswählen",
+      "select_building": "Gebäude auswählen",
+      "select_floor": "Etage auswählen",
+      "no_buildings": "Keine Gebäude",
+      "no_floors": "Keine Etagen",
+      "no_rooms": "Keine Räume"
+    },
+    "alert": {
+      "title": "Leistungswarnungen",
+      "rack": "Rack",
+      "usage": "Verbrauch",
+      "max": "Max."
+    },
+    "actions": {
+      "save": "Speichern",
+      "cancel": "Abbrechen",
+      "delete": "Löschen",
+      "edit": "Bearbeiten",
+      "add": "Hinzufügen"
+    },
+    "confirm_delete": "Löschen bestätigen?"
   }
 }

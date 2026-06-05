@@ -22,7 +22,8 @@
     "certificates": "Certificati SSL",
     "audit": "Audit",
     "settings": "Impostazioni",
-    "assistant": "Assistente IA"
+    "assistant": "Assistente IA",
+    "dcim": "Sale Tecniche e DC"
   },
   "actions": {
     "logout": "Esci",
@@ -582,8 +583,19 @@
     "license_metrics": "Metriche di licenza",
     "license_types": "Tipi di licenza",
     "models": {
-      "eol_date": "EOL",
-      "eos_date": "EOS"
+      "new": "Nuovo modello",
+      "placeholder": "Es: PowerEdge R740",
+      "manufacturer_label": "— Produttore —",
+      "type_label": "— Tipo —",
+      "type_software": "Software",
+      "type_hardware": "Hardware",
+      "suggest_dates": "Suggerisci date standard",
+      "eol_search": "Catalogo EOL",
+      "empty": "Nessun modello registrato.",
+      "consult_btn": "Consulta",
+      "sync_eol": "EOL",
+      "consultation_center": "Centro di consultazione del ciclo di vita",
+      "suggested_dates": "Date suggerite"
     },
     "support_areas": {
       "new": "Nuova area di supporto",
@@ -606,21 +618,6 @@
       "delete_all": "Elimina tutto",
       "empty": "Nessun produttore registrato.",
       "confirm_delete_all": "Inserire 30 produttori IT più popolari? I duplicati verranno ignorati."
-    },
-    "models": {
-      "new": "Nuovo modello",
-      "placeholder": "Es: PowerEdge R740",
-      "manufacturer_label": "— Produttore —",
-      "type_label": "— Tipo —",
-      "type_software": "Software",
-      "type_hardware": "Hardware",
-      "suggest_dates": "Suggerisci date standard",
-      "eol_search": "Catalogo EOL",
-      "empty": "Nessun modello registrato.",
-      "consult_btn": "Consulta",
-      "sync_eol": "EOL",
-      "consultation_center": "Centro di consultazione del ciclo di vita",
-      "suggested_dates": "Date suggerite"
     },
     "providers": {
       "new": "Nuovo fornitore",
@@ -1284,5 +1281,76 @@
     "reindex": "Reindicizza",
     "reindexConfirm": "Reindicizzare questo documento?",
     "reindexQueued": "Documento accodato per la reindicizzazione"
+  },
+  "dcim": {
+    "title": "DCIM",
+    "loading": "Caricamento...",
+    "error": "Errore nel caricamento",
+    "dashboard": {
+      "title": "Data Center — DCIM",
+      "subtitle": "Gestione infrastruttura fisica",
+      "buildings": "Edifici",
+      "rooms": "Sale / DC",
+      "racks": "Rack attivi",
+      "alerts": "Avvisi attivi",
+      "no_alerts": "Nessun avviso di alimentazione",
+      "manage": "Gestisci edifici e sale",
+      "view_all_alerts": "Vedi tutti gli avvisi"
+    },
+    "building": {
+      "title": "Edifici",
+      "new": "Nuovo edificio",
+      "name": "Nome",
+      "code": "Codice",
+      "branch": "Sede"
+    },
+    "floor": {
+      "title": "Piani",
+      "new": "Nuovo piano",
+      "name": "Nome",
+      "level": "Livello"
+    },
+    "room": {
+      "title": "Sale / DC",
+      "new": "Nuova sala",
+      "name": "Nome",
+      "kind": "Tipo",
+      "kind_cpd": "Data Center",
+      "kind_technical": "Sala tecnica",
+      "width": "Larghezza (mm)",
+      "depth": "Profondità (mm)",
+      "view": "Vedi planimetria",
+      "no_rooms": "Nessuna sala configurata",
+      "footprints": "Posizioni nella planimetria",
+      "no_footprints": "Nessuna posizione definita",
+      "plan_placeholder": "Planimetria 2D — disponibile nella prossima versione",
+      "edit_toggle": "Modifica sala",
+      "save": "Salva modifiche",
+      "cancel": "Annulla"
+    },
+    "admin": {
+      "title": "Amministrazione DCIM",
+      "subtitle": "Gestisci edifici, piani e sale",
+      "select_branch": "Seleziona una sede",
+      "select_building": "Seleziona un edificio",
+      "select_floor": "Seleziona un piano",
+      "no_buildings": "Nessun edificio",
+      "no_floors": "Nessun piano",
+      "no_rooms": "Nessuna sala"
+    },
+    "alert": {
+      "title": "Avvisi di alimentazione",
+      "rack": "Rack",
+      "usage": "Consumo",
+      "max": "Max."
+    },
+    "actions": {
+      "save": "Salva",
+      "cancel": "Annulla",
+      "delete": "Elimina",
+      "edit": "Modifica",
+      "add": "Aggiungi"
+    },
+    "confirm_delete": "Confermare l'eliminazione?"
   }
 }

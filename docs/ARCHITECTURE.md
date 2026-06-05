@@ -959,3 +959,69 @@ El límite práctico sin GPU es de 2–3 peticiones simultáneas con latencia ac
 A partir de v2.3, el subsistema RAG indexa cuatro tipos de entidades estructuradas además del corpus documental: **CIs**, **contratos** (sólo el contrato raíz — los anexos se serializan dentro del texto del raíz), **licencias** (mismo patrón raíz/anexos) y **vulnerabilidades** (identificadas por un UUID v5 sintético derivado de `(ciId, cve)`). El esquema de la tabla `rag_chunks` se extiende con las columnas `entity_type` y `entity_id`, y se añade una tabla de estado `rag_entity_index` separada de `rag_document_index` porque las entidades son mutables y no versionadas en el pipeline.
 
 El control de acceso en el worker de búsqueda usa una sola cláusula `WHERE` con `LEFT JOIN` condicional: los chunks de documento siguen filtrándose por la ACL por rol existente; los chunks de entidad son visibles a todos los usuarios autenticados. Las prioridades del worker (vulnerabilidad > contrato/licencia > CI, 3 huecos por tick) y la SQL ACL completa se documentan en `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 y §10. La DPIA actualizada con los ocho riesgos STRIDE adicionales se encuentra en `docs/security/rag-dpia.md` (AMENDMENT v1.1).
+
+---
+
+## DCIM Module — v2.6.0
+
+### Backend module pattern
+
+v2.6.0 introduces the first dedicated backend module, breaking the "all code in `index.ts`" pattern:
+
+```
+backend/src/
+  index.ts              — Express app, existing routes, mounts dcimRouter
+  modules/
+    dcim/
+      router.ts         — 25 endpoints (buildings/floors/rooms/aisles/footprints/elevation/heatmap)
+      schemas.ts        — Zod schemas for all create/update bodies
+      audit.ts          — dcimAudit() helper (insert-only ISO 27001 A.8.15)
+      middleware.ts     — requireUuidParam, requireDcimAccess, requireAdmin (module-local)
+      queries.ts        — Prisma + $queryRaw (dashboard KPIs, LATERAL JOIN alerts/heatmap)
+```
+
+Mounted in `index.ts`:
+```typescript
+app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
+```
+
+This pattern (`backend/src/modules/<name>/`) is the mandated approach for all new large features from v2.7.x onward. Do not add new large feature code directly to `index.ts`.
+
+### Data model additions
+
+5 new tables (cascade delete along hierarchy: `dcim_buildings → dcim_floors → dcim_rooms → dcim_aisles/dcim_footprints`):
+
+```
+Branch ──1:N── DcimBuilding ──1:N── DcimFloor ──1:N── DcimRoom ──1:N── DcimAisle
+                                                                  └──1:N── DcimFootprint ──0:1── CI (rack)
+```
+
+9 new columns on `hardware_cis`: `size_u`, `power_w`, `rack_total_u`, `rack_power_max_w`, `rack_width_mm`, `rack_depth_mm`, `parent_rack_ci_id` (FK → CI), `u_position`, `orientation`.
+
+### Frontend components
+
+```
+frontend/
+  app/
+    dcim/
+      page.tsx               — Dashboard: KPIs, room list, power alerts widget
+      admin/page.tsx         — CRUD: Buildings → Floors → Rooms (inline, cascading)
+      rooms/[id]/page.tsx    — Room view: ReactFlow plan + rack elevation drawer
+  components/
+    dcim/
+      RoomPlan2D.tsx         — ReactFlow canvas, FootprintNode custom nodes, heatmap overlay
+      RackElevation2D.tsx    — SVG rack elevation (U slots, FRONT/REAR toggle, power bar)
+      PlaceCIModal.tsx       — CI physical placement (cascading dropdowns + conflict check)
+```
+
+### Key architectural decisions (2026-06-04)
+
+| Decision | Rationale |
+|----------|-----------|
+| `modules/dcim/` dedicated module | `index.ts` cohesion 0.02 (graphify); new pattern avoids further monolith growth |
+| Lifecycle workflow → v2.6.1 | Cross-cutting concern affecting all hardware CIs; kept DCIM scope focused |
+| M3 masters tabs → eliminated | `/admin/masters` already had 8 tabs; CRUD lives inline in `/dcim/admin` |
+| `requireUuidParam` blanket | Retroactively applied to 64 existing routes (contracts/documents/licenses/masters) — closes F-02 |
+| `PlaceCIModal` dedicated | `EditCIModal` already saturated (C74 in graphify); separation of concerns |
+| ReactFlow for `RoomPlan2D` | Already installed (used in `/map`); pan/zoom + click handlers built-in |
+| LATERAL JOIN for alerts/heatmap | Avoids N+1 queries; single SQL round-trip per endpoint |

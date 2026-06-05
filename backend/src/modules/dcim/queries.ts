@@ -46,6 +46,7 @@ export async function getRoomPlan(prisma: PrismaClient, roomId: string) {
   const room = await prisma.dcimRoom.findUnique({
     where   : { id: roomId },
     include : {
+      floor  : { include: { building: { include: { branch: { select: { id: true, name: true } } } } } },
       aisles : { orderBy: { orderIdx: 'asc' } },
       footprints : {
         orderBy : [{ gridY: 'asc' }, { gridX: 'asc' }],

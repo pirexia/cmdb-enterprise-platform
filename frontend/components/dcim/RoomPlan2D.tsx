@@ -5,6 +5,7 @@ import ReactFlow, {
   Background, Controls, BackgroundVariant,
   useNodesState, Node, NodeProps,
   ReactFlowProvider, useReactFlow,
+  type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Server, Trash2, Pencil, Check, X, Plus } from "lucide-react";
@@ -189,13 +190,19 @@ function FootprintNode({ data, selected }: NodeProps) {
 
 // ─── Add footprint node (edit mode empty cells) ───────────────────────────────
 
-function AddCellNode({ data }: NodeProps) {
-  const { onAdd } = data as { onAdd: () => void };
+// AddCellNode is decorative only — clicks on empty cells are handled by ReactFlow's
+// onPaneClick handler (which projects screen coords → grid coords).
+// pointer-events: none guarantees this overlay never blocks clicks.
+function AddCellNode() {
   return (
     <div
-      className="nopan nodrag"
-      style={{ width: CELL_W, height: CELL_H, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "rgba(255,255,255,0.4)" }}
-      onClick={onAdd}
+      style={{
+        width: CELL_W, height: CELL_H,
+        border: "2px dashed #cbd5e1", borderRadius: 2,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(255,255,255,0.4)",
+        pointerEvents: "none",
+      }}
     >
       <Plus size={20} color="#64748b" strokeWidth={2.5} />
     </div>
@@ -211,6 +218,7 @@ function PlanInner({
   roomWidthMm, roomDepthMm,
   onClickRack, onCreateFootprint, onDeleteFootprint, onUpdateFootprint,
 }: Props) {
+  const { project } = useReactFlow();
   // Build a lookup: gridX,gridY → usagePct (only for rack footprints)
   const heatMap = useMemo(() => {
     const m: Record<string, number> = {};
@@ -281,8 +289,24 @@ function PlanInner({
 
   useEffect(() => { buildNodes(); }, [buildNodes]);
 
-  // Custom nodes use className="nopan nodrag" to opt out of ReactFlow's pan/drag
-  // → clicks are processed normally. We can leave panOnDrag at default everywhere.
+  // Edit mode: when user clicks on a pane area (not a node), translate screen coords
+  // to grid coords and create a footprint if the cell is free.
+  // This is the official ReactFlow pattern (onPaneClick) and works regardless of how
+  // the AddCellNode overlay is rendered. AddCellNodes are decorative only (pointer-events:none).
+  const handlePaneClick = useCallback((event: React.MouseEvent) => {
+    if (!editMode) return;
+    const flowEl = (event.target as HTMLElement).closest('.react-flow') as HTMLElement | null;
+    if (!flowEl) return;
+    const rect = flowEl.getBoundingClientRect();
+    const screenX = event.clientX - rect.left;
+    const screenY = event.clientY - rect.top;
+    const { x, y } = project({ x: screenX, y: screenY });
+    const gx = Math.floor(x / (CELL_W + GAP));
+    const gy = Math.floor(y / (CELL_H + GAP));
+    if (gx < 0 || gy < 0 || gx >= gridCols || gy >= gridRows) return;
+    if (occupiedSet.has(`${gx},${gy}`)) return;
+    onCreateFootprint(gx, gy);
+  }, [editMode, project, gridCols, gridRows, occupiedSet, onCreateFootprint]);
 
   return (
     <ReactFlow
@@ -290,6 +314,7 @@ function PlanInner({
       edges={[]}
       onNodesChange={onNodesChange}
       nodeTypes={NODE_TYPES}
+      onPaneClick={handlePaneClick}
       fitView
       fitViewOptions={{ padding: 0.2 }}
       minZoom={0.3}
@@ -300,7 +325,7 @@ function PlanInner({
       nodesConnectable={false}
       elementsSelectable={false}
       selectNodesOnDrag={false}
-      style={{ background: "#f8fafc" }}
+      style={{ background: "#f8fafc", cursor: editMode ? "crosshair" : "default" }}
     >
       <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#e2e8f0" />
       <Controls showInteractive={false} />

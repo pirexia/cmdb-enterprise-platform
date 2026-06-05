@@ -285,9 +285,9 @@ export default function RoomPage() {
               Modo edición — Grid <strong>{cols}×{rows}</strong>
               {wM && <span> ({wM}×{dM}m)</span>}
               · celda <strong>800mm × 1200mm</strong> (rack estándar; los pasillos frío/caliente ocupan una fila entera = 1200mm de fondo).
-              Clic izquierdo en <strong>+</strong> para añadir huella; clic en una huella existente para cambiar tipo o eliminar.
+              <span className="ml-1 font-medium">Clic en una celda vacía (con +) para añadir huella.</span> Clic en una huella existente para cambiar tipo o eliminar.
               {!room.widthMm && <span className="ml-1 text-amber-600">⚠ Define ancho/fondo de la sala (en metros) para un grid ajustado.</span>}
-              <span className="ml-2 text-amber-600">Pan: arrastra el fondo. Zoom: rueda del ratón.</span>
+              <span className="ml-2 text-amber-600">Zoom: rueda del ratón.</span>
             </span>
           </div>
         );

@@ -329,7 +329,7 @@ export default function RoomPage() {
               <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-none border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-md backdrop-blur-sm">
                 <Flame className="h-3.5 w-3.5 text-amber-500" />
                 <span className="text-slate-500 mr-1">Potencia:</span>
-                {[["<60%","rgba(34,197,94,0.45)"],["60–80%","rgba(234,179,8,0.55)"],["80–90%","rgba(249,115,22,0.65)"],["≥90%","rgba(239,68,68,0.75)"]].map(([label, color]) => (
+                {([ ["<60%","rgba(34,197,94,0.45)"], ["60-80%","rgba(234,179,8,0.55)"], ["80-90%","rgba(249,115,22,0.65)"], [">90%","rgba(239,68,68,0.75)"] ] as [string,string][]).map(([label, color]) => (
                   <span key={label} className="flex items-center gap-1">
                     <span style={{ background: color, display: "inline-block", width: 12, height: 12, borderRadius: 2 }} />
                     {label}

@@ -57,12 +57,18 @@ interface Props {
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
+// DCIM standard cell: 800mm wide × 1200mm deep — matches a rack footprint (600/800mm × 1200mm).
+// Cold/hot aisles share the rack depth (1200mm) and span across a full row → modelled as a
+// row whose cells are marked INFRASTRUCTURE (or via the DcimAisle entity).
+// On-screen we preserve the 2:3 width:depth ratio.
 
-const CELL    = 72;    // px per grid cell on screen
-const GAP     = 4;
-const CELL_MM = 1200;  // DCIM standard: 1200mm per grid cell — fits a rack (600/800mm) or a cold/hot aisle (1200mm)
+const CELL_WIDTH_MM = 800;
+const CELL_DEPTH_MM = 1200;
+const CELL_W = 64;        // px width
+const CELL_H = 96;        // px height (= CELL_W * 1200/800)
+const GAP    = 4;
 const DEFAULT_GRID_COLS = 8;
-const DEFAULT_GRID_ROWS = 8;
+const DEFAULT_GRID_ROWS = 6;
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
@@ -98,8 +104,8 @@ function FootprintNode({ data, selected }: NodeProps) {
   return (
     <div
       style={{
-        width      : CELL,
-        height     : CELL,
+        width      : CELL_W,
+        height     : CELL_H,
         background : heatmapPct !== null
           ? heatColor(heatmapPct)
           : style.bg,
@@ -124,7 +130,7 @@ function FootprintNode({ data, selected }: NodeProps) {
       {isRack ? (
         <>
           <Server size={20} color={style.text} />
-          <span style={{ fontSize: 9, color: style.text, marginTop: 2, textAlign: "center", lineHeight: 1.2, maxWidth: CELL - 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ fontSize: 9, color: style.text, marginTop: 2, textAlign: "center", lineHeight: 1.2, maxWidth: CELL_W - 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fp.rackName ?? fp.label}
           </span>
         </>
@@ -154,7 +160,7 @@ function FootprintNode({ data, selected }: NodeProps) {
       {/* Kind picker popup */}
       {editMode && showKindPicker && (
         <div
-          style={{ position: "absolute", top: CELL + 4, left: 0, zIndex: 100, background: "white", border: "1px solid #e2e8f0", borderRadius: 4, padding: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 130 }}
+          style={{ position: "absolute", top: CELL_H + 4, left: 0, zIndex: 100, background: "white", border: "1px solid #e2e8f0", borderRadius: 4, padding: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 130 }}
           onClick={(e) => e.stopPropagation()}
         >
           {["RACK_SLOT", "INFRASTRUCTURE", "EMPTY"].map((k) => (
@@ -181,7 +187,7 @@ function AddCellNode({ data }: NodeProps) {
   const { onAdd } = data as { onAdd: () => void };
   return (
     <div
-      style={{ width: CELL, height: CELL, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "transparent" }}
+      style={{ width: CELL_W, height: CELL_H, border: "2px dashed #cbd5e1", borderRadius: 2, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", background: "transparent" }}
       onClick={onAdd}
     >
       <Plus size={16} color="#94a3b8" />
@@ -207,17 +213,18 @@ function PlanInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
-  // Grid size derives from room dimensions when available.
-  // Each cell = CELL_MM (1200mm) — fits a rack (600/800mm) + a 1200mm cold/hot aisle.
+  // Grid size derives from room dimensions:
+  //   gridCols = ceil(widthMm / 800)   — each column is one rack-wide (800mm)
+  //   gridRows = ceil(depthMm / 1200)  — each row is one rack-deep (1200mm), same as aisle width
   // Footprints outside the calculated grid are still rendered (in case a room was resized smaller).
   const gridCols = useMemo(() => {
-    const fromRoom = roomWidthMm ? Math.ceil(roomWidthMm / CELL_MM) : 0;
+    const fromRoom = roomWidthMm ? Math.ceil(roomWidthMm / CELL_WIDTH_MM) : 0;
     const fromFps  = footprints.length ? Math.max(...footprints.map((f) => f.gridX)) + 1 : 0;
     return Math.max(fromRoom, fromFps, DEFAULT_GRID_COLS);
   }, [roomWidthMm, footprints]);
 
   const gridRows = useMemo(() => {
-    const fromRoom = roomDepthMm ? Math.ceil(roomDepthMm / CELL_MM) : 0;
+    const fromRoom = roomDepthMm ? Math.ceil(roomDepthMm / CELL_DEPTH_MM) : 0;
     const fromFps  = footprints.length ? Math.max(...footprints.map((f) => f.gridY)) + 1 : 0;
     return Math.max(fromRoom, fromFps, DEFAULT_GRID_ROWS);
   }, [roomDepthMm, footprints]);
@@ -231,7 +238,7 @@ function PlanInner({
     const fpNodes: Node[] = footprints.map((fp) => ({
       id       : fp.id,
       type     : "footprint",
-      position : { x: fp.gridX * (CELL + GAP), y: fp.gridY * (CELL + GAP) },
+      position : { x: fp.gridX * (CELL_W + GAP), y: fp.gridY * (CELL_H + GAP) },
       draggable: false,
       selectable: false,
       data     : {
@@ -252,7 +259,7 @@ function PlanInner({
             addNodes.push({
               id        : `add-${x}-${y}`,
               type      : "addCell",
-              position  : { x: x * (CELL + GAP), y: y * (CELL + GAP) },
+              position  : { x: x * (CELL_W + GAP), y: y * (CELL_H + GAP) },
               draggable : false,
               selectable: false,
               data      : { onAdd: () => onCreateFootprint(x, y) },

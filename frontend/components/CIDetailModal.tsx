@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check, Loader2 } from "lucide-react";
+import { X, Pencil, Trash2, Shield, ShieldAlert, ShieldCheck, ShieldOff, Server, Box, Database, Network, HardDrive, Archive, Package, Cpu, Monitor, Laptop, Printer, ScanLine, Tv, Video, Cast, Clock, Phone, Smartphone, Tablet, QrCode, Camera, BatteryCharging, Key, Cloud, Terminal, AlertTriangle, Calendar, Hash, Building2, User, Briefcase, Tag, Activity, Download, FileText, Plus, RefreshCw, Check, Loader2, MapPin } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
+import PlaceCIModal from "@/components/dcim/PlaceCIModal";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
 
@@ -146,6 +147,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
   const [contracts, setContracts] = useState<ContractRef[]>(ci.contracts ?? []);
   const [showAddDocs, setShowAddDocs] = useState(false);
   const [showAddContracts, setShowAddContracts] = useState(false);
+  const [showPlaceModal, setShowPlaceModal] = useState(false);
 
   // Inline editing state (admin only)
   const [users, setUsers]         = useState<UserRef[]>([]);
@@ -268,6 +270,14 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
+            {isAdmin && ci.hardware && (
+              <button
+                onClick={() => setShowPlaceModal(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                <MapPin className="h-3.5 w-3.5" />{t("dcim.place.title")}
+              </button>
+            )}
             <button
               onClick={onEdit}
               className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors"
@@ -603,6 +613,16 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
           existingContractIds={contracts.map((c) => c.id)}
           onClose={() => setShowAddContracts(false)}
           onSuccess={() => { setShowAddContracts(false); loadContracts(); }}
+        />
+      )}
+
+      {/* Place CI in rack modal */}
+      {showPlaceModal && (
+        <PlaceCIModal
+          ciId={ci.id}
+          ciName={ci.name}
+          onClose={() => setShowPlaceModal(false)}
+          onPlaced={() => { setShowPlaceModal(false); onUpdated?.(); }}
         />
       )}
     </div>

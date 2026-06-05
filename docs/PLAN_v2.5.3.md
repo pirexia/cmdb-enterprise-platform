@@ -1,6 +1,6 @@
 # Plan de desarrollo v2.5.3
 
-> Estado: 🟡 En ejecución — P ✅ mergeada, esperando OK para Q
+> Estado: ✅ COMPLETADA — release v2.5.3 publicado en origin (main 95bd112, tag v2.5.3)
 > Rama base: `develop` (HEAD post-v2.5.2)
 > Target: `main` tag `v2.5.3`
 > Última actualización: 2026-06-04
@@ -19,7 +19,7 @@
 | **R** | Bulk import XLSX: skip análisis IA + detección dup ampliada (name/serial/IP) + flag WARNING | `task-x/bulk-import-skip-ai` | ✅ Mergeada (32da8d2) |
 | **S** | Datos Maestros > Modelos: exponer campos `eolDate` / `eosDate` en UI | `task-y/masters-models-eol-eos` | ✅ Mergeada (4489a83) |
 | **T** | OWASP `differential-review` + Compliance review (ISO/GDPR/NIS2) | `task-z/owasp-v2.5.3-fixes` | ✅ Completada — F-01 fix incluido; F-02/F-03 → backlog v2.6.x |
-| **U** | Release v2.5.3 (merge a main + tag + push) | — | 🟡 En ejecución |
+| **U** | Release v2.5.3 (merge a main + tag + push) | — | ✅ Completada (merge 95bd112, tag v2.5.3 en origin) |
 
 **Orden estricto:** P → STOP → Q → STOP → R → STOP → S → STOP → T → STOP → U
 

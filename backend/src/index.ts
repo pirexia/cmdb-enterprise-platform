@@ -41,6 +41,9 @@ import {
   vulnUuid, getContractRoot, getLicenseRoot,
   serializeCI, serializeContract, serializeLicense, serializeVulnerability, type EntityParseResult,
 } from './services/entitySerializer';
+import { createDcimRouter } from './modules/dcim/router';
+import { requireDcimAccess } from './modules/dcim/middleware';
+import { CIPlacementSchema } from './modules/dcim/schemas';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -232,6 +235,9 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api/', apiLimiter);
+
+// DCIM module — VIEWER role blocked at router level via requireDcimAccess
+app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
 
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({
@@ -1933,7 +1939,7 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
  * Cascades: DocumentContract rows and the implicit ContractToCI M2M are cleaned by Prisma.
  * Documents and CIs themselves are NOT deleted, only the associations.
  */
-app.delete('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/contracts/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const IdSchema = z.string().uuid();
   const parsedId = IdSchema.safeParse(req.params.id);
   if (!parsedId.success) {
@@ -1987,7 +1993,7 @@ app.delete('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Re
   }
 });
 
-app.patch('/api/contracts/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.patch('/api/contracts/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const ContractUpdateSchema = z.object({
     contractNumber:   z.string().min(1).max(100),
     startDate:        z.string().min(1),
@@ -2915,7 +2921,7 @@ app.post('/api/masters/support-areas', authenticateToken, requireAdmin, async (r
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
@@ -2925,7 +2931,7 @@ app.patch('/api/masters/support-areas/:id', authenticateToken, requireAdmin, asy
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/support-areas/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','SupportArea',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "support_areas" WHERE id=${req.params.id}::uuid`;
@@ -2953,7 +2959,7 @@ app.post('/api/masters/branches', authenticateToken, requireAdmin, async (req, r
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name, branchCode, physicalAddress, supportAreaId } = req.body as { name?: string; branchCode?: string; physicalAddress?: string; supportAreaId?: string };
   if (!name?.trim() || !branchCode?.trim() || !supportAreaId) { res.status(400).json({ error: 'name, branchCode, supportAreaId required' }); return; }
   try {
@@ -2965,7 +2971,7 @@ app.patch('/api/masters/branches/:id', authenticateToken, requireAdmin, async (r
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/branches/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Branch',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "branches" WHERE id=${req.params.id}::uuid`;
@@ -2990,7 +2996,7 @@ app.post('/api/masters/manufacturers', authenticateToken, requireAdmin, async (r
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
@@ -3000,7 +3006,7 @@ app.patch('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, asy
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/manufacturers/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Manufacturer',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "manufacturers" WHERE id=${req.params.id}::uuid`;
@@ -3045,7 +3051,7 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
     res.status(201).json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
   const eol = isoDateOrNull(eolDate);
@@ -3061,7 +3067,7 @@ app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, asy
     res.json(rows[0]);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
-app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','DeviceModel',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`;
@@ -3092,7 +3098,7 @@ app.post('/api/masters/cost-centers', authenticateToken, requireAdmin, async (re
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { code, name } = req.body as { code?: string; name?: string };
   if (!code?.trim() || !name?.trim()) { res.status(400).json({ error: 'code and name required' }); return; }
   try {
@@ -3109,7 +3115,7 @@ app.patch('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, asyn
     res.status(500).json({ error: 'Internal server error' });
   }
 });
-app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/cost-centers/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','CostCenter',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "cost_centers" WHERE id=${req.params.id}::uuid`;
@@ -3164,7 +3170,7 @@ app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, r
   }
 });
 
-app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name, categoryCode, sortOrder } = req.body as { name?: string; categoryCode?: string; sortOrder?: number };
   if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
   const id = String(req.params.id);
@@ -3179,7 +3185,7 @@ app.patch('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (r
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const id = String(req.params.id);
   try {
     const row = await prisma.cIType.findUnique({ where: { id }, select: { code: true } });
@@ -3205,7 +3211,7 @@ app.delete('/api/masters/ci-types/:id', authenticateToken, requireAdmin, async (
  * all CIs linked to this model with the resolved dates.
  * ADMIN only.
  */
-app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/masters/device-models/:id/sync-eol', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const id = req.params.id as string;
   try {
     type ModelRow = { id: string; name: string; manufacturer_name: string };
@@ -3593,6 +3599,56 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
     res.json({ id, lastCheckDate: checkDate, verificationSource: source, message: 'Verification updated' });
   } catch (error) {
     console.error('[PATCH /api/cis/:id/verification] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── DCIM — CI physical placement ────────────────────────────────────────────
+
+/**
+ * PATCH /api/cis/:id/placement
+ * Set or clear the physical location of a hardware CI within a rack.
+ * Fields: parentRackCiId, uPosition, orientation, sizeU, powerW (all nullable to clear).
+ * ADMIN only. Audit log: CI_PLACEMENT.
+ */
+app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+  const id = req.params.id as string;
+  const parsed = CIPlacementSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const { parentRackCiId, uPosition, orientation, sizeU, powerW } = parsed.data;
+
+  try {
+    // Verify the CI exists and is a hardware CI
+    const hw = await prisma.hardwareCI.findUnique({ where: { ciId: id } });
+    if (!hw) { res.status(404).json({ error: 'Hardware CI not found' }); return; }
+
+    // If placing in a rack, validate rack exists and has capacity
+    if (parentRackCiId) {
+      const rack = await prisma.hardwareCI.findUnique({ where: { ciId: parentRackCiId } });
+      if (!rack) { res.status(400).json({ error: 'Rack CI not found' }); return; }
+      if (rack.rackTotalU && uPosition) {
+        const slotEnd = uPosition + (sizeU ?? 1) - 1;
+        if (slotEnd > rack.rackTotalU) {
+          res.status(400).json({ error: `U position ${uPosition}+${sizeU ?? 1}U exceeds rack capacity (${rack.rackTotalU}U)` });
+          return;
+        }
+      }
+    }
+
+    await prisma.hardwareCI.update({
+      where : { ciId: id },
+      data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
+    });
+
+    await prisma.$executeRaw`
+      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+      VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
+    `;
+
+    res.json({ id, parentRackCiId, uPosition, orientation, sizeU, powerW });
+  } catch (error) {
+    console.error('[PATCH /api/cis/:id/placement] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -5288,7 +5344,7 @@ app.post('/api/masters/document-types', authenticateToken, requireAdmin, async (
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name } = req.body as { name?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   try {
@@ -5302,7 +5358,7 @@ app.patch('/api/masters/document-types/:id', authenticateToken, requireAdmin, as
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     const result = await prisma.$executeRaw`
       DELETE FROM "document_types" WHERE id=${req.params.id}::uuid AND is_system=false`;
@@ -5355,7 +5411,7 @@ app.get('/api/documents', authenticateToken, async (req, res) => {
 });
 
 // GET /api/documents/:id — document detail with versions, relations, associations
-app.get('/api/documents/:id', authenticateToken, async (req, res) => {
+app.get('/api/documents/:id', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{
@@ -5487,7 +5543,7 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
 });
 
 // PATCH /api/documents/:id — update metadata (title, description, type)
-app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/documents/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { title, description, documentTypeId } = req.body as { title?: string; description?: string; documentTypeId?: string };
   if (!title?.trim()) { res.status(400).json({ error: 'title required' }); return; }
   try {
@@ -5502,7 +5558,7 @@ app.patch('/api/documents/:id', authenticateToken, requireAdmin, async (req, res
 });
 
 // PATCH /api/documents/:id/acl — update role-based visibility flags (ADMIN only)
-app.patch('/api/documents/:id/acl', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.patch('/api/documents/:id/acl', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const { readAdmin, readAuditor, readViewer } = req.body as { readAdmin?: boolean; readAuditor?: boolean; readViewer?: boolean };
   if (readAdmin === undefined && readAuditor === undefined && readViewer === undefined) {
     res.status(400).json({ error: 'At least one ACL field required' }); return;
@@ -5532,7 +5588,7 @@ app.patch('/api/documents/:id/acl', authenticateToken, requireAdmin, async (req:
 });
 
 // DELETE /api/documents/:id — delete document (and file from disk)
-app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/documents/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     const rows = await prisma.$queryRaw<{ file_name: string; root_id: string | null }[]>`
       SELECT file_name, root_id::text AS root_id FROM "documents" WHERE id=${req.params.id}::uuid`;
@@ -5550,7 +5606,7 @@ app.delete('/api/documents/:id', authenticateToken, requireAdmin, async (req, re
 });
 
 // POST /api/documents/:id/reindex — force re-queue the latest version for RAG indexing (ADMIN only)
-app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/reindex', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     const rows = await prisma.$queryRaw<{ id: string; version_number: number }[]>`
       SELECT id::text AS id, version_number FROM "documents"
@@ -5685,7 +5741,7 @@ app.get('/api/documents/bulk/batches', authenticateToken, requireAdmin, async (r
 });
 
 // GET /api/documents/bulk/batches/:id — batch detail + items (polling target)
-app.get('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.get('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const batchRows = await prisma.$queryRaw<{ id: string; status: string; fileCount: number; totalBytes: string; createdBy: string; createdAt: Date }[]>`
       SELECT id::text AS id, status, file_count AS "fileCount", total_bytes::text AS "totalBytes",
@@ -5708,7 +5764,7 @@ app.get('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, asyn
 });
 
 // DELETE /api/documents/bulk/items/:id — discard a single staged item
-app.delete('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const rows = await prisma.$queryRaw<{ stagedFileName: string; status: string }[]>`
       SELECT i.staged_file_name AS "stagedFileName", i.status
@@ -5727,7 +5783,7 @@ app.delete('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, asy
 });
 
 // DELETE /api/documents/bulk/batches/:id — discard a whole batch (+ staged files)
-app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const batch = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM "bulk_import_batch"
@@ -5748,7 +5804,7 @@ app.delete('/api/documents/bulk/batches/:id', authenticateToken, requireAdmin, a
 });
 
 // PATCH /api/documents/bulk/items/:id — persist the user's reviewed decision
-app.patch('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.patch('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   const parsed = BulkItemDecisionBase.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Datos inválidos' }); return; }
   try {
@@ -5768,7 +5824,7 @@ app.patch('/api/documents/bulk/items/:id', authenticateToken, requireAdmin, asyn
 });
 
 // POST /api/documents/bulk/items/:id/commit — materialize one reviewed item
-app.post('/api/documents/bulk/items/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/documents/bulk/items/:id/commit', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const rows = await prisma.$queryRaw<(BulkItemRow & { analysis: unknown })[]>`
       SELECT i.id::text AS id, i.batch_id::text AS batch_id, i.staged_file_name AS staged_file_name,
@@ -5797,7 +5853,7 @@ app.post('/api/documents/bulk/items/:id/commit', authenticateToken, requireAdmin
 });
 
 // POST /api/documents/bulk/batches/:id/commit — commit every reviewed item at once
-app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const batch = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM "bulk_import_batch"
@@ -5832,7 +5888,7 @@ app.post('/api/documents/bulk/batches/:id/commit', authenticateToken, requireAdm
 // POST /api/documents/bulk/items/:id/reanalyze — flip one ANALYZED/ERROR item back
 // to PENDING_ANALYSIS so the worker re-processes it (useful after OCR or other
 // pipeline improvements that landed AFTER the original analysis).
-app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const rows = await prisma.$queryRaw<{ id: string; batch_id: string }[]>`
       SELECT i.id::text AS id, i.batch_id::text AS batch_id
@@ -5851,7 +5907,7 @@ app.post('/api/documents/bulk/items/:id/reanalyze', authenticateToken, requireAd
 
 // POST /api/documents/bulk/batches/:id/reanalyze — re-queue every ANALYZED/ERROR
 // item in the batch (committed items are skipped). Returns how many were queued.
-app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const batch = await prisma.$queryRaw<{ id: string }[]>`
       SELECT id::text AS id FROM "bulk_import_batch"
@@ -5871,7 +5927,7 @@ app.post('/api/documents/bulk/batches/:id/reanalyze', authenticateToken, require
 });
 
 // GET /api/documents/:id/index-status — return the latest version's RAG indexing status
-app.get('/api/documents/:id/index-status', authenticateToken, async (req: Request, res: Response) => {
+app.get('/api/documents/:id/index-status', authenticateToken, requireUuidParam('id'), async (req: Request, res: Response) => {
   try {
     const rows = await prisma.$queryRaw<{ status: string | null; chunk_count: number | null; indexed_at: Date | null; error_message: string | null; updated_at: Date | null }[]>`
       SELECT r.status, r.chunk_count, r.indexed_at, r.error_message, r.updated_at
@@ -6028,7 +6084,7 @@ app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfill
 // GET /api/documents/:id/download — authenticated file download
 // Uses authenticateToken middleware (checks JWT + deactivated-user status in DB)
 // Supports ?inline=true to display in browser instead of triggering download
-app.get('/api/documents/:id/download', authenticateToken, async (req: Request, res: Response) => {
+app.get('/api/documents/:id/download', authenticateToken, requireUuidParam('id'), async (req: Request, res: Response) => {
   // Support ?inline=true to display in browser instead of download
   const inline = req.query.inline === 'true';
 
@@ -6068,7 +6124,7 @@ app.get('/api/documents/:id/download', authenticateToken, async (req: Request, r
 });
 
 // POST /api/documents/:id/versions — upload new version
-app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, upload.single('file'), async (req: Request, res: Response) => {
+app.post('/api/documents/:id/versions', authenticateToken, requireAdmin, requireUuidParam('id'), upload.single('file'), async (req: Request, res: Response) => {
   if (!req.file) { res.status(400).json({ error: 'File required' }); return; }
 
   const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
@@ -6160,7 +6216,7 @@ app.delete('/api/documents/:rootId/versions/:versionId', authenticateToken, requ
 });
 
 // POST /api/documents/:id/relations — add relation to another document
-app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { targetDocId, relationType } = req.body as { targetDocId?: string; relationType?: string };
   if (!targetDocId || !relationType) { res.status(400).json({ error: 'targetDocId and relationType required' }); return; }
   const validTypes = ['AMENDMENT_OF', 'RELATED_TO', 'SUPERSEDES'];
@@ -6176,7 +6232,7 @@ app.post('/api/documents/:id/relations', authenticateToken, requireAdmin, async 
 });
 
 // DELETE /api/documents/:id/relations/:targetId — remove relation
-app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_relations" WHERE source_doc_id=${req.params.id}::uuid AND target_doc_id=${req.params.targetId}::uuid`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({targetDocId:req.params.targetId})}::jsonb,now())`;
@@ -6185,7 +6241,7 @@ app.delete('/api/documents/:id/relations/:targetId', authenticateToken, requireA
 });
 
 // POST /api/documents/:id/ci/:ciId — associate document with CI
-app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.ciId}::uuid) ON CONFLICT DO NOTHING`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
@@ -6194,7 +6250,7 @@ app.post('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (
 });
 
 // DELETE /api/documents/:id/ci/:ciId — remove CI association
-app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${req.params.id}::uuid AND ci_id=${req.params.ciId}::uuid`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({ciId:req.params.ciId})}::jsonb,now())`;
@@ -6203,7 +6259,7 @@ app.delete('/api/documents/:id/ci/:ciId', authenticateToken, requireAdmin, async
 });
 
 // POST /api/documents/:id/contract/:contractId — associate with contract
-app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`INSERT INTO "document_contracts"(id,document_id,contract_id) VALUES(gen_random_uuid(),${req.params.id}::uuid,${req.params.contractId}::uuid) ON CONFLICT DO NOTHING`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
@@ -6212,7 +6268,7 @@ app.post('/api/documents/:id/contract/:contractId', authenticateToken, requireAd
 });
 
 // DELETE /api/documents/:id/contract/:contractId — remove contract association
-app.delete('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/documents/:id/contract/:contractId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
     await prisma.$executeRaw`DELETE FROM "document_contracts" WHERE document_id=${req.params.id}::uuid AND contract_id=${req.params.contractId}::uuid`;
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_DOCUMENT','Document',${req.params.id}::uuid,${req.user!.email},${JSON.stringify({contractId:req.params.contractId})}::jsonb,now())`;
@@ -6242,7 +6298,7 @@ app.get('/api/cis/:id/documents', authenticateToken, async (req, res) => {
 });
 
 // GET /api/contracts/:id/documents — get documents for a contract
-app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
+app.get('/api/contracts/:id/documents', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const rows = await prisma.$queryRaw<{ id: string; title: string; documentTypeName: string; documentTypeCode: string; originalName: string; versionNumber: number; uploadedBy: string; createdAt: Date; latestVersionId: string; mimeType: string }[]>`
@@ -6267,7 +6323,7 @@ app.get('/api/contracts/:id/documents', authenticateToken, async (req, res) => {
  * DELETE /api/contracts/:id/documents/:docId — unlink a document from a contract.
  * Idempotent: returns 200 even if the link did not exist.
  */
-app.delete('/api/contracts/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/contracts/:id/documents/:docId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const IdSchema = z.object({ id: z.string().uuid(), docId: z.string().uuid() });
   const parsed = IdSchema.safeParse(req.params);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid contract or document id' }); return; }
@@ -6284,7 +6340,7 @@ app.delete('/api/contracts/:id/documents/:docId', authenticateToken, requireAdmi
 // ─── Bulk Association Endpoints ───────────────────────────────────────────────
 
 // POST /api/documents/:id/cis — Bulk associate CIs to a document
-app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
@@ -6302,7 +6358,7 @@ app.post('/api/documents/:id/cis', authenticateToken, requireAdmin, async (req, 
 });
 
 // POST /api/documents/:id/contracts — Bulk associate contracts to a document
-app.post('/api/documents/:id/contracts', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/documents/:id/contracts', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const schema = z.object({ contractIds: z.array(z.string().uuid()).min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'contractIds must be a non-empty array of UUIDs' }); return; }
@@ -6420,7 +6476,7 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
 });
 
 // GET /api/contracts/:id/cis — List CIs associated with a contract
-app.get('/api/contracts/:id/cis', authenticateToken, async (req, res) => {
+app.get('/api/contracts/:id/cis', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const contractId = req.params.id as string;
   try {
     const rows = await prisma.$queryRaw<{ id: string; name: string; apiSlug: string; environment: string; criticality: string }[]>`
@@ -6433,7 +6489,7 @@ app.get('/api/contracts/:id/cis', authenticateToken, async (req, res) => {
 });
 
 // POST /api/contracts/:id/cis — Bulk associate CIs to a contract
-app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
@@ -6457,7 +6513,7 @@ app.post('/api/contracts/:id/cis', authenticateToken, requireAdmin, async (req, 
 });
 
 // DELETE /api/contracts/:id/cis/:ciId — Disassociate CI from contract
-app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const contractId = req.params.id as string;
   const ciId = req.params.ciId as string;
   try {
@@ -6478,7 +6534,7 @@ app.delete('/api/contracts/:id/cis/:ciId', authenticateToken, requireAdmin, asyn
 // ─── Document Notes ───────────────────────────────────────────────────────────
 
 // GET /api/documents/:id/notes — get all notes for a document (resolves to root)
-app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
+app.get('/api/documents/:id/notes', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
     const docRows = await prisma.$queryRaw<{ id: string; root_id: string | null }[]>`
@@ -6498,7 +6554,7 @@ app.get('/api/documents/:id/notes', authenticateToken, async (req, res) => {
 });
 
 // POST /api/documents/:id/notes — add a note (any authenticated user)
-app.post('/api/documents/:id/notes', authenticateToken, async (req, res) => {
+app.post('/api/documents/:id/notes', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const { content } = req.body as { content?: string };
   if (!content?.trim()) { res.status(400).json({ error: 'content required' }); return; }
   try {
@@ -6774,6 +6830,33 @@ cron.schedule('0 2 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── DCIM power alert scan (daily at 04:00 AM) ────────────────────────────────
+// Detects racks where sum(power_w of occupants) > rack_power_max_w and emits
+// an audit log DCIM_POWER_ALERT per rack (NIS2 Art.23 — incident traceability).
+cron.schedule('0 4 * * *', async () => {
+  try {
+    const { getOverpowerAlerts } = await import('./modules/dcim/queries.js');
+    const alerts = await getOverpowerAlerts(prisma);
+    if (alerts.length === 0) { log.info('[DcimPowerCron] No overpower racks'); return; }
+    for (const alert of alerts) {
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES (
+          gen_random_uuid(),
+          'DCIM_POWER_ALERT',
+          'CI',
+          ${alert.rackCiId}::uuid,
+          'system@cmdb.local',
+          now()
+        )
+      `;
+    }
+    log.info(`[DcimPowerCron] Logged ${alerts.length} overpower rack alert(s)`);
+  } catch (e) {
+    log.error('[DcimPowerCron] Error:', e);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ── Bulk import staging cleanup (hourly) ──────────────────────────────────────
 // Discards abandoned batches older than BULK_BATCH_TTL_HOURS and removes their
 // staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).
@@ -6945,7 +7028,7 @@ app.post('/api/masters/license-metrics', authenticateToken, requireAdmin, async 
 });
 
 // PATCH /api/masters/license-metrics/:id — update name/description (system and custom)
-app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name, description } = req.body as { name?: string; description?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   const id = req.params.id as string;
@@ -6962,7 +7045,7 @@ app.patch('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, a
 });
 
 // DELETE /api/masters/license-metrics/:id — blocked if any license references it
-app.delete('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/license-metrics/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const id = req.params.id as string;
   try {
     const used = await prisma.$queryRaw<{ count: bigint }[]>`
@@ -7038,7 +7121,7 @@ app.post('/api/masters/license-types', authenticateToken, requireAdmin, async (r
 });
 
 // PATCH /api/masters/license-types/:id — update name/description (system and custom)
-app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const { name, description } = req.body as { name?: string; description?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   const id = req.params.id as string;
@@ -7055,7 +7138,7 @@ app.patch('/api/masters/license-types/:id', authenticateToken, requireAdmin, asy
 });
 
 // DELETE /api/masters/license-types/:id — blocked if any license references it
-app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const id = req.params.id as string;
   try {
     const used = await prisma.$queryRaw<{ count: bigint }[]>`
@@ -7111,7 +7194,7 @@ app.get('/api/licenses', authenticateToken, async (req, res) => {
 });
 
 // GET /api/licenses/:id — license detail with all relations
-app.get('/api/licenses/:id', authenticateToken, async (req, res) => {
+app.get('/api/licenses/:id', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const id = req.params.id as string;
   try {
     const license = await prisma.license.findUnique({
@@ -7185,7 +7268,7 @@ app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/licenses/:id — update any field
-app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.patch('/api/licenses/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const id = req.params.id as string;
   const parsed = LicenseSchema.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid license data' }); return; }
@@ -7221,7 +7304,7 @@ app.patch('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res)
 });
 
 // DELETE /api/licenses/:id — delete (cascade handles relations)
-app.delete('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/licenses/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const id = req.params.id as string;
   try {
     // Walk to root BEFORE the delete so we know whether to purge or re-queue
@@ -7244,7 +7327,7 @@ app.delete('/api/licenses/:id', authenticateToken, requireAdmin, async (req, res
 // ── Group 4: License ↔ CI associations ────────────────────────────────────────
 
 // GET /api/licenses/:id/cis — list CIs for a license
-app.get('/api/licenses/:id/cis', authenticateToken, async (req, res) => {
+app.get('/api/licenses/:id/cis', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const licenseId = req.params.id as string;
   try {
     const rows = await prisma.$queryRaw<{
@@ -7260,7 +7343,7 @@ app.get('/api/licenses/:id/cis', authenticateToken, async (req, res) => {
 });
 
 // POST /api/licenses/:id/cis — bulk associate CIs
-app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const schema = z.object({ ciIds: z.array(z.string().uuid()).min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'ciIds must be a non-empty array of UUIDs' }); return; }
@@ -7285,7 +7368,7 @@ app.post('/api/licenses/:id/cis', authenticateToken, requireAdmin, async (req, r
 });
 
 // DELETE /api/licenses/:id/cis/:ciId — disassociate one CI
-app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const licenseId = req.params.id as string;
   const ciId = req.params.ciId as string;
   try {
@@ -7307,7 +7390,7 @@ app.delete('/api/licenses/:id/cis/:ciId', authenticateToken, requireAdmin, async
 // ── Group 5: License ↔ Document associations ──────────────────────────────────
 
 // GET /api/licenses/:id/documents — list docs with latestVersionId + mimeType
-app.get('/api/licenses/:id/documents', authenticateToken, async (req, res) => {
+app.get('/api/licenses/:id/documents', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const licenseId = req.params.id as string;
   const visCol = Prisma.raw(`"${docVisibilitySqlCol(req.user!.role)}"`);
   try {
@@ -7334,7 +7417,7 @@ app.get('/api/licenses/:id/documents', authenticateToken, async (req, res) => {
 });
 
 // POST /api/licenses/:id/documents — bulk associate documents
-app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const schema = z.object({ documentIds: z.array(z.string().uuid()).min(1) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'documentIds must be a non-empty array of UUIDs' }); return; }
@@ -7360,7 +7443,7 @@ app.post('/api/licenses/:id/documents', authenticateToken, requireAdmin, async (
 });
 
 // DELETE /api/licenses/:id/documents/:docId — remove from document_licenses
-app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const licenseId = req.params.id as string;
   const docId = req.params.docId as string;
   try {
@@ -7379,7 +7462,7 @@ app.delete('/api/licenses/:id/documents/:docId', authenticateToken, requireAdmin
 // ── Group 6: License Users ─────────────────────────────────────────────────────
 
 // GET /api/licenses/:id/users — list LicenseUsers
-app.get('/api/licenses/:id/users', authenticateToken, async (req, res) => {
+app.get('/api/licenses/:id/users', authenticateToken, requireUuidParam('id'), async (req, res) => {
   const licenseId = req.params.id as string;
   try {
     const users = await prisma.licenseUser.findMany({
@@ -7391,7 +7474,7 @@ app.get('/api/licenses/:id/users', authenticateToken, async (req, res) => {
 });
 
 // POST /api/licenses/:id/users — create a LicenseUser
-app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req, res) => {
+app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const parsed = LicenseUserSchema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: 'Invalid user data', details: parsed.error.flatten() }); return; }
   const { name, dni, email } = parsed.data;
@@ -7416,7 +7499,7 @@ app.post('/api/licenses/:id/users', authenticateToken, requireAdmin, async (req,
 });
 
 // DELETE /api/licenses/:id/users/:userId — delete a LicenseUser
-app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, async (req, res) => {
+app.delete('/api/licenses/:id/users/:userId', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   const userId = req.params.userId as string;
   const licenseId = req.params.id as string;
   try {

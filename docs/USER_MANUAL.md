@@ -1218,3 +1218,71 @@ Las citas que devuelve el asistente incluyen un icono identificativo del tipo de
 > Para los requisitos de hardware del servidor, la configuración de Ollama y las opciones de aceleración GPU, consulta el **Manual del Administrador de Sistemas, §19 y §21**.
 
 > Para los requisitos de hardware del servidor, la configuración de Ollama, la gestión del modelo y los procedimientos de mantenimiento del subsistema RAG, consulta el **Manual del Administrador de Sistemas, §19 — Subsistema RAG**.
+
+---
+
+## 25. Módulo DCIM — Salas técnicas y CPD (v2.6.0)
+
+El módulo DCIM (Data Center Infrastructure Management) permite modelar y visualizar la infraestructura física de los centros de datos de la organización.
+
+### 25.1 Acceso y permisos
+
+| Rol | Dashboard | Admin | Editar plano | Ubicar CIs |
+|-----|-----------|-------|--------------|------------|
+| ADMIN | ✅ | ✅ | ✅ | ✅ |
+| AUDITOR | ✅ | — | — | — |
+| VIEWER | — | — | — | — |
+
+### 25.2 Jerarquía física
+
+```
+Sede (Branch) → Edificio → Planta → Sala/CPD → Pasillo → Huella → Rack (CI)
+```
+
+### 25.3 Dashboard `/dcim`
+
+- **KPIs**: total edificios, salas, racks asignados y alertas activas de potencia.
+- **Lista de salas**: haz clic en cualquier sala para acceder a su plano 2D.
+- **Widget de alertas de potencia**: racks donde el consumo supera la capacidad máxima configurada.
+- **Botón "Gestionar"** (solo ADMIN): accede a `/dcim/admin` para crear la jerarquía.
+
+### 25.4 Administración `/dcim/admin`
+
+Interfaz jerárquica con CRUD inline (expandir/contraer por nivel):
+
+1. Selecciona una **Sede** en el filtro superior.
+2. Expande un **Edificio** → añade/edita/elimina plantas.
+3. Expande una **Planta** → añade/edita/elimina salas.
+
+### 25.5 Vista de sala `/dcim/rooms/[id]`
+
+- **Plano 2D** (ReactFlow): pan y zoom con ratón/trackpad. Cada celda es una huella del plano.
+  - 🟩 Verde: rack slot con rack asignado.
+  - ⬜ Blanco con borde verde discontinuo: rack slot libre.
+  - 🔲 Gris: infraestructura (PDUs, patches, etc.).
+- **Clic en un rack** → abre el panel lateral de **elevación de rack** (vista 2D SVG con slots U).
+- **Toggle FRONT/REAR** en el panel de elevación: muestra la cara frontal o trasera del rack.
+- **Heatmap de potencia** (botón llama 🔥): colorea los racks según % de consumo vs. capacidad.
+- **Modo edición** (ADMIN): activa el botón "Editar plano" para añadir/modificar/eliminar huellas.
+- **Editar sala**: modifica nombre, tipo y dimensiones físicas con el botón "Editar sala".
+
+### 25.6 Ubicar un CI en un rack
+
+Desde el detalle de cualquier CI hardware (botón **"Ubicar en rack"** en `CIDetailModal` o `EditCIModal`):
+
+1. Selecciona **Sede → Edificio → Planta → Sala → Rack**.
+2. Introduce **Posición U** (desde abajo), **Tamaño U**, **Consumo W** y **Orientación** (FRONT/REAR).
+3. El sistema detecta conflictos de slots automáticamente antes de confirmar.
+4. Pulsa **Confirmar ubicación**. Se registra un evento de auditoría `CI_PLACEMENT`.
+
+Para quitar un CI del rack, abre el mismo modal y pulsa **"Quitar del rack"**.
+
+### 25.7 Alertas de potencia
+
+El sistema ejecuta un análisis diario a las 04:00 (hora Madrid) que detecta racks sobrecargados y registra eventos `DCIM_POWER_ALERT` en el log de auditoría. Estos eventos son consultables desde **Auditoría** filtrando por acción `DCIM_POWER_ALERT`.
+
+### 25.8 Notas importantes
+
+> ⚠️ No incluyas datos personales (nombres, DNIs, correos) en los campos de notas de edificios, plantas o salas. Estos campos son para descripción técnica, no para datos de personas (GDPR).
+
+> La vista 3D de sala está prevista para **v2.7.0**.

@@ -22,7 +22,8 @@
     "certificates": "Certificados SSL",
     "audit": "Auditoria",
     "settings": "Configurações",
-    "assistant": "Assistente IA"
+    "assistant": "Assistente IA",
+    "dcim": "Salas Técnicas e DCs"
   },
   "actions": {
     "logout": "Sair",
@@ -582,8 +583,19 @@
     "license_metrics": "Métricas de Licença",
     "license_types": "Tipos de Licença",
     "models": {
-      "eol_date": "EOL",
-      "eos_date": "EOS"
+      "new": "Novo Modelo",
+      "placeholder": "Ex: PowerEdge R740",
+      "manufacturer_label": "— Fabricante —",
+      "type_label": "— Tipo —",
+      "type_software": "Software",
+      "type_hardware": "Hardware",
+      "suggest_dates": "Sugerir Datas Padrão",
+      "eol_search": "Catálogo EOL",
+      "empty": "Sem modelos registados.",
+      "consult_btn": "Consultar",
+      "sync_eol": "EOL",
+      "consultation_center": "Centro de Consulta do Ciclo de Vida",
+      "suggested_dates": "Datas Sugeridas"
     },
     "support_areas": {
       "new": "Nova Área de Suporte",
@@ -606,21 +618,6 @@
       "delete_all": "Eliminar tudo",
       "empty": "Sem fabricantes registados.",
       "confirm_delete_all": "Inserir 30 fabricantes de TI populares? Os duplicados serão ignorados."
-    },
-    "models": {
-      "new": "Novo Modelo",
-      "placeholder": "Ex: PowerEdge R740",
-      "manufacturer_label": "— Fabricante —",
-      "type_label": "— Tipo —",
-      "type_software": "Software",
-      "type_hardware": "Hardware",
-      "suggest_dates": "Sugerir Datas Padrão",
-      "eol_search": "Catálogo EOL",
-      "empty": "Sem modelos registados.",
-      "consult_btn": "Consultar",
-      "sync_eol": "EOL",
-      "consultation_center": "Centro de Consulta do Ciclo de Vida",
-      "suggested_dates": "Datas Sugeridas"
     },
     "providers": {
       "new": "Novo Fornecedor",
@@ -1284,5 +1281,104 @@
     "reindex": "Reindexar",
     "reindexConfirm": "Reindexar este documento?",
     "reindexQueued": "Documento em fila para reindexação"
+  },
+  "dcim": {
+    "title": "DCIM",
+    "loading": "Carregando...",
+    "error": "Erro ao carregar dados",
+    "dashboard": {
+      "title": "Centro de Dados — DCIM",
+      "subtitle": "Gestão de infraestrutura física",
+      "buildings": "Edifícios",
+      "rooms": "Salas / DCs",
+      "racks": "Racks ativos",
+      "alerts": "Alertas ativos",
+      "no_alerts": "Sem alertas de energia",
+      "manage": "Gerir edifícios e salas",
+      "view_all_alerts": "Ver todos os alertas"
+    },
+    "building": {
+      "title": "Edifícios",
+      "new": "Novo edifício",
+      "name": "Nome",
+      "code": "Código",
+      "branch": "Sede"
+    },
+    "floor": {
+      "title": "Andares",
+      "new": "Novo andar",
+      "name": "Nome",
+      "level": "Nível"
+    },
+    "room": {
+      "title": "Salas / DCs",
+      "new": "Nova sala",
+      "name": "Nome",
+      "kind": "Tipo",
+      "kind_cpd": "Centro de Dados",
+      "kind_technical": "Sala técnica",
+      "width": "Largura (mm)",
+      "depth": "Profundidade (mm)",
+      "view": "Ver planta",
+      "no_rooms": "Sem salas configuradas",
+      "footprints": "Posições na planta",
+      "no_footprints": "Sem posições definidas",
+      "plan_placeholder": "Planta 2D — disponível na próxima versão",
+      "edit_toggle": "Editar sala",
+      "save": "Guardar alterações",
+      "cancel": "Cancelar",
+      "heatmap": "Mapa de calor",
+      "heatmap_on": "Mapa de calor ATIVO"
+    },
+    "admin": {
+      "title": "Administração DCIM",
+      "subtitle": "Gerir edifícios, andares e salas",
+      "select_branch": "Selecionar uma sede",
+      "select_building": "Selecionar um edifício",
+      "select_floor": "Selecionar um andar",
+      "no_buildings": "Sem edifícios",
+      "no_floors": "Sem andares",
+      "no_rooms": "Sem salas"
+    },
+    "alert": {
+      "title": "Alertas de energia",
+      "rack": "Rack",
+      "usage": "Consumo",
+      "max": "Máx."
+    },
+    "actions": {
+      "save": "Guardar",
+      "cancel": "Cancelar",
+      "delete": "Eliminar",
+      "edit": "Editar",
+      "add": "Adicionar"
+    },
+    "confirm_delete": "Confirmar eliminação?",
+    "place": {
+      "title": "Colocar em rack",
+      "remove": "Remover do rack",
+      "branch": "Sede",
+      "building": "Edifício",
+      "floor": "Andar",
+      "room": "Sala",
+      "rack": "Rack",
+      "u_position": "Posição U (de baixo)",
+      "size_u": "Tamanho (U)",
+      "power_w": "Consumo (W)",
+      "orientation": "Orientação",
+      "front": "Frente",
+      "rear": "Traseira",
+      "conflict": "Conflito: slots U ocupados nessa orientação",
+      "capacity": "Excede capacidade do rack",
+      "save": "Confirmar posição",
+      "remove_confirm": "Remover CI do rack?",
+      "select_branch": "Selecionar sede...",
+      "select_building": "Selecionar edifício...",
+      "select_floor": "Selecionar andar...",
+      "select_room": "Selecionar sala...",
+      "select_rack": "Selecionar rack...",
+      "no_racks": "Sem racks nesta sala",
+      "current": "Posição atual"
+    }
   }
 }

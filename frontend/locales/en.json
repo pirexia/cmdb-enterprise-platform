@@ -1445,7 +1445,9 @@
       "plan_placeholder": "2D floor plan — coming in next release",
       "edit_toggle": "Edit room",
       "save": "Save changes",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "heatmap": "Heatmap",
+      "heatmap_on": "Heatmap ON"
     },
     "admin": {
       "title": "DCIM Administration",

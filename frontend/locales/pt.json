@@ -1326,7 +1326,9 @@
       "plan_placeholder": "Planta 2D — disponível na próxima versão",
       "edit_toggle": "Editar sala",
       "save": "Guardar alterações",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "heatmap": "Mapa de calor",
+      "heatmap_on": "Mapa de calor ATIVO"
     },
     "admin": {
       "title": "Administração DCIM",

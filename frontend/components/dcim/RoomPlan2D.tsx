@@ -25,9 +25,27 @@ export interface FpData {
 
 export interface AisleOption { id: string; name: string }
 
+export interface HeatmapPoint {
+  rackCiId:  string;
+  gridX:     number;
+  gridY:     number;
+  sumPowerW: number;
+  maxPowerW: number;
+  usagePct:  number;
+}
+
+function heatColor(pct: number): string {
+  if (pct >= 100) return "rgba(185,28,28,0.65)";
+  if (pct >= 90)  return "rgba(239,68,68,0.55)";
+  if (pct >= 80)  return "rgba(249,115,22,0.45)";
+  if (pct >= 60)  return "rgba(234,179,8,0.35)";
+  return                  "rgba(34,197,94,0.25)";
+}
+
 interface Props {
   footprints:          FpData[];
   aisles:              AisleOption[];
+  heatmapData?:        HeatmapPoint[];
   selectedRackCiId?:   string | null;
   editMode:            boolean;
   onClickRack:         (fp: FpData) => void;
@@ -55,6 +73,7 @@ function FootprintNode({ data, selected }: NodeProps) {
   const {
     fp, editMode, selectedRackCiId,
     onClickRack, onDelete, onChangeKind,
+    heatmapPct,
   } = data as {
     fp: FpData;
     editMode: boolean;
@@ -62,6 +81,7 @@ function FootprintNode({ data, selected }: NodeProps) {
     onClickRack: (fp: FpData) => void;
     onDelete: (id: string) => void;
     onChangeKind: (id: string, kind: string) => void;
+    heatmapPct: number | null;
   };
 
   const isRack    = fp.kind === "RACK_SLOT" && fp.rackCiId;
@@ -75,7 +95,9 @@ function FootprintNode({ data, selected }: NodeProps) {
       style={{
         width      : CELL,
         height     : CELL,
-        background : style.bg,
+        background : heatmapPct !== null
+          ? heatColor(heatmapPct)
+          : style.bg,
         border     : `2px solid ${isSelected ? "var(--accent, #6366f1)" : style.border}`,
         boxShadow  : isSelected ? "0 0 0 2px var(--accent, #6366f1)" : undefined,
         position   : "relative",
@@ -103,6 +125,13 @@ function FootprintNode({ data, selected }: NodeProps) {
         </>
       ) : (
         <span style={{ fontSize: 10, color: style.text, fontWeight: 600 }}>{fp.label}</span>
+      )}
+
+      {/* Heatmap usage badge */}
+      {heatmapPct !== null && (
+        <span style={{ position: "absolute", bottom: 2, right: 3, fontSize: 8, fontWeight: 700, color: heatmapPct >= 80 ? "#7f1d1d" : "#14532d" }}>
+          {heatmapPct}%
+        </span>
       )}
 
       {/* Edit mode overlay */}
@@ -160,9 +189,15 @@ const NODE_TYPES = { footprint: FootprintNode, addCell: AddCellNode };
 // ─── Inner component (needs ReactFlowProvider) ────────────────────────────────
 
 function PlanInner({
-  footprints, aisles, selectedRackCiId, editMode,
+  footprints, aisles, selectedRackCiId, editMode, heatmapData,
   onClickRack, onCreateFootprint, onDeleteFootprint, onUpdateFootprint,
 }: Props) {
+  // Build a lookup: gridX,gridY → usagePct (only for rack footprints)
+  const heatMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    (heatmapData ?? []).forEach((h) => { m[`${h.gridX},${h.gridY}`] = h.usagePct; });
+    return m;
+  }, [heatmapData]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
@@ -184,6 +219,7 @@ function PlanInner({
       selectable: false,
       data     : {
         fp, editMode, selectedRackCiId,
+        heatmapPct: heatmapData ? (heatMap[`${fp.gridX},${fp.gridY}`] ?? null) : null,
         onClickRack,
         onDelete : (id: string) => onDeleteFootprint(id),
         onChangeKind: (id: string, kind: string) => onUpdateFootprint(id, { kind }),

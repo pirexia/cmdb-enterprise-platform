@@ -6830,6 +6830,33 @@ cron.schedule('0 2 * * *', async () => {
   }
 }, { timezone: 'Europe/Madrid' });
 
+// ── DCIM power alert scan (daily at 04:00 AM) ────────────────────────────────
+// Detects racks where sum(power_w of occupants) > rack_power_max_w and emits
+// an audit log DCIM_POWER_ALERT per rack (NIS2 Art.23 — incident traceability).
+cron.schedule('0 4 * * *', async () => {
+  try {
+    const { getOverpowerAlerts } = await import('./modules/dcim/queries.js');
+    const alerts = await getOverpowerAlerts(prisma);
+    if (alerts.length === 0) { log.info('[DcimPowerCron] No overpower racks'); return; }
+    for (const alert of alerts) {
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES (
+          gen_random_uuid(),
+          'DCIM_POWER_ALERT',
+          'CI',
+          ${alert.rackCiId}::uuid,
+          'system@cmdb.local',
+          now()
+        )
+      `;
+    }
+    log.info(`[DcimPowerCron] Logged ${alerts.length} overpower rack alert(s)`);
+  } catch (e) {
+    log.error('[DcimPowerCron] Error:', e);
+  }
+}, { timezone: 'Europe/Madrid' });
+
 // ── Bulk import staging cleanup (hourly) ──────────────────────────────────────
 // Discards abandoned batches older than BULK_BATCH_TTL_HOURS and removes their
 // staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).

@@ -5,12 +5,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Server, ArrowLeft, Pencil, Check, X, RefreshCw,
-  AlertTriangle, LayoutGrid, Zap, Edit3,
+  AlertTriangle, LayoutGrid, Zap, Edit3, Flame,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import RoomPlan2D, { type FpData, type AisleOption } from "@/components/dcim/RoomPlan2D";
+import RoomPlan2D, { type FpData, type AisleOption, type HeatmapPoint } from "@/components/dcim/RoomPlan2D";
 import RackElevation2D from "@/components/dcim/RackElevation2D";
 import CIDetailModal from "@/components/CIDetailModal";
 
@@ -61,6 +61,11 @@ export default function RoomPage() {
 
   // Floor plan edit mode
   const [planEditMode, setPlanEditMode] = useState(false);
+
+  // Heatmap
+  const [showHeatmap, setShowHeatmap]     = useState(false);
+  const [heatmapData, setHeatmapData]     = useState<HeatmapPoint[] | null>(null);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
 
   // Footprint creation form
   const [addForm, setAddForm] = useState<{ gridX: number; gridY: number } | null>(null);
@@ -139,6 +144,17 @@ export default function RoomPage() {
     });
     await load();
   }, [load]);
+
+  // ── Heatmap ────────────────────────────────────────────────────────────────
+  const toggleHeatmap = useCallback(async () => {
+    if (showHeatmap) { setShowHeatmap(false); setHeatmapData(null); return; }
+    setHeatmapLoading(true);
+    try {
+      const r = await apiFetch(`/api/dcim/rooms/${id}/heatmap`);
+      if (r.ok) setHeatmapData(await r.json());
+    } catch { /* ignore */ } finally { setHeatmapLoading(false); }
+    setShowHeatmap(true);
+  }, [id, showHeatmap]);
 
   // ── CI detail ──────────────────────────────────────────────────────────────
   const openCIDetail = useCallback(async (ciId: string) => {
@@ -228,6 +244,13 @@ export default function RoomPage() {
                     <Pencil className="h-3.5 w-3.5" /> {t("dcim.room.edit_toggle")}
                   </button>
                   <button
+                    onClick={toggleHeatmap}
+                    disabled={heatmapLoading}
+                    className={`flex items-center gap-1 rounded-none px-3 py-1.5 text-sm border ${showHeatmap ? "bg-amber-500 text-white border-amber-500" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+                  >
+                    <Flame className="h-3.5 w-3.5" /> {showHeatmap ? "Heatmap ON" : "Heatmap"}
+                  </button>
+                  <button
                     onClick={() => { setPlanEditMode((v) => !v); setSelectedRack(null); }}
                     className={`flex items-center gap-1 rounded-none px-3 py-1.5 text-sm border ${planEditMode ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
                   >
@@ -277,7 +300,7 @@ export default function RoomPage() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* ReactFlow floor plan */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 overflow-hidden">
           {footprintData.length === 0 && !planEditMode ? (
             <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
               <LayoutGrid className="h-16 w-16 opacity-20" />
@@ -295,11 +318,25 @@ export default function RoomPage() {
               aisles={room.aisles}
               selectedRackCiId={selectedRack?.rackCiId ?? null}
               editMode={planEditMode}
+              heatmapData={showHeatmap ? (heatmapData ?? undefined) : undefined}
               onClickRack={(fp) => { setSelectedRack(fp); }}
               onCreateFootprint={handleCreateFootprint}
               onDeleteFootprint={handleDeleteFootprint}
               onUpdateFootprint={handleUpdateFootprint}
             />
+            {/* Heatmap legend */}
+            {showHeatmap && (
+              <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-none border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-md backdrop-blur-sm">
+                <Flame className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-slate-500 mr-1">Potencia:</span>
+                {[["<60%","rgba(34,197,94,0.45)"],["60–80%","rgba(234,179,8,0.55)"],["80–90%","rgba(249,115,22,0.65)"],["≥90%","rgba(239,68,68,0.75)"]].map(([label, color]) => (
+                  <span key={label} className="flex items-center gap-1">
+                    <span style={{ background: color, display: "inline-block", width: 12, height: 12, borderRadius: 2 }} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
           )}
         </div>
 

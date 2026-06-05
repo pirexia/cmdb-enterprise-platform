@@ -1326,7 +1326,9 @@
       "plan_placeholder": "Planimetria 2D — disponibile nella prossima versione",
       "edit_toggle": "Modifica sala",
       "save": "Salva modifiche",
-      "cancel": "Annulla"
+      "cancel": "Annulla",
+      "heatmap": "Mappa termica",
+      "heatmap_on": "Mappa termica ON"
     },
     "admin": {
       "title": "Amministrazione DCIM",

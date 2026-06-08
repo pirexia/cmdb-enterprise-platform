@@ -1394,7 +1394,8 @@
       "select_room": "Sélectionner une salle...",
       "select_rack": "Sélectionner un rack...",
       "no_racks": "Aucun rack dans cette salle",
-      "current": "Emplacement actuel"
+      "current": "Emplacement actuel",
+      "change": "Modifier l'emplacement dans la baie"
     }
   }
 }

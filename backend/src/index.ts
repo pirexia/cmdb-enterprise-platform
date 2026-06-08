@@ -3645,6 +3645,39 @@ app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuid
           return;
         }
       }
+
+      // U-slot overlap check — find CIs already placed in this rack that collide
+      if (uPosition) {
+        const uStart = uPosition;
+        const uEnd   = uPosition + (sizeU ?? 1) - 1;
+        const occupants = await prisma.hardwareCI.findMany({
+          where: {
+            parentRackCiId: parentRackCiId,
+            ciId          : { not: id },              // exclude self (update case)
+            uPosition     : { not: null },
+          },
+          include: { ci: { select: { id: true, name: true } } },
+        });
+        const conflicts = occupants.filter((o) => {
+          if (o.uPosition == null) return false;
+          // Orientation isolation: FRONT and REAR don't conflict with each other
+          if (orientation && o.orientation && orientation !== o.orientation) return false;
+          const oEnd = o.uPosition + (o.sizeU ?? 1) - 1;
+          return uStart <= oEnd && uEnd >= o.uPosition;
+        });
+        if (conflicts.length > 0) {
+          res.status(409).json({
+            error       : 'U_OVERLAP',
+            conflictsWith: conflicts.map((o) => ({
+              ciId  : o.ciId,
+              name  : o.ci.name,
+              uStart: o.uPosition,
+              uEnd  : o.uPosition! + (o.sizeU ?? 1) - 1,
+            })),
+          });
+          return;
+        }
+      }
     }
 
     await prisma.hardwareCI.update({

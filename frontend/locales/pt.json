@@ -1394,7 +1394,8 @@
       "select_room": "Selecionar sala...",
       "select_rack": "Selecionar rack...",
       "no_racks": "Sem racks nesta sala",
-      "current": "Posição atual"
+      "current": "Posição atual",
+      "change": "Alterar posição no rack"
     }
   }
 }

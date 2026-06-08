@@ -1513,7 +1513,8 @@
       "select_room": "Seleccionar sala...",
       "select_rack": "Seleccionar rack...",
       "no_racks": "Sin racks en esta sala",
-      "current": "Ubicación actual"
+      "current": "Ubicación actual",
+      "change": "Cambiar ubicación en rack"
     }
   }
 }

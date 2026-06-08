@@ -1513,7 +1513,8 @@
       "select_room": "Select room...",
       "select_rack": "Select rack...",
       "no_racks": "No racks in this room",
-      "current": "Current placement"
+      "current": "Current placement",
+      "change": "Change rack placement"
     }
   }
 }

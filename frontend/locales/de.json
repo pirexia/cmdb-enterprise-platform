@@ -1394,7 +1394,8 @@
       "select_room": "Raum wählen...",
       "select_rack": "Rack wählen...",
       "no_racks": "Keine Racks in diesem Raum",
-      "current": "Aktuelle Position"
+      "current": "Aktuelle Position",
+      "change": "Rack-Position ändern"
     }
   }
 }

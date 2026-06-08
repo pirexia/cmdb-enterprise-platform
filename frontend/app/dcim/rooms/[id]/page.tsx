@@ -602,7 +602,7 @@ export default function RoomPage() {
 
         {/* Rack elevation drawer */}
         {selectedRack && (
-          <div className="w-80 shrink-0 overflow-auto border-l border-slate-200 bg-white p-4 shadow-lg">
+          <div className="w-80 shrink-0 flex flex-col overflow-hidden border-l border-slate-200 bg-white p-4 shadow-lg">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Elevación de rack</span>
               <button onClick={() => setSelectedRack(null)} className="text-slate-400 hover:text-slate-600">

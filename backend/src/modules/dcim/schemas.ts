@@ -52,7 +52,15 @@ export const DcimAisleUpdateSchema = DcimAisleCreateSchema.partial();
 
 // ─── Footprints ───────────────────────────────────────────────────────────────
 
-export const DCIM_FOOTPRINT_KINDS = ['RACK_SLOT', 'INFRASTRUCTURE', 'EMPTY'] as const;
+export const DCIM_FOOTPRINT_KINDS = [
+  'RACK_SLOT',
+  'INFRASTRUCTURE',
+  'EMPTY',
+  'BLOCKED',
+  'AISLE',
+  'AISLE_COLD',
+  'AISLE_HOT',
+] as const;
 
 export const DcimFootprintCreateSchema = z.object({
   roomId   : z.string().uuid(),

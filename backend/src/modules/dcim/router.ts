@@ -381,8 +381,30 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/footprints/:id  (ADMIN)
   router.delete('/footprints/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimFootprint.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', req.params.id as string, req.user!.email);
+      const fp = await prisma.dcimFootprint.findUnique({
+        where : { id: req.params.id as string },
+        select: { id: true, rackCiId: true, label: true },
+      });
+      if (!fp) { res.status(404).json({ error: 'Footprint not found' }); return; }
+
+      // If the footprint holds a rack with CIs placed inside, block deletion to avoid
+      // orphaning CI placements silently. The user must first move/unassign those CIs.
+      if (fp.rackCiId) {
+        const ciCount = await prisma.hardwareCI.count({
+          where: { parentRackCiId: fp.rackCiId },
+        });
+        if (ciCount > 0) {
+          res.status(409).json({
+            error  : 'FOOTPRINT_HAS_CIS',
+            ciCount,
+            label  : fp.label,
+          });
+          return;
+        }
+      }
+
+      await prisma.dcimFootprint.delete({ where: { id: fp.id } });
+      await dcimAudit(prisma, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }

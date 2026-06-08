@@ -1473,6 +1473,22 @@
       "add": "Add"
     },
     "confirm_delete": "Confirm deletion?",
+    "kind": {
+      "rack_slot": "Rack",
+      "infrastructure": "Infrastructure",
+      "empty": "Empty",
+      "blocked": "Blocked",
+      "aisle": "Aisle",
+      "aisle_cold": "Cold aisle",
+      "aisle_hot": "Hot aisle"
+    },
+    "rename_footprint": "Rename footprint",
+    "delete": {
+      "confirm_empty": "Delete footprint \"{label}\"?",
+      "confirm_with_rack": "Delete footprint of rack \"{rack}\"? The rack will remain in inventory but lose its position on the plan.",
+      "error_has_cis": "Cannot delete: the rack has {count} CIs placed inside. Remove the CIs first.",
+      "error_generic": "Error deleting footprint"
+    },
     "place": {
       "title": "Place in rack",
       "remove": "Remove from rack",

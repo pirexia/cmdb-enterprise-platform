@@ -1354,6 +1354,22 @@
       "add": "Aggiungi"
     },
     "confirm_delete": "Confermare l'eliminazione?",
+    "kind": {
+      "rack_slot": "Rack",
+      "infrastructure": "Infrastruttura",
+      "empty": "Vuoto",
+      "blocked": "Bloccato",
+      "aisle": "Corridoio",
+      "aisle_cold": "Corridoio freddo",
+      "aisle_hot": "Corridoio caldo"
+    },
+    "rename_footprint": "Rinomina footprint",
+    "delete": {
+      "confirm_empty": "Eliminare il footprint «{label}»?",
+      "confirm_with_rack": "Eliminare il footprint del rack «{rack}»? Il rack rimarrà nell'inventario ma perderà la sua posizione nel piano.",
+      "error_has_cis": "Impossibile eliminare: il rack contiene {count} CI posizionati. Rimuovi prima i CI.",
+      "error_generic": "Errore eliminando il footprint"
+    },
     "place": {
       "title": "Posiziona in rack",
       "remove": "Rimuovi dal rack",

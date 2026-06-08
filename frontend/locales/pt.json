@@ -1354,6 +1354,22 @@
       "add": "Adicionar"
     },
     "confirm_delete": "Confirmar eliminação?",
+    "kind": {
+      "rack_slot": "Rack",
+      "infrastructure": "Infraestrutura",
+      "empty": "Vazio",
+      "blocked": "Bloqueado",
+      "aisle": "Corredor",
+      "aisle_cold": "Corredor frio",
+      "aisle_hot": "Corredor quente"
+    },
+    "rename_footprint": "Renomear marcação",
+    "delete": {
+      "confirm_empty": "Eliminar marcação «{label}»?",
+      "confirm_with_rack": "Eliminar marcação do rack «{rack}»? O rack permanecerá no inventário mas perderá a sua posição no plano.",
+      "error_has_cis": "Não é possível eliminar: o rack tem {count} CIs alocados. Remova primeiro os CIs.",
+      "error_generic": "Erro ao eliminar a marcação"
+    },
     "place": {
       "title": "Colocar em rack",
       "remove": "Remover do rack",

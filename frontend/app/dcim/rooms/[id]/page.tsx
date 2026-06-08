@@ -224,8 +224,11 @@ export default function RoomPage() {
     apiFetch("/api/cis?limit=500").then((r) => r.json()).then((raw: any) => {
       const cis: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
       const racks = cis
-        .filter((c: any) => typeof c === "object" && c !== null &&
-          (c.ciType?.name ?? "").toUpperCase() === "RACK")
+        .filter((c: any) => {
+          if (typeof c !== "object" || c === null) return false;
+          const typeName = typeof c.ciType === "string" ? c.ciType : (c.ciType?.name ?? "");
+          return typeName.toUpperCase() === "RACK";
+        })
         .map((c: any) => ({
           id    : c.id,
           name  : c.name,

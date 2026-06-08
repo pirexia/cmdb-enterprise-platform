@@ -85,6 +85,10 @@ export default function RoomPage() {
   const [editLabel, setEditLabel]           = useState("");
   const [savingEdit, setSavingEdit]         = useState(false);
 
+  // Rack assignment — list of RACK CIs available to assign to a RACK_SLOT footprint
+  const [rackCIs, setRackCIs]               = useState<{ id: string; name: string; totalU: number | null }[]>([]);
+  const [selAssignRack, setSelAssignRack]   = useState("");
+
   // CI detail modal
   const [detailCI, setDetailCI] = useState<any | null>(null);
 
@@ -212,6 +216,54 @@ export default function RoomPage() {
     await handleUpdateFootprint(selectedEditFp.id, { kind });
     setSelectedEditFp((prev) => prev ? { ...prev, kind } : null);
     setSavingEdit(false);
+  };
+
+  // Load RACK CIs when a RACK_SLOT footprint is selected
+  useEffect(() => {
+    if (selectedEditFp?.kind !== "RACK_SLOT") { setRackCIs([]); setSelAssignRack(""); return; }
+    apiFetch("/api/cis?limit=500").then((r) => r.json()).then((raw: any) => {
+      const cis: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      const racks = cis
+        .filter((c: any) => typeof c === "object" && c !== null &&
+          (c.ciType?.name ?? "").toUpperCase() === "RACK")
+        .map((c: any) => ({
+          id    : c.id,
+          name  : c.name,
+          totalU: c.hardwareCi?.rackTotalU ?? null,
+        }));
+      setRackCIs(racks);
+      setSelAssignRack(selectedEditFp.rackCiId ?? "");
+    }).catch(() => setRackCIs([]));
+  }, [selectedEditFp?.id, selectedEditFp?.kind, selectedEditFp?.rackCiId]);
+
+  const assignRack = async () => {
+    if (!selectedEditFp || !selAssignRack) return;
+    setSavingEdit(true);
+    try {
+      const r = await apiFetch(`/api/dcim/footprints/${selectedEditFp.id}/assign-rack`, {
+        method: "POST", body: JSON.stringify({ ciId: selAssignRack }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        setError(b.error ?? t("dcim.error")); return;
+      }
+      await load();
+      setSelectedEditFp((prev) => prev ? { ...prev, rackCiId: selAssignRack,
+        rackName: rackCIs.find((r) => r.id === selAssignRack)?.name ?? null } : null);
+    } catch { setError(t("dcim.error")); }
+    finally { setSavingEdit(false); }
+  };
+
+  const unassignRack = async () => {
+    if (!selectedEditFp || !confirm(t("dcim.place.remove_confirm"))) return;
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/api/dcim/footprints/${selectedEditFp.id}/assign-rack`, { method: "DELETE" });
+      await load();
+      setSelectedEditFp((prev) => prev ? { ...prev, rackCiId: null, rackName: null } : null);
+      setSelAssignRack("");
+    } catch { setError(t("dcim.error")); }
+    finally { setSavingEdit(false); }
   };
 
   // ── Heatmap ────────────────────────────────────────────────────────────────
@@ -465,6 +517,42 @@ export default function RoomPage() {
                     {/* Kind color swatch */}
                     <span style={{ display: "inline-block", width: 14, height: 14, background: (KIND_STYLE[selectedEditFp.kind] ?? KIND_STYLE.EMPTY).bg, border: `2px solid ${(KIND_STYLE[selectedEditFp.kind] ?? KIND_STYLE.EMPTY).border}`, borderRadius: 3 }} />
                   </div>
+
+                  {/* Assign rack — only for RACK_SLOT footprints */}
+                  {selectedEditFp.kind === "RACK_SLOT" && (
+                    <div className="flex items-center gap-1.5 border-l border-amber-300 pl-3">
+                      <Server className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      {selectedEditFp.rackCiId ? (
+                        <>
+                          <span className="text-xs text-amber-800 font-medium">{selectedEditFp.rackName ?? "Rack"}</span>
+                          <button
+                            onClick={unassignRack}
+                            disabled={savingEdit}
+                            className="rounded-none border border-amber-400 bg-white px-2 py-1 text-xs text-amber-700 hover:bg-amber-100 disabled:opacity-40"
+                          >✕ Desasignar</button>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={selAssignRack}
+                            onChange={(e) => setSelAssignRack(e.target.value)}
+                            disabled={savingEdit}
+                            className="rounded-none border border-amber-300 bg-white px-2 py-1 text-xs focus:border-amber-500 focus:outline-none"
+                          >
+                            <option value="">— {rackCIs.length === 0 ? "Sin racks en inventario" : "Seleccionar rack"} —</option>
+                            {rackCIs.map((r) => (
+                              <option key={r.id} value={r.id}>{r.name}{r.totalU ? ` (${r.totalU}U)` : ""}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={assignRack}
+                            disabled={savingEdit || !selAssignRack}
+                            className="rounded-none bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-40"
+                          >Asignar</button>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {/* Delete */}
                   <button

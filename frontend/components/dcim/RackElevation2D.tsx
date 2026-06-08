@@ -235,22 +235,20 @@ export default function RackElevation2D({ rackCiId, rackName, onClickCI }: Props
         </svg>
       </div>
 
-      {/* Hover detail — shown as fixed tooltip anchored to cursor, not below rack */}
-      {hovered && (() => {
-        const occ = visible.find((o) => o.ciId === hovered);
-        if (!occ) return null;
-        return (
-          <div
-            className="pointer-events-none absolute z-50 rounded-none border border-slate-200 bg-white p-2 text-xs shadow-lg"
-            style={{ bottom: "calc(100% + 4px)", left: 0, right: 0 }}
-          >
-            <p className="font-semibold text-slate-800 truncate">{occ.name}</p>
-            <p className="text-slate-500">{occ.ciType ?? "Hardware"} · U{occ.uPosition}{occ.sizeU && occ.sizeU > 1 ? `–U${(occ.uPosition ?? 0) + (occ.sizeU ?? 1) - 1}` : ""}</p>
-            {occ.powerW && <p className="text-amber-600"><Zap className="inline h-3 w-3" /> {occ.powerW}W</p>}
-            {onClickCI && <p className="mt-1 text-[var(--accent)]">↵ Clic para detalle</p>}
-          </div>
-        );
-      })()}
+      {/* CI info box — fixed height, no layout shift, updates on hover */}
+      <div className="shrink-0 rounded-none border border-slate-100 bg-slate-50 px-3 py-2 text-xs" style={{ minHeight: 52 }}>
+        {(() => {
+          const occ = hovered ? visible.find((o) => o.ciId === hovered) : null;
+          if (!occ) return <span className="text-slate-300 italic">Hover sobre un CI · click para detalle</span>;
+          return (
+            <>
+              <p className="font-semibold text-slate-800 truncate">{occ.name}</p>
+              <p className="text-slate-500">{occ.ciType ?? "Hardware"} · U{occ.uPosition}{occ.sizeU && occ.sizeU > 1 ? `–U${(occ.uPosition ?? 0) + (occ.sizeU ?? 1) - 1}` : ""}{occ.orientation ? ` · ${occ.orientation}` : ""}</p>
+              {occ.powerW != null && <p className="text-amber-600"><Zap className="inline h-3 w-3" /> {occ.powerW}W</p>}
+            </>
+          );
+        })()}
+      </div>
 
       {/* Stats */}
       <div className="flex gap-4 text-xs text-slate-500">

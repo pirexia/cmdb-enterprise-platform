@@ -123,20 +123,27 @@ export default function RoomPage() {
 
   const submitCreateFootprint = async () => {
     if (!addForm) return;
-    await apiFetch("/api/dcim/footprints", {
-      method: "POST",
-      body: JSON.stringify({
-        roomId  : id,
-        gridX   : addForm.gridX,
-        gridY   : addForm.gridY,
-        label   : addLabel,
-        kind    : addKind,
-        aisleId : addAisleId || null,
-        active  : true,
-      }),
-    });
-    setAddForm(null); setAddLabel("A1"); setAddKind("RACK_SLOT"); setAddAisleId("");
-    await load();
+    try {
+      const body: Record<string, unknown> = {
+        roomId : id,
+        gridX  : addForm.gridX,
+        gridY  : addForm.gridY,
+        label  : addLabel,
+        kind   : addKind,
+        active : true,
+      };
+      if (addAisleId) body.aisleId = addAisleId;
+      const r = await apiFetch("/api/dcim/footprints", { method: "POST", body: JSON.stringify(body) });
+      if (!r.ok) {
+        const errBody = await r.text();
+        setError(`Error al crear huella (HTTP ${r.status}): ${errBody.slice(0, 200)}`);
+        return;
+      }
+      setAddForm(null); setAddLabel("A1"); setAddKind("RACK_SLOT"); setAddAisleId("");
+      await load();
+    } catch (e) {
+      setError(`Error al crear huella: ${(e as Error).message}`);
+    }
   };
 
   const handleDeleteFootprint = useCallback(async (fpId: string) => {
@@ -186,7 +193,7 @@ export default function RoomPage() {
       <RefreshCw className="mr-2 h-5 w-5 animate-spin" /> {t("dcim.loading")}
     </div>
   );
-  if (error || !room) return (
+  if (!room) return (
     <div className="flex h-64 flex-col items-center justify-center gap-2 text-red-500">
       <AlertTriangle className="h-8 w-8" />
       <p>{error ?? t("dcim.error")}</p>
@@ -196,6 +203,15 @@ export default function RoomPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+
+      {/* ── Transient error banner ── */}
+      {error && (
+        <div className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-6 py-2 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-600"><X className="h-4 w-4" /></button>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between border-b border-slate-200 bg-white px-6 py-4">

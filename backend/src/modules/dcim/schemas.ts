@@ -56,7 +56,7 @@ export const DCIM_FOOTPRINT_KINDS = ['RACK_SLOT', 'INFRASTRUCTURE', 'EMPTY'] as 
 
 export const DcimFootprintCreateSchema = z.object({
   roomId   : z.string().uuid(),
-  aisleId  : z.string().uuid().optional(),
+  aisleId  : z.string().uuid().nullable().optional(),
   label    : z.string().min(1).max(50),
   kind     : z.enum(DCIM_FOOTPRINT_KINDS),
   active   : z.boolean().default(true),

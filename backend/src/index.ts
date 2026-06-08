@@ -1370,6 +1370,17 @@ app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/cis/:id', authenticateToken, requireUuidParam('id'), async (req: Request, res: Response) => {
+  try {
+    const ci = await prisma.cI.findUnique({ where: { id: req.params.id as string }, include: CI_INCLUDE });
+    if (!ci) { res.status(404).json({ error: 'CI not found' }); return; }
+    res.json(flattenCI(ci));
+  } catch (err) {
+    console.error('[GET /api/cis/:id] Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
   const ciParsed = CICreateSchema.safeParse(req.body);

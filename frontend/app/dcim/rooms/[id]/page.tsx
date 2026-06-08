@@ -284,9 +284,10 @@ export default function RoomPage() {
   const openCIDetail = useCallback(async (ciId: string) => {
     try {
       const r = await apiFetch(`/api/cis/${ciId}`);
-      if (!r.ok) return;
-      setDetailCI(await r.json());
-    } catch { /* ignore */ }
+      if (!r.ok) { setError(`Error abriendo CI (HTTP ${r.status})`); return; }
+      const data = await r.json();
+      setDetailCI(data);
+    } catch (e) { setError(`Error abriendo CI: ${(e as Error).message}`); }
   }, []);
 
   // ── Derived data ───────────────────────────────────────────────────────────

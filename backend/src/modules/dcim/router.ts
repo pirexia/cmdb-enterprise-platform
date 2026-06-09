@@ -465,5 +465,44 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // GET /api/dcim/racks/:ciId/location
+  // Returns the full physical hierarchy for a rack CI: footprint → room → floor → building → branch.
+  router.get('/racks/:ciId/location', requireUuidParam('ciId'), async (req: Request, res: Response) => {
+    try {
+      const fp = await prisma.dcimFootprint.findFirst({
+        where  : { rackCiId: req.params.ciId as string },
+        include: {
+          room: {
+            include: {
+              floor: {
+                include: {
+                  building: {
+                    include: { branch: { select: { id: true, name: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!fp) { res.json(null); return; }
+      res.json({
+        footprintId   : fp.id,
+        footprintLabel: fp.label,
+        roomId        : fp.room.id,
+        roomName      : fp.room.name,
+        floorId       : fp.room.floor.id,
+        floorName     : fp.room.floor.name,
+        buildingId    : fp.room.floor.building.id,
+        buildingName  : fp.room.floor.building.name,
+        branchId      : fp.room.floor.building.branch?.id ?? null,
+        branchName    : fp.room.floor.building.branch?.name ?? null,
+      });
+    } catch (err) {
+      console.error('[DCIM] rack location error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   return router;
 }

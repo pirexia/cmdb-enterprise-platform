@@ -51,7 +51,14 @@ interface CI {
   spofRisk: boolean;
   containsPii: boolean;
   dataClassification: string | null;
-  hardware?: { serialNumber: string } | null;
+  hardware?: {
+    serialNumber   : string;
+    parentRackCiId?: string | null;
+    uPosition?     : number | null;
+    orientation?   : string | null;
+    sizeU?         : number | null;
+    powerW?        : number | null;
+  } | null;
 }
 
 interface FormState {
@@ -397,12 +404,22 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
           )}
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-            <div>
+            <div className="flex flex-col gap-1">
               {isAdmin && ci.hardware && (
-                <button type="button" onClick={() => setShowPlaceModal(true)}
-                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-                  <MapPin className="h-4 w-4" /> {t("dcim.place.title")}
-                </button>
+                <>
+                  <button type="button" onClick={() => setShowPlaceModal(true)}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+                    <MapPin className="h-4 w-4" />
+                    {ci.hardware.parentRackCiId ? t("dcim.place.change") : t("dcim.place.title")}
+                  </button>
+                  {ci.hardware.parentRackCiId && (
+                    <p className="text-[11px] text-indigo-600 flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      U{ci.hardware.uPosition} · {ci.hardware.orientation} · {ci.hardware.sizeU}U
+                      {ci.hardware.powerW ? ` · ${ci.hardware.powerW}W` : ""}
+                    </p>
+                  )}
+                </>
               )}
             </div>
             <div className="flex gap-3">
@@ -420,6 +437,13 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
         <PlaceCIModal
           ciId={ci.id}
           ciName={ci.name}
+          currentPlacement={ci.hardware ? {
+            parentRackCiId: ci.hardware.parentRackCiId ?? null,
+            uPosition     : ci.hardware.uPosition      ?? null,
+            orientation   : ci.hardware.orientation    ?? null,
+            sizeU         : ci.hardware.sizeU           ?? null,
+            powerW        : ci.hardware.powerW          ?? null,
+          } : undefined}
           onClose={() => setShowPlaceModal(false)}
           onPlaced={() => { setShowPlaceModal(false); onUpdated(); }}
         />

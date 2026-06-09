@@ -1473,6 +1473,22 @@
       "add": "Añadir"
     },
     "confirm_delete": "¿Confirmar eliminación?",
+    "kind": {
+      "rack_slot": "Rack",
+      "infrastructure": "Infraestructura",
+      "empty": "Vacío",
+      "blocked": "Bloqueado",
+      "aisle": "Pasillo",
+      "aisle_cold": "Pasillo frío",
+      "aisle_hot": "Pasillo caliente"
+    },
+    "rename_footprint": "Renombrar huella",
+    "delete": {
+      "confirm_empty": "¿Eliminar huella «{label}»?",
+      "confirm_with_rack": "¿Eliminar huella del rack «{rack}»? El rack seguirá en el inventario pero perderá su posición en el plano.",
+      "error_has_cis": "No se puede eliminar: el rack tiene {count} CIs ubicados. Quita primero los CIs.",
+      "error_generic": "Error al eliminar la huella"
+    },
     "place": {
       "title": "Ubicar en rack",
       "remove": "Quitar del rack",
@@ -1497,7 +1513,8 @@
       "select_room": "Seleccionar sala...",
       "select_rack": "Seleccionar rack...",
       "no_racks": "Sin racks en esta sala",
-      "current": "Ubicación actual"
+      "current": "Ubicación actual",
+      "change": "Cambiar ubicación en rack"
     }
   }
 }

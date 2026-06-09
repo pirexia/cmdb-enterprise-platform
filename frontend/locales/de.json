@@ -1354,6 +1354,22 @@
       "add": "Hinzufügen"
     },
     "confirm_delete": "Löschen bestätigen?",
+    "kind": {
+      "rack_slot": "Rack",
+      "infrastructure": "Infrastruktur",
+      "empty": "Leer",
+      "blocked": "Gesperrt",
+      "aisle": "Gang",
+      "aisle_cold": "Kaltgang",
+      "aisle_hot": "Warmgang"
+    },
+    "rename_footprint": "Stellfläche umbenennen",
+    "delete": {
+      "confirm_empty": "Stellfläche „{label}\" löschen?",
+      "confirm_with_rack": "Stellfläche des Racks „{rack}\" löschen? Das Rack bleibt im Inventar, verliert aber seine Position im Plan.",
+      "error_has_cis": "Kann nicht gelöscht werden: Das Rack enthält {count} platzierte CIs. Entfernen Sie zuerst die CIs.",
+      "error_generic": "Fehler beim Löschen der Stellfläche"
+    },
     "place": {
       "title": "In Rack einbauen",
       "remove": "Aus Rack entfernen",
@@ -1378,7 +1394,8 @@
       "select_room": "Raum wählen...",
       "select_rack": "Rack wählen...",
       "no_racks": "Keine Racks in diesem Raum",
-      "current": "Aktuelle Position"
+      "current": "Aktuelle Position",
+      "change": "Rack-Position ändern"
     }
   }
 }

@@ -104,7 +104,7 @@ export default function RackElevation2D({ rackCiId, rackName, onClickCI }: Props
   const renderedCiIds = new Set<string>();
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="truncate font-semibold text-slate-800">{rackName}</h3>
@@ -141,9 +141,16 @@ export default function RackElevation2D({ rackCiId, rackName, onClickCI }: Props
         </div>
       )}
 
-      {/* SVG elevation */}
-      <div className="overflow-auto rounded-none border border-slate-200 bg-slate-50 p-2">
-        <svg width={svgW} height={svgH} className="block">
+      {/* SVG elevation — viewBox + height:100% so it fills the available drawer space */}
+      <div className="flex-1 overflow-hidden rounded-none border border-slate-200 bg-slate-50 p-2">
+        <svg
+          viewBox={`0 0 ${svgW} ${svgH}`}
+          preserveAspectRatio="xMidYMid meet"
+          width="100%"
+          height="100%"
+          className="block"
+          style={{ minHeight: 120 }}
+        >
           {/* Rack outline */}
           <rect
             x={LABEL_W} y={PAD}
@@ -228,20 +235,20 @@ export default function RackElevation2D({ rackCiId, rackName, onClickCI }: Props
         </svg>
       </div>
 
-      {/* Hover tooltip */}
-      {hovered && (() => {
-        const occ = visible.find((o) => o.ciId === hovered);
-        if (!occ) return null;
-        return (
-          <div className="rounded-none border border-slate-200 bg-white p-3 text-xs shadow-md">
-            <p className="font-semibold text-slate-800">{occ.name}</p>
-            <p className="text-slate-500">{occ.ciType ?? "Hardware"} · U{occ.uPosition}{occ.sizeU && occ.sizeU > 1 ? `–U${(occ.uPosition ?? 0) + (occ.sizeU ?? 1) - 1}` : ""}</p>
-            {occ.powerW && <p className="text-amber-600"><Zap className="inline h-3 w-3" /> {occ.powerW}W</p>}
-            {occ.orientation && <p className="text-slate-400">Orientación: {occ.orientation}</p>}
-            {onClickCI && <p className="mt-1 text-[var(--accent)]">Clic para ver detalle →</p>}
-          </div>
-        );
-      })()}
+      {/* CI info box — fixed height, no layout shift, updates on hover */}
+      <div className="shrink-0 rounded-none border border-slate-100 bg-slate-50 px-3 py-2 text-xs" style={{ minHeight: 52 }}>
+        {(() => {
+          const occ = hovered ? visible.find((o) => o.ciId === hovered) : null;
+          if (!occ) return <span className="text-slate-300 italic">Hover sobre un CI · click para detalle</span>;
+          return (
+            <>
+              <p className="font-semibold text-slate-800 truncate">{occ.name}</p>
+              <p className="text-slate-500">{occ.ciType ?? "Hardware"} · U{occ.uPosition}{occ.sizeU && occ.sizeU > 1 ? `–U${(occ.uPosition ?? 0) + (occ.sizeU ?? 1) - 1}` : ""}{occ.orientation ? ` · ${occ.orientation}` : ""}</p>
+              {occ.powerW != null && <p className="text-amber-600"><Zap className="inline h-3 w-3" /> {occ.powerW}W</p>}
+            </>
+          );
+        })()}
+      </div>
 
       {/* Stats */}
       <div className="flex gap-4 text-xs text-slate-500">

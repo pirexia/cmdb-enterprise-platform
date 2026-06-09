@@ -1370,6 +1370,17 @@ app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/cis/:id', authenticateToken, requireUuidParam('id'), async (req: Request, res: Response) => {
+  try {
+    const ci = await prisma.cI.findUnique({ where: { id: req.params.id as string }, include: CI_INCLUDE });
+    if (!ci) { res.status(404).json({ error: 'CI not found' }); return; }
+    res.json(flattenCI(ci));
+  } catch (err) {
+    console.error('[GET /api/cis/:id] Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info('[POST /api/cis] Body received:', JSON.stringify(req.body, null, 2));
   const ciParsed = CICreateSchema.safeParse(req.body);
@@ -3631,6 +3642,39 @@ app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuid
         const slotEnd = uPosition + (sizeU ?? 1) - 1;
         if (slotEnd > rack.rackTotalU) {
           res.status(400).json({ error: `U position ${uPosition}+${sizeU ?? 1}U exceeds rack capacity (${rack.rackTotalU}U)` });
+          return;
+        }
+      }
+
+      // U-slot overlap check — find CIs already placed in this rack that collide
+      if (uPosition) {
+        const uStart = uPosition;
+        const uEnd   = uPosition + (sizeU ?? 1) - 1;
+        const occupants = await prisma.hardwareCI.findMany({
+          where: {
+            parentRackCiId: parentRackCiId,
+            ciId          : { not: id },              // exclude self (update case)
+            uPosition     : { not: null },
+          },
+          include: { ci: { select: { id: true, name: true } } },
+        });
+        const conflicts = occupants.filter((o) => {
+          if (o.uPosition == null) return false;
+          // Orientation isolation: FRONT and REAR don't conflict with each other
+          if (orientation && o.orientation && orientation !== o.orientation) return false;
+          const oEnd = o.uPosition + (o.sizeU ?? 1) - 1;
+          return uStart <= oEnd && uEnd >= o.uPosition;
+        });
+        if (conflicts.length > 0) {
+          res.status(409).json({
+            error       : 'U_OVERLAP',
+            conflictsWith: conflicts.map((o) => ({
+              ciId  : o.ciId,
+              name  : o.ci.name,
+              uStart: o.uPosition,
+              uEnd  : o.uPosition! + (o.sizeU ?? 1) - 1,
+            })),
+          });
           return;
         }
       }

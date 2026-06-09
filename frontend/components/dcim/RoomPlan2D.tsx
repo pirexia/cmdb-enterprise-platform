@@ -5,10 +5,9 @@ import ReactFlow, {
   Background, Controls, BackgroundVariant,
   useNodesState, Node, NodeProps,
   ReactFlowProvider, useReactFlow,
-  type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Server, Trash2, Pencil, Check, X, Plus } from "lucide-react";
+import { Server, Plus } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,149 +49,123 @@ interface Props {
   roomWidthMm?:        number | null;
   roomDepthMm?:        number | null;
   selectedRackCiId?:   string | null;
+  selectedEditFpId?:   string | null;
   editMode:            boolean;
   onClickRack:         (fp: FpData) => void;
+  onSelectFp:          (fp: FpData | null) => void;
   onCreateFootprint:   (gridX: number, gridY: number) => Promise<void>;
   onDeleteFootprint:   (fpId: string) => Promise<void>;
   onUpdateFootprint:   (fpId: string, updates: Partial<FpData>) => Promise<void>;
 }
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
-// DCIM standard cell: 800mm wide × 1200mm deep — matches a rack footprint (600/800mm × 1200mm).
-// Cold/hot aisles share the rack depth (1200mm) and span across a full row → modelled as a
-// row whose cells are marked INFRASTRUCTURE (or via the DcimAisle entity).
-// On-screen we preserve the 2:3 width:depth ratio.
 
 const CELL_WIDTH_MM = 800;
 const CELL_DEPTH_MM = 1200;
-const CELL_W = 64;        // px width
-const CELL_H = 96;        // px height (= CELL_W * 1200/800)
+const CELL_W = 64;
+const CELL_H = 96;
 const GAP    = 4;
 const DEFAULT_GRID_COLS = 8;
 const DEFAULT_GRID_ROWS = 6;
 
 // ─── Colors ───────────────────────────────────────────────────────────────────
 
-const KIND_STYLE: Record<string, { bg: string; border: string; text: string }> = {
+export const KIND_STYLE: Record<string, { bg: string; border: string; text: string }> = {
   RACK_SLOT:      { bg: "#dcfce7", border: "#22c55e", text: "#15803d" },
   INFRASTRUCTURE: { bg: "#e2e8f0", border: "#94a3b8", text: "#475569" },
   EMPTY:          { bg: "#f8fafc", border: "#e2e8f0", text: "#94a3b8" },
+  BLOCKED:        { bg: "#fecaca", border: "#dc2626", text: "#7f1d1d" },
+  AISLE:          { bg: "#f1f5f9", border: "#64748b", text: "#334155" },
+  AISLE_COLD:     { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" },
+  AISLE_HOT:      { bg: "#fed7aa", border: "#ea580c", text: "#9a3412" },
 };
 
-// ─── Footprint custom node ────────────────────────────────────────────────────
+export const KIND_ORDER = [
+  "RACK_SLOT",
+  "INFRASTRUCTURE",
+  "AISLE_COLD",
+  "AISLE_HOT",
+  "AISLE",
+  "BLOCKED",
+  "EMPTY",
+];
 
-function FootprintNode({ data, selected }: NodeProps) {
+// ─── Footprint node — visual only, no interactive buttons ────────────────────
+// All edit interactions (delete, rename, change kind) are handled in the parent
+// via onNodeClick → edit panel rendered outside ReactFlow DOM.
+// This is the same pattern used for AddCellNode: logic lives outside ReactFlow.
+
+function FootprintNode({ data }: NodeProps) {
   const {
-    fp, editMode, selectedRackCiId,
-    onClickRack, onDelete, onChangeKind,
-    heatmapPct,
+    fp, editMode, selectedRackCiId, selectedEditFpId, heatmapPct,
   } = data as {
     fp: FpData;
     editMode: boolean;
     selectedRackCiId: string | null;
-    onClickRack: (fp: FpData) => void;
-    onDelete: (id: string) => void;
-    onChangeKind: (id: string, kind: string) => void;
+    selectedEditFpId: string | null;
     heatmapPct: number | null;
   };
 
-  const isRack    = fp.kind === "RACK_SLOT" && fp.rackCiId;
-  const style     = KIND_STYLE[fp.kind] ?? KIND_STYLE.EMPTY;
-  const isSelected = selectedRackCiId && fp.rackCiId === selectedRackCiId;
+  const isRack       = fp.kind === "RACK_SLOT" && fp.rackCiId;
+  const style        = KIND_STYLE[fp.kind] ?? KIND_STYLE.EMPTY;
+  const isRackActive = !editMode && selectedRackCiId && fp.rackCiId === selectedRackCiId;
+  const isEditSel    = editMode && selectedEditFpId === fp.id;
 
-  const [showKindPicker, setShowKindPicker] = useState(false);
+  let borderColor = style.border;
+  let boxShadow: string | undefined;
+  if (isRackActive) { borderColor = "var(--accent, #6366f1)"; boxShadow = "0 0 0 2px var(--accent, #6366f1)"; }
+  if (isEditSel)    { borderColor = "#f59e0b"; boxShadow = "0 0 0 2px #f59e0b"; }
 
   return (
     <div
       className="nopan nodrag"
       style={{
-        width      : CELL_W,
-        height     : CELL_H,
-        background : heatmapPct !== null
-          ? heatColor(heatmapPct)
-          : style.bg,
-        border     : `2px solid ${isSelected ? "var(--accent, #6366f1)" : style.border}`,
-        boxShadow  : isSelected ? "0 0 0 2px var(--accent, #6366f1)" : undefined,
-        position   : "relative",
-        display    : "flex",
-        flexDirection: "column",
-        alignItems : "center",
+        width         : CELL_W,
+        height        : CELL_H,
+        background    : heatmapPct !== null ? heatColor(heatmapPct) : style.bg,
+        border        : `2px solid ${borderColor}`,
+        boxShadow,
+        position      : "relative",
+        display       : "flex",
+        flexDirection : "column",
+        alignItems    : "center",
         justifyContent: "center",
-        cursor     : isRack ? "pointer" : editMode ? "pointer" : "default",
-        userSelect : "none",
-        borderRadius: 2,
-        transition : "border-color 0.15s",
-      }}
-      onClick={() => {
-        if (isRack && !editMode) onClickRack(fp);
-        if (editMode) setShowKindPicker((v) => !v);
+        cursor        : "pointer",
+        userSelect    : "none",
+        borderRadius  : 2,
+        transition    : "border-color 0.1s, box-shadow 0.1s",
+        outline       : isEditSel ? "2px dashed #f59e0b" : undefined,
+        outlineOffset : isEditSel ? "2px" : undefined,
       }}
     >
-      {/* Main icon / label */}
       {isRack ? (
         <>
           <Server size={20} color={style.text} />
           <span style={{ fontSize: 9, color: style.text, marginTop: 2, textAlign: "center", lineHeight: 1.2, maxWidth: CELL_W - 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {fp.rackName ?? fp.label}
           </span>
+          <span style={{ fontSize: 7, color: style.text, opacity: 0.55, marginTop: 1 }}>{fp.label}</span>
         </>
       ) : (
-        <span style={{ fontSize: 10, color: style.text, fontWeight: 600 }}>{fp.label}</span>
+        <span style={{ fontSize: 10, color: style.text, fontWeight: 600, textAlign: "center", padding: "0 4px" }}>{fp.label}</span>
       )}
 
-      {/* Heatmap usage badge */}
       {heatmapPct !== null && (
         <span style={{ position: "absolute", bottom: 2, right: 3, fontSize: 8, fontWeight: 700, color: heatmapPct >= 80 ? "#7f1d1d" : "#14532d" }}>
           {heatmapPct}%
         </span>
       )}
 
-      {/* Edit mode overlay */}
+      {/* Edit mode indicator dot */}
       {editMode && (
-        <div className="nopan nodrag" style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2 }}>
-          <button
-            className="nopan nodrag"
-            onClick={(e) => { e.stopPropagation(); onDelete(fp.id); }}
-            style={{ background: "#fee2e2", border: "none", borderRadius: 2, padding: "1px 3px", cursor: "pointer" }}
-          >
-            <Trash2 size={10} color="#ef4444" />
-          </button>
-        </div>
-      )}
-
-      {/* Kind picker popup */}
-      {editMode && showKindPicker && (
-        <div
-          className="nopan nodrag"
-          style={{ position: "absolute", top: CELL_H + 4, left: 0, zIndex: 100, background: "white", border: "1px solid #e2e8f0", borderRadius: 4, padding: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.1)", minWidth: 130 }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {["RACK_SLOT", "INFRASTRUCTURE", "EMPTY"].map((k) => (
-            <button key={k} className="nopan nodrag"
-              onClick={(e) => { e.stopPropagation(); onChangeKind(fp.id, k); setShowKindPicker(false); }}
-              style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11,
-                background: fp.kind === k ? "#f0f9ff" : "transparent", border: "none", cursor: "pointer",
-                color: fp.kind === k ? "#0ea5e9" : "#374151", borderRadius: 2 }}>
-              {k}
-            </button>
-          ))}
-          <hr style={{ margin: "4px 0", borderColor: "#f1f5f9" }} />
-          <button className="nopan nodrag"
-                  onClick={(e) => { e.stopPropagation(); setShowKindPicker(false); }}
-                  style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 8px", fontSize: 11, background: "transparent", border: "none", cursor: "pointer", color: "#94a3b8" }}>
-            Cerrar
-          </button>
-        </div>
+        <span style={{ position: "absolute", top: 3, left: 3, width: 5, height: 5, borderRadius: "50%", background: isEditSel ? "#f59e0b" : "#cbd5e1" }} />
       )}
     </div>
   );
 }
 
-// ─── Add footprint node (edit mode empty cells) ───────────────────────────────
+// ─── Add footprint node (decorative, pointer-events:none) ─────────────────────
 
-// AddCellNode is decorative only — clicks on empty cells are handled by ReactFlow's
-// onPaneClick handler (which projects screen coords → grid coords).
-// pointer-events: none guarantees this overlay never blocks clicks.
 function AddCellNode() {
   return (
     <div
@@ -211,15 +184,15 @@ function AddCellNode() {
 
 const NODE_TYPES = { footprint: FootprintNode, addCell: AddCellNode };
 
-// ─── Inner component (needs ReactFlowProvider) ────────────────────────────────
+// ─── Inner component ──────────────────────────────────────────────────────────
 
 function PlanInner({
-  footprints, aisles, selectedRackCiId, editMode, heatmapData,
+  footprints, aisles, selectedRackCiId, selectedEditFpId, editMode, heatmapData,
   roomWidthMm, roomDepthMm,
-  onClickRack, onCreateFootprint, onDeleteFootprint, onUpdateFootprint,
+  onClickRack, onSelectFp, onCreateFootprint, onDeleteFootprint, onUpdateFootprint,
 }: Props) {
   const { project } = useReactFlow();
-  // Build a lookup: gridX,gridY → usagePct (only for rack footprints)
+
   const heatMap = useMemo(() => {
     const m: Record<string, number> = {};
     (heatmapData ?? []).forEach((h) => { m[`${h.gridX},${h.gridY}`] = h.usagePct; });
@@ -228,10 +201,6 @@ function PlanInner({
 
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
-  // Grid size derives from room dimensions:
-  //   gridCols = ceil(widthMm / 800)   — each column is one rack-wide (800mm)
-  //   gridRows = ceil(depthMm / 1200)  — each row is one rack-deep (1200mm), same as aisle width
-  // Footprints outside the calculated grid are still rendered (in case a room was resized smaller).
   const gridCols = useMemo(() => {
     const fromRoom = roomWidthMm ? Math.ceil(roomWidthMm / CELL_WIDTH_MM) : 0;
     const fromFps  = footprints.length ? Math.max(...footprints.map((f) => f.gridX)) + 1 : 0;
@@ -251,21 +220,17 @@ function PlanInner({
 
   const buildNodes = useCallback(() => {
     const fpNodes: Node[] = footprints.map((fp) => ({
-      id       : fp.id,
-      type     : "footprint",
-      position : { x: fp.gridX * (CELL_W + GAP), y: fp.gridY * (CELL_H + GAP) },
-      draggable: false,
+      id        : fp.id,
+      type      : "footprint",
+      position  : { x: fp.gridX * (CELL_W + GAP), y: fp.gridY * (CELL_H + GAP) },
+      draggable : false,
       selectable: false,
-      data     : {
-        fp, editMode, selectedRackCiId,
+      data      : {
+        fp, editMode, selectedRackCiId, selectedEditFpId,
         heatmapPct: heatmapData ? (heatMap[`${fp.gridX},${fp.gridY}`] ?? null) : null,
-        onClickRack,
-        onDelete : (id: string) => onDeleteFootprint(id),
-        onChangeKind: (id: string, kind: string) => onUpdateFootprint(id, { kind }),
       },
     }));
 
-    // Add-cell nodes in edit mode: fill the whole grid (within room bounds).
     const addNodes: Node[] = [];
     if (editMode) {
       for (let y = 0; y < gridRows; y++) {
@@ -277,7 +242,7 @@ function PlanInner({
               position  : { x: x * (CELL_W + GAP), y: y * (CELL_H + GAP) },
               draggable : false,
               selectable: false,
-              data      : { onAdd: () => onCreateFootprint(x, y) },
+              data      : {},
             });
           }
         }
@@ -285,22 +250,43 @@ function PlanInner({
     }
 
     setNodes([...fpNodes, ...addNodes]);
-  }, [footprints, editMode, selectedRackCiId, gridCols, gridRows, occupiedSet, heatmapData, heatMap, onClickRack, onDeleteFootprint, onUpdateFootprint, onCreateFootprint, setNodes]);
+  }, [footprints, editMode, selectedRackCiId, selectedEditFpId, gridCols, gridRows, occupiedSet, heatmapData, heatMap, setNodes]);
 
   useEffect(() => { buildNodes(); }, [buildNodes]);
 
-  // Edit mode: when user clicks on a pane area (not a node), translate screen coords
-  // to grid coords and create a footprint if the cell is free.
-  // This is the official ReactFlow pattern (onPaneClick) and works regardless of how
-  // the AddCellNode overlay is rendered. AddCellNodes are decorative only (pointer-events:none).
+  // onNodeClick is ReactFlow's official node-click callback — fires reliably unlike
+  // onClick handlers on elements inside the node (which get swallowed by RF's pane handler).
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    // AddCellNode has pointer-events:none on its inner div, but ReactFlow's NodeWrapper
+    // still captures the click and fires onNodeClick instead of onPaneClick.
+    // Parse grid coords from the node id ("add-{x}-{y}") and delegate to create.
+    if (node.type === "addCell") {
+      if (!editMode) return;
+      const parts = node.id.split("-"); // ["add", x, y]
+      const gx = parseInt(parts[1], 10);
+      const gy = parseInt(parts[2], 10);
+      if (!isNaN(gx) && !isNaN(gy)) onCreateFootprint(gx, gy);
+      return;
+    }
+
+    if (node.type !== "footprint") return;
+    const fp: FpData = node.data.fp;
+    if (editMode) {
+      // In edit mode: select footprint for editing (panel rendered outside ReactFlow)
+      onSelectFp(selectedEditFpId === fp.id ? null : fp);
+    } else {
+      // In view mode: open rack drawer
+      if (fp.kind === "RACK_SLOT" && fp.rackCiId) onClickRack(fp);
+    }
+  }, [editMode, selectedEditFpId, onSelectFp, onClickRack, onCreateFootprint]);
+
+  // onPaneClick: click on empty background → create footprint (edit mode only)
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
     if (!editMode) return;
     const flowEl = (event.target as HTMLElement).closest('.react-flow') as HTMLElement | null;
     if (!flowEl) return;
     const rect = flowEl.getBoundingClientRect();
-    const screenX = event.clientX - rect.left;
-    const screenY = event.clientY - rect.top;
-    const { x, y } = project({ x: screenX, y: screenY });
+    const { x, y } = project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
     const gx = Math.floor(x / (CELL_W + GAP));
     const gy = Math.floor(y / (CELL_H + GAP));
     if (gx < 0 || gy < 0 || gx >= gridCols || gy >= gridRows) return;
@@ -314,6 +300,7 @@ function PlanInner({
       edges={[]}
       onNodesChange={onNodesChange}
       nodeTypes={NODE_TYPES}
+      onNodeClick={handleNodeClick}
       onPaneClick={handlePaneClick}
       fitView
       fitViewOptions={{ padding: 0.2 }}
@@ -333,7 +320,7 @@ function PlanInner({
   );
 }
 
-// ─── Public component (wraps with provider) ───────────────────────────────────
+// ─── Public component ─────────────────────────────────────────────────────────
 
 export default function RoomPlan2D(props: Props) {
   return (

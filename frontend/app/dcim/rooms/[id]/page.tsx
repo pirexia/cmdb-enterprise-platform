@@ -5,13 +5,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   Server, ArrowLeft, Pencil, Check, X, RefreshCw,
-  AlertTriangle, LayoutGrid, Zap, Edit3, Flame,
+  AlertTriangle, LayoutGrid, Zap, Edit3, Flame, Trash2, Tag,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import dynamic from "next/dynamic";
 import type { FpData, AisleOption, HeatmapPoint } from "@/components/dcim/RoomPlan2D";
+import { KIND_STYLE, KIND_ORDER } from "@/components/dcim/RoomPlan2D";
 
 const RoomPlan2D = dynamic(() => import("@/components/dcim/RoomPlan2D"), { ssr: false });
 const RackElevation2D = dynamic(() => import("@/components/dcim/RackElevation2D"), { ssr: false });
@@ -76,8 +77,17 @@ export default function RoomPage() {
   const [addKind, setAddKind]     = useState("RACK_SLOT");
   const [addAisleId, setAddAisleId] = useState("");
 
-  // Rack drawer
+  // Rack drawer (view mode)
   const [selectedRack, setSelectedRack] = useState<FpData | null>(null);
+
+  // Edit mode: selected footprint for edit panel (rendered outside ReactFlow)
+  const [selectedEditFp, setSelectedEditFp] = useState<FpData | null>(null);
+  const [editLabel, setEditLabel]           = useState("");
+  const [savingEdit, setSavingEdit]         = useState(false);
+
+  // Rack assignment — list of RACK CIs available to assign to a RACK_SLOT footprint
+  const [rackCIs, setRackCIs]               = useState<{ id: string; name: string; totalU: number | null }[]>([]);
+  const [selAssignRack, setSelAssignRack]   = useState("");
 
   // CI detail modal
   const [detailCI, setDetailCI] = useState<any | null>(null);
@@ -147,10 +157,35 @@ export default function RoomPage() {
   };
 
   const handleDeleteFootprint = useCallback(async (fpId: string) => {
-    if (!confirm(t("dcim.confirm_delete"))) return;
-    await apiFetch(`/api/dcim/footprints/${fpId}`, { method: "DELETE" });
-    await load();
-  }, [id, t, load]);
+    const fp = room?.footprints.find((f) => f.id === fpId);
+    const rackName = fp?.rackCi?.name ?? fp?.label ?? "";
+    const msg = fp?.rackCiId
+      ? t("dcim.delete.confirm_with_rack").replace("{rack}", rackName)
+      : t("dcim.delete.confirm_empty").replace("{label}", fp?.label ?? "");
+    if (!confirm(msg)) return;
+    try {
+      const r = await apiFetch(`/api/dcim/footprints/${fpId}`, { method: "DELETE" });
+      if (!r.ok) {
+        let body: any = null;
+        try { body = await r.json(); } catch { /* ignore */ }
+        if (r.status === 409 && body?.error === "FOOTPRINT_HAS_CIS") {
+          setError(t("dcim.delete.error_has_cis").replace("{count}", String(body.ciCount ?? "?")));
+        } else {
+          setError(`${t("dcim.delete.error_generic")} (HTTP ${r.status})`);
+        }
+        return;
+      }
+      await load();
+    } catch (e) {
+      setError(`${t("dcim.delete.error_generic")}: ${(e as Error).message}`);
+    }
+  }, [room, t, load]);
+
+  const handleDeleteSelectedFp = useCallback(async () => {
+    if (!selectedEditFp) return;
+    await handleDeleteFootprint(selectedEditFp.id);
+    setSelectedEditFp(null);
+  }, [selectedEditFp, handleDeleteFootprint]);
 
   const handleUpdateFootprint = useCallback(async (fpId: string, updates: Partial<FpData>) => {
     await apiFetch(`/api/dcim/footprints/${fpId}`, {
@@ -159,6 +194,80 @@ export default function RoomPage() {
     });
     await load();
   }, [load]);
+
+  const handleSelectFp = useCallback((fp: FpData | null) => {
+    setSelectedEditFp(fp);
+    setEditLabel(fp?.label ?? "");
+  }, []);
+
+  const saveEditLabel = async () => {
+    if (!selectedEditFp) return;
+    const v = editLabel.trim();
+    if (!v || v === selectedEditFp.label || v.length > 50) return;
+    setSavingEdit(true);
+    await handleUpdateFootprint(selectedEditFp.id, { label: v });
+    setSelectedEditFp((prev) => prev ? { ...prev, label: v } : null);
+    setSavingEdit(false);
+  };
+
+  const saveEditKind = async (kind: string) => {
+    if (!selectedEditFp) return;
+    setSavingEdit(true);
+    await handleUpdateFootprint(selectedEditFp.id, { kind });
+    setSelectedEditFp((prev) => prev ? { ...prev, kind } : null);
+    setSavingEdit(false);
+  };
+
+  // Load RACK CIs when a RACK_SLOT footprint is selected
+  useEffect(() => {
+    if (selectedEditFp?.kind !== "RACK_SLOT") { setRackCIs([]); setSelAssignRack(""); return; }
+    apiFetch("/api/cis?limit=500").then((r) => r.json()).then((raw: any) => {
+      const cis: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+      const racks = cis
+        .filter((c: any) => {
+          if (typeof c !== "object" || c === null) return false;
+          const typeName = typeof c.ciType === "string" ? c.ciType : (c.ciType?.name ?? "");
+          return typeName.toUpperCase() === "RACK";
+        })
+        .map((c: any) => ({
+          id    : c.id,
+          name  : c.name,
+          totalU: c.hardwareCi?.rackTotalU ?? null,
+        }));
+      setRackCIs(racks);
+      setSelAssignRack(selectedEditFp.rackCiId ?? "");
+    }).catch(() => setRackCIs([]));
+  }, [selectedEditFp?.id, selectedEditFp?.kind, selectedEditFp?.rackCiId]);
+
+  const assignRack = async () => {
+    if (!selectedEditFp || !selAssignRack) return;
+    setSavingEdit(true);
+    try {
+      const r = await apiFetch(`/api/dcim/footprints/${selectedEditFp.id}/assign-rack`, {
+        method: "POST", body: JSON.stringify({ ciId: selAssignRack }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({}));
+        setError(b.error ?? t("dcim.error")); return;
+      }
+      await load();
+      setSelectedEditFp((prev) => prev ? { ...prev, rackCiId: selAssignRack,
+        rackName: rackCIs.find((r) => r.id === selAssignRack)?.name ?? null } : null);
+    } catch { setError(t("dcim.error")); }
+    finally { setSavingEdit(false); }
+  };
+
+  const unassignRack = async () => {
+    if (!selectedEditFp || !confirm(t("dcim.place.remove_confirm"))) return;
+    setSavingEdit(true);
+    try {
+      await apiFetch(`/api/dcim/footprints/${selectedEditFp.id}/assign-rack`, { method: "DELETE" });
+      await load();
+      setSelectedEditFp((prev) => prev ? { ...prev, rackCiId: null, rackName: null } : null);
+      setSelAssignRack("");
+    } catch { setError(t("dcim.error")); }
+    finally { setSavingEdit(false); }
+  };
 
   // ── Heatmap ────────────────────────────────────────────────────────────────
   const toggleHeatmap = useCallback(async () => {
@@ -175,9 +284,10 @@ export default function RoomPage() {
   const openCIDetail = useCallback(async (ciId: string) => {
     try {
       const r = await apiFetch(`/api/cis/${ciId}`);
-      if (!r.ok) return;
-      setDetailCI(await r.json());
-    } catch { /* ignore */ }
+      if (!r.ok) { setError(`Error abriendo CI (HTTP ${r.status})`); return; }
+      const data = await r.json();
+      setDetailCI(data);
+    } catch (e) { setError(`Error abriendo CI: ${(e as Error).message}`); }
   }, []);
 
   // ── Derived data ───────────────────────────────────────────────────────────
@@ -276,7 +386,7 @@ export default function RoomPage() {
                     <Flame className="h-3.5 w-3.5" /> {showHeatmap ? "Heatmap ON" : "Heatmap"}
                   </button>
                   <button
-                    onClick={() => { setPlanEditMode((v) => !v); setSelectedRack(null); }}
+                    onClick={() => { setPlanEditMode((v) => !v); setSelectedRack(null); setSelectedEditFp(null); }}
                     className={`flex items-center gap-1 rounded-none px-3 py-1.5 text-sm border ${planEditMode ? "bg-[var(--accent)] text-white border-[var(--accent)]" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
                   >
                     <Edit3 className="h-3.5 w-3.5" /> {planEditMode ? "Salir de edición" : "Editar plano"}
@@ -314,10 +424,14 @@ export default function RoomPage() {
         <div className="flex items-center gap-3 border-b border-blue-200 bg-blue-50 px-6 py-2">
           <span className="text-xs font-medium text-blue-700">Nueva huella ({addForm.gridX},{addForm.gridY})</span>
           <Input value={addLabel} onChange={(e) => setAddLabel(e.target.value)} className="w-20 text-xs" placeholder="Label" />
-          <Sel value={addKind} onChange={(e) => setAddKind(e.target.value)} className="w-36 text-xs">
-            <option value="RACK_SLOT">Rack slot</option>
-            <option value="INFRASTRUCTURE">Infraestructura</option>
-            <option value="EMPTY">Vacío</option>
+          <Sel value={addKind} onChange={(e) => setAddKind(e.target.value)} className="w-44 text-xs">
+            <option value="RACK_SLOT">{t("dcim.kind.rack_slot")}</option>
+            <option value="INFRASTRUCTURE">{t("dcim.kind.infrastructure")}</option>
+            <option value="AISLE_COLD">{t("dcim.kind.aisle_cold")}</option>
+            <option value="AISLE_HOT">{t("dcim.kind.aisle_hot")}</option>
+            <option value="AISLE">{t("dcim.kind.aisle")}</option>
+            <option value="BLOCKED">{t("dcim.kind.blocked")}</option>
+            <option value="EMPTY">{t("dcim.kind.empty")}</option>
           </Sel>
           {room.aisles.length > 0 && (
             <Sel value={addAisleId} onChange={(e) => setAddAisleId(e.target.value)} className="w-36 text-xs">
@@ -358,13 +472,118 @@ export default function RoomPage() {
               roomWidthMm={room.widthMm}
               roomDepthMm={room.depthMm}
               selectedRackCiId={selectedRack?.rackCiId ?? null}
+              selectedEditFpId={selectedEditFp?.id ?? null}
               editMode={planEditMode}
               heatmapData={showHeatmap ? (heatmapData ?? undefined) : undefined}
               onClickRack={(fp) => { setSelectedRack(fp); }}
+              onSelectFp={handleSelectFp}
               onCreateFootprint={handleCreateFootprint}
               onDeleteFootprint={handleDeleteFootprint}
               onUpdateFootprint={handleUpdateFootprint}
             />
+
+            {/* ── Edit panel — rendered OUTSIDE ReactFlow so buttons work normally ── */}
+            {planEditMode && selectedEditFp && (
+              <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-amber-200 bg-amber-50 px-4 py-2 shadow-lg">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Label */}
+                  <div className="flex items-center gap-1.5">
+                    <Tag className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                    <input
+                      value={editLabel}
+                      onChange={(e) => setEditLabel(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveEditLabel(); }}
+                      maxLength={50}
+                      className="rounded-none border border-amber-300 bg-white px-2 py-1 text-xs focus:border-amber-500 focus:outline-none w-32"
+                      placeholder={t("dcim.rename_footprint")}
+                    />
+                    <button
+                      onClick={saveEditLabel}
+                      disabled={savingEdit || !editLabel.trim() || editLabel.trim() === selectedEditFp.label}
+                      className="rounded-none bg-amber-500 px-2 py-1 text-xs text-white hover:bg-amber-600 disabled:opacity-40"
+                    >
+                      <Check className="h-3 w-3" />
+                    </button>
+                  </div>
+
+                  {/* Kind selector */}
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      value={selectedEditFp.kind}
+                      onChange={(e) => saveEditKind(e.target.value)}
+                      disabled={savingEdit}
+                      className="rounded-none border border-amber-300 bg-white px-2 py-1 text-xs focus:border-amber-500 focus:outline-none"
+                    >
+                      {KIND_ORDER.map((k) => (
+                        <option key={k} value={k}>{t(`dcim.kind.${k.toLowerCase()}`)}</option>
+                      ))}
+                    </select>
+                    {/* Kind color swatch */}
+                    <span style={{ display: "inline-block", width: 14, height: 14, background: (KIND_STYLE[selectedEditFp.kind] ?? KIND_STYLE.EMPTY).bg, border: `2px solid ${(KIND_STYLE[selectedEditFp.kind] ?? KIND_STYLE.EMPTY).border}`, borderRadius: 3 }} />
+                  </div>
+
+                  {/* Assign rack — only for RACK_SLOT footprints */}
+                  {selectedEditFp.kind === "RACK_SLOT" && (
+                    <div className="flex items-center gap-1.5 border-l border-amber-300 pl-3">
+                      <Server className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      {selectedEditFp.rackCiId ? (
+                        <>
+                          <span className="text-xs text-amber-800 font-medium">{selectedEditFp.rackName ?? "Rack"}</span>
+                          <button
+                            onClick={unassignRack}
+                            disabled={savingEdit}
+                            className="rounded-none border border-amber-400 bg-white px-2 py-1 text-xs text-amber-700 hover:bg-amber-100 disabled:opacity-40"
+                          >✕ Desasignar</button>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={selAssignRack}
+                            onChange={(e) => setSelAssignRack(e.target.value)}
+                            disabled={savingEdit}
+                            className="rounded-none border border-amber-300 bg-white px-2 py-1 text-xs focus:border-amber-500 focus:outline-none"
+                          >
+                            <option value="">— {rackCIs.length === 0 ? "Sin racks en inventario" : "Seleccionar rack"} —</option>
+                            {rackCIs.map((r) => (
+                              <option key={r.id} value={r.id}>{r.name}{r.totalU ? ` (${r.totalU}U)` : ""}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={assignRack}
+                            disabled={savingEdit || !selAssignRack}
+                            className="rounded-none bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-40"
+                          >Asignar</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Delete */}
+                  <button
+                    onClick={handleDeleteSelectedFp}
+                    disabled={savingEdit}
+                    className="flex items-center gap-1 rounded-none border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-3 w-3" /> {t("dcim.actions.delete")}
+                  </button>
+
+                  {/* Close */}
+                  <button
+                    onClick={() => setSelectedEditFp(null)}
+                    className="ml-auto rounded-none border border-slate-300 bg-white px-2 py-1 text-xs text-slate-500 hover:bg-slate-50"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+
+                  <span className="text-xs text-amber-700 font-medium">
+                    {selectedEditFp.label}
+                    {selectedEditFp.kind === "RACK_SLOT" && selectedEditFp.rackCiId && (
+                      <span className="ml-1 text-amber-500">· {selectedEditFp.rackName}</span>
+                    )}
+                  </span>
+                </div>
+              </div>
+            )}
             {/* Heatmap legend */}
             {showHeatmap && (
               <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-none border border-slate-200 bg-white/90 px-3 py-2 text-xs shadow-md backdrop-blur-sm">
@@ -384,7 +603,7 @@ export default function RoomPage() {
 
         {/* Rack elevation drawer */}
         {selectedRack && (
-          <div className="w-80 shrink-0 overflow-auto border-l border-slate-200 bg-white p-4 shadow-lg">
+          <div className="w-80 shrink-0 flex flex-col overflow-hidden border-l border-slate-200 bg-white p-4 shadow-lg">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Elevación de rack</span>
               <button onClick={() => setSelectedRack(null)} className="text-slate-400 hover:text-slate-600">

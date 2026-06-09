@@ -381,8 +381,30 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/footprints/:id  (ADMIN)
   router.delete('/footprints/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimFootprint.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', req.params.id as string, req.user!.email);
+      const fp = await prisma.dcimFootprint.findUnique({
+        where : { id: req.params.id as string },
+        select: { id: true, rackCiId: true, label: true },
+      });
+      if (!fp) { res.status(404).json({ error: 'Footprint not found' }); return; }
+
+      // If the footprint holds a rack with CIs placed inside, block deletion to avoid
+      // orphaning CI placements silently. The user must first move/unassign those CIs.
+      if (fp.rackCiId) {
+        const ciCount = await prisma.hardwareCI.count({
+          where: { parentRackCiId: fp.rackCiId },
+        });
+        if (ciCount > 0) {
+          res.status(409).json({
+            error  : 'FOOTPRINT_HAS_CIS',
+            ciCount,
+            label  : fp.label,
+          });
+          return;
+        }
+      }
+
+      await prisma.dcimFootprint.delete({ where: { id: fp.id } });
+      await dcimAudit(prisma, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }
@@ -439,6 +461,45 @@ export function createDcimRouter(prisma: PrismaClient): Router {
       res.json(elevation);
     } catch (err) {
       console.error('[DCIM] rack elevation error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/dcim/racks/:ciId/location
+  // Returns the full physical hierarchy for a rack CI: footprint → room → floor → building → branch.
+  router.get('/racks/:ciId/location', requireUuidParam('ciId'), async (req: Request, res: Response) => {
+    try {
+      const fp = await prisma.dcimFootprint.findFirst({
+        where  : { rackCiId: req.params.ciId as string },
+        include: {
+          room: {
+            include: {
+              floor: {
+                include: {
+                  building: {
+                    include: { branch: { select: { id: true, name: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      if (!fp) { res.json(null); return; }
+      res.json({
+        footprintId   : fp.id,
+        footprintLabel: fp.label,
+        roomId        : fp.room.id,
+        roomName      : fp.room.name,
+        floorId       : fp.room.floor.id,
+        floorName     : fp.room.floor.name,
+        buildingId    : fp.room.floor.building.id,
+        buildingName  : fp.room.floor.building.name,
+        branchId      : fp.room.floor.building.branch?.id ?? null,
+        branchName    : fp.room.floor.building.branch?.name ?? null,
+      });
+    } catch (err) {
+      console.error('[DCIM] rack location error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

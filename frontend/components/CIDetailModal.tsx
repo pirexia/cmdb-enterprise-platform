@@ -37,7 +37,16 @@ export interface CIDetail {
   branchId:        string | null;
   ciModelId:       string | null;
   technicalLead:   UserRef | null;
-  hardware:        { serialNumber: string; model: string; manufacturer: string } | null;
+  hardware:        {
+    serialNumber   : string;
+    model          : string;
+    manufacturer   : string;
+    parentRackCiId?: string | null;
+    uPosition?     : number | null;
+    orientation?   : string | null;
+    sizeU?         : number | null;
+    powerW?        : number | null;
+  } | null;
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
@@ -149,6 +158,13 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
   const [showAddContracts, setShowAddContracts] = useState(false);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
 
+  interface RackLocation {
+    footprintLabel: string;
+    roomName: string; floorName: string;
+    buildingName: string; branchName: string | null;
+  }
+  const [rackLocation, setRackLocation] = useState<RackLocation | null>(null);
+
   // Inline editing state (admin only)
   const [users, setUsers]         = useState<UserRef[]>([]);
   const [saving, setSaving]       = useState(false);
@@ -189,6 +205,14 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!ci.hardware?.parentRackCiId) { setRackLocation(null); return; }
+    apiFetch(`/api/dcim/racks/${ci.hardware.parentRackCiId}/location`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => setRackLocation(d))
+      .catch(() => setRackLocation(null));
+  }, [ci.hardware?.parentRackCiId]);
 
   const loadDocs = () => {
     setDocsLoading(true);
@@ -275,7 +299,8 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
                 onClick={() => setShowPlaceModal(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
               >
-                <MapPin className="h-3.5 w-3.5" />{t("dcim.place.title")}
+                <MapPin className="h-3.5 w-3.5" />
+                {ci.hardware.parentRackCiId ? t("dcim.place.change") : t("dcim.place.title")}
               </button>
             )}
             <button
@@ -403,6 +428,30 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               <Field label={t("ci_detail.field_model")} value={ci.hardware.model} icon={<Cpu className="h-3 w-3" />} />
               <Field label={t("ci_detail.field_serial")} value={ci.hardware.serialNumber} icon={<Hash className="h-3 w-3" />} />
             </Section>
+          )}
+
+          {/* Ubicación física en CPD — only when CI is placed in a rack */}
+          {ci.hardware?.parentRackCiId && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5" /> {t("dcim.place.title")}
+              </p>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+                {rackLocation && (
+                  <>
+                    {rackLocation.branchName  && <Field label={t("dcim.place.branch")}   value={rackLocation.branchName}   icon={<Building2 className="h-3 w-3" />} />}
+                    <Field label={t("dcim.place.building")} value={rackLocation.buildingName} icon={<Building2 className="h-3 w-3" />} />
+                    <Field label={t("dcim.place.floor")}    value={rackLocation.floorName}    icon={<Tag className="h-3 w-3" />} />
+                    <Field label={t("dcim.place.room")}     value={rackLocation.roomName}     icon={<Tag className="h-3 w-3" />} />
+                    <Field label={t("dcim.place.rack")}     value={rackLocation.footprintLabel} icon={<Server className="h-3 w-3" />} />
+                  </>
+                )}
+                <Field label={t("dcim.place.u_position")} value={ci.hardware.uPosition != null ? `U${ci.hardware.uPosition}` : null} icon={<Hash className="h-3 w-3" />} />
+                <Field label={t("dcim.place.size_u")}     value={ci.hardware.sizeU     != null ? `${ci.hardware.sizeU}U`   : null} />
+                <Field label={t("dcim.place.orientation")} value={ci.hardware.orientation ?? null} />
+                {ci.hardware.powerW != null && <Field label={t("dcim.place.power_w")} value={`${ci.hardware.powerW}W`} icon={<Activity className="h-3 w-3" />} />}
+              </dl>
+            </div>
           )}
           {ci.software && (
             <Section title={t("ci_detail.section_software")} color="slate">
@@ -621,6 +670,13 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
         <PlaceCIModal
           ciId={ci.id}
           ciName={ci.name}
+          currentPlacement={ci.hardware ? {
+            parentRackCiId: ci.hardware.parentRackCiId ?? null,
+            uPosition     : ci.hardware.uPosition      ?? null,
+            orientation   : ci.hardware.orientation    ?? null,
+            sizeU         : ci.hardware.sizeU           ?? null,
+            powerW        : ci.hardware.powerW          ?? null,
+          } : undefined}
           onClose={() => setShowPlaceModal(false)}
           onPlaced={() => { setShowPlaceModal(false); onUpdated?.(); }}
         />

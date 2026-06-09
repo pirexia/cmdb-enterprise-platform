@@ -1354,6 +1354,22 @@
       "add": "Ajouter"
     },
     "confirm_delete": "Confirmer la suppression ?",
+    "kind": {
+      "rack_slot": "Baie",
+      "infrastructure": "Infrastructure",
+      "empty": "Vide",
+      "blocked": "Bloqué",
+      "aisle": "Allée",
+      "aisle_cold": "Allée froide",
+      "aisle_hot": "Allée chaude"
+    },
+    "rename_footprint": "Renommer l'emplacement",
+    "delete": {
+      "confirm_empty": "Supprimer l'emplacement « {label} » ?",
+      "confirm_with_rack": "Supprimer l'emplacement de la baie « {rack} » ? La baie restera dans l'inventaire mais perdra sa position sur le plan.",
+      "error_has_cis": "Impossible de supprimer : la baie contient {count} CI placés. Retirez d'abord les CI.",
+      "error_generic": "Erreur lors de la suppression de l'emplacement"
+    },
     "place": {
       "title": "Placer dans un rack",
       "remove": "Retirer du rack",
@@ -1378,7 +1394,8 @@
       "select_room": "Sélectionner une salle...",
       "select_rack": "Sélectionner un rack...",
       "no_racks": "Aucun rack dans cette salle",
-      "current": "Emplacement actuel"
+      "current": "Emplacement actuel",
+      "change": "Modifier l'emplacement dans la baie"
     }
   }
 }

@@ -225,13 +225,15 @@ The frontend's `NEXT_PUBLIC_API_URL` env var is baked in at build time; changing
 
 ### Backend (`backend/src/index.ts`)
 
-The entire API lives in a **single file** (~4,000 lines). There are no route files or controllers — all endpoints, middleware, types, and services are co-located. Key sections in order:
+The legacy API lives in a **single file** (~7,800 lines). There are no route files or controllers for it — all endpoints, middleware, types, and services are co-located. Key sections in order:
 
 1. **Constants & config** — env vars, JWT secret, bcrypt rounds, password policy
 2. **Zod schemas** — `LoginSchema`, `CICreateSchema`, `ContractCreateSchema` (validate at entry points)
 3. **Middleware** — `authenticateToken` (async, checks active status on every request), `requireAdmin`, `requireAudit`
 4. **Route handlers** — grouped by domain: auth, SSO, users, CIs, relations, contracts, documents, licenses, masters, integrations
 5. **Cron jobs** — EOL alerts (email), trusted device cleanup, SSO state store purge
+
+> **Module convention (since v2.6.0):** New large features must **not** be added to `index.ts`. Create a self-contained module under `backend/src/modules/<name>/` (router, Zod schemas, middleware, queries, audit) and mount its router from `index.ts`. The DCIM module (`backend/src/modules/dcim/`) is the reference implementation. `index.ts` remains the home for the existing legacy domains only — do not grow it further.
 
 External services are in `backend/src/services/`:
 - `ldap.ts` — LDAP/AD authentication with RFC 4514/4515 escaping
@@ -347,9 +349,9 @@ Before committing any `fix` or `feat`:
 
 ## Specialist Skills
 
-Skills live in `.claude/skills/` (project-local) and in the global superpowers plugin. **Always check for a matching skill before implementing anything.** The full trigger table is in the Work Methodology section above.
+**Always check for a matching skill before implementing anything.** Skills live in two places: project-local (`.claude/skills/`, versioned with this repo) and global (`~/.claude/skills/`, shared across all sessions on this machine). The trigger table in the Work Methodology section above takes precedence; the inventory below is the full catalogue.
 
-Project-local skills (`.claude/skills/`):
+### Project-local skills (`.claude/skills/`)
 
 | Skill | When to use |
 |-------|-------------|
@@ -361,11 +363,49 @@ Project-local skills (`.claude/skills/`):
 | `frontend-design` | New UI pages or component refactors |
 | `vercel-react-best-practices` | Next.js / React performance and patterns |
 | `autoship` | Automated doc updates after a feature ships |
-| `react-flow-node-ts` | ReactFlow node components with TypeScript + store |
+| `react-flow-node-ts` | ReactFlow node components with TypeScript + store (used in `/map` + DCIM) |
 | `gh-fix-ci` | Debug and fix failing GitHub Actions checks |
+| `readme-i18n` | Internationalisation of README / docs |
+| `neon-postgres` | Serverless Postgres reference (this project runs PostgreSQL on RHEL, not Neon — reference only) |
 | `find-skills` | Discover a skill when you're not sure which one applies |
 
-If no project skill matches, fall back to the superpowers skills (see Work Methodology section).
+### Global skills (`~/.claude/skills/`)
+
+| Skill | When to use |
+|-------|-------------|
+| `agent-owasp-compliance` | OWASP Agentic Security (ASI Top 10) compliance checks |
+| `api-security-hardening` | REST API hardening — auth, rate limiting, CORS, input validation |
+| `owasp-security` | OWASP Top 10 secure coding — XSS, SQLi, CSRF, auth |
+| `express-typescript` | Express 5 + TypeScript middleware, routing, security patterns |
+| `prisma-development` | Prisma 6 best practices, schema design, migrations |
+| `prisma-client-api` | Prisma 6 queries, CRUD, filters, `$transaction` |
+| `docker-security-guide` | Container hardening — CIS benchmark, non-root, secrets, capability drop |
+| `nginx-configuration` | nginx reverse proxy, TLS, headers, API gateway |
+| `javascript-typescript-jest` | Jest tests with TypeScript — mocking, structure, patterns |
+| `webapp-testing` | Playwright — UI testing, screenshots, browser logs |
+| `typescript-strict-migrator` | Incremental migration to TS strict mode |
+| `cron` | Cron job patterns and scheduling |
+| `pre-commit-standards` | Conventional Commits + pre-commit hooks |
+| `graphify` | Codebase knowledge graph (see § graphify below) |
+
+### Task → required skills
+
+| Task type | Consult these skills first |
+|-----------|---------------------------|
+| Backend API / Express | `express-typescript`, `api-security-hardening`, `owasp-security`, `vibesec-skill` |
+| Database / Prisma | `prisma-development`, `prisma-client-api`, `supabase-postgres-best-practices` |
+| Security / auth / hardening | `owasp-security`, `agent-owasp-compliance`, `api-security-hardening`, `vibesec-skill`, `docker-security-guide` |
+| Frontend / Next.js / React | `vercel-react-best-practices`, `frontend-design`, `react-flow-node-ts`, `webapp-testing` |
+| Tests / QA | `javascript-typescript-jest`, `webapp-testing`, `find-bugs` |
+| Docker / Podman / deploy | `docker-security-guide`, `nginx-configuration`, `autoship` |
+| Cron / scheduled jobs | `cron` |
+| Documentation | `documentation-writer`, `readme-i18n` |
+| Code review | `differential-review`, `find-bugs`, `owasp-security` |
+| Git / commits / CI | `pre-commit-standards`, `gh-fix-ci`, `autoship` |
+| TypeScript strict | `typescript-strict-migrator`, `express-typescript` |
+| Context discovery | `graphify`, `find-skills` |
+
+If no skill matches, fall back to the superpowers skills (see Work Methodology section).
 
 ## graphify
 

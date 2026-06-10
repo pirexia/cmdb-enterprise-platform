@@ -172,3 +172,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .claude/worktrees/
+
+# Runtime document storage (user-uploaded files, UUID-named — may contain PII)
+document-storage/*.pdf
+document-storage/_staging/
+
+# graphify generated knowledge graph (regenerate with `graphify update .`)
+graphify-out/

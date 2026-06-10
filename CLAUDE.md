@@ -337,13 +337,13 @@ Before committing any `fix` or `feat`:
 - `main` — production releases (tagged `vX.Y.Z`)
 - `develop` — active development; PRs merge here first
 - Feature branches cut from `develop`, merged back via PR
-- Current release: **v2.6.0** (DCIM Module 2D MVP: Buildings/Floors/Rooms/Aisles/Footprints, RackElevation2D SVG, RoomPlan2D ReactFlow, PlaceCIModal, power alerts cron + heatmap overlay, requireUuidParam blanket F-02 closed, OWASP 0 C/H/M — 4 Low, 2 fixed in-branch)
-- Previous release: **v2.5.3** (Express route-order fix, CIDetailModal inline edit, bulk-import skip-AI + IP dup, DeviceModel EOL/EOS in masters UI, OWASP 0 C/H/M — 1 LOW fixed)
+- Current release: **v2.6.1** (DCIM rack placement full flow: assign-rack from footprint edit panel, U-slot overlap validation + EditCIModal placement UX, rack location section in CIDetailModal + placement pre-fill, GET /api/cis/:id endpoint, footprint kinds + inline edit panel + delete 409 protection; docs: skills inventory + module convention, gitignore hardening)
+- Previous release: **v2.6.0** (DCIM Module 2D MVP: Buildings/Floors/Rooms/Aisles/Footprints, RackElevation2D SVG, RoomPlan2D ReactFlow, PlaceCIModal, power alerts cron + heatmap overlay, requireUuidParam blanket F-02 closed, OWASP 0 C/H/M — 4 Low, 2 fixed in-branch)
 
 ### Planning documents — active
 
-- **v2.5.3 — RELEASED** → `docs/PLAN_v2.5.3.md`
 - **v2.6.0 — RELEASED** → `docs/SPEC_v2.6.0_dcim.md` + `docs/PLAN_v2.6.0.md` (M0–M11 completados; OWASP `docs/security-audit/owasp-v2.6.0.md` + Compliance `docs/security/COMPLIANCE_v2.6.0.md`)
+- **v2.6.1 — RELEASED** → DCIM rack placement full flow (tag `v2.6.1`, merged develop → main)
 
 ---
 

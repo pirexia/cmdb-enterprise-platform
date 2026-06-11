@@ -216,7 +216,11 @@
       "empty": "This batch has no rows",
       "refresh": "Refresh",
       "empty_batch": "No rows in this batch",
-      "no_items_to_commit": "No items ready to commit"
+      "no_items_to_commit": "No items ready to commit",
+      "select_page": "Select this page ({count})",
+      "select_all_filtered": "Select all filtered ({count})",
+      "all_filtered_banner": "{count} CIs selected — all matching current filters",
+      "dropdown_label": "Selection options"
     },
     "my_imports": "My imports",
     "criticality": {

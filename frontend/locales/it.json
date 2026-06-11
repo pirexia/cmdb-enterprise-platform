@@ -216,7 +216,11 @@
       "empty": "Questo batch non ha righe",
       "refresh": "Aggiorna",
       "empty_batch": "Nessuna riga in questo batch",
-      "no_items_to_commit": "Nessun elemento pronto per confermare"
+      "no_items_to_commit": "Nessun elemento pronto per confermare",
+      "select_page": "Seleziona questa pagina ({count})",
+      "select_all_filtered": "Seleziona tutti i filtrati ({count})",
+      "all_filtered_banner": "{count} CI selezionati — tutti corrispondenti ai filtri attivi",
+      "dropdown_label": "Opzioni di selezione"
     },
     "my_imports": "Le mie importazioni",
     "criticality": {

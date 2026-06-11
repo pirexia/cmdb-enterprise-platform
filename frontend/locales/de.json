@@ -216,7 +216,11 @@
       "empty": "Dieser Batch hat keine Zeilen",
       "refresh": "Aktualisieren",
       "empty_batch": "Keine Zeilen in diesem Batch",
-      "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
+      "no_items_to_commit": "Keine bestätigungsfähigen Elemente",
+      "select_page": "Diese Seite auswählen ({count})",
+      "select_all_filtered": "Alle gefilterten auswählen ({count})",
+      "all_filtered_banner": "{count} CIs ausgewählt — alle, die den Filtern entsprechen",
+      "dropdown_label": "Auswahloptionen"
     },
     "my_imports": "Meine Importe",
     "criticality": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Layers } from "lucide-react";
@@ -270,6 +270,9 @@ export default function InventoryPage() {
 
   // Bulk-update / bulk-delete selection state (admin only)
   const [selectedIds, setSelectedIds]               = useState<Set<string>>(new Set());
+  const [selectAllFiltered, setSelectAllFiltered]   = useState(false);
+  const [showSelectDropdown, setShowSelectDropdown] = useState(false);
+  const selectDropdownRef                           = useRef<HTMLDivElement>(null);
   const [showBulkUpdate, setShowBulkUpdate]         = useState(false);
   const [showBulkDelete, setShowBulkDelete]         = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading]   = useState(false);
@@ -301,7 +304,19 @@ export default function InventoryPage() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  const clearSelection = () => setSelectedIds(new Set());
+  const clearSelection = () => { setSelectedIds(new Set()); setSelectAllFiltered(false); };
+
+  useEffect(() => { setSelectAllFiltered(false); }, [filters, sort]);
+
+  useEffect(() => {
+    if (!showSelectDropdown) return;
+    const handler = (e: MouseEvent) => {
+      if (selectDropdownRef.current && !selectDropdownRef.current.contains(e.target as Node))
+        setShowSelectDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showSelectDropdown]);
 
   // Two-step delete: 1st call without force, server returns 409 + brokenRefs if
   // active associations exist; we ask the user once more, then re-send with force.
@@ -576,8 +591,10 @@ export default function InventoryPage() {
               <div className="flex items-center gap-2">
                 {isAdmin && selectedIds.size > 0 && (
                   <>
-                    <span className="text-xs text-slate-500">
-                      {t('inventory.bulk_update.selected_count', { count: String(selectedIds.size) })}
+                    <span className={`text-xs font-medium ${selectAllFiltered ? 'text-[var(--accent)]' : 'text-slate-500'}`}>
+                      {selectAllFiltered
+                        ? t('inventory.bulk.all_filtered_banner').replace('{count}', String(selectedIds.size))
+                        : t('inventory.bulk_update.selected_count', { count: String(selectedIds.size) })}
                     </span>
                     <button
                       onClick={() => setShowBulkUpdate(true)}
@@ -638,26 +655,61 @@ export default function InventoryPage() {
                       {/* Bulk-select checkbox column (admin only) */}
                       {isAdmin && (
                         <th className="px-3 py-3 whitespace-nowrap w-10">
-                          <input
-                            type="checkbox"
-                            aria-label={t('inventory.bulk_update.select_all')}
-                            checked={filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id))}
-                            ref={(el) => {
-                              if (el) {
-                                const someSelected = filtered.some((c) => selectedIds.has(c.id));
-                                const allSelected  = filtered.length > 0 && filtered.every((c) => selectedIds.has(c.id));
-                                el.indeterminate = someSelected && !allSelected;
-                              }
-                            }}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSelectedIds(new Set(filtered.map((c) => c.id)));
-                              } else {
-                                clearSelection();
-                              }
-                            }}
-                            className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
-                          />
+                          <div className="flex items-center gap-0.5 relative" ref={selectDropdownRef}>
+                            <input
+                              type="checkbox"
+                              aria-label={t('inventory.bulk_update.select_all')}
+                              checked={displayed.length > 0 && displayed.every((c) => selectedIds.has(c.id))}
+                              ref={(el) => {
+                                if (el) {
+                                  const someSelected = displayed.some((c) => selectedIds.has(c.id));
+                                  const allSelected  = displayed.length > 0 && displayed.every((c) => selectedIds.has(c.id));
+                                  el.indeterminate = someSelected && !allSelected;
+                                }
+                              }}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedIds((prev) => new Set([...prev, ...displayed.map((c) => c.id)]));
+                                  setSelectAllFiltered(false);
+                                } else {
+                                  setSelectAllFiltered(false);
+                                  setSelectedIds((prev) => { const next = new Set(prev); displayed.forEach((c) => next.delete(c.id)); return next; });
+                                }
+                              }}
+                              className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
+                            />
+                            <button
+                              onClick={() => setShowSelectDropdown((v) => !v)}
+                              className="p-0.5 text-slate-400 hover:text-[var(--accent)] transition-colors"
+                              aria-label={t('inventory.bulk.dropdown_label')}
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </button>
+                            {showSelectDropdown && (
+                              <div className="absolute top-full left-0 z-20 w-56 border border-slate-200 bg-white shadow-lg">
+                                <button
+                                  className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
+                                  onClick={() => {
+                                    setSelectedIds(new Set(displayed.map((c) => c.id)));
+                                    setSelectAllFiltered(false);
+                                    setShowSelectDropdown(false);
+                                  }}
+                                >
+                                  {t('inventory.bulk.select_page').replace('{count}', String(displayed.length))}
+                                </button>
+                                <button
+                                  className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
+                                  onClick={() => {
+                                    setSelectedIds(new Set(filtered.map((c) => c.id)));
+                                    setSelectAllFiltered(true);
+                                    setShowSelectDropdown(false);
+                                  }}
+                                >
+                                  {t('inventory.bulk.select_all_filtered').replace('{count}', String(filtered.length))}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </th>
                       )}
                       {/* Name */}

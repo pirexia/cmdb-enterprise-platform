@@ -216,7 +216,11 @@
       "empty": "Este lote no tiene filas",
       "refresh": "Actualizar",
       "empty_batch": "No hay filas en este lote",
-      "no_items_to_commit": "No hay elementos listos para confirmar"
+      "no_items_to_commit": "No hay elementos listos para confirmar",
+      "select_page": "Seleccionar esta página ({count})",
+      "select_all_filtered": "Seleccionar todos los filtrados ({count})",
+      "all_filtered_banner": "{count} CIs seleccionados — todos los que coinciden con los filtros",
+      "dropdown_label": "Opciones de selección"
     },
     "my_imports": "Mis importaciones",
     "criticality": {

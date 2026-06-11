@@ -28,3 +28,6 @@ Thumbs.db
 
 # Vercel
 .vercel
+
+# Build-time generated artifact
+public/version.json

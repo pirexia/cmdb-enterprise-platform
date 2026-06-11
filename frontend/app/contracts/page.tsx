@@ -12,6 +12,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { usePageSize } from "@/hooks/usePageSize";
+import PageSizeSelector from "@/components/PageSizeSelector";
+import PaginationControls from "@/components/PaginationControls";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -838,6 +841,9 @@ export default function ContractsPage() {
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const setFilter = (key: keyof typeof filters, val: string) => setFilters((prev) => ({ ...prev, [key]: val }));
   const clearFilters = () => setFilters({ contractNumber: "", vendor: "", status: "", type: "" });
+  const { pageSize, setPageSize } = usePageSize();
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [filters]);
 
   const fetchContracts = async () => {
     setLoading(true); setError(null);
@@ -892,6 +898,9 @@ export default function ContractsPage() {
       return true;
     });
   }, [contracts, filters]);
+
+  const totalPages         = Math.max(1, Math.ceil(filteredContracts.length / pageSize));
+  const displayedContracts = filteredContracts.slice((page - 1) * pageSize, page * pageSize);
 
   const total    = contracts.length;
   const addendums = contracts.filter((c) => c.parentContract !== null).length;
@@ -1050,7 +1059,7 @@ export default function ContractsPage() {
                           : <>{t("contracts.empty_hint")} {isAdmin && <><strong>{t("contracts.add_contract")}</strong></>}</>}
                       </td></tr>
                     ) : (
-                      filteredContracts.map((c) => (
+                      displayedContracts.map((c) => (
                         <ContractRow
                           key={c.id}
                           contract={c}
@@ -1070,9 +1079,12 @@ export default function ContractsPage() {
               </div>
             )}
             {!loading && !error && (
-              <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-                {filteredContracts.length !== 1 ? t("contracts.footer_count_plural").replace("{count}", String(filteredContracts.length)) : t("contracts.footer_count").replace("{count}", String(filteredContracts.length))}
-                {activeFilterCount > 0 ? t("contracts.footer_of_total").replace("{total}", String(total)) : t("contracts.footer_hint")}
+              <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
+                <span>{t("pagination.showing").replace("{from}", String(filteredContracts.length === 0 ? 0 : (page - 1) * pageSize + 1)).replace("{to}", String(Math.min(page * pageSize, filteredContracts.length))).replace("{total}", String(filteredContracts.length))}{activeFilterCount > 0 ? ` / ${total}` : ""}</span>
+                <div className="flex items-center gap-3">
+                  <PaginationControls page={page} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+                  <PageSizeSelector value={pageSize} onChange={(s) => { setPageSize(s); setPage(1); }} />
+                </div>
               </div>
             )}
           </div>

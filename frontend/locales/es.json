@@ -1516,5 +1516,12 @@
       "current": "Ubicación actual",
       "change": "Cambiar ubicación en rack"
     }
+  },
+  "pagination": {
+    "records_per_page": "Registros por página:",
+    "page_of": "Página {page} de {total}",
+    "prev": "Página anterior",
+    "next": "Página siguiente",
+    "showing": "Mostrando {from}–{to} de {total}"
   }
 }

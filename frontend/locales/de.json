@@ -1398,5 +1398,12 @@
       "current": "Aktuelle Position",
       "change": "Rack-Position ändern"
     }
+  },
+  "pagination": {
+    "records_per_page": "Zeilen pro Seite:",
+    "page_of": "Seite {page} von {total}",
+    "prev": "Vorherige Seite",
+    "next": "Nächste Seite",
+    "showing": "{from}–{to} von {total} angezeigt"
   }
 }

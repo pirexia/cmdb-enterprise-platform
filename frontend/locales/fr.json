@@ -1398,5 +1398,12 @@
       "current": "Emplacement actuel",
       "change": "Modifier l'emplacement dans la baie"
     }
+  },
+  "pagination": {
+    "records_per_page": "Lignes par page :",
+    "page_of": "Page {page} sur {total}",
+    "prev": "Page précédente",
+    "next": "Page suivante",
+    "showing": "Affichage de {from}–{to} sur {total}"
   }
 }

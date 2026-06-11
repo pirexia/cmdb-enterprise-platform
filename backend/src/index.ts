@@ -1351,7 +1351,7 @@ app.delete('/api/vendors/:id', authenticateToken, requireAdmin, async (req: Requ
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 
-const CI_MAX_PAGE_SIZE = 500;
+const CI_MAX_PAGE_SIZE = 250;
 app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, CI_MAX_PAGE_SIZE);
@@ -5429,7 +5429,7 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, r
 // ── Documents CRUD ────────────────────────────────────────────────────────────
 
 // GET /api/documents — list root documents with latest version info
-const DOCS_MAX_PAGE_SIZE = 500;
+const DOCS_MAX_PAGE_SIZE = 250;
 app.get('/api/documents', authenticateToken, async (req, res) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, DOCS_MAX_PAGE_SIZE);
@@ -7215,7 +7215,7 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, re
 // ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
 
 // GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
-const LICENSES_MAX_PAGE_SIZE = 500;
+const LICENSES_MAX_PAGE_SIZE = 250;
 app.get('/api/licenses', authenticateToken, async (req, res) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, LICENSES_MAX_PAGE_SIZE);

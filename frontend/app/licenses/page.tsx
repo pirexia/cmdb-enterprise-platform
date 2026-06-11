@@ -12,6 +12,10 @@ import AddLicenseModal from "@/components/AddLicenseModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { usePageSize } from "@/hooks/usePageSize";
+import PageSizeSelector from "@/components/PageSizeSelector";
+import PaginationControls from "@/components/PaginationControls";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -612,6 +616,7 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
 
 export default function LicensesPage() {
   const { isAdmin }             = useAuth();
+  const { t }                   = useLanguage();
   const [licenses, setLicenses] = useState<License[]>([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -644,6 +649,9 @@ export default function LicensesPage() {
   }, [searchParams, licenses, router]);
 
   const [filters, setFilters] = useState({ name: "", vendor: "", licenseType: "", status: "" });
+  const { pageSize, setPageSize } = usePageSize();
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [filters]);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
   const setFilter = (key: keyof typeof filters, val: string) => setFilters((prev) => ({ ...prev, [key]: val }));
   const clearFilters = () => setFilters({ name: "", vendor: "", licenseType: "", status: "" });
@@ -664,6 +672,9 @@ export default function LicensesPage() {
       return true;
     });
   }, [licenses, filters]);
+
+  const totalPages        = Math.max(1, Math.ceil(filteredLicenses.length / pageSize));
+  const displayedLicenses = filteredLicenses.slice((page - 1) * pageSize, page * pageSize);
 
   const total    = licenses.length;
   const expiredCount = licenses.filter((l) => l.endDate && new Date(l.endDate) < new Date()).length;
@@ -838,7 +849,7 @@ export default function LicensesPage() {
                           : "Ninguna licencia coincide con los filtros activos."}
                       </td></tr>
                     ) : (
-                      filteredLicenses.map((l) => (
+                      displayedLicenses.map((l) => (
                         <LicenseRow
                           key={l.id}
                           license={l}
@@ -853,9 +864,12 @@ export default function LicensesPage() {
             )}
 
             {!loading && !error && (
-              <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-                {filteredLicenses.length} licencia{filteredLicenses.length !== 1 ? "s" : ""}
-                {activeFilterCount > 0 ? ` (de ${total} totales)` : " · Haz clic en una fila para ver detalles"}
+              <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
+                <span>{t("pagination.showing").replace("{from}", String(filteredLicenses.length === 0 ? 0 : (page - 1) * pageSize + 1)).replace("{to}", String(Math.min(page * pageSize, filteredLicenses.length))).replace("{total}", String(filteredLicenses.length))}{activeFilterCount > 0 ? ` / ${total}` : ""}</span>
+                <div className="flex items-center gap-3">
+                  <PaginationControls page={page} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+                  <PageSizeSelector value={pageSize} onChange={(s) => { setPageSize(s); setPage(1); }} />
+                </div>
               </div>
             )}
           </div>

@@ -1517,5 +1517,12 @@
       "current": "Current placement",
       "change": "Change rack placement"
     }
+  },
+  "pagination": {
+    "records_per_page": "Rows per page:",
+    "page_of": "Page {page} of {total}",
+    "prev": "Previous page",
+    "next": "Next page",
+    "showing": "Showing {from}–{to} of {total}"
   }
 }

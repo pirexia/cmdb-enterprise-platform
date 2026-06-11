@@ -11,6 +11,9 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { usePageSize } from "@/hooks/usePageSize";
+import PageSizeSelector from "@/components/PageSizeSelector";
+import PaginationControls from "@/components/PaginationControls";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -380,6 +383,9 @@ export default function DocumentsPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
 
+  const { pageSize, setPageSize } = usePageSize();
+  const [page, setPage] = useState(1);
+
   // ── Filters ─────────────────────────────────────────────────────────────────
   const [filterTitle, setFilterTitle] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -397,6 +403,7 @@ export default function DocumentsPage() {
   const hasFilters = filterTitle || filterType || filterUser;
   const activeFilterCount = [filterTitle, filterType, filterUser].filter(Boolean).length;
   const clearFilters = () => { setFilterTitle(""); setFilterType(""); setFilterUser(""); };
+  useEffect(() => { setPage(1); }, [filterTitle, filterType, filterUser]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -463,6 +470,9 @@ export default function DocumentsPage() {
       const cmp = va.localeCompare(vb, undefined, { numeric: true });
       return sortDir === "asc" ? cmp : -cmp;
     });
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const displayed   = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const sortProps = { sortField, sortDir, onSort: handleSort };
 
@@ -593,7 +603,7 @@ export default function DocumentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {filtered.map((doc) => (
+                  {displayed.map((doc) => (
                     <tr
                       key={doc.id}
                       className="group cursor-pointer hover:bg-[var(--accent)]/5 transition-colors"
@@ -638,6 +648,15 @@ export default function DocumentsPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {!loading && !error && (
+            <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
+              <span>{t("pagination.showing").replace("{from}", String(filtered.length === 0 ? 0 : (page - 1) * pageSize + 1)).replace("{to}", String(Math.min(page * pageSize, filtered.length))).replace("{total}", String(filtered.length))}</span>
+              <div className="flex items-center gap-3">
+                <PaginationControls page={page} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+                <PageSizeSelector value={pageSize} onChange={(s) => { setPageSize(s); setPage(1); }} />
+              </div>
             </div>
           )}
         </main>

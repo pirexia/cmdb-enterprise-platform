@@ -21,6 +21,9 @@ import BulkUpdateCIModal from "@/components/BulkUpdateCIModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { usePageSize } from "@/hooks/usePageSize";
+import PageSizeSelector from "@/components/PageSizeSelector";
+import PaginationControls from "@/components/PaginationControls";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -276,6 +279,8 @@ export default function InventoryPage() {
   type SortDir = "asc" | "desc";
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
   const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" });
+  const { pageSize, setPageSize } = usePageSize();
+  const [page, setPage] = useState(1);
 
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
@@ -286,6 +291,8 @@ export default function InventoryPage() {
     setFilters((prev) => ({ ...prev, [key]: val }));
 
   const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
+
+  useEffect(() => { setPage(1); }, [filters, sort]);
 
   // Selection helpers (bulk-update flow)
   const toggleSelect = (id: string) =>
@@ -413,6 +420,9 @@ export default function InventoryPage() {
     }
     return result;
   }, [cis, filters, sort]);
+
+  const totalPages  = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const displayed   = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Está seguro de eliminar el CI "${name}"? Esta acción no se puede deshacer.`)) return;
@@ -782,7 +792,7 @@ export default function InventoryPage() {
                         {activeFilterCount > 0 ? "No hay CIs que coincidan con los filtros activos." : t('inventory.no_cis')}
                       </td></tr>
                     ) : (
-                      filtered.map((ci) => {
+                      displayed.map((ci) => {
                         const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
                         const typeMeta = CI_TYPE_META[resolvedType] ?? CI_TYPE_META["OTHER"];
                         const isSelected = selectedIds.has(ci.id);
@@ -886,12 +896,16 @@ export default function InventoryPage() {
 
             {!loading && !error && (
               <div className="border-t border-slate-100 px-6 py-3 flex items-center justify-between text-xs text-slate-400">
-                <span>Mostrando <strong className="text-slate-600">{filtered.length}</strong> de <strong className="text-slate-600">{cis.length}</strong> activos</span>
-                {activeFilterCount > 0 && (
-                  <button onClick={clearFilters} className="flex items-center gap-1 text-red-500 hover:text-red-700 transition-colors">
-                    <FilterX className="h-3 w-3" />Limpiar filtros
-                  </button>
-                )}
+                <span>{t("pagination.showing").replace("{from}", String(filtered.length === 0 ? 0 : (page - 1) * pageSize + 1)).replace("{to}", String(Math.min(page * pageSize, filtered.length))).replace("{total}", String(filtered.length))}{cis.length !== filtered.length ? ` / ${cis.length}` : ""}</span>
+                <div className="flex items-center gap-3">
+                  {activeFilterCount > 0 && (
+                    <button onClick={clearFilters} className="flex items-center gap-1 text-red-500 hover:text-red-700 transition-colors">
+                      <FilterX className="h-3 w-3" />Limpiar filtros
+                    </button>
+                  )}
+                  <PaginationControls page={page} totalPages={totalPages} onPrev={() => setPage(p => p - 1)} onNext={() => setPage(p => p + 1)} />
+                  <PageSizeSelector value={pageSize} onChange={(s) => { setPageSize(s); setPage(1); }} />
+                </div>
               </div>
             )}
           </div>

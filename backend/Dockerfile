@@ -37,15 +37,15 @@ FROM docker.io/library/node:22-alpine AS runner
 RUN apk add --no-cache \
       openssl \
       dumb-init \
-      tesseract-ocr=5.5.1-r0 \
-      tesseract-ocr-data-eng=5.5.1-r0 \
-      tesseract-ocr-data-spa=5.5.1-r0 \
-      tesseract-ocr-data-deu=5.5.1-r0 \
-      tesseract-ocr-data-por=5.5.1-r0 \
-      tesseract-ocr-data-fra=5.5.1-r0 \
-      tesseract-ocr-data-ita=5.5.1-r0 \
-      tesseract-ocr-data-osd=5.5.1-r0 \
-      poppler-utils=25.12.0-r0
+      tesseract-ocr \
+      tesseract-ocr-data-eng \
+      tesseract-ocr-data-spa \
+      tesseract-ocr-data-deu \
+      tesseract-ocr-data-por \
+      tesseract-ocr-data-fra \
+      tesseract-ocr-data-ita \
+      tesseract-ocr-data-osd \
+      poppler-utils
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 ENV NODE_ENV=production

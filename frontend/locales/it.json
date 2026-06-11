@@ -582,11 +582,13 @@
       "branches": "Sedi",
       "manufacturers": "Produttori",
       "models": "Modelli",
-      "providers": "Fornitori"
+      "providers": "Fornitori",
+      "operating_systems": "Sistemi operativi"
     },
     "doc_types": "Tipi di documento",
     "license_metrics": "Metriche di licenza",
     "license_types": "Tipi di licenza",
+    "operating_systems": "Sistemi operativi",
     "models": {
       "new": "Nuovo modello",
       "placeholder": "Es: PowerEdge R740",
@@ -628,6 +630,16 @@
       "new": "Nuovo fornitore",
       "placeholder": "Es: TIM, AWS, Microsoft",
       "empty": "Nessun fornitore registrato."
+    },
+    "os": {
+      "new": "Nuovo sistema operativo",
+      "name_placeholder": "Es: Windows Server 2022",
+      "version_placeholder": "Versione (opzionale, es: 2022, 11, 14.04)",
+      "manufacturer_label": "— Produttore (opzionale) —",
+      "empty": "Nessun sistema operativo registrato.",
+      "add": "Aggiungi",
+      "system": "Sistema",
+      "in_use": "In uso"
     }
   },
   "settings": {

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -64,6 +64,14 @@ export default function Sidebar({ onClose }: SidebarProps) {
   const userRole               = user?.role ?? "";
   const { t }                  = useLanguage();
   const { companyName, logoUrl } = useTheme();
+  const [appVersion, setAppVersion] = useState<{ version: string; commit: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/version.json')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.version) setAppVersion({ version: d.version, commit: d.commit }); })
+      .catch(() => {});
+  }, []);
 
   const visible = NAV_ITEMS.filter(
     (item) => item.type === "separator" || !item.roles || item.roles.includes(userRole)
@@ -167,9 +175,16 @@ export default function Sidebar({ onClose }: SidebarProps) {
           </div>
         )}
         <div className="flex items-center justify-between">
-          <p className="text-[10px] text-slate-600">
-            {t("footer.copyright", { year: new Date().getFullYear() })}
-          </p>
+          <div>
+            <p className="text-[10px] text-slate-600">
+              {t("footer.copyright", { year: new Date().getFullYear() })}
+            </p>
+            {appVersion && (
+              <p className="text-[10px] text-slate-700">
+                {t("footer.version", { version: appVersion.version, commit: appVersion.commit })}
+              </p>
+            )}
+          </div>
           <LangSelector />
         </div>
       </div>

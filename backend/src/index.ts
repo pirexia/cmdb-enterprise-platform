@@ -3163,12 +3163,26 @@ app.get('/api/masters/ci-types', authenticateToken, async (_req, res) => {
 
 app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, res) => {
   const { code, name, categoryCode, sortOrder } = req.body as { code?: string; name?: string; categoryCode?: string; sortOrder?: number };
-  if (!code?.trim() || !name?.trim() || !categoryCode?.trim()) {
-    res.status(400).json({ error: 'code, name and categoryCode are required' }); return;
+  if (!name?.trim() || !categoryCode?.trim()) {
+    res.status(400).json({ error: 'name and categoryCode are required' }); return;
   }
   try {
+    let finalCode: string;
+    if (code?.trim()) {
+      finalCode = code.trim().toUpperCase();
+    } else {
+      const baseCode = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+      const existing = await prisma.cIType.findMany({
+        where: { code: { startsWith: baseCode } },
+        select: { code: true },
+      });
+      const existingCodes = new Set(existing.map(r => r.code));
+      finalCode = baseCode;
+      let suffix = 1;
+      while (existingCodes.has(finalCode)) { finalCode = `${baseCode}_${suffix++}`; }
+    }
     const row = await prisma.cIType.create({
-      data: { code: code.trim().toUpperCase(), name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
+      data: { code: finalCode, name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','CIType',${row.id}::uuid,${req.user!.email},now())`;

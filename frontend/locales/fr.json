@@ -216,7 +216,11 @@
       "empty": "Ce lot n'a pas de lignes",
       "refresh": "Actualiser",
       "empty_batch": "Aucune ligne dans ce lot",
-      "no_items_to_commit": "Aucun élément prêt à confirmer"
+      "no_items_to_commit": "Aucun élément prêt à confirmer",
+      "select_page": "Sélectionner cette page ({count})",
+      "select_all_filtered": "Sélectionner tous les filtrés ({count})",
+      "all_filtered_banner": "{count} CI sélectionnés — tous correspondant aux filtres actifs",
+      "dropdown_label": "Options de sélection"
     },
     "my_imports": "Mes importations",
     "criticality": {

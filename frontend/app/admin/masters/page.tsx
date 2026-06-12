@@ -24,8 +24,9 @@ interface LicenseMetricCategory { code: string; name: string; sortOrder: number;
 interface LicenseTypeItem { id: string; code: string; name: string; isSystem: boolean; categoryCode: string; description: string | null }
 interface LicenseTypeCategory { code: string; name: string; sortOrder: number; types: LicenseTypeItem[] }
 interface OsItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
+interface BswItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems" | "base-software";
 
 type EditState =
   | { kind: "simple";    path: string; id: string; name: string }
@@ -37,6 +38,7 @@ type EditState =
   | { kind: "licmetric"; id: string; name: string; description: string }
   | { kind: "lictype";   id: string; name: string; description: string }
   | { kind: "os";        id: string; name: string; version: string; manufacturerId: string }
+  | { kind: "bsw";       id: string; name: string; version: string; manufacturerId: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -102,6 +104,7 @@ export default function MastersPage() {
   const [licenseMetricCats, setLicenseMetricCats] = useState<LicenseMetricCategory[]>([]);
   const [licenseTypeCats,   setLicenseTypeCats]   = useState<LicenseTypeCategory[]>([]);
   const [operatingSystems,  setOperatingSystems]  = useState<OsItem[]>([]);
+  const [baseSoftwares,     setBaseSoftwares]     = useState<BswItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -119,6 +122,7 @@ export default function MastersPage() {
   const [newLicMetric, setNewLicMetric] = useState<{ catCode: string; code: string; name: string; description: string } | null>(null);
   const [newLicType,   setNewLicType]   = useState<{ catCode: string; code: string; name: string; description: string } | null>(null);
   const [newOs,        setNewOs]        = useState({ name: "", version: "", manufacturerId: "" });
+  const [newBsw,       setNewBsw]       = useState({ name: "", version: "", manufacturerId: "" });
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -135,7 +139,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes, bswRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
@@ -147,6 +151,7 @@ export default function MastersPage() {
         apiFetch("/api/masters/license-metric-categories"),
         apiFetch("/api/masters/license-type-categories"),
         apiFetch("/api/catalog/operating-systems"),
+        apiFetch("/api/catalog/base-software"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -160,6 +165,7 @@ export default function MastersPage() {
       const lmcData = await lmcRes.json();
       const ltcData = await ltcRes.json();
       const osData  = await osRes.json();
+      const bswData = await bswRes.json();
       setSupportAreas(    safe(saData) as SupportArea[]);
       setBranches(        safe(brData) as Branch[]);
       setManufacturers(   safe(mfData) as Manufacturer[]);
@@ -171,6 +177,7 @@ export default function MastersPage() {
       setLicenseMetricCats(safe(lmcData) as LicenseMetricCategory[]);
       setLicenseTypeCats(  safe(ltcData) as LicenseTypeCategory[]);
       setOperatingSystems( safe(osData)  as OsItem[]);
+      setBaseSoftwares(    safe(bswData) as BswItem[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -219,6 +226,7 @@ export default function MastersPage() {
     { id: "license-metrics",    label: t('masters.license_metrics'),    icon: <Key     className="h-4 w-4" />, count: licenseMetricCats.reduce((s, c) => s + c.metrics.length, 0) },
     { id: "license-types",      label: t('masters.license_types'),      icon: <Key     className="h-4 w-4" />, count: licenseTypeCats.reduce((s, c) => s + c.types.length, 0) },
     { id: "operating-systems",  label: t('masters.operating_systems'),  icon: <Monitor className="h-4 w-4" />, count: operatingSystems.length },
+    { id: "base-software",      label: t('masters.base_software'),      icon: <Package className="h-4 w-4" />, count: baseSoftwares.length },
   ];
 
   return (
@@ -1472,6 +1480,133 @@ export default function MastersPage() {
                           onClick={async () => {
                             if (!confirm(`¿Eliminar "${os.name}"?`)) return;
                             const res = await apiFetch(`/api/catalog/operating-systems/${os.id}`, { method: "DELETE" });
+                            if (!res.ok) {
+                              const d = await res.json().catch(() => ({})) as { error?: string };
+                              alert(d.error ?? `Error ${res.status}`); return;
+                            }
+                            load();
+                          }}
+                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                        ><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Base Software ── */}
+        {tab === "base-software" && (
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('masters.bsw.new')}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Input
+                  placeholder={t('masters.bsw.name_placeholder')}
+                  value={newBsw.name}
+                  onChange={(e) => setNewBsw((p) => ({ ...p, name: e.target.value }))}
+                />
+                <Input
+                  placeholder={t('masters.bsw.version_placeholder')}
+                  value={newBsw.version}
+                  onChange={(e) => setNewBsw((p) => ({ ...p, version: e.target.value }))}
+                />
+                <Sel
+                  value={newBsw.manufacturerId}
+                  onChange={(e) => setNewBsw((p) => ({ ...p, manufacturerId: e.target.value }))}
+                >
+                  <option value="">{t('masters.os.manufacturer_label')}</option>
+                  {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </Sel>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!newBsw.name.trim()) { alert("El nombre es obligatorio"); return; }
+                  try {
+                    await post("/api/catalog/base-software", {
+                      name          : newBsw.name.trim(),
+                      version       : newBsw.version.trim() || undefined,
+                      manufacturerId: newBsw.manufacturerId || undefined,
+                    });
+                    setNewBsw({ name: "", version: "", manufacturerId: "" });
+                    load();
+                  } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                }}
+                className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+              >
+                <Plus className="h-4 w-4" />{t('masters.os.add')}
+              </button>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {baseSoftwares.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-400">{t('masters.bsw.empty')}</p>
+              ) : baseSoftwares.map((sw) => {
+                const isEditing = editState?.kind === "bsw" && editState.id === sw.id;
+                if (isEditing && editState?.kind === "bsw") {
+                  return (
+                    <div key={sw.id} className="flex flex-col gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <Input
+                          value={editState.name}
+                          onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                          placeholder={t('masters.bsw.name_placeholder')}
+                          autoFocus
+                        />
+                        <Input
+                          value={editState.version}
+                          onChange={(e) => setEditState({ ...editState, version: e.target.value })}
+                          placeholder={t('masters.bsw.version_placeholder')}
+                        />
+                        <Sel
+                          value={editState.manufacturerId}
+                          onChange={(e) => setEditState({ ...editState, manufacturerId: e.target.value })}
+                        >
+                          <option value="">{t('masters.os.manufacturer_label')}</option>
+                          {manufacturers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                        </Sel>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={async () => {
+                            try {
+                              await patch(`/api/catalog/base-software/${sw.id}`, {
+                                name          : editState.name.trim(),
+                                version       : editState.version.trim() || null,
+                                manufacturerId: editState.manufacturerId || null,
+                              });
+                              setEditState(null); load();
+                            } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                          }}
+                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        ><Check className="h-4 w-4" /></button>
+                        <button onClick={() => setEditState(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={sw.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">
+                        {sw.name}
+                        {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
+                        {sw.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
+                      </p>
+                      {sw.manufacturer && <p className="text-xs text-slate-400">{sw.manufacturer.name}</p>}
+                      <p className="text-[10px] font-mono text-slate-300">{sw.code}</p>
+                    </div>
+                    {!sw.isSystem && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => setEditState({ kind: "bsw", id: sw.id, name: sw.name, version: sw.version ?? "", manufacturerId: sw.manufacturer?.id ?? "" })}
+                          className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                        ><Pencil className="h-4 w-4" /></button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`¿Eliminar "${sw.name}"?`)) return;
+                            const res = await apiFetch(`/api/catalog/base-software/${sw.id}`, { method: "DELETE" });
                             if (!res.ok) {
                               const d = await res.json().catch(() => ({})) as { error?: string };
                               alert(d.error ?? `Error ${res.status}`); return;

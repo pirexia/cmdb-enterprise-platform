@@ -583,12 +583,14 @@
       "manufacturers": "Fabricants",
       "models": "Modèles",
       "providers": "Fournisseurs",
-      "operating_systems": "Systèmes d'exploitation"
+      "operating_systems": "Systèmes d'exploitation",
+      "base_software": "Logiciels de base"
     },
     "doc_types": "Types de document",
     "license_metrics": "Métriques de licence",
     "license_types": "Types de licence",
     "operating_systems": "Systèmes d'exploitation",
+    "base_software": "Logiciels de base",
     "models": {
       "new": "Nouveau modèle",
       "placeholder": "Ex : PowerEdge R740",
@@ -640,6 +642,12 @@
       "add": "Ajouter",
       "system": "Système",
       "in_use": "En usage"
+    },
+    "bsw": {
+      "new": "Nouveau logiciel de base",
+      "name_placeholder": "Ex : Oracle Database, Apache Tomcat",
+      "version_placeholder": "Version (optionnel, ex : 19c, 10.1)",
+      "empty": "Aucun logiciel de base enregistré."
     }
   },
   "settings": {
@@ -1162,6 +1170,13 @@
     "remove_doc": "Retirer le document",
     "confirm_remove_doc": "Retirer ce document du CI ?",
     "view_all_docs": "Voir tous les documents →",
+    "bsw_title": "Logiciels de base",
+    "bsw_add": "Ajouter",
+    "bsw_select": "— Sélectionner un logiciel de base —",
+    "bsw_loading": "Chargement des logiciels de base…",
+    "bsw_empty": "Aucun logiciel de base associé.",
+    "bsw_remove": "Retirer le logiciel de base",
+    "bsw_confirm_remove": "Retirer ce logiciel de base du CI ?",
     "btn_close": "Fermer",
     "btn_edit_ci": "Modifier CI",
     "subdoc_title": "Associer des Documents",

@@ -628,13 +628,15 @@
       "manufacturers": "Fabricantes",
       "models": "Modelos",
       "providers": "Proveedores",
-      "operating_systems": "Sistemas Operativos"
+      "operating_systems": "Sistemas Operativos",
+      "base_software": "Software Base"
     },
     "doc_types": "Tipos de Documento",
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
     "operating_systems": "Sistemas Operativos",
     "operating_systems": "Sistemas Operativos",
+    "base_software": "Software Base",
     "models": {
       "new": "Nuevo Modelo",
       "placeholder": "Ej: PowerEdge R740",
@@ -686,6 +688,12 @@
       "add": "Añadir",
       "system": "Sistema",
       "in_use": "En uso"
+    },
+    "bsw": {
+      "new": "Nuevo Software Base",
+      "name_placeholder": "Ej: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Versión (opcional, ej: 19c, 10.1)",
+      "empty": "Sin software base registrado."
     }
   },
   "settings": {
@@ -1282,6 +1290,13 @@
     "remove_doc": "Quitar documento",
     "confirm_remove_doc": "¿Quitar este documento del CI?",
     "view_all_docs": "Ver todos los documentos →",
+    "bsw_title": "Software Base",
+    "bsw_add": "Añadir",
+    "bsw_select": "— Seleccionar software base —",
+    "bsw_loading": "Cargando software base…",
+    "bsw_empty": "Sin software base asociado.",
+    "bsw_remove": "Quitar software base",
+    "bsw_confirm_remove": "¿Quitar este software base del CI?",
     "btn_close": "Cerrar",
     "btn_edit_ci": "Editar CI",
     "subdoc_title": "Asociar Documentos",

@@ -1052,7 +1052,8 @@
     "no_events": "No audit events recorded yet.",
     "no_filtered": "No results for your search.",
     "active_filters": "{count} active filter",
-    "active_filters_plural": "{count} active filters"
+    "active_filters_plural": "{count} active filters",
+    "entity_name_placeholder": "Filter by name…"
   },
   "integrations": {
     "title": "Integration Connectors",

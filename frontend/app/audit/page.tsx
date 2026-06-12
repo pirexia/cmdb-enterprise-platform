@@ -16,6 +16,7 @@ interface AuditLog {
   user_email:  string;
   created_at:  string;
   entity_name: string | null;
+  details:     { description?: string; changes?: Array<{ field: string; old: unknown; new: unknown }> } | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export default function AuditPage() {
     action: "",
     dateFrom: "",
     dateTo: "",
+    entityName: "",
   });
 
   const { t } = useLanguage();
@@ -90,7 +92,7 @@ export default function AuditPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
   const clearFilters = () =>
-    setFilters({ search: "", entity: "", action: "", dateFrom: "", dateTo: "" });
+    setFilters({ search: "", entity: "", action: "", dateFrom: "", dateTo: "", entityName: "" });
 
   const fetchLogs = useCallback(async (currentFilters: typeof filters) => {
     setLoading(true);
@@ -100,6 +102,7 @@ export default function AuditPage() {
       if (currentFilters.dateFrom) params.set("from", currentFilters.dateFrom);
       if (currentFilters.dateTo)
         params.set("to", new Date(currentFilters.dateTo + "T23:59:59").toISOString());
+      if (currentFilters.entityName.trim()) params.set("entityName", currentFilters.entityName.trim());
       const url = `/api/audit-logs${params.toString() ? "?" + params.toString() : ""}`;
       const res = await apiFetch(url);
       if (!res.ok) throw new Error(`Status ${res.status}`);
@@ -112,11 +115,11 @@ export default function AuditPage() {
     }
   }, [t]);
 
-  // Fetch on mount and whenever the date range changes
+  // Fetch on mount and whenever server-side filter params change
   useEffect(() => {
     fetchLogs(filters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.dateFrom, filters.dateTo]);
+  }, [filters.dateFrom, filters.dateTo, filters.entityName]);
 
   const filtered = useMemo(() => {
     return logs.filter((l) => {
@@ -312,8 +315,19 @@ export default function AuditPage() {
                         <option value="VULNERABILITY">VULNERABILITY</option>
                       </select>
                     </td>
-                    {/* Cell 5 — Nombre/Detalle: empty */}
-                    <td className="px-3 py-2" />
+                    {/* Cell 5 — Nombre: entity name server-side filter */}
+                    <td className="px-3 py-2">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder={t("audit.entity_name_placeholder")}
+                          value={filters.entityName}
+                          onChange={(e) => setFilter("entityName", e.target.value)}
+                          className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20"
+                        />
+                      </div>
+                    </td>
                     {/* Cell 6 — ID Afectado: empty */}
                     <td className="px-3 py-2" />
                   </tr>
@@ -346,12 +360,17 @@ export default function AuditPage() {
                         <td className="px-6 py-3">
                           <EntityBadge entity={log.entity} />
                         </td>
-                        {/* Entity Name */}
+                        {/* Entity Name + details description */}
                         <td className="px-6 py-3">
                           {log.entity_name ? (
                             <span className="text-sm font-medium text-slate-700">{log.entity_name}</span>
                           ) : (
                             <span className="text-xs text-slate-400 italic">—</span>
+                          )}
+                          {log.details?.description && (
+                            <p className="mt-0.5 text-[11px] text-slate-400 italic truncate max-w-[180px]" title={log.details.description}>
+                              {log.details.description}
+                            </p>
                           )}
                         </td>
                         {/* Entity ID */}

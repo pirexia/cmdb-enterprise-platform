@@ -1007,7 +1007,8 @@
     "no_events": "Noch keine Auditereignisse aufgezeichnet.",
     "no_filtered": "Keine Ergebnisse für Ihre Suche.",
     "active_filters": "{count} aktiver Filter",
-    "active_filters_plural": "{count} aktive Filter"
+    "active_filters_plural": "{count} aktive Filter",
+    "entity_name_placeholder": "Nach Name filtern…"
   },
   "integrations": {
     "title": "Integrations-Konnektoren",

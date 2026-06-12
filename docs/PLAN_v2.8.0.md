@@ -1,225 +1,210 @@
-# Plan de desarrollo v2.8.0 — Plugin Engine
+# Plan de desarrollo v2.8.0 — Plugin Engine (Motor de Plugins)
 
-> Estado general: ⬜ **PENDIENTE** — en planificación  
-> Rama base: `develop`  
-> Target: `main` tag `v2.8.0`  
-> Prerequisito: v2.7.0 completada y publicada (tag `v2.7.0`)  
-> Fecha de redacción: 2026-06-12  
+> Estado general: 🟡 **EN PROGRESO** — 1/10 tareas completadas (T1)
+> Rama base: `develop`
+> Target: `main` tag `v2.8.0`
+> Fecha de inicio: 2026-06-12
+> Última actualización: 2026-06-12
+> Plan documento: `docs/PLAN_v2.8.0.md`
+> Flujo: feature branches desde `develop`, merge **vía PR** (no merge directo). Parar tras cada tarea para revisión.
 
----
-
-## Objetivo
-
-v2.8.0 introduce un **Motor de Plugins** que permite a los operadores cargar extensiones de lógica de negocio sin modificar ni reconstruir el código base. Un plugin es un módulo JavaScript/TypeScript que se carga en tiempo de ejecución en el backend, expone hooks tipados y puede registrar endpoints REST propios bajo `/api/plugins/:pluginId/`.
-
-El objetivo estratégico es desacoplar la integración de herramientas externas (ServiceNow, Jira, Dynatrace, Zabbix, Ansible AWX, etc.) del ciclo de releases del CMDB core, permitiendo que el equipo de operaciones desarrolle, publique y actualice conectores de forma independiente.
-
----
-
-## Principios de diseño
-
-| # | Principio |
-|---|-----------|
-| P1 | **Seguridad primero:** los plugins se ejecutan en un contexto sandbox (vm2 o Node.js `--experimental-vm-modules`), sin acceso directo al sistema de archivos ni a variables de entorno del host. |
-| P2 | **Aislamiento:** cada plugin obtiene un cliente Prisma de solo lectura por defecto; el acceso de escritura se declara en el manifiesto y es aprobado por el ADMIN. |
-| P3 | **Trazabilidad:** toda invocación de un plugin escribe una entrada en `AuditLog` con `entity: 'PLUGIN'`, `entity_id: pluginId`, y el resultado (éxito/error). |
-| P4 | **Compatibilidad:** la API pública del motor de plugins sigue SemVer; los plugins declaran la versión mínima del motor que requieren. |
-| P5 | **Reversibilidad:** un plugin puede desactivarse en caliente (sin reiniciar el backend) y sus endpoints desaparecen en menos de 1 s. |
+> ⚠️ Prerequisito: v2.7.0 ya mergeada y publicada (main tag `v2.7.0`, commit `e6fa640`, 2026-06-12).
 
 ---
 
 ## Resumen ejecutivo
 
-v2.8.0 entrega la **infraestructura** del motor (P1–P5) y dos plugins de referencia que demuestran los patrones de integración más comunes:
+v2.8.0 implementa un **Motor de Plugins** completo que permite a usuarios con rol ADMIN instalar, activar, desactivar y desinstalar extensiones sin comprometer la integridad, seguridad ni compliance de la plataforma. Los plugins extienden el CMDB mediante: nuevas tablas (migraciones DDL aisladas con rol DB restringido), endpoints REST propios, UI por iframe aislado, hooks del ciclo de vida del core y cron jobs.
 
-1. **ServiceNow Connector** — sincronización bidireccional CI CMDB ↔ ServiceNow CMDB. Lee CIs del CMDB local y los upserta en ServiceNow vía REST API. Puede recibir webhooks de ServiceNow para actualizar campos en el CMDB local.
-2. **Zabbix Monitor** — consulta la API de Zabbix para enriquecer la vista de CI con datos de disponibilidad (último ping, alertas activas). Solo lectura.
+**Modelo de confianza:** `vm.Script` pure-trust — la frontera de seguridad es el gate de admisión (firma Ed25519 + checksum SHA-256 + checklist + 4-eyes en producción), no el runtime. El contexto vm se endurece al máximo (congelado, sin fs/process/require). Documentado explícitamente.
 
----
+**Datos:** migraciones DDL con prefijo `plg_<id>_`, ejecutadas por rol PostgreSQL `cmdb_plugin` sin privilegios sobre tablas core; allowlist DDL; down-migrations + backup JSON en uninstall.
 
-## Arquitectura del motor
-
-### Componentes backend
-
-```
-backend/src/modules/plugins/
-  engine/
-    loader.ts        — Descarga/valida el bundle del plugin (hash SHA-256, tamaño máx. 5 MB)
-    sandbox.ts       — Contexto vm2 con lista blanca de módulos permitidos (axios, zod, date-fns)
-    registry.ts      — Map<pluginId, PluginInstance> con ciclo de vida (load/start/stop/unload)
-    router.ts        — Monta/desmonta subrouters de plugins dinámicamente
-    audit.ts         — pluginAudit() helper (insert-only)
-    api-bridge.ts    — API pública inyectada al plugin: prismaReadOnly, auditWrite, httpFetch (allowlist)
-  manifest.ts        — Zod schema del manifiesto (plugin.json)
-  router.ts          — /api/plugins CRUD (ADMIN) + /api/plugins/:id/invoke
-  schemas.ts         — Zod schemas para Create/Update/Invoke
-  queries.ts         — Prisma CRUD sobre tabla plugins
-```
-
-### Tabla `plugins`
-
-```sql
-CREATE TABLE plugins (
-  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name           text NOT NULL,
-  version        text NOT NULL,
-  bundle_hash    text NOT NULL,           -- SHA-256 del bundle JS
-  bundle_url     text,                    -- URL interna (object storage) del bundle
-  manifest       jsonb NOT NULL,          -- contenido validado de plugin.json
-  enabled        boolean NOT NULL DEFAULT false,
-  write_access   boolean NOT NULL DEFAULT false,  -- requiere aprobación ADMIN explícita
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
-  created_by     text NOT NULL            -- user_email del instalador
-);
-```
-
-### Manifiesto (`plugin.json`)
-
-```jsonc
-{
-  "id": "servicenow-connector",
-  "name": "ServiceNow Connector",
-  "version": "1.0.0",
-  "engineMin": "2.8.0",           // versión mínima del motor
-  "entrypoint": "index.js",
-  "permissions": {
-    "prismaRead": true,
-    "prismaWrite": false,          // si true, requiere write_access=true en DB
-    "httpAllowlist": [             // solo estos dominios pueden llamarse con api.fetch()
-      "https://instance.service-now.com"
-    ],
-    "endpoints": [                 // endpoints que registra el plugin
-      { "method": "GET",  "path": "/sync/status" },
-      { "method": "POST", "path": "/sync/trigger" }
-    ]
-  },
-  "hooks": ["onCICreated", "onCIUpdated", "onCIDeleted"]
-}
-```
-
-### API pública del plugin (inyectada por `api-bridge.ts`)
-
-```typescript
-interface PluginAPI {
-  // Prisma read-only (todos los modelos, solo SELECT)
-  db: PrismaClient;
-
-  // HTTP fetch con allowlist de dominios del manifiesto
-  fetch(url: string, options?: RequestInit): Promise<Response>;
-
-  // Escribe en AuditLog (sin PII, solo IDs)
-  audit(action: string, details: object): Promise<void>;
-
-  // Logger estructurado (sale a stdout del backend, prefijado con [plugin:id])
-  log: { info(msg: string, meta?: object): void; warn(...): void; error(...): void };
-}
-```
-
-### Ciclo de vida de un plugin
-
-```
-ADMIN sube bundle → loader valida hash + tamaño → sandbox.load() →
-registry.register() → ADMIN activa (enabled=true) → router monta subrouter →
-hooks registrados en EventBus → [uso] → ADMIN desactiva → router desmonta →
-hooks eliminados → sandbox.unload()
-```
+**UI:** plugin sirve su interfaz bajo `/api/plugins/:id/ui`; host la embebe en `<iframe sandbox>`; puente `postMessage` para token efímero + locale + tema.
 
 ---
 
-## Hooks del sistema
+## Decisiones de arquitectura (cerradas)
 
-El backend emite eventos tipados que los plugins pueden suscribir:
-
-| Hook | Cuándo se emite | Payload |
-|------|-----------------|---------|
-| `onCICreated` | Después de `POST /api/cis` exitoso | `{ ciId, ciTypeCode, name }` |
-| `onCIUpdated` | Después de `PATCH /api/cis/:id` exitoso | `{ ciId, changes: {field, old, new}[] }` |
-| `onCIDeleted` | Después de `DELETE /api/cis/:id` exitoso | `{ ciId }` |
-| `onRelationCreated` | Después de `POST /api/relations` exitoso | `{ relationId, sourceId, targetId, type }` |
-| `onAuditLogWritten` | En cada INSERT en `audit_logs` | `{ action, entity, entityId }` |
-
-Los hooks son **fire-and-forget con timeout de 5 s**. Un hook que lanza excepción o supera el timeout registra un error en `AuditLog` pero no propaga el error al handler original.
-
----
-
-## Endpoints del motor
-
-| Método | Ruta | Auth | Descripción |
-|--------|------|------|-------------|
-| GET | `/api/plugins` | ADMIN | Listar plugins instalados |
-| POST | `/api/plugins` | ADMIN | Instalar un plugin (upload bundle) |
-| PATCH | `/api/plugins/:id` | ADMIN | Activar/desactivar/aprobar write_access |
-| DELETE | `/api/plugins/:id` | ADMIN | Desinstalar (detiene sandbox, elimina de DB) |
-| POST | `/api/plugins/:id/invoke` | AUDITOR+ | Invocar un endpoint del plugin |
-| GET | `/api/plugins/:id/logs` | ADMIN | Últimas 500 líneas de log del plugin |
+| # | Decisión | Elegida |
+|---|----------|---------|
+| D1 | Sandbox | `vm.Script` pure-trust + gate de admisión (firma Ed25519, 4-eyes, checklist) |
+| D2 | Datos de plugin | Migraciones DDL con rol DB restringido (`cmdb_plugin`) + prefijo `plg_<id>_` |
+| D3 | UI de plugin | iframe aislado `<iframe sandbox>` + puente `postMessage` |
+| D4 | Alcance v2.8.0 | Completo (10 tareas): incluye marketplace, firma, rollback, 3 guías de doc |
 
 ---
 
 ## Tabla maestra de tareas
 
-| ID | Tarea | Fase | Complejidad | Depende de | Estimación |
-|----|-------|------|-------------|------------|------------|
-| **P1** | Diseño detallado del sandbox (vm2 vs Worker threads) + PoC | 1 | Alta | — | 2 días |
-| **P2** | Tabla `plugins` + migración + CRUD básico (`/api/plugins`) | 1 | Media | P1 | 1 día |
-| **P3** | `loader.ts` — descarga, validación SHA-256, límite de tamaño | 2 | Media | P1 | 1 día |
-| **P4** | `sandbox.ts` — contexto vm2, inyección PluginAPI, timeout | 2 | Alta | P1, P3 | 2 días |
-| **P5** | `registry.ts` + `router.ts` — carga/descarga dinámica de subrouters | 2 | Alta | P4 | 2 días |
-| **P6** | `api-bridge.ts` — Prisma read-only, fetch con allowlist, audit, log | 3 | Media | P4 | 1 día |
-| **P7** | EventBus de hooks (`onCICreated` etc.) — integración con index.ts | 3 | Media | P5, P6 | 1 día |
-| **P8** | Frontend: página `/admin/plugins` (lista, instalar, activar, logs) | 4 | Media | P2, P5 | 2 días |
-| **P9** | Plugin de referencia: Zabbix Monitor (solo lectura) | 5 | Media | P6, P7 | 2 días |
-| **P10** | Plugin de referencia: ServiceNow Connector (bidireccional) | 5 | Alta | P6, P7 | 3 días |
-| **P11** | Tests (Jest): loader, sandbox timeout, hook fire-and-forget | 6 | Media | P4–P7 | 1 día |
-| **P12** | Docs: OWASP + Compliance + User/Sysadmin manuals + CHANGELOG | 7 | Baja | P1–P11 | 1 día |
+| ID | Tarea | Fase | Complejidad | Rama | Depende de | Estado |
+|----|-------|------|-------------|------|------------|--------|
+| **T1** | Schema Prisma + migración (6 modelos) | 1 | Media | `feature/plugin-engine-schema` | — | ✅ COMPLETADA (PR #100) |
+| **T2** | Backend core: engine, sandbox, registries, validator, migration-runner | 1 | Alta | `feature/plugin-engine-core` | T1 | ⬜ PENDIENTE |
+| **T3** | API REST router (12 endpoints + 4-eyes + audit) | 1 | Alta | `feature/plugin-engine-api` | T2 | ⬜ PENDIENTE |
+| **T4** | Frontend panel admin (`/plugins/admin`) | 2 | Media | `feature/plugin-engine-frontend-admin` | T3 | ⬜ PENDIENTE |
+| **T5** | Slots por iframe + PluginContext + puente postMessage | 2 | Alta | `feature/plugin-engine-slots` | T4 | ⬜ PENDIENTE |
+| **T6** | Hooks del core en index.ts (emitHook) | 3 | Alta | `feature/plugin-engine-hooks` | T2 | ⬜ PENDIENTE |
+| **T7** | Inicialización del engine en arranque + reactivación | 3 | Media | `feature/plugin-engine-init` | T2,T3,T5,T6 | ⬜ PENDIENTE |
+| **T8** | Infra: volumen Docker, rol DB cmdb_plugin, env vars, CSP iframe | 4 | Media | `feature/plugin-engine-infra` | T1 | ⬜ PENDIENTE |
+| **T9** | Tests Jest (validator, sandbox, lifecycle, api) | 4 | Media | `feature/plugin-engine-tests` | T2,T3 | ⬜ PENDIENTE |
+| **T10** | Documentación (3 guías nuevas + 6 docs actualizados + CHANGELOG) | 5 | Media | `feature/plugin-engine-docs` | T1–T9 | ⬜ PENDIENTE |
 
-**Estimación total:** ~19 días-persona.
+Leyenda estado: ⬜ PENDIENTE · 🟡 EN PROGRESO · ✅ COMPLETADA · ❌ BLOQUEADA
 
 ---
 
-## Decisiones abiertas (requieren confirmación antes de ejecutar)
+## Diagrama de dependencias
 
-| # | Pregunta | Propuesta |
-|---|----------|-----------|
-| **Q1** | **Sandbox:** vm2 (EOL, mantenimiento comunitario) vs. Node.js `--experimental-vm-modules` vs. Worker threads | Worker threads + `MessageChannel` es la opción más segura a largo plazo (sin deprecaciones). Requiere serialización de payload. **Confirmar antes de P1.** |
-| **Q2** | **Almacenamiento de bundles:** sistema de archivos vs. columna `bytea` en PostgreSQL | `bytea` en PostgreSQL simplifica backups y evita gestión de volúmenes extra. Límite 5 MB es razonable para un bundle minificado. |
-| **Q3** | **Autenticación de plugins a servicios externos:** ¿las credenciales van en la DB o en variables de entorno? | Columna `secrets` (encrypted con `pgcrypto` + clave en env) en tabla `plugin_configs`. Nunca en el bundle. |
-| **Q4** | **Scope del plugin ServiceNow para v2.8.0:** ¿sincronización completa o solo demostración de un campo? | Solo demostración de un campo (`short_description` ↔ `description` del CI) para mantener el scope. Sincronización completa → v2.9.0. |
-| **Q5** | **Vista 3D de sala DCIM** (diferida desde v2.6.0 y v2.7.0) | Fuera de v2.8.0. Requiere R3F (Three.js) + análisis de rendimiento. → v2.9.0. |
-
----
-
-## Riesgos
-
-| Riesgo | Probabilidad | Impacto | Mitigación |
-|--------|-------------|---------|------------|
-| vm2/Worker no aisla suficientemente el código malicioso | Media | Alto | PoC de escape en P1; si no es aceptable → modo noop (plugins solo vía HTTP webhook externo, sin ejecución in-process) |
-| Bundle sizes > 5 MB (bundlers incluyen node_modules) | Alta | Bajo | Documento de empaquetado para plugin devs: usar esbuild con `--external:axios` (axios está en allowlist del motor) |
-| Incompatibilidad de Prisma read-only con transacciones del motor | Baja | Medio | Usar `PrismaClient` separado con `datasourceUrl` read-only (PostgreSQL hot-standby o usuario READ-ONLY) |
-| Latencia de hooks > 5 s bloquea respuestas | Baja | Alto | Timeout enforced en `api-bridge.ts`; hooks async con `Promise.race` |
-
----
-
-## Criterios de aceptación
-
-1. Un plugin puede instalarse, activarse y desactivarse sin reiniciar el backend.
-2. Un plugin con timeout > 5 s no bloquea el handler original.
-3. Un plugin no puede leer variables de entorno del proceso host.
-4. Un plugin no puede hacer llamadas HTTP a dominios fuera de su allowlist.
-5. Toda invocación de plugin escribe en `AuditLog`.
-6. `npx tsc --noEmit` pasa con 0 errores nuevos.
-7. Contenedores rebuildan y arrancan limpios en < 5 min.
-8. Tests unitarios (P11) pasan al 100%.
-9. OWASP Top 10: 0 C / 0 H / 0 M.
-10. Página `/admin/plugins` funciona en los 6 idiomas.
+```mermaid
+graph TD
+  T1[T1 Schema + Migración] --> T2[T2 Core/Sandbox/Engine]
+  T1 --> T8[T8 Infra/Rol DB]
+  T2 --> T3[T3 API REST]
+  T2 --> T6[T6 Hooks core]
+  T2 --> T9[T9 Tests]
+  T3 --> T4[T4 Panel admin]
+  T3 --> T9
+  T4 --> T5[T5 Slots iframe]
+  T2 --> T7[T7 Init arranque]
+  T3 --> T7
+  T5 --> T7
+  T6 --> T7
+  T7 --> T10[T10 Docs]
+  T9 --> T10
+```
 
 ---
 
-## Backlog adicional (candidatos v2.9.0)
+## Orden de ejecución
 
-- Vista 3D de sala DCIM (Three.js / React Three Fiber).
-- Sincronización completa CI ↔ ServiceNow CMDB (scope completo).
-- Generación automática de `frontend/lib/relationTypes.ts` desde el módulo backend (cierra L-02 de v2.7.0).
-- Reemplazar mensajes de validación de RelationTypeMatrix por códigos de error + ID (cierra L-01 de v2.7.0).
-- Plugin Ansible AWX: trigger de playbooks desde la ficha de CI.
-- Plugin Dynatrace: enriquecimiento de CIs con métricas de APM.
+1. **T1** → 2. **T8 + T2** (paralelo, ambos dependen solo de T1) → 3. **T3 + T6 + T9** (paralelo, dependen de T2) → 4. **T4** → 5. **T5** → 6. **T7** (integra todo) → 7. **T10** (cierre documental)
+
+Parar tras cada tarea para revisión del usuario antes de continuar.
+
+---
+
+## T1 — Schema Prisma + migración
+
+| Campo | Valor |
+|-------|-------|
+| ID | T1 |
+| Rama | `feature/plugin-engine-schema` |
+| Estado | ✅ COMPLETADA |
+| Inicio | 2026-06-12 |
+| Fin | 2026-06-12 |
+| PR | #100 |
+| Commits | 1b6010f |
+
+### Subtareas
+- [x] Añadir modelos PluginRegistry, PluginHook, PluginCronJob, PluginRoute, PluginDataBackup, PluginDataStore a `backend/prisma/schema.prisma`
+- [x] Crear migración SQL manual en `backend/prisma/migrations/20260612200000_plugin_engine/migration.sql`
+- [x] Aplicar migración con `prisma migrate deploy`
+- [x] Verificar `tsc --noEmit` sin nuevos errores
+- [x] Commit y PR a develop
+
+### Modelos
+6 modelos nuevos siguiendo convenciones del repo (`@db.Uuid`, `@@map` snake_case, índices en FKs, `onDelete: Cascade`):
+- `PluginRegistry` — registro central, campos de gobierno (status, checksum, approvedBy/At, dataRetention, lastError)
+- `PluginHook` — hooks registrados por plugin (event, priority, handlerCode, isActive)
+- `PluginCronJob` — cron jobs del plugin (schedule, lastRunAt, nextRunAt)
+- `PluginRoute` — rutas REST del plugin (method, path, requiresAuth, requiredRole)
+- `PluginDataBackup` — backups JSON pre-uninstall (backupPath, sizeBytes, reason)
+- `PluginDataStore` — almacenamiento JSONB ligero sin DDL (tableName, entityId, pluginId, data)
+
+---
+
+## T2 — Backend Core (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+Archivos: `backend/src/modules/plugins/{engine,schemas,audit,middleware,queries,index}.ts`
+Engine: PluginLifecycleManager, HookRegistry, RouteRegistry, CronRegistry, PluginValidator, MigrationRunner, SandboxExecutor (vm.Script, timeout 5s, contexto congelado).
+
+---
+
+## T3 — API REST Router (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+12 endpoints ADMIN: upload, validate, install, activate (4-eyes en prod), deactivate, uninstall, config GET/PATCH, logs, rollback, marketplace, list. Audit `PLUGIN_*` en toda escritura.
+
+---
+
+## T4 — Panel Admin Frontend (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+`frontend/app/plugins/admin/page.tsx` + `PluginConfigModal` + `PluginLogViewer` + `frontend/lib/plugin-registry.ts`. i18n 6 idiomas.
+
+---
+
+## T5 — Slots iframe + PluginContext (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+`frontend/app/plugins/[id]/ui/page.tsx` (embed iframe), `frontend/contexts/PluginContext.tsx`, `frontend/components/plugins/PluginSlot.tsx`. Slots: DashboardWidget, CIDetailTab, ContractDetailTab, TopBarMenu, SettingsPanel, InventoryColumn, MapOverlay. Puente `postMessage`: token efímero + locale + theme.
+
+---
+
+## T6 — Hooks del Core (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+Instrumentar en `index.ts` los puntos localizados (líneas reales):
+- POST /api/cis (1445), PATCH /api/cis/:id (1671), DELETE /api/cis/:id (1891)
+- POST /api/contracts (2015), POST /api/documents (5757), POST /api/licenses (7512)
+- POST /api/auth/login (904) + users, RAG
+
+Patrón: `emitHook('pre*')` (puede cancelar) → operación Prisma → `emitHook('post*')`. Early-return si no hay plugins activos.
+
+---
+
+## T7 — Inicialización del Engine (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+`initializePluginEngine(app, prisma)` al final de `index.ts`: leer plugins ACTIVE, reactivarlos (rutas+hooks+cron). Si un plugin falla → marcarlo ERROR, no bloquear arranque.
+
+---
+
+## T8 — Infra Docker + Rol DB (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+Volumen `cmdb-plugins` en compose files. Rol PostgreSQL `cmdb_plugin` (GRANT mínimo, REVOKE sobre core). Env vars en `.env.example`. CSP `frame-src 'self'` en nginx si aplica.
+
+---
+
+## T9 — Tests Jest (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+`backend/src/modules/plugins/__tests__/`: validator.test.ts, sandbox.test.ts (timeout, acceso fs/process denegado), lifecycle.test.ts, api.test.ts. Plugin "hello-world" de referencia como prueba de integración.
+
+---
+
+## T10 — Documentación (pendiente)
+
+| Campo | Valor |
+|-------|-------|
+| Estado | ⬜ PENDIENTE |
+
+Nuevos: `docs/PLUGIN_ENGINE.md`, `docs/PLUGIN_DEVELOPMENT_GUIDE.md`, `docs/PLUGIN_SECURITY_CHECKLIST.md`.
+Actualizados: ARCHITECTURE, USER_MANUAL, SYSADMIN_MANUAL, SECURITY_AUDIT, README, CHANGELOG.

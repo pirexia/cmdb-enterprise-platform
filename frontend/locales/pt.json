@@ -1007,7 +1007,8 @@
     "no_events": "Nenhum evento de auditoria registado ainda.",
     "no_filtered": "Sem resultados para a sua pesquisa.",
     "active_filters": "{count} filtro ativo",
-    "active_filters_plural": "{count} filtros ativos"
+    "active_filters_plural": "{count} filtros ativos",
+    "entity_name_placeholder": "Filtrar por nome…"
   },
   "integrations": {
     "title": "Conectores de Integração",

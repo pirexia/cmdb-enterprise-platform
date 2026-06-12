@@ -107,6 +107,25 @@ declare global {
   }
 }
 
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+/** Escapes %, _ and \ for use in a LIKE/ILIKE pattern (A03 — SQL Injection). */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Builds a structured JSON payload for AuditLog.details.
+ * description — human-readable summary (no PII).
+ * changes    — list of {field, old, new} for UPDATE events (use IDs not emails).
+ */
+function buildAuditDetails(
+  description: string,
+  changes?: Array<{ field: string; old: unknown; new: unknown }>,
+): object {
+  return { description, ...(changes?.length ? { changes } : {}) };
+}
+
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
 // ── Helmet — security headers (ISO 27001 A.8.24, A.10.1) ─────────────────────
@@ -1525,9 +1544,10 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     });
 
     // Audit log (raw — Prisma client types regenerate after migrate)
+    const createDetails = JSON.stringify(buildAuditDetails(`CI "${ci.name}" creado`));
     await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, now())
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
     `;
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
@@ -2628,8 +2648,8 @@ app.post('/api/cis/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin,
  */
 app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request, res: Response) => {
   try {
-    // ── Validate optional date-range params ──────────────────────────────────
-    const { from, to } = req.query as { from?: string; to?: string };
+    // ── Validate optional params ─────────────────────────────────────────────
+    const { from, to, entityName } = req.query as { from?: string; to?: string; entityName?: string };
     let fromDate: Date | undefined;
     let toDate: Date | undefined;
 
@@ -2647,38 +2667,54 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
         return;
       }
     }
+    if (entityName && typeof entityName !== 'string') {
+      res.status(400).json({ error: 'Invalid "entityName" parameter' });
+      return;
+    }
 
-    // ── Build dynamic WHERE clause ───────────────────────────────────────────
-    const conditions: Prisma.Sql[] = [];
-    if (fromDate) conditions.push(Prisma.sql`al.created_at >= ${fromDate}::timestamptz`);
-    if (toDate) conditions.push(Prisma.sql`al.created_at <= ${toDate}::timestamptz`);
-    const whereClause = conditions.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+    // ── Date WHERE (inner CTE) ───────────────────────────────────────────────
+    const dateConds: Prisma.Sql[] = [];
+    if (fromDate) dateConds.push(Prisma.sql`al.created_at >= ${fromDate}::timestamptz`);
+    if (toDate)   dateConds.push(Prisma.sql`al.created_at <= ${toDate}::timestamptz`);
+    const dateWhere = dateConds.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(dateConds, ' AND ')}`
       : Prisma.empty;
 
-    type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date; entity_name: string | null };
+    // ── Entity-name LIKE filter (outer CTE, A03-safe) ────────────────────────
+    const nameWhere = entityName
+      ? Prisma.sql`WHERE entity_name ILIKE ${'%' + escapeLike(entityName.trim()) + '%'} ESCAPE '\\'`
+      : Prisma.empty;
+
+    type AuditRow = {
+      id: string; action: string; entity: string; entity_id: string;
+      user_email: string; created_at: Date; details: unknown; entity_name: string | null;
+    };
     const logs = await prisma.$queryRaw<AuditRow[]>`
-      SELECT
-        al.id, al.action, al.entity, al.entity_id, al.user_email, al.created_at,
-        CASE al.entity
-          WHEN 'CI' THEN ci.name
-          WHEN 'VULNERABILITY' THEN CONCAT(vuln_ci.name, ' · ', split_part(al.entity_id, ':', 2))
-          WHEN 'Document' THEN doc.title
-          WHEN 'USER' THEN u.email
-          WHEN 'CI_RELATION' THEN CONCAT(src.name, ' → ', tgt.name)
-          WHEN 'SYSTEM' THEN al.entity_id
-          ELSE NULL
-        END AS entity_name
-      FROM audit_logs al
-      LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'          THEN al.entity_id::uuid                         ELSE NULL END) = ci.id
-      LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
-      LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'     THEN al.entity_id::uuid                         ELSE NULL END) = doc.id
-      LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'          THEN al.entity_id::uuid                         ELSE NULL END) = u.id
-      LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'  THEN al.entity_id::uuid                         ELSE NULL END) = rel.id
-      LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
-      LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
-      ${whereClause}
-      ORDER BY al.created_at DESC
+      WITH al_named AS (
+        SELECT
+          al.id, al.action, al.entity, al.entity_id, al.user_email, al.created_at, al.details,
+          CASE al.entity
+            WHEN 'CI'            THEN ci.name
+            WHEN 'VULNERABILITY' THEN CONCAT(vuln_ci.name, ' · ', split_part(al.entity_id, ':', 2))
+            WHEN 'Document'      THEN doc.title
+            WHEN 'USER'          THEN u.email
+            WHEN 'CI_RELATION'   THEN CONCAT(src.name, ' → ', tgt.name)
+            WHEN 'SYSTEM'        THEN al.entity_id
+            ELSE NULL
+          END AS entity_name
+        FROM audit_logs al
+        LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'            THEN al.entity_id::uuid                       ELSE NULL END) = ci.id
+        LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
+        LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'       THEN al.entity_id::uuid                       ELSE NULL END) = doc.id
+        LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'           THEN al.entity_id::uuid                       ELSE NULL END) = u.id
+        LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'   THEN al.entity_id::uuid                       ELSE NULL END) = rel.id
+        LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
+        LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
+        ${dateWhere}
+      )
+      SELECT * FROM al_named
+      ${nameWhere}
+      ORDER BY created_at DESC
       LIMIT 500
     `;
     res.json({ total: logs.length, data: logs });

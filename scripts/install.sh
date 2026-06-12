@@ -1171,11 +1171,15 @@ if [ "$PLATFORM" = "compose" ]; then
   cd "$INSTALL_DIR"
 
   info "Building container images (this may take several minutes) ..."
-  $COMPOSE_CMD -f docker-compose.prod.yml build --no-cache
+  GIT_COMMIT=$(git -C "$INSTALL_DIR" rev-parse --short HEAD 2>/dev/null || echo "release") \
+    $COMPOSE_CMD -f docker-compose.prod.yml build --no-cache --build-arg "GIT_COMMIT=${GIT_COMMIT:-release}"
 
   info "Starting services ..."
   $COMPOSE_CMD -f docker-compose.prod.yml down --remove-orphans 2>/dev/null || true
   $COMPOSE_CMD -f docker-compose.prod.yml up -d
+
+  # Restart nginx after backend start to clear any cached upstream IP
+  $COMPOSE_CMD -f docker-compose.prod.yml restart nginx 2>/dev/null || true
 
   success "Containers started."
 

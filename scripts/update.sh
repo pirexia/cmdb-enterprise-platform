@@ -281,6 +281,11 @@ build_images() {
   local -a build_args=()
   [ "${NO_CACHE}" = "true" ] && build_args+=("--no-cache")
 
+  # Pass current git commit so version.json (T9) embeds the right hash.
+  local git_commit
+  git_commit=$(git -C "${INSTALL_DIR}" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  build_args+=("--build-arg" "GIT_COMMIT=${git_commit}")
+
   if [ "${DRY_RUN}" = "true" ]; then
     info "[DRY RUN] Would run: ${COMPOSE_CMD} -f ${COMPOSE_FILE} build${build_args[*]:+ ${build_args[*]}}"
     return 0
@@ -302,6 +307,11 @@ deploy() {
 
   "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" up -d
   success "Containers started."
+
+  # nginx caches the upstream backend IP; restart it after backend recreation
+  # so requests are not routed to a stale container address (502/504 prevention).
+  info "Restarting nginx to refresh upstream backend IP…"
+  "${COMPOSE_CMD_ARRAY[@]}" -f "${COMPOSE_FILE}" restart nginx 2>/dev/null || true
 
   # Health check — goes through nginx (same public URL as the frontend).
   # FRONTEND_URL is sourced from .env by pre_update_backup(); default to https://localhost.

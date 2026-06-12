@@ -1,6 +1,6 @@
 # Plan de desarrollo v2.7.0 — Mejoras y Correcciones CMDB Enterprise Platform
 
-> Estado general: 🟡 **EN PROGRESO** — 9/10 tareas completadas (T1, T9, T2, T3, T4, T5, T6, T7, T8)
+> Estado general: ✅ **COMPLETADO** — 10/10 tareas completadas (T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
 > Rama base: `develop`
 > Target: `main` tag `v2.7.0`
 > Fecha de inicio: 2026-06-11
@@ -43,12 +43,12 @@ v2.7.0 agrupa **10 tareas** en 7 fases: un bugfix crítico (creación de Tipos d
 | **T2** | Paginación con selector de registros/página | 2 | Media | `feature/pagination-records-per-page` | — | ✅ COMPLETADA (PR #92) |
 | **T3** | Multiselect "todos los filtrados" | 2 | Alta | `feature/bulk-select-all-filtered` | T2 | ✅ COMPLETADA (PR #93) |
 | **T4** | Maestro: Sistema Operativo | 3 | Alta | `feature/catalog-operating-system` | — | ✅ COMPLETADA (PR #94) |
-| **T5** | Maestro: Software Base | 3 | Alta | `feature/master-base-software` | (T4 patrón) | ⬜ PENDIENTE |
-| **T6** | Nuevos campos de infraestructura en CI | 4 | Media | `feature/ci-infrastructure-fields` | T4, T5 | ⬜ PENDIENTE |
-| **T7** | Creación en cascada en alta masiva | 5 | Alta | `feature/bulk-import-cascade` | T4, T5 | ⬜ PENDIENTE |
-| **T8** | Mapa de Relaciones: renombrar + nuevos tipos | 6 | Alta | `feature/relation-map-types` | PR #98 ✅ | ✅ COMPLETADA |
+| **T5** | Maestro: Software Base | 3 | Alta | `feature/master-base-software` | (T4 patrón) | ✅ COMPLETADA (PR #95) |
+| **T6** | Nuevos campos de infraestructura en CI | 4 | Media | `feature/ci-infrastructure-fields` | T4, T5 | ✅ COMPLETADA (PR #96) |
+| **T7** | Creación en cascada en alta masiva | 5 | Alta | `feature/bulk-import-cascade` | T4, T5 | ✅ COMPLETADA (PR #97) |
+| **T8** | Mapa de Relaciones: renombrar + nuevos tipos | 6 | Alta | `feature/relation-map-types` | — | ✅ COMPLETADA (PR #98) |
 | **T9** | Versión dinámica en footer | 7 | Baja | `feature/dynamic-version` | — | ✅ COMPLETADA (PR #91) |
-| **T10** | Mejoras en Registro de Eventos (audit) | 7 | Media | `feature/audit-log-improvements` | — | 🟡 EN PROGRESO |
+| **T10** | Mejoras en Registro de Eventos (audit) | 7 | Media | `feature/audit-log-improvements` | — | ✅ COMPLETADA (PR #99) |
 
 Leyenda estado: ⬜ PENDIENTE · 🟡 EN PROGRESO · ✅ COMPLETADA · ❌ BLOQUEADA
 

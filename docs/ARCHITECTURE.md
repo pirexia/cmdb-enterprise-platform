@@ -1025,3 +1025,96 @@ frontend/
 | `PlaceCIModal` dedicated | `EditCIModal` already saturated (C74 in graphify); separation of concerns |
 | ReactFlow for `RoomPlan2D` | Already installed (used in `/map`); pan/zoom + click handlers built-in |
 | LATERAL JOIN for alerts/heatmap | Avoids N+1 queries; single SQL round-trip per endpoint |
+
+---
+
+## 13. v2.7.0 — Nuevas capacidades y cambios arquitectónicos
+
+### 13.1 Módulo `catalog/` (T4 — OperatingSystem, T5 — BaseSoftware)
+
+Nuevo módulo `backend/src/modules/catalog/` (patrón DCIM):
+
+```
+backend/src/modules/catalog/
+  router.ts    — 14 endpoints CRUD: /api/catalog/operating-systems, /api/catalog/base-software,
+                  /api/catalog/cis/:ciId/base-software
+  schemas.ts   — Zod schemas para OS y BaseSoftware (code auto-generado desde name)
+  queries.ts   — Prisma queries, ON CONFLICT idempotente
+  audit.ts     — auditCatalog() helper (insert-only, ISO 27001 A.8.15)
+```
+
+Montado en `index.ts`:
+```typescript
+app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
+```
+
+### 13.2 Modelo de datos — v2.7.0
+
+**Nuevas tablas:**
+- `operating_systems` (id, code UNIQUE, name, version, vendor, eol_date, notes)
+- `base_software` (id, code UNIQUE, name, version, type, vendor, eol_date, notes)
+- `_ci_base_software` (join M:M entre `configuration_items` y `base_software`)
+
+**Nuevas columnas en `configuration_items`:**
+- `host_name`, `mgmt_ip`, `admin_ip`, `dns`, `cluster_name`, `firmware_version` (text, nullable)
+- `v_cpus` (int, nullable — excluyente con `cpu_model`)
+- `cpu_model` (text, nullable — excluyente con `v_cpus`)
+- `ram_gb` (int, nullable)
+- `disk_gb` (int, nullable)
+- `operating_system_id` (FK → `operating_systems`, nullable)
+
+**Extensión del enum `RelationType`** (+12 valores):
+`CONTAINS`, `COMPOSED_OF`, `ATTACHED_TO` (estructural), `CONNECTS_TO`, `UPLINKS_TO` (red), `POWERS`, `PROTECTS` (eléctrica), `REPLICATES_TO`, `RUNS_ON`, `QUERIES`, `LICENSES`, `MANAGES` (lógica).
+
+**Nueva columna en `audit_logs`:**
+- `details` (jsonb, nullable) — almacena `{ description, changes? }`. Insert-only.
+
+### 13.3 Módulo de tipos de relación (T8)
+
+`backend/src/relationTypes.ts` — fuente autoritativa:
+- `VALID_RELATION_TYPES`: allowlist de los 17 tipos.
+- `RELATION_TYPE_MATRIX`: restricciones por tipo de CI en cada extremo (source/target).
+- `validateRelationCiTypes()`: validación aplicada antes de cualquier INSERT en `/api/relations`.
+
+`frontend/lib/relationTypes.ts` — espejo del backend con adiciones UI:
+- `CATEGORY_COLORS`: `{ structural: #6366f1, network: #0d9488, power: #f59e0b, logical: #f97316 }`
+- `relationAllowed()`: filtrado de opciones en `AddRelationModal`.
+
+### 13.4 Cascada en alta masiva (T7)
+
+El endpoint `POST /api/cis/bulk/commit` ahora acepta opcionalmente `osName`, `osVersion`, `baseSoftwareList`. Se ejecuta en un `$transaction` de Prisma:
+
+1. `INSERT INTO operating_systems ... ON CONFLICT (code) DO NOTHING` — idempotente.
+2. `INSERT INTO base_software ... ON CONFLICT (code) DO NOTHING` — idempotente.
+3. `INSERT INTO configuration_items ...` — usa el OS id resuelto.
+4. `INSERT INTO _ci_base_software ...` — asociaciones M:M.
+
+Un fallo en los pasos 1/2 no cancela el CI; los errores se registran como warnings en el batch.
+
+### 13.5 Mejoras de AuditLog (T10)
+
+- `GET /api/audit-logs` usa un CTE para computar `entity_name` (alias calculado en SELECT):
+
+```sql
+WITH al_named AS (
+  SELECT ..., CASE al.entity WHEN 'CI' THEN ci.name ... END AS entity_name
+  FROM audit_logs al LEFT JOIN ...
+  WHERE created_at BETWEEN $from AND $to
+)
+SELECT * FROM al_named
+WHERE entity_name ILIKE '%' || $search || '%' ESCAPE '\'
+ORDER BY created_at DESC LIMIT 500
+```
+
+- `escapeLike(s)`: escapa `%`, `_`, `\` antes de la interpolación (OWASP A03).
+- `buildAuditDetails(description, changes?)`: helper para construir `details` JSONB sin PII.
+
+### 13.6 Decisiones arquitectónicas (2026-06-12)
+
+| Decisión | Justificación |
+|----------|---------------|
+| `catalog/` módulo unificado para OS + BSW | Mismo patrón DCIM; evita crecer `index.ts`; los dos maestros comparten lógica de auto-code |
+| `cpuModel` ↔ `vCpus` mutuamente excluyentes | Refuerza el invariante físico/virtual a nivel de BD y Zod (D3 del plan) |
+| CTE para `entity_name` en audit-logs | `entity_name` es un alias calculado; no referenciable en WHERE sin CTE |
+| `RELATION_TYPE_MATRIX` en módulo compartido | Única fuente de verdad; frontend la importa como espejo (backlog: generación automática) |
+| `details` jsonb en `audit_logs` (no nueva tabla) | Mantiene la tabla plana; `jsonb` soporta índices GIN para búsquedas futuras |

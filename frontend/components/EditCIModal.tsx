@@ -15,6 +15,7 @@ interface Branch       { id: string; name: string; branch_code: string; support_
 interface DeviceModel  { id: string; name: string; manufacturer_id: string; manufacturer_name: string }
 interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean }
 interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
+interface OsOption     { id: string; name: string; version: string | null }
 
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
@@ -51,6 +52,18 @@ interface CI {
   spofRisk: boolean;
   containsPii: boolean;
   dataClassification: string | null;
+  // Infrastructure specs (T6)
+  cpuModel?: string | null;
+  vCpus?: number | null;
+  ram?: string | null;
+  disk?: string | null;
+  adminIp?: string | null;
+  mgmtIp?: string | null;
+  hostName?: string | null;
+  clusterName?: string | null;
+  operatingSystemId?: string | null;
+  firmwareVersion?: string | null;
+  dns?: string | null;
   hardware?: {
     serialNumber   : string;
     parentRackCiId?: string | null;
@@ -82,6 +95,10 @@ interface FormState {
   spofRisk: boolean;
   containsPii: boolean;
   dataClassification: DataClassification | "";
+  // Infrastructure specs (T6)
+  cpuModel: string; vCpus: string; ram: string; disk: string;
+  adminIp: string; mgmtIp: string; hostName: string; clusterName: string;
+  operatingSystemId: string; firmwareVersion: string; dns: string;
 }
 
 function Label({ children }: { children: React.ReactNode }) {
@@ -120,12 +137,24 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
     spofRisk: ci.spofRisk ?? false,
     containsPii: ci.containsPii ?? false,
     dataClassification: (ci.dataClassification as DataClassification | null) || "",
+    cpuModel: ci.cpuModel || "",
+    vCpus: ci.vCpus != null ? String(ci.vCpus) : "",
+    ram: ci.ram || "",
+    disk: ci.disk || "",
+    adminIp: ci.adminIp || "",
+    mgmtIp: ci.mgmtIp || "",
+    hostName: ci.hostName || "",
+    clusterName: ci.clusterName || "",
+    operatingSystemId: ci.operatingSystemId || "",
+    firmwareVersion: ci.firmwareVersion || "",
+    dns: ci.dns || "",
   });
   const [users,            setUsers]            = useState<User[]>([]);
   const [branches,         setBranches]         = useState<Branch[]>([]);
   const [manufacturers,    setManufacturers]    = useState<MasterItem[]>([]);
   const [allModels,        setAllModels]        = useState<DeviceModel[]>([]);
   const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
+  const [operatingSystems, setOperatingSystems] = useState<OsOption[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
   const [error,            setError]            = useState<string | null>(null);
 
@@ -140,14 +169,24 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
       apiFetch("/api/masters/manufacturers").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/device-models").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/ci-type-categories").then((r) => r.json()).catch(() => []),
-    ]).then(([u, b, m, dm, cats]) => {
+      apiFetch("/api/catalog/operating-systems").then((r) => r.json()).catch(() => []),
+    ]).then(([u, b, m, dm, cats, os]) => {
       setUsers(safe(u) as User[]);
       setBranches(safe(b) as Branch[]);
       setManufacturers(safe(m) as MasterItem[]);
       setAllModels(safe(dm) as DeviceModel[]);
       setCiTypeCategories(safe(cats) as CITypeCategory[]);
+      setOperatingSystems(safe(os) as OsOption[]);
     });
   }, []);
+
+  // Infra specs visibility (T6): selected type's category + physical/virtual exclusion
+  const allFlatTypes = ciTypeCategories.flatMap((c) => c.ciTypes.map((tp) => ({ ...tp, categoryCode: c.code })));
+  const selectedTypeInfo = allFlatTypes.find((tp) => tp.id === form.ciTypeId);
+  const selectedCategoryCode = selectedTypeInfo?.categoryCode ?? "";
+  const showInfraSpecs = selectedCategoryCode === "INFRASTRUCTURE" || selectedCategoryCode === "CLOUD";
+  const isPhysicalSrv  = selectedTypeInfo?.code === "PHYSICAL_SERVER";
+  const isVirtualSrv   = selectedTypeInfo?.code === "VIRTUAL_SERVER" || selectedTypeInfo?.code === "CLOUD_INSTANCE";
 
   // Filter models by selected manufacturer
   const selectedModel = allModels.find((m) => m.id === form.ciModelId);
@@ -182,6 +221,18 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
       spofRisk:           form.spofRisk,
       containsPii:        form.containsPii,
       dataClassification: form.dataClassification  || null,
+      // Infrastructure specs (T6)
+      cpuModel:          form.cpuModel          || null,
+      vCpus:             form.vCpus             ? parseInt(form.vCpus) : null,
+      ram:               form.ram               || null,
+      disk:              form.disk              || null,
+      adminIp:           form.adminIp           || null,
+      mgmtIp:            form.mgmtIp            || null,
+      hostName:          form.hostName          || null,
+      clusterName:       form.clusterName       || null,
+      operatingSystemId: form.operatingSystemId || null,
+      firmwareVersion:   form.firmwareVersion   || null,
+      dns:               form.dns               || null,
     };
 
     try {
@@ -326,6 +377,42 @@ export default function EditCIModal({ ci, onClose, onUpdated }: { ci: CI; onClos
               <div><Label>{t("add_ci_modal.eos_label")}</Label><Input type="date" value={form.eosDate} onChange={(e) => set("eosDate", e.target.value)} /></div>
             </div>
           </div>
+
+          {/* ── Infrastructure specs (T6 — infra/cloud categories) ── */}
+          {showInfraSpecs && (
+            <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">{t("add_ci_modal.infra_section")}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {!isVirtualSrv && (
+                  <div><Label>{t("add_ci_modal.cpu_model_label")}</Label><Input placeholder="Intel Xeon Gold 6330" value={form.cpuModel} onChange={(e) => set("cpuModel", e.target.value)} /></div>
+                )}
+                {!isPhysicalSrv && (
+                  <div><Label>{t("add_ci_modal.vcpus_label")}</Label><Input type="number" min={1} placeholder="8" value={form.vCpus} onChange={(e) => set("vCpus", e.target.value)} /></div>
+                )}
+                <div><Label>{t("add_ci_modal.ram_label")}</Label><Input placeholder="64 GB" value={form.ram} onChange={(e) => set("ram", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.disk_label")}</Label><Input placeholder="2 TB SSD" value={form.disk} onChange={(e) => set("disk", e.target.value)} /></div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div><Label>{t("add_ci_modal.hostname_label")}</Label><Input placeholder="srv-app-01" value={form.hostName} onChange={(e) => set("hostName", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.cluster_label")}</Label><Input placeholder="cluster-prod" value={form.clusterName} onChange={(e) => set("clusterName", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.admin_ip_label")}</Label><Input placeholder="10.0.1.10" value={form.adminIp} onChange={(e) => set("adminIp", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.mgmt_ip_label")}</Label><Input placeholder="10.0.99.10" value={form.mgmtIp} onChange={(e) => set("mgmtIp", e.target.value)} /></div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div>
+                  <Label>{t("add_ci_modal.os_label")}</Label>
+                  <Select value={form.operatingSystemId} onChange={(e) => set("operatingSystemId", e.target.value)}>
+                    <option value="">{t("add_ci_modal.no_selection")}</option>
+                    {operatingSystems.map((os) => (
+                      <option key={os.id} value={os.id}>{os.name}{os.version ? ` ${os.version}` : ""}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div><Label>{t("add_ci_modal.firmware_label")}</Label><Input placeholder="2.15.1" value={form.firmwareVersion} onChange={(e) => set("firmwareVersion", e.target.value)} /></div>
+                <div><Label>{t("add_ci_modal.dns_label")}</Label><Input placeholder="srv-app-01.example.com" value={form.dns} onChange={(e) => set("dns", e.target.value)} /></div>
+              </div>
+            </div>
+          )}
 
           {/* ── NIS2 / Resiliencia / GDPR ── */}
           <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 space-y-4">

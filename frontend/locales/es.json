@@ -627,11 +627,14 @@
       "branches": "Sedes",
       "manufacturers": "Fabricantes",
       "models": "Modelos",
-      "providers": "Proveedores"
+      "providers": "Proveedores",
+      "operating_systems": "Sistemas Operativos"
     },
     "doc_types": "Tipos de Documento",
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
+    "operating_systems": "Sistemas Operativos",
+    "operating_systems": "Sistemas Operativos",
     "models": {
       "new": "Nuevo Modelo",
       "placeholder": "Ej: PowerEdge R740",
@@ -673,6 +676,16 @@
       "new": "Nuevo Proveedor",
       "placeholder": "Ej: Telefónica, AWS, Microsoft",
       "empty": "Sin proveedores registrados."
+    },
+    "os": {
+      "new": "Nuevo Sistema Operativo",
+      "name_placeholder": "Ej: Windows Server 2022",
+      "version_placeholder": "Versión (opcional, ej: 2022, 11, 14.04)",
+      "manufacturer_label": "— Fabricante (opcional) —",
+      "empty": "Sin sistemas operativos registrados.",
+      "add": "Añadir",
+      "system": "Sistema",
+      "in_use": "En uso"
     }
   },
   "settings": {

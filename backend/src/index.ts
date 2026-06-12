@@ -44,6 +44,7 @@ import {
 import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
+import { createCatalogRouter } from './modules/catalog/router';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -238,6 +239,9 @@ app.use('/api/', apiLimiter);
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
+
+// Catalog module — master data (OS, etc.); reads open to all authenticated roles
+app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
 
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({

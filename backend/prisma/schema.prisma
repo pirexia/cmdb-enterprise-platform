@@ -244,12 +244,13 @@ model Branch {
 }
 
 model Manufacturer {
-  id        String        @id @default(uuid()) @db.Uuid
-  name      String        @unique
-  models    DeviceModel[]
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String            @unique
+  models           DeviceModel[]
+  operatingSystems OperatingSystem[]
 
-  createdAt DateTime      @default(now()) @map("created_at")
-  updatedAt DateTime      @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("manufacturers")
 }
@@ -487,9 +488,10 @@ model Document {
   uploadedBy     String   @map("uploaded_by")     // user email
 
   // Associations
-  cis            DocumentCI[]
-  contracts      DocumentContract[]
-  licenses       DocumentLicense[]
+  cis              DocumentCI[]
+  contracts        DocumentContract[]
+  licenses         DocumentLicense[]
+  operatingSystems DocumentOperatingSystem[]
 
   // RAG subsystem
   ragIndex       RagDocumentIndex[]
@@ -653,9 +655,10 @@ model License {
   parentLicense   License?       @relation("LicenseAddendums", fields: [parentLicenseId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   addendums       License[]      @relation("LicenseAddendums")
 
-  cis             CI[]           @relation("LicenseToCI")
-  documents       DocumentLicense[]
-  licenseUsers    LicenseUser[]
+  cis              CI[]           @relation("LicenseToCI")
+  documents        DocumentLicense[]
+  licenseUsers     LicenseUser[]
+  operatingSystems LicenseOperatingSystem[]
 
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -704,6 +707,53 @@ model AppSettings {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_settings")
+}
+
+// ─── Catalog: Operating Systems ──────────────────────────────────────────────
+
+model OperatingSystem {
+  id             String    @id @default(uuid()) @db.Uuid
+  code           String    @unique @db.VarChar(50)
+  name           String    @db.VarChar(255)
+  version        String?   @db.VarChar(100)
+  manufacturerId String?   @db.Uuid @map("manufacturer_id")
+  isSystem       Boolean   @default(false) @map("is_system")
+
+  manufacturer     Manufacturer?             @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  documents        DocumentOperatingSystem[]
+  licenses         LicenseOperatingSystem[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([manufacturerId])
+  @@map("operating_systems")
+}
+
+model DocumentOperatingSystem {
+  documentId       String @db.Uuid @map("document_id")
+  operatingSystemId String @db.Uuid @map("operating_system_id")
+
+  document        Document        @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  operatingSystem OperatingSystem @relation(fields: [operatingSystemId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([documentId, operatingSystemId])
+  @@index([documentId])
+  @@index([operatingSystemId])
+  @@map("document_operating_systems")
+}
+
+model LicenseOperatingSystem {
+  licenseId         String @db.Uuid @map("license_id")
+  operatingSystemId String @db.Uuid @map("operating_system_id")
+
+  license         License          @relation(fields: [licenseId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  operatingSystem OperatingSystem  @relation(fields: [operatingSystemId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([licenseId, operatingSystemId])
+  @@index([licenseId])
+  @@index([operatingSystemId])
+  @@map("license_operating_systems")
 }
 
 // ─── RAG Subsystem ────────────────────────────────────────────────────────────

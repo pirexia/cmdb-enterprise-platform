@@ -64,6 +64,11 @@ interface CIDecision {
   assignedUser?: string | null;
   ipAddress?: string | null;
   description?: string | null;
+  // T7 (v2.7.0): cascade-created masters
+  osName?: string | null;
+  osVersion?: string | null;
+  baseSoftwareName?: string | null;
+  baseSoftwareVersion?: string | null;
   forceCreate?: boolean;
 }
 
@@ -111,6 +116,10 @@ function seedDecision(item: CIBatchItem): CIDecision {
     assignedUser:       pick(n.assignedUser, r.assignedUser) || null,
     ipAddress:          pick(n.ipAddress, r.ipAddress) || null,
     description:        pick(n.description, r.description) || null,
+    osName:              pick(n.osName, r.osName) || null,
+    osVersion:           pick(n.osVersion, r.osVersion) || null,
+    baseSoftwareName:    pick(n.baseSoftwareName, r.baseSoftwareName) || null,
+    baseSoftwareVersion: pick(n.baseSoftwareVersion, r.baseSoftwareVersion) || null,
     forceCreate:        false,
   };
 }
@@ -342,6 +351,22 @@ function ItemRow({
               <div>
                 <label className="block text-xs font-medium text-slate-500 mb-1">ipAddress</label>
                 <input className={inp} value={decision.ipAddress ?? ""} onChange={(e) => onChange({ ipAddress: e.target.value || null })} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">osName</label>
+                <input className={inp} value={decision.osName ?? ""} onChange={(e) => onChange({ osName: e.target.value || null })} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">osVersion</label>
+                <input className={inp} value={decision.osVersion ?? ""} onChange={(e) => onChange({ osVersion: e.target.value || null })} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">baseSoftwareName</label>
+                <input className={inp} value={decision.baseSoftwareName ?? ""} onChange={(e) => onChange({ baseSoftwareName: e.target.value || null })} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">baseSoftwareVersion</label>
+                <input className={inp} value={decision.baseSoftwareVersion ?? ""} onChange={(e) => onChange({ baseSoftwareVersion: e.target.value || null })} />
               </div>
               <div className="md:col-span-4">
                 <label className="block text-xs font-medium text-slate-500 mb-1">description</label>

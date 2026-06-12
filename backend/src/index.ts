@@ -2242,6 +2242,12 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
       { key: 'assignedUser',       header: 'assignedUser',         width: 22 },
       { key: 'ipAddress',          header: 'ipAddress',            width: 18 },
       { key: 'description',        header: 'description',          width: 40 },
+      // T7 (v2.7.0): cascade-created masters — appended at the end so the
+      // hardcoded dataValidation column indices above keep working.
+      { key: 'osName',              header: 'osName',               width: 24 },
+      { key: 'osVersion',           header: 'osVersion',            width: 16 },
+      { key: 'baseSoftwareName',    header: 'baseSoftwareName',     width: 26 },
+      { key: 'baseSoftwareVersion', header: 'baseSoftwareVersion',  width: 18 },
     ];
 
     ws.columns = COLS;
@@ -2256,7 +2262,7 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
     });
 
     // Two example rows
-    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '' });
+    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '', osName: 'Windows Server', osVersion: '2022', baseSoftwareName: 'Oracle Database', baseSoftwareVersion: '19c' });
     ws.addRow({ name: 'Office 365 E3', ciType: 'LICENSE', criticality: 'MEDIUM', environment: 'PRODUCTION', status: 'ACTIVO', version: '365', licenseType: 'subscription', eolDate: '2026-12-31' });
 
     // Data validations (dropdown lists)
@@ -4926,9 +4932,22 @@ const CIBulkDecisionSchema = z.object({
   assignedUser:       z.string().max(255).nullable().optional(),
   ipAddress:          z.string().max(50).nullable().optional(),
   description:        z.string().max(2000).nullable().optional(),
+  // T7 (v2.7.0): cascade-created masters
+  osName:              z.string().max(255).nullable().optional(),
+  osVersion:           z.string().max(100).nullable().optional(),
+  baseSoftwareName:    z.string().max(255).nullable().optional(),
+  baseSoftwareVersion: z.string().max(100).nullable().optional(),
   forceCreate:        z.boolean().optional(),
 });
 type CIBulkDecision = z.infer<typeof CIBulkDecisionSchema>;
+
+// T7: deterministic master code from natural key (name + version) — the UNIQUE
+// constraint on `code` doubles as the natural-key conflict target for atomic
+// ON CONFLICT upserts under concurrent bulk workers.
+function masterCodeFromNaturalKey(name: string, version?: string | null): string {
+  return `${name.trim()}${version?.trim() ? ` ${version.trim()}` : ''}`
+    .toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 50);
+}
 
 interface BulkItemRow {
   id: string; batch_id: string; staged_file_name: string;
@@ -5173,6 +5192,50 @@ async function materializeCIBulkItem(
       }
     }
 
+    // T7 (v2.7.0): cascade-upsert OperatingSystem by natural key (name+version).
+    // The deterministic `code` doubles as conflict target → atomic under concurrency.
+    let operatingSystemId: string | null = null;
+    if (decision.osName?.trim()) {
+      const osName    = decision.osName.trim();
+      const osVersion = decision.osVersion?.trim() || null;
+      const osCode    = masterCodeFromNaturalKey(osName, osVersion);
+      const insertedOs = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "operating_systems"(id, code, name, version, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${osCode}, ${osName}, ${osVersion}, now(), now())
+        ON CONFLICT (code) DO NOTHING
+        RETURNING id::text AS id`;
+      if (insertedOs.length > 0) {
+        operatingSystemId = insertedOs[0].id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','OperatingSystem',${operatingSystemId}::uuid,${userEmail},${JSON.stringify({ name: osName, version: osVersion, source: 'ci-bulk-import' })}::jsonb,now())`;
+      } else {
+        const existingOs = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM "operating_systems" WHERE code = ${osCode} LIMIT 1`;
+        operatingSystemId = existingOs[0]?.id ?? null;
+      }
+    }
+
+    // T7: cascade-upsert BaseSoftware by natural key (name+version). Linked to the
+    // CI afterwards only when the CI type admits base software (D3 allowlist).
+    let baseSoftwareId: string | null = null;
+    if (decision.baseSoftwareName?.trim()) {
+      const bswName    = decision.baseSoftwareName.trim();
+      const bswVersion = decision.baseSoftwareVersion?.trim() || null;
+      const bswCode    = masterCodeFromNaturalKey(bswName, bswVersion);
+      const insertedBsw = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "base_software"(id, code, name, version, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${bswCode}, ${bswName}, ${bswVersion}, now(), now())
+        ON CONFLICT (code) DO NOTHING
+        RETURNING id::text AS id`;
+      if (insertedBsw.length > 0) {
+        baseSoftwareId = insertedBsw[0].id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','BaseSoftware',${baseSoftwareId}::uuid,${userEmail},${JSON.stringify({ name: bswName, version: bswVersion, source: 'ci-bulk-import' })}::jsonb,now())`;
+      } else {
+        const existingBsw = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM "base_software" WHERE code = ${bswCode} LIMIT 1`;
+        baseSoftwareId = existingBsw[0]?.id ?? null;
+      }
+    }
+
     const newCi = await tx.cI.create({
       data: {
         name:               decision.name,
@@ -5190,6 +5253,7 @@ async function materializeCIBulkItem(
         dataClassification: (decision.dataClassification || null) as string | null,
         // ipAddress lives on CI.consoleIp in the schema (HardwareCI has no ipAddress field)
         consoleIp:          decision.ipAddress         || null,
+        operatingSystemId, // T7: cascade-created/reused OS master (null if not provided)
         ...(needsHw && {
           hardware: {
             create: {
@@ -5212,6 +5276,15 @@ async function materializeCIBulkItem(
       } as Parameters<typeof tx.cI.create>[0]['data'],
     });
 
+    // T7: link Base Software to the CI — only for D3-allowed server types
+    const BSW_ALLOWED_TYPES = ['PHYSICAL_SERVER', 'VIRTUAL_SERVER', 'CLOUD_INSTANCE'];
+    if (baseSoftwareId && BSW_ALLOWED_TYPES.includes(ciTypeCode)) {
+      await tx.$executeRaw`
+        INSERT INTO "ci_base_software"(ci_id, base_software_id)
+        VALUES (${newCi.id}::uuid, ${baseSoftwareId}::uuid)
+        ON CONFLICT DO NOTHING`;
+    }
+
     await tx.$executeRaw`
       UPDATE "ci_bulk_import_item"
       SET status='COMMITTED', committed_ci_id=${newCi.id}::uuid, updated_at=now()
@@ -5220,7 +5293,7 @@ async function materializeCIBulkItem(
     await tx.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
       VALUES(gen_random_uuid(), 'CI_BULK_COMMIT', 'CI', ${newCi.id}::uuid, ${userEmail},
-             ${JSON.stringify({ batchItemId: item.id, ciName: newCi.name, manufacturerId: resolvedMfrId, ciModelId })}::jsonb, now())`;
+             ${JSON.stringify({ batchItemId: item.id, ciName: newCi.name, manufacturerId: resolvedMfrId, ciModelId, operatingSystemId, baseSoftwareId })}::jsonb, now())`;
 
     return newCi;
   });

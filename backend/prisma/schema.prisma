@@ -1118,3 +1118,108 @@ model DcimFootprint {
   @@index([roomId])
   @@map("dcim_footprints")
 }
+
+// ─── Plugin Engine (v2.8.0) ────────────────────────────────────────────────
+
+model PluginRegistry {
+  id           String    @id @default(uuid()) @db.Uuid
+  pluginId     String    @unique @map("plugin_id")
+  name         String
+  version      String
+  author       String
+  license      String    @map("license_type")
+  status       String
+  manifest     Json
+  config       Json      @default("{}")
+  permissions  String[]
+  checksum     String
+  installedAt  DateTime  @default(now()) @map("installed_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastError    String?   @map("last_error")
+  approvedBy   String?   @map("approved_by")
+  approvedAt   DateTime? @map("approved_at")
+  dataRetention String   @default("HARD") @map("data_retention")
+
+  hooks        PluginHook[]
+  cronJobs     PluginCronJob[]
+  routes       PluginRoute[]
+  dataBackups  PluginDataBackup[]
+
+  @@index([status])
+  @@index([pluginId])
+  @@map("plugin_registry")
+}
+
+model PluginHook {
+  id          String  @id @default(uuid()) @db.Uuid
+  pluginId    String  @map("plugin_id") @db.Uuid
+  event       String
+  priority    Int     @default(50)
+  handlerCode String  @map("handler_code")
+  isActive    Boolean @default(true) @map("is_active")
+
+  plugin      PluginRegistry @relation(fields: [pluginId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([pluginId])
+  @@index([event])
+  @@map("plugin_hooks")
+}
+
+model PluginCronJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  pluginId    String    @map("plugin_id") @db.Uuid
+  name        String
+  schedule    String
+  handlerCode String    @map("handler_code")
+  isActive    Boolean   @default(true) @map("is_active")
+  lastRunAt   DateTime? @map("last_run_at")
+  nextRunAt   DateTime? @map("next_run_at")
+
+  plugin      PluginRegistry @relation(fields: [pluginId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([pluginId])
+  @@map("plugin_cron_jobs")
+}
+
+model PluginRoute {
+  id           String  @id @default(uuid()) @db.Uuid
+  pluginId     String  @map("plugin_id") @db.Uuid
+  method       String
+  path         String
+  handlerCode  String  @map("handler_code")
+  isActive     Boolean @default(true) @map("is_active")
+  requiresAuth Boolean @default(true) @map("requires_auth")
+  requiredRole String? @map("required_role")
+
+  plugin       PluginRegistry @relation(fields: [pluginId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([pluginId, method, path])
+  @@map("plugin_routes")
+}
+
+model PluginDataBackup {
+  id         String   @id @default(uuid()) @db.Uuid
+  pluginId   String   @map("plugin_id") @db.Uuid
+  backupPath String   @map("backup_path")
+  createdAt  DateTime @default(now()) @map("created_at")
+  sizeBytes  Int      @map("size_bytes")
+  reason     String
+
+  plugin     PluginRegistry @relation(fields: [pluginId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([pluginId])
+  @@map("plugin_data_backups")
+}
+
+model PluginDataStore {
+  id        String @id @default(uuid()) @db.Uuid
+  tableName String @map("table_name")
+  entityId  String @map("entity_id") @db.Uuid
+  pluginId  String @map("plugin_id")
+  data      Json
+
+  @@unique([tableName, entityId, pluginId])
+  @@index([tableName, entityId])
+  @@index([pluginId])
+  @@map("plugin_data_store")
+}

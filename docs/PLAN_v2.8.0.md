@@ -1,6 +1,6 @@
 # Plan de desarrollo v2.8.0 — Plugin Engine (Motor de Plugins)
 
-> Estado general: 🟡 **EN PROGRESO** — 0/10 tareas completadas
+> Estado general: 🟡 **EN PROGRESO** — 1/10 tareas completadas (T1)
 > Rama base: `develop`
 > Target: `main` tag `v2.8.0`
 > Fecha de inicio: 2026-06-12
@@ -39,7 +39,7 @@ v2.8.0 implementa un **Motor de Plugins** completo que permite a usuarios con ro
 
 | ID | Tarea | Fase | Complejidad | Rama | Depende de | Estado |
 |----|-------|------|-------------|------|------------|--------|
-| **T1** | Schema Prisma + migración (6 modelos) | 1 | Media | `feature/plugin-engine-schema` | — | 🟡 EN PROGRESO |
+| **T1** | Schema Prisma + migración (6 modelos) | 1 | Media | `feature/plugin-engine-schema` | — | ✅ COMPLETADA (PR #100) |
 | **T2** | Backend core: engine, sandbox, registries, validator, migration-runner | 1 | Alta | `feature/plugin-engine-core` | T1 | ⬜ PENDIENTE |
 | **T3** | API REST router (12 endpoints + 4-eyes + audit) | 1 | Alta | `feature/plugin-engine-api` | T2 | ⬜ PENDIENTE |
 | **T4** | Frontend panel admin (`/plugins/admin`) | 2 | Media | `feature/plugin-engine-frontend-admin` | T3 | ⬜ PENDIENTE |
@@ -90,18 +90,18 @@ Parar tras cada tarea para revisión del usuario antes de continuar.
 |-------|-------|
 | ID | T1 |
 | Rama | `feature/plugin-engine-schema` |
-| Estado | 🟡 EN PROGRESO |
+| Estado | ✅ COMPLETADA |
 | Inicio | 2026-06-12 |
-| Fin | — |
-| PR | — |
-| Commits | — |
+| Fin | 2026-06-12 |
+| PR | #100 |
+| Commits | 1b6010f |
 
 ### Subtareas
-- [ ] Añadir modelos PluginRegistry, PluginHook, PluginCronJob, PluginRoute, PluginDataBackup, PluginDataStore a `backend/prisma/schema.prisma`
-- [ ] Crear migración SQL manual en `backend/prisma/migrations/20260612200000_plugin_engine/migration.sql`
-- [ ] Aplicar migración con `prisma migrate deploy`
-- [ ] Verificar `tsc --noEmit` sin nuevos errores
-- [ ] Commit y PR a develop
+- [x] Añadir modelos PluginRegistry, PluginHook, PluginCronJob, PluginRoute, PluginDataBackup, PluginDataStore a `backend/prisma/schema.prisma`
+- [x] Crear migración SQL manual en `backend/prisma/migrations/20260612200000_plugin_engine/migration.sql`
+- [x] Aplicar migración con `prisma migrate deploy`
+- [x] Verificar `tsc --noEmit` sin nuevos errores
+- [x] Commit y PR a develop
 
 ### Modelos
 6 modelos nuevos siguiendo convenciones del repo (`@db.Uuid`, `@@map` snake_case, índices en FKs, `onDelete: Cascade`):

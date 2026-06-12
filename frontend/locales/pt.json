@@ -4,13 +4,14 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.4.0"
+    "copyright": "© {year} CMDB Platform",
+    "version": "v{version} · {commit}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
     "inventory": "Inventário de CIs",
     "vulnerabilities": "Vulnerabilidades",
-    "map": "Mapa de Dependências",
+    "map": "Mapa de Relações",
     "integrations": "Conectores",
     "reports": "Relatórios",
     "contracts": "Contratos e Adendos",
@@ -215,7 +216,11 @@
       "empty": "Este lote não tem linhas",
       "refresh": "Atualizar",
       "empty_batch": "Sem linhas neste lote",
-      "no_items_to_commit": "Nenhum item pronto para confirmar"
+      "no_items_to_commit": "Nenhum item pronto para confirmar",
+      "select_page": "Selecionar esta página ({count})",
+      "select_all_filtered": "Selecionar todos os filtrados ({count})",
+      "all_filtered_banner": "{count} CIs selecionados — todos que correspondem aos filtros",
+      "dropdown_label": "Opções de seleção"
     },
     "my_imports": "As minhas importações",
     "criticality": {
@@ -577,11 +582,15 @@
       "branches": "Sedes",
       "manufacturers": "Fabricantes",
       "models": "Modelos",
-      "providers": "Fornecedores"
+      "providers": "Fornecedores",
+      "operating_systems": "Sistemas Operativos",
+      "base_software": "Software Base"
     },
     "doc_types": "Tipos de Documento",
     "license_metrics": "Métricas de Licença",
     "license_types": "Tipos de Licença",
+    "operating_systems": "Sistemas Operativos",
+    "base_software": "Software Base",
     "models": {
       "new": "Novo Modelo",
       "placeholder": "Ex: PowerEdge R740",
@@ -623,6 +632,22 @@
       "new": "Novo Fornecedor",
       "placeholder": "Ex: NOS, AWS, Microsoft",
       "empty": "Sem fornecedores registados."
+    },
+    "os": {
+      "new": "Novo Sistema Operativo",
+      "name_placeholder": "Ex: Windows Server 2022",
+      "version_placeholder": "Versão (opcional, ex: 2022, 11, 14.04)",
+      "manufacturer_label": "— Fabricante (opcional) —",
+      "empty": "Sem sistemas operativos registados.",
+      "add": "Adicionar",
+      "system": "Sistema",
+      "in_use": "Em uso"
+    },
+    "bsw": {
+      "new": "Novo Software Base",
+      "name_placeholder": "Ex: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Versão (opcional, ex: 19c, 10.1)",
+      "empty": "Sem software base registado."
     }
   },
   "settings": {
@@ -846,6 +871,18 @@
     "manufacturer_hint": "Vinculado ao modelo selecionado",
     "eol_section": "Datas de Ciclo de Vida (EoL / EoS)",
     "eol_hint": "— serão preenchidas automaticamente via endoflife.date se vazias",
+    "infra_section": "Especificações de infraestrutura",
+    "cpu_model_label": "Modelo de CPU",
+    "vcpus_label": "vCPUs",
+    "ram_label": "RAM",
+    "disk_label": "Disco",
+    "hostname_label": "Hostname",
+    "cluster_label": "Cluster",
+    "admin_ip_label": "IP de administração",
+    "mgmt_ip_label": "IP de gestão",
+    "os_label": "Sistema operativo",
+    "firmware_label": "Versão de firmware",
+    "dns_label": "DNS",
     "nis2_section": "NIS2 · Resiliência · RGPD",
     "business_impact_label": "Impacto no Negócio (NIS2)",
     "unclassified": "— Não classificado —",
@@ -970,7 +1007,8 @@
     "no_events": "Nenhum evento de auditoria registado ainda.",
     "no_filtered": "Sem resultados para a sua pesquisa.",
     "active_filters": "{count} filtro ativo",
-    "active_filters_plural": "{count} filtros ativos"
+    "active_filters_plural": "{count} filtros ativos",
+    "entity_name_placeholder": "Filtrar por nome…"
   },
   "integrations": {
     "title": "Conectores de Integração",
@@ -1060,8 +1098,8 @@
   },
   "map": {
     "search_placeholder": "Pesquisar CI por nome ou slug…",
-    "select_ci_prompt": "Selecione um CI para ver o seu mapa de dependências",
-    "view_dependencies": "Ver dependências",
+    "select_ci_prompt": "Selecione um CI para ver o seu mapa de relações",
+    "view_dependencies": "Ver relações",
     "load_error": "Erro ao carregar o mapa",
     "confirm_delete": "Eliminar esta relação?",
     "graph_view": "Vista Grafo",
@@ -1072,7 +1110,19 @@
     "relation_type_DEPENDS_ON": "DEPENDS_ON — origem depende do destino",
     "relation_type_CONNECTED_TO": "CONNECTED_TO — ligação de rede entre ambos",
     "relation_type_PROVIDES_SERVICE": "PROVIDES_SERVICE — origem fornece serviço ao destino",
-    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — origem é salvaguardada pelo destino"
+    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — origem é salvaguardada pelo destino",
+    "relation_type_CONTAINS": "CONTAINS — origem contém o destino",
+    "relation_type_COMPOSED_OF": "COMPOSED_OF — origem é composta pelo destino",
+    "relation_type_ATTACHED_TO": "ATTACHED_TO — origem está fisicamente ligada ao destino",
+    "relation_type_CONNECTS_TO": "CONNECTS_TO — origem liga-se ao destino de rede",
+    "relation_type_UPLINKS_TO": "UPLINKS_TO — origem faz uplink para rede upstream",
+    "relation_type_POWERS": "POWERS — origem alimenta o destino",
+    "relation_type_PROTECTS": "PROTECTS — UPS protege o destino",
+    "relation_type_REPLICATES_TO": "REPLICATES_TO — origem replica dados para o destino",
+    "relation_type_RUNS_ON": "RUNS_ON — software corre na infraestrutura destino",
+    "relation_type_QUERIES": "QUERIES — origem consulta o repositório destino",
+    "relation_type_LICENSES": "LICENSES — licença cobre o destino",
+    "relation_type_MANAGES": "MANAGES — origem gere o destino"
   },
   "relation": {
     "modal_title": "Criar Relação",
@@ -1092,7 +1142,24 @@
     "type_DEPENDS_ON": "DEPENDS_ON — origem depende do destino",
     "type_CONNECTED_TO": "CONNECTED_TO — ligação de rede entre ambos",
     "type_PROVIDES_SERVICE": "PROVIDES_SERVICE — origem fornece serviço ao destino",
-    "type_BACKED_UP_BY": "BACKED_UP_BY — origem é salvaguardada pelo destino"
+    "type_BACKED_UP_BY": "BACKED_UP_BY — origem é salvaguardada pelo destino",
+    "type_CONTAINS": "CONTAINS — origem contém o destino",
+    "type_COMPOSED_OF": "COMPOSED_OF — origem é composta pelo destino",
+    "type_ATTACHED_TO": "ATTACHED_TO — origem está fisicamente ligada ao destino",
+    "type_CONNECTS_TO": "CONNECTS_TO — origem liga-se ao destino de rede",
+    "type_UPLINKS_TO": "UPLINKS_TO — origem faz uplink para rede upstream",
+    "type_POWERS": "POWERS — origem alimenta o destino",
+    "type_PROTECTS": "PROTECTS — UPS protege o destino",
+    "type_REPLICATES_TO": "REPLICATES_TO — origem replica dados para o destino",
+    "type_RUNS_ON": "RUNS_ON — software corre na infraestrutura destino",
+    "type_QUERIES": "QUERIES — origem consulta o repositório destino",
+    "type_LICENSES": "LICENSES — licença cobre o destino",
+    "type_MANAGES": "MANAGES — origem gere o destino",
+    "cat_structural": "Estrutural",
+    "cat_network": "Rede",
+    "cat_power": "Alimentação",
+    "cat_logical": "Lógica",
+    "types_filtered_hint": "Tipos filtrados pelos tipos de CI selecionados"
   },
   "ci_detail": {
     "edit_btn": "Editar",
@@ -1111,6 +1178,7 @@
     "field_model": "Modelo",
     "field_serial": "Nº de Série",
     "section_software": "Software / Licença",
+    "section_infra": "Especificações de infraestrutura",
     "field_version": "Versão",
     "field_license_type": "Tipo de Licença",
     "section_vulns": "Vulnerabilidades",
@@ -1145,6 +1213,13 @@
     "remove_doc": "Remover documento",
     "confirm_remove_doc": "Remover este documento do CI?",
     "view_all_docs": "Ver todos os documentos →",
+    "bsw_title": "Software Base",
+    "bsw_add": "Adicionar",
+    "bsw_select": "— Selecionar software base —",
+    "bsw_loading": "A carregar software base…",
+    "bsw_empty": "Sem software base associado.",
+    "bsw_remove": "Remover software base",
+    "bsw_confirm_remove": "Remover este software base do CI?",
     "btn_close": "Fechar",
     "btn_edit_ci": "Editar CI",
     "subdoc_title": "Associar Documentos",
@@ -1397,5 +1472,12 @@
       "current": "Posição atual",
       "change": "Alterar posição no rack"
     }
+  },
+  "pagination": {
+    "records_per_page": "Registros por página:",
+    "page_of": "Página {page} de {total}",
+    "prev": "Página anterior",
+    "next": "Próxima página",
+    "showing": "Exibindo {from}–{to} de {total}"
   }
 }

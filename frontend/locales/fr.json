@@ -4,13 +4,14 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.4.0"
+    "copyright": "© {year} CMDB Platform",
+    "version": "v{version} · {commit}"
   },
   "sidebar": {
     "dashboard": "Tableau de bord",
     "inventory": "Inventaire des CI",
     "vulnerabilities": "Vulnérabilités",
-    "map": "Carte des dépendances",
+    "map": "Carte des relations",
     "integrations": "Connecteurs",
     "reports": "Rapports",
     "contracts": "Contrats et avenants",
@@ -215,7 +216,11 @@
       "empty": "Ce lot n'a pas de lignes",
       "refresh": "Actualiser",
       "empty_batch": "Aucune ligne dans ce lot",
-      "no_items_to_commit": "Aucun élément prêt à confirmer"
+      "no_items_to_commit": "Aucun élément prêt à confirmer",
+      "select_page": "Sélectionner cette page ({count})",
+      "select_all_filtered": "Sélectionner tous les filtrés ({count})",
+      "all_filtered_banner": "{count} CI sélectionnés — tous correspondant aux filtres actifs",
+      "dropdown_label": "Options de sélection"
     },
     "my_imports": "Mes importations",
     "criticality": {
@@ -577,11 +582,15 @@
       "branches": "Sites",
       "manufacturers": "Fabricants",
       "models": "Modèles",
-      "providers": "Fournisseurs"
+      "providers": "Fournisseurs",
+      "operating_systems": "Systèmes d'exploitation",
+      "base_software": "Logiciels de base"
     },
     "doc_types": "Types de document",
     "license_metrics": "Métriques de licence",
     "license_types": "Types de licence",
+    "operating_systems": "Systèmes d'exploitation",
+    "base_software": "Logiciels de base",
     "models": {
       "new": "Nouveau modèle",
       "placeholder": "Ex : PowerEdge R740",
@@ -623,6 +632,22 @@
       "new": "Nouveau fournisseur",
       "placeholder": "Ex : Orange, AWS, Microsoft",
       "empty": "Aucun fournisseur enregistré."
+    },
+    "os": {
+      "new": "Nouveau système d'exploitation",
+      "name_placeholder": "Ex : Windows Server 2022",
+      "version_placeholder": "Version (optionnel, ex : 2022, 11, 14.04)",
+      "manufacturer_label": "— Fabricant (optionnel) —",
+      "empty": "Aucun système d'exploitation enregistré.",
+      "add": "Ajouter",
+      "system": "Système",
+      "in_use": "En usage"
+    },
+    "bsw": {
+      "new": "Nouveau logiciel de base",
+      "name_placeholder": "Ex : Oracle Database, Apache Tomcat",
+      "version_placeholder": "Version (optionnel, ex : 19c, 10.1)",
+      "empty": "Aucun logiciel de base enregistré."
     }
   },
   "settings": {
@@ -846,6 +871,18 @@
     "manufacturer_hint": "Lié au modèle sélectionné",
     "eol_section": "Dates de Cycle de Vie (EoL / EoS)",
     "eol_hint": "— seront remplies automatiquement via endoflife.date si vides",
+    "infra_section": "Spécifications d'infrastructure",
+    "cpu_model_label": "Modèle de CPU",
+    "vcpus_label": "vCPU",
+    "ram_label": "RAM",
+    "disk_label": "Disque",
+    "hostname_label": "Nom d'hôte",
+    "cluster_label": "Cluster",
+    "admin_ip_label": "IP d'administration",
+    "mgmt_ip_label": "IP de gestion",
+    "os_label": "Système d'exploitation",
+    "firmware_label": "Version du firmware",
+    "dns_label": "DNS",
     "nis2_section": "NIS2 · Résilience · RGPD",
     "business_impact_label": "Impact Métier (NIS2)",
     "unclassified": "— Non classifié —",
@@ -970,7 +1007,8 @@
     "no_events": "Aucun événement d'audit enregistré pour l'instant.",
     "no_filtered": "Aucun résultat pour votre recherche.",
     "active_filters": "{count} filtre actif",
-    "active_filters_plural": "{count} filtres actifs"
+    "active_filters_plural": "{count} filtres actifs",
+    "entity_name_placeholder": "Filtrer par nom…"
   },
   "integrations": {
     "title": "Connecteurs d'intégration",
@@ -1060,8 +1098,8 @@
   },
   "map": {
     "search_placeholder": "Rechercher CI par nom ou slug…",
-    "select_ci_prompt": "Sélectionnez un CI pour voir sa carte des dépendances",
-    "view_dependencies": "Voir les dépendances",
+    "select_ci_prompt": "Sélectionnez un CI pour voir sa carte des relations",
+    "view_dependencies": "Voir les relations",
     "load_error": "Erreur lors du chargement de la carte",
     "confirm_delete": "Supprimer cette relation ?",
     "graph_view": "Vue Graphe",
@@ -1072,7 +1110,19 @@
     "relation_type_DEPENDS_ON": "DEPENDS_ON — la source dépend de la cible",
     "relation_type_CONNECTED_TO": "CONNECTED_TO — connexion réseau entre les deux",
     "relation_type_PROVIDES_SERVICE": "PROVIDES_SERVICE — la source fournit un service à la cible",
-    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — la source est sauvegardée par la cible"
+    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — la source est sauvegardée par la cible",
+    "relation_type_CONTAINS": "CONTAINS — la source contient la cible",
+    "relation_type_COMPOSED_OF": "COMPOSED_OF — la source est composée de la cible",
+    "relation_type_ATTACHED_TO": "ATTACHED_TO — la source est physiquement reliée à la cible",
+    "relation_type_CONNECTS_TO": "CONNECTS_TO — la source se connecte à la cible réseau",
+    "relation_type_UPLINKS_TO": "UPLINKS_TO — la source remonte vers le réseau amont",
+    "relation_type_POWERS": "POWERS — la source alimente la cible",
+    "relation_type_PROTECTS": "PROTECTS — l'onduleur protège la cible",
+    "relation_type_REPLICATES_TO": "REPLICATES_TO — la source réplique les données vers la cible",
+    "relation_type_RUNS_ON": "RUNS_ON — le logiciel s'exécute sur l'infrastructure cible",
+    "relation_type_QUERIES": "QUERIES — la source interroge le dépôt cible",
+    "relation_type_LICENSES": "LICENSES — la licence couvre la cible",
+    "relation_type_MANAGES": "MANAGES — la source gère la cible"
   },
   "relation": {
     "modal_title": "Créer une relation",
@@ -1092,7 +1142,24 @@
     "type_DEPENDS_ON": "DEPENDS_ON — la source dépend de la cible",
     "type_CONNECTED_TO": "CONNECTED_TO — connexion réseau entre les deux",
     "type_PROVIDES_SERVICE": "PROVIDES_SERVICE — la source fournit un service à la cible",
-    "type_BACKED_UP_BY": "BACKED_UP_BY — la source est sauvegardée par la cible"
+    "type_BACKED_UP_BY": "BACKED_UP_BY — la source est sauvegardée par la cible",
+    "type_CONTAINS": "CONTAINS — la source contient la cible",
+    "type_COMPOSED_OF": "COMPOSED_OF — la source est composée de la cible",
+    "type_ATTACHED_TO": "ATTACHED_TO — la source est physiquement reliée à la cible",
+    "type_CONNECTS_TO": "CONNECTS_TO — la source se connecte à la cible réseau",
+    "type_UPLINKS_TO": "UPLINKS_TO — la source remonte vers le réseau amont",
+    "type_POWERS": "POWERS — la source alimente la cible",
+    "type_PROTECTS": "PROTECTS — l'onduleur protège la cible",
+    "type_REPLICATES_TO": "REPLICATES_TO — la source réplique les données vers la cible",
+    "type_RUNS_ON": "RUNS_ON — le logiciel s'exécute sur l'infrastructure cible",
+    "type_QUERIES": "QUERIES — la source interroge le dépôt cible",
+    "type_LICENSES": "LICENSES — la licence couvre la cible",
+    "type_MANAGES": "MANAGES — la source gère la cible",
+    "cat_structural": "Structurelle",
+    "cat_network": "Réseau",
+    "cat_power": "Alimentation",
+    "cat_logical": "Logique",
+    "types_filtered_hint": "Types filtrés selon les types de CI sélectionnés"
   },
   "ci_detail": {
     "edit_btn": "Modifier",
@@ -1111,6 +1178,7 @@
     "field_model": "Modèle",
     "field_serial": "Nº de Série",
     "section_software": "Logiciel / Licence",
+    "section_infra": "Spécifications d'infrastructure",
     "field_version": "Version",
     "field_license_type": "Type de Licence",
     "section_vulns": "Vulnérabilités",
@@ -1145,6 +1213,13 @@
     "remove_doc": "Retirer le document",
     "confirm_remove_doc": "Retirer ce document du CI ?",
     "view_all_docs": "Voir tous les documents →",
+    "bsw_title": "Logiciels de base",
+    "bsw_add": "Ajouter",
+    "bsw_select": "— Sélectionner un logiciel de base —",
+    "bsw_loading": "Chargement des logiciels de base…",
+    "bsw_empty": "Aucun logiciel de base associé.",
+    "bsw_remove": "Retirer le logiciel de base",
+    "bsw_confirm_remove": "Retirer ce logiciel de base du CI ?",
     "btn_close": "Fermer",
     "btn_edit_ci": "Modifier CI",
     "subdoc_title": "Associer des Documents",
@@ -1397,5 +1472,12 @@
       "current": "Emplacement actuel",
       "change": "Modifier l'emplacement dans la baie"
     }
+  },
+  "pagination": {
+    "records_per_page": "Lignes par page :",
+    "page_of": "Page {page} sur {total}",
+    "prev": "Page précédente",
+    "next": "Page suivante",
+    "showing": "Affichage de {from}–{to} sur {total}"
   }
 }

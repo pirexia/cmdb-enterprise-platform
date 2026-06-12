@@ -44,6 +44,8 @@ import {
 import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
+import { createCatalogRouter } from './modules/catalog/router';
+import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -103,6 +105,25 @@ declare global {
       user?: JwtPayload;
     }
   }
+}
+
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+/** Escapes %, _ and \ for use in a LIKE/ILIKE pattern (A03 — SQL Injection). */
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, '\\$&');
+}
+
+/**
+ * Builds a structured JSON payload for AuditLog.details.
+ * description — human-readable summary (no PII).
+ * changes    — list of {field, old, new} for UPDATE events (use IDs not emails).
+ */
+function buildAuditDetails(
+  description: string,
+  changes?: Array<{ field: string; old: unknown; new: unknown }>,
+): object {
+  return { description, ...(changes?.length ? { changes } : {}) };
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
@@ -239,6 +260,9 @@ app.use('/api/', apiLimiter);
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
 
+// Catalog module — master data (OS, etc.); reads open to all authenticated roles
+app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
+
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -288,7 +312,43 @@ const CICreateSchema = z.object({
   spofRisk:           z.boolean().optional(),
   containsPii:        z.boolean().optional(),
   dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).optional(),
+  // Infrastructure specs (v2.7.0 T6)
+  cpuModel:          z.string().max(255).optional().nullable(),
+  vCpus:             z.number().int().min(1).max(4096).optional().nullable(),
+  ram:               z.string().max(100).optional().nullable(),
+  disk:              z.string().max(100).optional().nullable(),
+  adminIp:           z.string().ip().optional().nullable().or(z.literal('')),
+  mgmtIp:            z.string().ip().optional().nullable().or(z.literal('')),
+  hostName:          z.string().max(255).optional().nullable(),
+  clusterName:       z.string().max(255).optional().nullable(),
+  operatingSystemId: z.string().uuid().optional().nullable(),
+  firmwareVersion:   z.string().max(100).optional().nullable(),
+  dns:               z.string().max(255).optional().nullable(),
 });
+
+// D3 (v2.7.0): cpuModel only applies to physical servers, vCpus only to virtual ones.
+const INFRA_PHYSICAL_CI_TYPES = ['PHYSICAL_SERVER'];
+const INFRA_VIRTUAL_CI_TYPES  = ['VIRTUAL_SERVER', 'CLOUD_INSTANCE'];
+
+async function validateInfraFieldsForType(
+  ciTypeId: string | null | undefined,
+  cpuModel: string | null | undefined,
+  vCpus:    number | null | undefined,
+): Promise<string | null> {
+  if (cpuModel && vCpus != null) {
+    return 'cpuModel (servidor físico) y vCpus (servidor virtual) son mutuamente excluyentes';
+  }
+  if (!ciTypeId) return null;
+  const t = await prisma.cIType.findUnique({ where: { id: ciTypeId }, select: { code: true } });
+  if (!t) return null;
+  if (INFRA_PHYSICAL_CI_TYPES.includes(t.code) && vCpus != null) {
+    return `vCpus no aplica a un CI de tipo ${t.code} (físico) — use cpuModel`;
+  }
+  if (INFRA_VIRTUAL_CI_TYPES.includes(t.code) && cpuModel) {
+    return `cpuModel no aplica a un CI de tipo ${t.code} (virtual) — use vCpus`;
+  }
+  return null;
+}
 
 const ContractCreateSchema = z.object({
   contractNumber:    z.string().min(1).max(100),
@@ -529,6 +589,7 @@ const CI_INCLUDE = {
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
+  operatingSystem: { select: { id: true, name: true, version: true } },
   contracts: {
     select: {
       id:             true,
@@ -1351,7 +1412,7 @@ app.delete('/api/vendors/:id', authenticateToken, requireAdmin, async (req: Requ
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 
-const CI_MAX_PAGE_SIZE = 500;
+const CI_MAX_PAGE_SIZE = 250;
 app.get('/api/cis', authenticateToken, async (req: Request, res: Response) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, CI_MAX_PAGE_SIZE);
@@ -1396,6 +1457,8 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       businessOwnerId, technicalLeadId, hardware, software,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
+      cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
+      operatingSystemId, firmwareVersion, dns,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
@@ -1407,6 +1470,9 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       eolDate?: string; eosDate?: string;
       businessImpact?: string; recoveryPriority?: number; rto?: number; rpo?: number;
       spofRisk?: boolean; containsPii?: boolean; dataClassification?: string;
+      cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
+      adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
+      operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
     };
 
     if (!name || !apiSlug || !criticality || !environment) {
@@ -1419,6 +1485,10 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     if (!validCriticalities.includes(criticality)) { res.status(400).json({ error: `Invalid criticality: ${criticality}` }); return; }
     if (!validEnvironments.includes(environment))  { res.status(400).json({ error: `Invalid environment: ${environment}` });  return; }
     if (hardware && software)                      { res.status(400).json({ error: 'A CI cannot be both Hardware and Software' }); return; }
+
+    // D3: physical/virtual infra field exclusion
+    const infraErr = await validateInfraFieldsForType(ciTypeId, cpuModel, vCpus);
+    if (infraErr) { res.status(400).json({ error: infraErr }); return; }
 
     // ── EOL auto-populate from endoflife.date if dates not provided ───────────
     let resolvedEolDate:     Date | null = eolDateRaw  ? new Date(eolDateRaw)  : null;
@@ -1456,6 +1526,17 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
         spofRisk:           spofRisk           ?? false,
         containsPii:        containsPii        ?? false,
         dataClassification: dataClassification || null,
+        cpuModel:           cpuModel           || null,
+        vCpus:              vCpus              ?? null,
+        ram:                ram                || null,
+        disk:               disk               || null,
+        adminIp:            adminIp            || null,
+        mgmtIp:             mgmtIp             || null,
+        hostName:           hostName           || null,
+        clusterName:        clusterName        || null,
+        operatingSystemId:  operatingSystemId  || null,
+        firmwareVersion:    firmwareVersion    || null,
+        dns:                dns                || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
         ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
       } as Parameters<typeof prisma.cI.create>[0]['data'],
@@ -1463,9 +1544,10 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     });
 
     // Audit log (raw — Prisma client types regenerate after migrate)
+    const createDetails = JSON.stringify(buildAuditDetails(`CI "${ci.name}" creado`));
     await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, now())
+      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
     `;
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
@@ -1596,6 +1678,8 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       branchId, ciModelId, businessOwnerId, technicalLeadId,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
+      cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
+      operatingSystemId, firmwareVersion, dns,
     } = req.body as {
       name?: string; criticality?: Criticality; environment?: Environment;
       ciTypeId?: string | null; status?: string; inventoryNumber?: string;
@@ -1604,15 +1688,30 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       eolDate?: string | null; eosDate?: string | null;
       businessImpact?: string | null; recoveryPriority?: number | null; rto?: number | null; rpo?: number | null;
       spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
+      cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
+      adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
+      operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
     };
 
     // Reject any FK field that is a non-null, non-empty string but not a valid UUID
     // (prevents P2023 "invalid UUID" from Prisma when callers send "null"/garbage strings)
-    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId })) {
+    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId, operatingSystemId })) {
       if (val !== undefined && val !== null && !UUID_RE.test(val)) {
         res.status(400).json({ error: `El campo ${field} contiene un valor inválido.` });
         return;
       }
+    }
+
+    // D3: physical/virtual infra field exclusion (resolve effective ciTypeId if not changing it)
+    if (cpuModel !== undefined || vCpus !== undefined) {
+      const effectiveTypeId = ciTypeId !== undefined
+        ? ciTypeId
+        : (await prisma.cI.findUnique({ where: { id }, select: { ciTypeId: true } }))?.ciTypeId ?? null;
+      const current = await prisma.cI.findUnique({ where: { id }, select: { cpuModel: true, vCpus: true } });
+      const effCpuModel = cpuModel !== undefined ? cpuModel : current?.cpuModel ?? null;
+      const effVCpus    = vCpus    !== undefined ? vCpus    : current?.vCpus    ?? null;
+      const infraErr = await validateInfraFieldsForType(effectiveTypeId, effCpuModel, effVCpus);
+      if (infraErr) { res.status(400).json({ error: infraErr }); return; }
     }
 
     const updateData: Record<string, unknown> = {};
@@ -1635,6 +1734,17 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
     if (spofRisk           !== undefined) updateData.spofRisk           = spofRisk;
     if (containsPii        !== undefined) updateData.containsPii        = containsPii;
     if (dataClassification !== undefined) updateData.dataClassification = dataClassification || null;
+    if (cpuModel           !== undefined) updateData.cpuModel           = cpuModel           || null;
+    if (vCpus              !== undefined) updateData.vCpus              = vCpus              ?? null;
+    if (ram                !== undefined) updateData.ram                = ram                || null;
+    if (disk               !== undefined) updateData.disk               = disk               || null;
+    if (adminIp            !== undefined) updateData.adminIp            = adminIp            || null;
+    if (mgmtIp             !== undefined) updateData.mgmtIp             = mgmtIp             || null;
+    if (hostName           !== undefined) updateData.hostName           = hostName           || null;
+    if (clusterName        !== undefined) updateData.clusterName        = clusterName        || null;
+    if (operatingSystemId  !== undefined) updateData.operatingSystemId  = operatingSystemId  || null;
+    if (firmwareVersion    !== undefined) updateData.firmwareVersion    = firmwareVersion    || null;
+    if (dns                !== undefined) updateData.dns                = dns                || null;
 
     const ci = await prisma.cI.update({
       where: { id },
@@ -2153,6 +2263,12 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
       { key: 'assignedUser',       header: 'assignedUser',         width: 22 },
       { key: 'ipAddress',          header: 'ipAddress',            width: 18 },
       { key: 'description',        header: 'description',          width: 40 },
+      // T7 (v2.7.0): cascade-created masters — appended at the end so the
+      // hardcoded dataValidation column indices above keep working.
+      { key: 'osName',              header: 'osName',               width: 24 },
+      { key: 'osVersion',           header: 'osVersion',            width: 16 },
+      { key: 'baseSoftwareName',    header: 'baseSoftwareName',     width: 26 },
+      { key: 'baseSoftwareVersion', header: 'baseSoftwareVersion',  width: 18 },
     ];
 
     ws.columns = COLS;
@@ -2167,7 +2283,7 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
     });
 
     // Two example rows
-    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '' });
+    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '', osName: 'Windows Server', osVersion: '2022', baseSoftwareName: 'Oracle Database', baseSoftwareVersion: '19c' });
     ws.addRow({ name: 'Office 365 E3', ciType: 'LICENSE', criticality: 'MEDIUM', environment: 'PRODUCTION', status: 'ACTIVO', version: '365', licenseType: 'subscription', eolDate: '2026-12-31' });
 
     // Data validations (dropdown lists)
@@ -2532,8 +2648,8 @@ app.post('/api/cis/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin,
  */
 app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request, res: Response) => {
   try {
-    // ── Validate optional date-range params ──────────────────────────────────
-    const { from, to } = req.query as { from?: string; to?: string };
+    // ── Validate optional params ─────────────────────────────────────────────
+    const { from, to, entityName } = req.query as { from?: string; to?: string; entityName?: string };
     let fromDate: Date | undefined;
     let toDate: Date | undefined;
 
@@ -2551,38 +2667,54 @@ app.get('/api/audit-logs', authenticateToken, requireAudit, async (req: Request,
         return;
       }
     }
+    if (entityName && typeof entityName !== 'string') {
+      res.status(400).json({ error: 'Invalid "entityName" parameter' });
+      return;
+    }
 
-    // ── Build dynamic WHERE clause ───────────────────────────────────────────
-    const conditions: Prisma.Sql[] = [];
-    if (fromDate) conditions.push(Prisma.sql`al.created_at >= ${fromDate}::timestamptz`);
-    if (toDate) conditions.push(Prisma.sql`al.created_at <= ${toDate}::timestamptz`);
-    const whereClause = conditions.length > 0
-      ? Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+    // ── Date WHERE (inner CTE) ───────────────────────────────────────────────
+    const dateConds: Prisma.Sql[] = [];
+    if (fromDate) dateConds.push(Prisma.sql`al.created_at >= ${fromDate}::timestamptz`);
+    if (toDate)   dateConds.push(Prisma.sql`al.created_at <= ${toDate}::timestamptz`);
+    const dateWhere = dateConds.length > 0
+      ? Prisma.sql`WHERE ${Prisma.join(dateConds, ' AND ')}`
       : Prisma.empty;
 
-    type AuditRow = { id: string; action: string; entity: string; entity_id: string; user_email: string; created_at: Date; entity_name: string | null };
+    // ── Entity-name LIKE filter (outer CTE, A03-safe) ────────────────────────
+    const nameWhere = entityName
+      ? Prisma.sql`WHERE entity_name ILIKE ${'%' + escapeLike(entityName.trim()) + '%'} ESCAPE '\\'`
+      : Prisma.empty;
+
+    type AuditRow = {
+      id: string; action: string; entity: string; entity_id: string;
+      user_email: string; created_at: Date; details: unknown; entity_name: string | null;
+    };
     const logs = await prisma.$queryRaw<AuditRow[]>`
-      SELECT
-        al.id, al.action, al.entity, al.entity_id, al.user_email, al.created_at,
-        CASE al.entity
-          WHEN 'CI' THEN ci.name
-          WHEN 'VULNERABILITY' THEN CONCAT(vuln_ci.name, ' · ', split_part(al.entity_id, ':', 2))
-          WHEN 'Document' THEN doc.title
-          WHEN 'USER' THEN u.email
-          WHEN 'CI_RELATION' THEN CONCAT(src.name, ' → ', tgt.name)
-          WHEN 'SYSTEM' THEN al.entity_id
-          ELSE NULL
-        END AS entity_name
-      FROM audit_logs al
-      LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'          THEN al.entity_id::uuid                         ELSE NULL END) = ci.id
-      LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
-      LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'     THEN al.entity_id::uuid                         ELSE NULL END) = doc.id
-      LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'          THEN al.entity_id::uuid                         ELSE NULL END) = u.id
-      LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'  THEN al.entity_id::uuid                         ELSE NULL END) = rel.id
-      LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
-      LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
-      ${whereClause}
-      ORDER BY al.created_at DESC
+      WITH al_named AS (
+        SELECT
+          al.id, al.action, al.entity, al.entity_id, al.user_email, al.created_at, al.details,
+          CASE al.entity
+            WHEN 'CI'            THEN ci.name
+            WHEN 'VULNERABILITY' THEN CONCAT(vuln_ci.name, ' · ', split_part(al.entity_id, ':', 2))
+            WHEN 'Document'      THEN doc.title
+            WHEN 'USER'          THEN u.email
+            WHEN 'CI_RELATION'   THEN CONCAT(src.name, ' → ', tgt.name)
+            WHEN 'SYSTEM'        THEN al.entity_id
+            ELSE NULL
+          END AS entity_name
+        FROM audit_logs al
+        LEFT JOIN configuration_items ci      ON (CASE WHEN al.entity = 'CI'            THEN al.entity_id::uuid                       ELSE NULL END) = ci.id
+        LEFT JOIN configuration_items vuln_ci ON (CASE WHEN al.entity = 'VULNERABILITY' THEN split_part(al.entity_id, ':', 1)::uuid   ELSE NULL END) = vuln_ci.id
+        LEFT JOIN documents doc               ON (CASE WHEN al.entity = 'Document'       THEN al.entity_id::uuid                       ELSE NULL END) = doc.id
+        LEFT JOIN users u                     ON (CASE WHEN al.entity = 'USER'           THEN al.entity_id::uuid                       ELSE NULL END) = u.id
+        LEFT JOIN ci_relations rel            ON (CASE WHEN al.entity = 'CI_RELATION'   THEN al.entity_id::uuid                       ELSE NULL END) = rel.id
+        LEFT JOIN configuration_items src ON al.entity = 'CI_RELATION' AND rel.source_ci_id = src.id
+        LEFT JOIN configuration_items tgt ON al.entity = 'CI_RELATION' AND rel.target_ci_id = tgt.id
+        ${dateWhere}
+      )
+      SELECT * FROM al_named
+      ${nameWhere}
+      ORDER BY created_at DESC
       LIMIT 500
     `;
     res.json({ total: logs.length, data: logs });
@@ -3163,12 +3295,26 @@ app.get('/api/masters/ci-types', authenticateToken, async (_req, res) => {
 
 app.post('/api/masters/ci-types', authenticateToken, requireAdmin, async (req, res) => {
   const { code, name, categoryCode, sortOrder } = req.body as { code?: string; name?: string; categoryCode?: string; sortOrder?: number };
-  if (!code?.trim() || !name?.trim() || !categoryCode?.trim()) {
-    res.status(400).json({ error: 'code, name and categoryCode are required' }); return;
+  if (!name?.trim() || !categoryCode?.trim()) {
+    res.status(400).json({ error: 'name and categoryCode are required' }); return;
   }
   try {
+    let finalCode: string;
+    if (code?.trim()) {
+      finalCode = code.trim().toUpperCase();
+    } else {
+      const baseCode = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+      const existing = await prisma.cIType.findMany({
+        where: { code: { startsWith: baseCode } },
+        select: { code: true },
+      });
+      const existingCodes = new Set(existing.map(r => r.code));
+      finalCode = baseCode;
+      let suffix = 1;
+      while (existingCodes.has(finalCode)) { finalCode = `${baseCode}_${suffix++}`; }
+    }
     const row = await prisma.cIType.create({
-      data: { code: code.trim().toUpperCase(), name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
+      data: { code: finalCode, name: name.trim(), categoryCode: categoryCode.trim(), sortOrder: sortOrder ?? 50, isSystem: false },
       select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
     });
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','CIType',${row.id}::uuid,${req.user!.email},now())`;
@@ -3435,9 +3581,8 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
     return;
   }
 
-  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
-  if (!validTypes.includes(relationType)) {
-    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+  if (!VALID_RELATION_TYPES.includes(relationType as never)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${VALID_RELATION_TYPES.join(', ')}` });
     return;
   }
 
@@ -3447,6 +3592,16 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
+    // T8: CI-type restriction matrix validation (source/target type codes)
+    const typeRows = await prisma.$queryRaw<{ id: string; code: string | null }[]>`
+      SELECT ci.id::text AS id, t.code
+      FROM configuration_items ci LEFT JOIN ci_types t ON t.id = ci.ci_type_id
+      WHERE ci.id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)`;
+    const srcCode = typeRows.find(r => r.id === sourceCiId)?.code ?? null;
+    const tgtCode = typeRows.find(r => r.id === targetCiId)?.code ?? null;
+    const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
+    if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
@@ -3494,9 +3649,8 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
     return;
   }
 
-  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
-  if (!validTypes.includes(relationType)) {
-    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+  if (!VALID_RELATION_TYPES.includes(relationType as never)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${VALID_RELATION_TYPES.join(', ')}` });
     return;
   }
 
@@ -3506,6 +3660,16 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
   }
 
   try {
+    // T8: CI-type restriction matrix validation (source/target type codes)
+    const typeRows = await prisma.$queryRaw<{ id: string; code: string | null }[]>`
+      SELECT ci.id::text AS id, t.code
+      FROM configuration_items ci LEFT JOIN ci_types t ON t.id = ci.ci_type_id
+      WHERE ci.id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)`;
+    const srcCode = typeRows.find(r => r.id === sourceCiId)?.code ?? null;
+    const tgtCode = typeRows.find(r => r.id === targetCiId)?.code ?? null;
+    const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
+    if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
@@ -4823,9 +4987,22 @@ const CIBulkDecisionSchema = z.object({
   assignedUser:       z.string().max(255).nullable().optional(),
   ipAddress:          z.string().max(50).nullable().optional(),
   description:        z.string().max(2000).nullable().optional(),
+  // T7 (v2.7.0): cascade-created masters
+  osName:              z.string().max(255).nullable().optional(),
+  osVersion:           z.string().max(100).nullable().optional(),
+  baseSoftwareName:    z.string().max(255).nullable().optional(),
+  baseSoftwareVersion: z.string().max(100).nullable().optional(),
   forceCreate:        z.boolean().optional(),
 });
 type CIBulkDecision = z.infer<typeof CIBulkDecisionSchema>;
+
+// T7: deterministic master code from natural key (name + version) — the UNIQUE
+// constraint on `code` doubles as the natural-key conflict target for atomic
+// ON CONFLICT upserts under concurrent bulk workers.
+function masterCodeFromNaturalKey(name: string, version?: string | null): string {
+  return `${name.trim()}${version?.trim() ? ` ${version.trim()}` : ''}`
+    .toUpperCase().replace(/[^A-Z0-9]/g, '_').slice(0, 50);
+}
 
 interface BulkItemRow {
   id: string; batch_id: string; staged_file_name: string;
@@ -5070,6 +5247,50 @@ async function materializeCIBulkItem(
       }
     }
 
+    // T7 (v2.7.0): cascade-upsert OperatingSystem by natural key (name+version).
+    // The deterministic `code` doubles as conflict target → atomic under concurrency.
+    let operatingSystemId: string | null = null;
+    if (decision.osName?.trim()) {
+      const osName    = decision.osName.trim();
+      const osVersion = decision.osVersion?.trim() || null;
+      const osCode    = masterCodeFromNaturalKey(osName, osVersion);
+      const insertedOs = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "operating_systems"(id, code, name, version, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${osCode}, ${osName}, ${osVersion}, now(), now())
+        ON CONFLICT (code) DO NOTHING
+        RETURNING id::text AS id`;
+      if (insertedOs.length > 0) {
+        operatingSystemId = insertedOs[0].id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','OperatingSystem',${operatingSystemId}::uuid,${userEmail},${JSON.stringify({ name: osName, version: osVersion, source: 'ci-bulk-import' })}::jsonb,now())`;
+      } else {
+        const existingOs = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM "operating_systems" WHERE code = ${osCode} LIMIT 1`;
+        operatingSystemId = existingOs[0]?.id ?? null;
+      }
+    }
+
+    // T7: cascade-upsert BaseSoftware by natural key (name+version). Linked to the
+    // CI afterwards only when the CI type admits base software (D3 allowlist).
+    let baseSoftwareId: string | null = null;
+    if (decision.baseSoftwareName?.trim()) {
+      const bswName    = decision.baseSoftwareName.trim();
+      const bswVersion = decision.baseSoftwareVersion?.trim() || null;
+      const bswCode    = masterCodeFromNaturalKey(bswName, bswVersion);
+      const insertedBsw = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "base_software"(id, code, name, version, created_at, updated_at)
+        VALUES (gen_random_uuid(), ${bswCode}, ${bswName}, ${bswVersion}, now(), now())
+        ON CONFLICT (code) DO NOTHING
+        RETURNING id::text AS id`;
+      if (insertedBsw.length > 0) {
+        baseSoftwareId = insertedBsw[0].id;
+        await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','BaseSoftware',${baseSoftwareId}::uuid,${userEmail},${JSON.stringify({ name: bswName, version: bswVersion, source: 'ci-bulk-import' })}::jsonb,now())`;
+      } else {
+        const existingBsw = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id::text AS id FROM "base_software" WHERE code = ${bswCode} LIMIT 1`;
+        baseSoftwareId = existingBsw[0]?.id ?? null;
+      }
+    }
+
     const newCi = await tx.cI.create({
       data: {
         name:               decision.name,
@@ -5087,6 +5308,7 @@ async function materializeCIBulkItem(
         dataClassification: (decision.dataClassification || null) as string | null,
         // ipAddress lives on CI.consoleIp in the schema (HardwareCI has no ipAddress field)
         consoleIp:          decision.ipAddress         || null,
+        operatingSystemId, // T7: cascade-created/reused OS master (null if not provided)
         ...(needsHw && {
           hardware: {
             create: {
@@ -5109,6 +5331,15 @@ async function materializeCIBulkItem(
       } as Parameters<typeof tx.cI.create>[0]['data'],
     });
 
+    // T7: link Base Software to the CI — only for D3-allowed server types
+    const BSW_ALLOWED_TYPES = ['PHYSICAL_SERVER', 'VIRTUAL_SERVER', 'CLOUD_INSTANCE'];
+    if (baseSoftwareId && BSW_ALLOWED_TYPES.includes(ciTypeCode)) {
+      await tx.$executeRaw`
+        INSERT INTO "ci_base_software"(ci_id, base_software_id)
+        VALUES (${newCi.id}::uuid, ${baseSoftwareId}::uuid)
+        ON CONFLICT DO NOTHING`;
+    }
+
     await tx.$executeRaw`
       UPDATE "ci_bulk_import_item"
       SET status='COMMITTED', committed_ci_id=${newCi.id}::uuid, updated_at=now()
@@ -5117,7 +5348,7 @@ async function materializeCIBulkItem(
     await tx.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
       VALUES(gen_random_uuid(), 'CI_BULK_COMMIT', 'CI', ${newCi.id}::uuid, ${userEmail},
-             ${JSON.stringify({ batchItemId: item.id, ciName: newCi.name, manufacturerId: resolvedMfrId, ciModelId })}::jsonb, now())`;
+             ${JSON.stringify({ batchItemId: item.id, ciName: newCi.name, manufacturerId: resolvedMfrId, ciModelId, operatingSystemId, baseSoftwareId })}::jsonb, now())`;
 
     return newCi;
   });
@@ -5415,7 +5646,7 @@ app.delete('/api/masters/document-types/:id', authenticateToken, requireAdmin, r
 // ── Documents CRUD ────────────────────────────────────────────────────────────
 
 // GET /api/documents — list root documents with latest version info
-const DOCS_MAX_PAGE_SIZE = 500;
+const DOCS_MAX_PAGE_SIZE = 250;
 app.get('/api/documents', authenticateToken, async (req, res) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, DOCS_MAX_PAGE_SIZE);
@@ -7201,7 +7432,7 @@ app.delete('/api/masters/license-types/:id', authenticateToken, requireAdmin, re
 // ── Group 3: Licenses CRUD ─────────────────────────────────────────────────────
 
 // GET /api/licenses — list all licenses (summary with vendor, type, metric, counts)
-const LICENSES_MAX_PAGE_SIZE = 500;
+const LICENSES_MAX_PAGE_SIZE = 250;
 app.get('/api/licenses', authenticateToken, async (req, res) => {
   const rawLimit = parseInt(String(req.query.limit ?? '200'), 10);
   const limit    = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 200 : rawLimit, LICENSES_MAX_PAGE_SIZE);

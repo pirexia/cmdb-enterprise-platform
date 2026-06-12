@@ -4,13 +4,14 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.4.0"
+    "copyright": "© {year} CMDB Platform",
+    "version": "v{version} · {commit}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
     "inventory": "Inventario de CIs",
     "vulnerabilities": "Vulnerabilidades",
-    "map": "Mapa de Dependencias",
+    "map": "Mapa de Relaciones",
     "integrations": "Conectores",
     "reports": "Reportes",
     "contracts": "Contratos y Adendas",
@@ -215,7 +216,11 @@
       "empty": "Este lote no tiene filas",
       "refresh": "Actualizar",
       "empty_batch": "No hay filas en este lote",
-      "no_items_to_commit": "No hay elementos listos para confirmar"
+      "no_items_to_commit": "No hay elementos listos para confirmar",
+      "select_page": "Seleccionar esta página ({count})",
+      "select_all_filtered": "Seleccionar todos los filtrados ({count})",
+      "all_filtered_banner": "{count} CIs seleccionados — todos los que coinciden con los filtros",
+      "dropdown_label": "Opciones de selección"
     },
     "my_imports": "Mis importaciones",
     "criticality": {
@@ -622,11 +627,16 @@
       "branches": "Sedes",
       "manufacturers": "Fabricantes",
       "models": "Modelos",
-      "providers": "Proveedores"
+      "providers": "Proveedores",
+      "operating_systems": "Sistemas Operativos",
+      "base_software": "Software Base"
     },
     "doc_types": "Tipos de Documento",
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
+    "operating_systems": "Sistemas Operativos",
+    "operating_systems": "Sistemas Operativos",
+    "base_software": "Software Base",
     "models": {
       "new": "Nuevo Modelo",
       "placeholder": "Ej: PowerEdge R740",
@@ -668,6 +678,22 @@
       "new": "Nuevo Proveedor",
       "placeholder": "Ej: Telefónica, AWS, Microsoft",
       "empty": "Sin proveedores registrados."
+    },
+    "os": {
+      "new": "Nuevo Sistema Operativo",
+      "name_placeholder": "Ej: Windows Server 2022",
+      "version_placeholder": "Versión (opcional, ej: 2022, 11, 14.04)",
+      "manufacturer_label": "— Fabricante (opcional) —",
+      "empty": "Sin sistemas operativos registrados.",
+      "add": "Añadir",
+      "system": "Sistema",
+      "in_use": "En uso"
+    },
+    "bsw": {
+      "new": "Nuevo Software Base",
+      "name_placeholder": "Ej: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Versión (opcional, ej: 19c, 10.1)",
+      "empty": "Sin software base registrado."
     }
   },
   "settings": {
@@ -782,7 +808,7 @@
     "getting_started_title": "Para empezar",
     "getting_started_body": "Ve a {inventory} para ver y escanear activos. Usa {map} para visualizar relaciones. Genera informes desde {reports}.",
     "inventory_link": "Inventario de CIs",
-    "map_link": "Mapa de Dependencias",
+    "map_link": "Mapa de Relaciones",
     "reports_link": "Reportes"
   },
   "login": {
@@ -891,6 +917,18 @@
     "manufacturer_hint": "Vinculado al modelo seleccionado",
     "eol_section": "Fechas de Ciclo de Vida (EoL / EoS)",
     "eol_hint": "— se autocompletarán vía endoflife.date si se dejan vacías",
+    "infra_section": "Especificaciones de infraestructura",
+    "cpu_model_label": "Modelo de CPU",
+    "vcpus_label": "vCPUs",
+    "ram_label": "RAM",
+    "disk_label": "Disco",
+    "hostname_label": "Hostname",
+    "cluster_label": "Clúster",
+    "admin_ip_label": "IP de administración",
+    "mgmt_ip_label": "IP de gestión",
+    "os_label": "Sistema operativo",
+    "firmware_label": "Versión de firmware",
+    "dns_label": "DNS",
     "nis2_section": "NIS2 · Resiliencia · GDPR",
     "business_impact_label": "Impacto de Negocio (NIS2)",
     "unclassified": "— Sin clasificar —",
@@ -1015,7 +1053,8 @@
     "no_events": "No hay eventos de auditoría registrados aún.",
     "no_filtered": "No hay resultados para la búsqueda.",
     "active_filters": "{count} filtro activo",
-    "active_filters_plural": "{count} filtros activos"
+    "active_filters_plural": "{count} filtros activos",
+    "entity_name_placeholder": "Filtrar por nombre…"
   },
   "integrations": {
     "title": "Conectores de Integración",
@@ -1114,8 +1153,8 @@
   },
   "map": {
     "search_placeholder": "Buscar CI por nombre o slug…",
-    "select_ci_prompt": "Selecciona un CI para ver su mapa de dependencias",
-    "view_dependencies": "Ver dependencias",
+    "select_ci_prompt": "Selecciona un CI para ver su mapa de relaciones",
+    "view_dependencies": "Ver relaciones",
     "load_error": "Error al cargar el mapa",
     "confirm_delete": "¿Eliminar esta relación?",
     "graph_view": "Vista Grafo",
@@ -1127,7 +1166,19 @@
     "relation_type_CONNECTED_TO": "CONNECTED_TO — conexión de red entre ambos",
     "relation_type_PROVIDES_SERVICE": "PROVIDES_SERVICE — el origen provee servicio al destino",
     "relation_type_BACKED_UP_BY": "BACKED_UP_BY — el origen es respaldado por el destino",
-    "title": "Mapa de Dependencias",
+    "relation_type_CONTAINS": "CONTAINS — el origen contiene al destino",
+    "relation_type_COMPOSED_OF": "COMPOSED_OF — el origen está compuesto por el destino",
+    "relation_type_ATTACHED_TO": "ATTACHED_TO — el origen está conectado físicamente al destino",
+    "relation_type_CONNECTS_TO": "CONNECTS_TO — el origen se conecta al destino de red",
+    "relation_type_UPLINKS_TO": "UPLINKS_TO — el origen hace uplink al destino upstream",
+    "relation_type_POWERS": "POWERS — el origen alimenta al destino",
+    "relation_type_PROTECTS": "PROTECTS — el SAI protege al destino",
+    "relation_type_REPLICATES_TO": "REPLICATES_TO — el origen replica datos al destino",
+    "relation_type_RUNS_ON": "RUNS_ON — el software corre sobre la infraestructura destino",
+    "relation_type_QUERIES": "QUERIES — el origen consulta el almacén destino",
+    "relation_type_LICENSES": "LICENSES — la licencia cubre al destino",
+    "relation_type_MANAGES": "MANAGES — el origen gestiona al destino",
+    "title": "Mapa de Relaciones",
     "subtitle": "Selecciona un CI para explorar sus relaciones",
     "type_badge_physical_server": "Servidor Físico",
     "type_badge_virtual_server": "Servidor Virtual",
@@ -1137,7 +1188,7 @@
     "type_badge_backup": "Backup",
     "type_badge_base_software": "Software Base",
     "type_badge_other": "Otro",
-    "depth_label": "Profundidad de dependencia",
+    "depth_label": "Profundidad de relación",
     "depth_1_label": "1 nivel",
     "depth_2_label": "2 niveles",
     "depth_3_label": "3 niveles",
@@ -1150,7 +1201,7 @@
     "no_ci_results": "Sin resultados",
     "cis_available": "{count} CIs disponibles",
     "select_to_continue": "Selecciona un CI para continuar",
-    "view_deps_of": "Ver dependencias de \"{name}\"",
+    "view_deps_of": "Ver relaciones de \"{name}\"",
     "loading_cis": "Cargando CIs…",
     "load_cis_error": "No se pudo cargar la lista de CIs",
     "change_ci": "Cambiar CI",
@@ -1191,7 +1242,7 @@
     "excel_col_depth": "Profundidad",
     "excel_dir_outgoing": "Saliente →",
     "excel_dir_incoming": "← Entrante",
-    "excel_sheet": "Dependencias"
+    "excel_sheet": "Relaciones"
   },
   "relation": {
     "modal_title": "Crear Relación",
@@ -1211,7 +1262,24 @@
     "type_DEPENDS_ON": "DEPENDS_ON — el origen depende del destino",
     "type_CONNECTED_TO": "CONNECTED_TO — conexión de red entre ambos",
     "type_PROVIDES_SERVICE": "PROVIDES_SERVICE — el origen provee servicio al destino",
-    "type_BACKED_UP_BY": "BACKED_UP_BY — el origen es respaldado por el destino"
+    "type_BACKED_UP_BY": "BACKED_UP_BY — el origen es respaldado por el destino",
+    "type_CONTAINS": "CONTAINS — el origen contiene al destino",
+    "type_COMPOSED_OF": "COMPOSED_OF — el origen está compuesto por el destino",
+    "type_ATTACHED_TO": "ATTACHED_TO — el origen está conectado físicamente al destino",
+    "type_CONNECTS_TO": "CONNECTS_TO — el origen se conecta al destino de red",
+    "type_UPLINKS_TO": "UPLINKS_TO — el origen hace uplink al destino upstream",
+    "type_POWERS": "POWERS — el origen alimenta al destino",
+    "type_PROTECTS": "PROTECTS — el SAI protege al destino",
+    "type_REPLICATES_TO": "REPLICATES_TO — el origen replica datos al destino",
+    "type_RUNS_ON": "RUNS_ON — el software corre sobre la infraestructura destino",
+    "type_QUERIES": "QUERIES — el origen consulta el almacén destino",
+    "type_LICENSES": "LICENSES — la licencia cubre al destino",
+    "type_MANAGES": "MANAGES — el origen gestiona al destino",
+    "cat_structural": "Estructural",
+    "cat_network": "Red",
+    "cat_power": "Alimentación",
+    "cat_logical": "Lógica",
+    "types_filtered_hint": "Tipos filtrados según los tipos de CI seleccionados"
   },
   "ci_detail": {
     "edit_btn": "Editar",
@@ -1230,6 +1298,7 @@
     "field_model": "Modelo",
     "field_serial": "Número de Serie",
     "section_software": "Software / Licencia",
+    "section_infra": "Especificaciones de infraestructura",
     "field_version": "Versión",
     "field_license_type": "Tipo de Licencia",
     "section_vulns": "Vulnerabilidades",
@@ -1264,6 +1333,13 @@
     "remove_doc": "Quitar documento",
     "confirm_remove_doc": "¿Quitar este documento del CI?",
     "view_all_docs": "Ver todos los documentos →",
+    "bsw_title": "Software Base",
+    "bsw_add": "Añadir",
+    "bsw_select": "— Seleccionar software base —",
+    "bsw_loading": "Cargando software base…",
+    "bsw_empty": "Sin software base asociado.",
+    "bsw_remove": "Quitar software base",
+    "bsw_confirm_remove": "¿Quitar este software base del CI?",
     "btn_close": "Cerrar",
     "btn_edit_ci": "Editar CI",
     "subdoc_title": "Asociar Documentos",
@@ -1516,5 +1592,12 @@
       "current": "Ubicación actual",
       "change": "Cambiar ubicación en rack"
     }
+  },
+  "pagination": {
+    "records_per_page": "Registros por página:",
+    "page_of": "Página {page} de {total}",
+    "prev": "Página anterior",
+    "next": "Página siguiente",
+    "showing": "Mostrando {from}–{to} de {total}"
   }
 }

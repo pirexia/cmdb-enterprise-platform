@@ -1286,3 +1286,121 @@ El sistema ejecuta un análisis diario a las 04:00 (hora Madrid) que detecta rac
 > ⚠️ No incluyas datos personales (nombres, DNIs, correos) en los campos de notas de edificios, plantas o salas. Estos campos son para descripción técnica, no para datos de personas (GDPR).
 
 > La vista 3D de sala está prevista para **v2.7.0**.
+
+---
+
+## 26. Datos Maestros — Sistema Operativo y Software Base (v2.7.0)
+
+### 26.1 Maestro: Sistema Operativo
+
+Accede desde el menú **Administración → Maestros → Sistema Operativo** (solo ADMIN).
+
+Los sistemas operativos registrados aquí pueden asignarse a cualquier CI desde su ficha de edición (**Editar CI → Campos de infraestructura → Sistema Operativo**).
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| Nombre | Texto | Nombre del SO (ej. "Ubuntu Server") |
+| Versión | Texto | Versión (ej. "22.04 LTS") |
+| Código interno | Auto | Generado automáticamente como slug en mayúsculas |
+| Fabricante | Texto | Opcional |
+| Fecha EoL | Fecha | End-of-Life; activa alertas automáticas |
+| Notas | Texto | Notas técnicas |
+
+### 26.2 Maestro: Software Base
+
+Accede desde **Administración → Maestros → Software Base** (solo ADMIN).
+
+El software base modela middleware y agentes del sistema instalados en servidores físicos, virtuales o cloud (no aplicaciones de negocio, que van en Contratos/Licencias).
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| Nombre | Texto | Nombre del software (ej. "Apache Tomcat") |
+| Versión | Texto | Versión instalada |
+| Tipo | Selección | `MIDDLEWARE`, `AGENT`, `RUNTIME`, `DATABASE`, `OTHER` |
+| Vendor | Texto | Fabricante |
+| Fecha EoL | Fecha | End-of-Life para alertas |
+
+Para asociar software base a un CI: abre el CI, ve a la pestaña **Software Base** y usa **Añadir software base**. Un CI puede tener múltiples entradas de software base.
+
+---
+
+## 27. Campos de Infraestructura en CI (v2.7.0)
+
+Los CIs de tipo servidor (físico, virtual o cloud) disponen ahora de campos de infraestructura en su ficha:
+
+| Campo | Tipo | Aplicable a |
+|-------|------|-------------|
+| Nombre de host | Texto | Todos los servidores |
+| IP de gestión | IP | Todos los servidores |
+| IP de administración | IP | Todos los servidores |
+| DNS | Texto | Todos los servidores |
+| Sistema Operativo | Selección | Todos los servidores (FK a maestro) |
+| Clúster | Texto | Virtual / Cloud |
+| vCPUs | Número | Virtual / Cloud (excluyente con Modelo CPU) |
+| Modelo CPU | Texto | Servidores físicos (excluyente con vCPUs) |
+| RAM (GB) | Número | Todos los servidores |
+| Disco (GB) | Número | Todos los servidores |
+| Versión firmware | Texto | Servidores físicos |
+
+> **Nota:** `vCPUs` y `Modelo CPU` son mutuamente excluyentes. Si se especifican ambos, el servidor devuelve un error de validación.
+
+Estos campos son visibles en el detalle del CI y exportables en el informe Excel de inventario.
+
+---
+
+## 28. Alta Masiva — Creación en Cascada (v2.7.0)
+
+El importador Excel de **Alta Masiva** ahora admite columnas adicionales para crear registros de datos maestros de forma automática durante la importación:
+
+| Columna Excel | Comportamiento |
+|---------------|----------------|
+| `os_name` + `os_version` | Crea o reutiliza (idempotente) un Sistema Operativo en el maestro |
+| `base_software` (lista separada por `\|`) | Crea o reutiliza cada software base y lo asocia al CI |
+
+Si el sistema operativo o software base ya existe (mismo nombre+versión), se reutiliza sin duplicar. Si no existe, se crea en el mismo lote transaccional.
+
+> Un error en la creación en cascada de maestros no cancela la importación del CI; el CI se crea igualmente y el campo afectado se deja en blanco.
+
+---
+
+## 29. Mapa de Relaciones (v2.7.0)
+
+El **Mapa de Relaciones** (antes "Mapa de Dependencias") ha sido ampliado con 12 nuevos tipos de relación organizados en 4 categorías semánticas.
+
+### 29.1 Categorías y tipos de relación
+
+| Categoría | Color | Tipos de relación |
+|-----------|-------|-------------------|
+| Estructural | Índigo | `CONTAINS`, `COMPOSED_OF`, `ATTACHED_TO` |
+| Red | Teal | `CONNECTS_TO`, `UPLINKS_TO`, `CONNECTED_TO` |
+| Eléctrica | Ámbar | `POWERS`, `PROTECTS` |
+| Lógica | Naranja | `HOSTS`, `DEPENDS_ON`, `PROVIDES_SERVICE`, `BACKED_UP_BY`, `REPLICATES_TO`, `RUNS_ON`, `QUERIES`, `LICENSES`, `MANAGES` |
+
+### 29.2 Uso del mapa
+
+1. Accede a **Mapa de Relaciones** desde el menú lateral.
+2. Selecciona un CI de origen en el selector superior.
+3. Ajusta la **profundidad** (1–5) para ampliar o reducir el alcance del grafo.
+4. La leyenda de categorías (esquina inferior izquierda) identifica el color de cada arista.
+5. Filtra por tipo de relación con el selector de filtro.
+6. Exporta el grafo a Excel con el botón de descarga.
+
+### 29.3 Validación de tipo por CI
+
+Al crear una relación desde **Añadir Relación**, el selector filtra automáticamente los tipos permitidos según el tipo de CI en cada extremo. Por ejemplo, `POWERS` solo aparece si el CI origen es de tipo `PDU` o `UPS`.
+
+---
+
+## 30. Registro de Eventos — Mejoras (v2.7.0)
+
+### 30.1 Detalle de evento
+
+Cada entrada del **Registro de Eventos** muestra ahora un campo de descripción que explica la operación realizada (ej. "CI SRV-PROD-01 creado"). Las entradas que incluyen cambios estructurados muestran un detalle de campo→valor anterior→valor nuevo.
+
+### 30.2 Filtro por nombre de entidad
+
+La columna **Entidad** del registro dispone ahora de un campo de búsqueda que filtra en tiempo real por nombre de entidad (nombre del CI, usuario, contrato, etc.).
+
+- La búsqueda es **insensible a mayúsculas/minúsculas**.
+- Acepta fragmentos: `SRV` coincide con `SRV-PROD-01`, `SRV-TEST-02`, etc.
+- Se combina con los filtros de fecha existentes.

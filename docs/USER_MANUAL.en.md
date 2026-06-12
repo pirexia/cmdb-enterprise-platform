@@ -1276,3 +1276,117 @@ A daily job at 04:00 (Europe/Madrid) scans for over-capacity racks and writes `D
 
 > ⚠️ Do not include personal data in the notes fields of buildings, floors or rooms (GDPR).
 > The 3D room view is planned for **v2.7.0**.
+
+---
+
+## 26. Master Data — Operating System and Base Software (v2.7.0)
+
+### 26.1 Operating System Master
+
+Access from **Administration → Masters → Operating System** (ADMIN only).
+
+Operating systems registered here can be assigned to any CI from its edit form (**Edit CI → Infrastructure fields → Operating System**).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Name | Text | OS name (e.g., "Ubuntu Server") |
+| Version | Text | Version (e.g., "22.04 LTS") |
+| Internal code | Auto | Auto-generated uppercase slug |
+| Vendor | Text | Optional |
+| EoL date | Date | End-of-Life; triggers automated alerts |
+| Notes | Text | Technical notes |
+
+### 26.2 Base Software Master
+
+Access from **Administration → Masters → Base Software** (ADMIN only).
+
+Base software models middleware and system agents installed on physical, virtual, or cloud servers (not business applications, which belong to Contracts/Licenses).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Name | Text | Software name (e.g., "Apache Tomcat") |
+| Version | Text | Installed version |
+| Type | Select | `MIDDLEWARE`, `AGENT`, `RUNTIME`, `DATABASE`, `OTHER` |
+| Vendor | Text | Vendor/manufacturer |
+| EoL date | Date | End-of-Life for alerts |
+
+To associate base software with a CI: open the CI, go to the **Base Software** tab and use **Add base software**. A CI can have multiple base software entries.
+
+---
+
+## 27. CI Infrastructure Fields (v2.7.0)
+
+CIs of server type (physical, virtual or cloud) now have infrastructure fields in their detail view:
+
+| Field | Type | Applicable to |
+|-------|------|---------------|
+| Hostname | Text | All servers |
+| Management IP | IP | All servers |
+| Admin IP | IP | All servers |
+| DNS | Text | All servers |
+| Operating System | Select | All servers (FK to master) |
+| Cluster | Text | Virtual / Cloud |
+| vCPUs | Number | Virtual / Cloud (mutually exclusive with CPU Model) |
+| CPU Model | Text | Physical servers (mutually exclusive with vCPUs) |
+| RAM (GB) | Number | All servers |
+| Disk (GB) | Number | All servers |
+| Firmware version | Text | Physical servers |
+
+> **Note:** `vCPUs` and `CPU Model` are mutually exclusive. Specifying both returns a validation error.
+
+---
+
+## 28. Bulk Import — Cascade Creation (v2.7.0)
+
+The Excel **Bulk Import** now supports additional columns to automatically create master data records during import:
+
+| Excel column | Behaviour |
+|--------------|-----------|
+| `os_name` + `os_version` | Creates or reuses (idempotent) an Operating System in the master |
+| `base_software` (pipe-separated list) | Creates or reuses each base software and associates it with the CI |
+
+If the operating system or base software already exists (same name+version), it is reused without duplication. If it does not exist, it is created in the same transactional batch.
+
+---
+
+## 29. Relation Map (v2.7.0)
+
+The **Relation Map** (formerly "Dependency Map") has been expanded with 12 new relation types organised in 4 semantic categories.
+
+### 29.1 Categories and relation types
+
+| Category | Colour | Relation types |
+|----------|--------|----------------|
+| Structural | Indigo | `CONTAINS`, `COMPOSED_OF`, `ATTACHED_TO` |
+| Network | Teal | `CONNECTS_TO`, `UPLINKS_TO`, `CONNECTED_TO` |
+| Power | Amber | `POWERS`, `PROTECTS` |
+| Logical | Orange | `HOSTS`, `DEPENDS_ON`, `PROVIDES_SERVICE`, `BACKED_UP_BY`, `REPLICATES_TO`, `RUNS_ON`, `QUERIES`, `LICENSES`, `MANAGES` |
+
+### 29.2 Using the map
+
+1. Navigate to **Relation Map** from the sidebar.
+2. Select a source CI in the top selector.
+3. Adjust the **depth** (1–5) to expand or reduce the graph scope.
+4. The category legend (bottom-left) identifies each edge colour.
+5. Filter by relation type using the filter selector.
+6. Export the graph to Excel using the download button.
+
+### 29.3 Type validation by CI
+
+When creating a relation from **Add Relation**, the selector automatically filters allowed types based on the CI type at each end. For example, `POWERS` only appears if the source CI type is `PDU` or `UPS`.
+
+---
+
+## 30. Event Log — Improvements (v2.7.0)
+
+### 30.1 Event detail
+
+Each **Event Log** entry now shows a description field explaining the operation performed (e.g., "CI SRV-PROD-01 created"). Entries that include structured changes show a field→old value→new value breakdown.
+
+### 30.2 Filter by entity name
+
+The **Entity** column now has a search field that filters in real time by entity name (CI name, user, contract, etc.).
+
+- Search is **case-insensitive**.
+- Accepts fragments: `SRV` matches `SRV-PROD-01`, `SRV-TEST-02`, etc.
+- Combines with existing date filters.

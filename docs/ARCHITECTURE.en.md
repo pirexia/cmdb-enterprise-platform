@@ -958,3 +958,95 @@ The practical limit without a GPU is 2–3 simultaneous requests with acceptable
 Starting with v2.3 the RAG subsystem indexes four structured entity types in addition to the document corpus: **CIs**, **contracts** (root only — addenda are serialised inside the root's text), **licenses** (same root/addenda pattern) and **vulnerabilities** (identified by a synthetic UUID v5 derived from `(ciId, cve)`). The `rag_chunks` table is extended with `entity_type` and `entity_id` columns, and a separate state table `rag_entity_index` is added — kept apart from `rag_document_index` because entities are mutable and not versioned through the pipeline.
 
 Access control in the search path uses a single `WHERE` clause with a conditional `LEFT JOIN`: document chunks still flow through the existing per-role ACL; entity chunks are visible to every authenticated user. Worker priorities (vulnerability > contract/license > CI, 3 slots per tick) and the complete ACL SQL are documented in `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 and §10. The DPIA updated with the eight additional STRIDE risks lives in `docs/security/rag-dpia.md` (AMENDMENT v1.1).
+
+---
+
+## 13. v2.7.0 — New capabilities and architectural changes
+
+### 13.1 `catalog/` module (T4 — OperatingSystem, T5 — BaseSoftware)
+
+New module `backend/src/modules/catalog/` following the DCIM pattern:
+
+```
+backend/src/modules/catalog/
+  router.ts    — 14 CRUD endpoints: /api/catalog/operating-systems, /api/catalog/base-software,
+                  /api/catalog/cis/:ciId/base-software
+  schemas.ts   — Zod schemas for OS and BaseSoftware (code auto-generated from name)
+  queries.ts   — Prisma queries, idempotent ON CONFLICT
+  audit.ts     — auditCatalog() helper (insert-only, ISO 27001 A.8.15)
+```
+
+Mounted in `index.ts`:
+```typescript
+app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
+```
+
+### 13.2 Data model — v2.7.0
+
+**New tables:**
+- `operating_systems` (id, code UNIQUE, name, version, vendor, eol_date, notes)
+- `base_software` (id, code UNIQUE, name, version, type, vendor, eol_date, notes)
+- `_ci_base_software` (M:M join between `configuration_items` and `base_software`)
+
+**New columns on `configuration_items`:**
+- `host_name`, `mgmt_ip`, `admin_ip`, `dns`, `cluster_name`, `firmware_version` (text, nullable)
+- `v_cpus` (int, nullable — mutually exclusive with `cpu_model`)
+- `cpu_model` (text, nullable — mutually exclusive with `v_cpus`)
+- `ram_gb`, `disk_gb` (int, nullable)
+- `operating_system_id` (FK → `operating_systems`, nullable)
+
+**`RelationType` enum extension** (+12 values):
+`CONTAINS`, `COMPOSED_OF`, `ATTACHED_TO` (structural), `CONNECTS_TO`, `UPLINKS_TO` (network), `POWERS`, `PROTECTS` (power), `REPLICATES_TO`, `RUNS_ON`, `QUERIES`, `LICENSES`, `MANAGES` (logical).
+
+**New column on `audit_logs`:**
+- `details` (jsonb, nullable) — stores `{ description, changes? }`. Insert-only.
+
+### 13.3 Relation type module (T8)
+
+`backend/src/relationTypes.ts` — authoritative source:
+- `VALID_RELATION_TYPES`: allowlist of all 17 types.
+- `RELATION_TYPE_MATRIX`: constraints by CI type at each end.
+- `validateRelationCiTypes()`: validation applied before any INSERT on `/api/relations`.
+
+`frontend/lib/relationTypes.ts` — frontend mirror with UI additions:
+- `CATEGORY_COLORS`: `{ structural: #6366f1, network: #0d9488, power: #f59e0b, logical: #f97316 }`
+- `relationAllowed()`: option filtering in `AddRelationModal`.
+
+### 13.4 Cascade in bulk import (T7)
+
+`POST /api/cis/bulk/commit` optionally accepts `osName`, `osVersion`, `baseSoftwareList`. Runs in a Prisma `$transaction`:
+
+1. `INSERT INTO operating_systems ... ON CONFLICT (code) DO NOTHING` — idempotent.
+2. `INSERT INTO base_software ... ON CONFLICT (code) DO NOTHING` — idempotent.
+3. `INSERT INTO configuration_items ...` using resolved OS id.
+4. `INSERT INTO _ci_base_software ...` M:M associations.
+
+A failure in steps 1/2 does not cancel the CI; errors are recorded as warnings on the batch.
+
+### 13.5 AuditLog improvements (T10)
+
+- `GET /api/audit-logs` uses a CTE to compute `entity_name` (calculated alias in SELECT):
+
+```sql
+WITH al_named AS (
+  SELECT ..., CASE al.entity WHEN 'CI' THEN ci.name ... END AS entity_name
+  FROM audit_logs al LEFT JOIN ...
+  WHERE created_at BETWEEN $from AND $to
+)
+SELECT * FROM al_named
+WHERE entity_name ILIKE '%' || $search || '%' ESCAPE '\'
+ORDER BY created_at DESC LIMIT 500
+```
+
+- `escapeLike(s)`: escapes `%`, `_`, `\` before interpolation (OWASP A03).
+- `buildAuditDetails(description, changes?)`: helper to build `details` JSONB without PII.
+
+### 13.6 Architectural decisions (2026-06-12)
+
+| Decision | Rationale |
+|----------|-----------|
+| Unified `catalog/` module for OS + BSW | Same DCIM pattern; avoids growing `index.ts`; both masters share auto-code logic |
+| `cpuModel` ↔ `vCpus` mutually exclusive | Enforces physical/virtual invariant at DB and Zod level (plan D3) |
+| CTE for `entity_name` in audit-logs | `entity_name` is a computed alias; not referenceable in WHERE without CTE |
+| `RELATION_TYPE_MATRIX` in shared module | Single source of truth; frontend imports as mirror (backlog: auto-generation) |
+| `details` jsonb on `audit_logs` (not a new table) | Keeps table flat; `jsonb` supports GIN indexes for future searches |

@@ -4,13 +4,14 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.4.0"
+    "copyright": "© {year} CMDB Platform",
+    "version": "v{version} · {commit}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
     "inventory": "CI Inventory",
     "vulnerabilities": "Vulnerabilities",
-    "map": "Dependency Map",
+    "map": "Relation Map",
     "integrations": "Connectors",
     "reports": "Reports",
     "contracts": "Contracts & Addendums",
@@ -215,7 +216,11 @@
       "empty": "This batch has no rows",
       "refresh": "Refresh",
       "empty_batch": "No rows in this batch",
-      "no_items_to_commit": "No items ready to commit"
+      "no_items_to_commit": "No items ready to commit",
+      "select_page": "Select this page ({count})",
+      "select_all_filtered": "Select all filtered ({count})",
+      "all_filtered_banner": "{count} CIs selected — all matching current filters",
+      "dropdown_label": "Selection options"
     },
     "my_imports": "My imports",
     "criticality": {
@@ -622,11 +627,15 @@
       "branches": "Branches",
       "manufacturers": "Manufacturers",
       "models": "Models",
-      "providers": "Providers"
+      "providers": "Providers",
+      "operating_systems": "Operating Systems",
+      "base_software": "Base Software"
     },
     "doc_types": "Document Types",
     "license_metrics": "License Metrics",
     "license_types": "License Types",
+    "operating_systems": "Operating Systems",
+    "base_software": "Base Software",
     "models": {
       "new": "New Model",
       "placeholder": "E.g.: PowerEdge R740",
@@ -668,6 +677,22 @@
       "new": "New Provider",
       "placeholder": "E.g.: AWS, Microsoft, Telefónica",
       "empty": "No providers registered."
+    },
+    "os": {
+      "new": "New Operating System",
+      "name_placeholder": "E.g.: Windows Server 2022",
+      "version_placeholder": "Version (optional, e.g.: 2022, 11, 14.04)",
+      "manufacturer_label": "— Manufacturer (optional) —",
+      "empty": "No operating systems registered.",
+      "add": "Add",
+      "system": "System",
+      "in_use": "In use"
+    },
+    "bsw": {
+      "new": "New Base Software",
+      "name_placeholder": "E.g.: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Version (optional, e.g.: 19c, 10.1)",
+      "empty": "No base software registered."
     }
   },
   "settings": {
@@ -782,7 +807,7 @@
     "getting_started_title": "Getting started",
     "getting_started_body": "Go to {inventory} to view and scan assets. Use {map} to visualize relationships. Generate reports from {reports}.",
     "inventory_link": "CI Inventory",
-    "map_link": "Dependency Map",
+    "map_link": "Relation Map",
     "reports_link": "Reports"
   },
   "login": {
@@ -891,6 +916,18 @@
     "manufacturer_hint": "Linked to selected model",
     "eol_section": "Lifecycle Dates (EoL / EoS)",
     "eol_hint": "— will be auto-filled via endoflife.date if left empty",
+    "infra_section": "Infrastructure specs",
+    "cpu_model_label": "CPU model",
+    "vcpus_label": "vCPUs",
+    "ram_label": "RAM",
+    "disk_label": "Disk",
+    "hostname_label": "Hostname",
+    "cluster_label": "Cluster",
+    "admin_ip_label": "Admin IP",
+    "mgmt_ip_label": "Management IP",
+    "os_label": "Operating system",
+    "firmware_label": "Firmware version",
+    "dns_label": "DNS",
     "nis2_section": "NIS2 · Resilience · GDPR",
     "business_impact_label": "Business Impact (NIS2)",
     "unclassified": "— Unclassified —",
@@ -1015,7 +1052,8 @@
     "no_events": "No audit events recorded yet.",
     "no_filtered": "No results for your search.",
     "active_filters": "{count} active filter",
-    "active_filters_plural": "{count} active filters"
+    "active_filters_plural": "{count} active filters",
+    "entity_name_placeholder": "Filter by name…"
   },
   "integrations": {
     "title": "Integration Connectors",
@@ -1114,8 +1152,8 @@
   },
   "map": {
     "search_placeholder": "Search CI by name or slug…",
-    "select_ci_prompt": "Select a CI to view its dependency map",
-    "view_dependencies": "View dependencies",
+    "select_ci_prompt": "Select a CI to view its relation map",
+    "view_dependencies": "View relations",
     "load_error": "Error loading map",
     "confirm_delete": "Delete this relation?",
     "graph_view": "Graph View",
@@ -1127,7 +1165,19 @@
     "relation_type_CONNECTED_TO": "CONNECTED_TO — network connection between both",
     "relation_type_PROVIDES_SERVICE": "PROVIDES_SERVICE — source provides service to target",
     "relation_type_BACKED_UP_BY": "BACKED_UP_BY — source is backed up by target",
-    "title": "Dependency Map",
+    "relation_type_CONTAINS": "CONTAINS — source contains the target",
+    "relation_type_COMPOSED_OF": "COMPOSED_OF — source is composed of target",
+    "relation_type_ATTACHED_TO": "ATTACHED_TO — source is attached to target",
+    "relation_type_CONNECTS_TO": "CONNECTS_TO — source connects to network target",
+    "relation_type_UPLINKS_TO": "UPLINKS_TO — source uplinks to upstream network",
+    "relation_type_POWERS": "POWERS — source powers the target",
+    "relation_type_PROTECTS": "PROTECTS — UPS protects the target",
+    "relation_type_REPLICATES_TO": "REPLICATES_TO — source replicates data to target",
+    "relation_type_RUNS_ON": "RUNS_ON — software runs on infrastructure target",
+    "relation_type_QUERIES": "QUERIES — source queries the target datastore",
+    "relation_type_LICENSES": "LICENSES — license covers the target",
+    "relation_type_MANAGES": "MANAGES — source manages the target",
+    "title": "Relation Map",
     "subtitle": "Select a CI to explore its relations",
     "type_badge_physical_server": "Physical Server",
     "type_badge_virtual_server": "Virtual Server",
@@ -1137,7 +1187,7 @@
     "type_badge_backup": "Backup",
     "type_badge_base_software": "Base Software",
     "type_badge_other": "Other",
-    "depth_label": "Dependency depth",
+    "depth_label": "Relation depth",
     "depth_1_label": "1 level",
     "depth_2_label": "2 levels",
     "depth_3_label": "3 levels",
@@ -1150,7 +1200,7 @@
     "no_ci_results": "No results",
     "cis_available": "{count} CIs available",
     "select_to_continue": "Select a CI to continue",
-    "view_deps_of": "View dependencies of \"{name}\"",
+    "view_deps_of": "View relations of \"{name}\"",
     "loading_cis": "Loading CIs…",
     "load_cis_error": "Could not load the CI list",
     "change_ci": "Change CI",
@@ -1191,7 +1241,7 @@
     "excel_col_depth": "Depth",
     "excel_dir_outgoing": "Outgoing →",
     "excel_dir_incoming": "← Incoming",
-    "excel_sheet": "Dependencies"
+    "excel_sheet": "Relations"
   },
   "relation": {
     "modal_title": "Create Relation",
@@ -1211,7 +1261,24 @@
     "type_DEPENDS_ON": "DEPENDS_ON — source depends on target",
     "type_CONNECTED_TO": "CONNECTED_TO — network connection between both",
     "type_PROVIDES_SERVICE": "PROVIDES_SERVICE — source provides service to target",
-    "type_BACKED_UP_BY": "BACKED_UP_BY — source is backed up by target"
+    "type_BACKED_UP_BY": "BACKED_UP_BY — source is backed up by target",
+    "type_CONTAINS": "CONTAINS — source contains the target",
+    "type_COMPOSED_OF": "COMPOSED_OF — source is composed of target",
+    "type_ATTACHED_TO": "ATTACHED_TO — source is attached to target",
+    "type_CONNECTS_TO": "CONNECTS_TO — source connects to network target",
+    "type_UPLINKS_TO": "UPLINKS_TO — source uplinks to upstream network",
+    "type_POWERS": "POWERS — source powers the target",
+    "type_PROTECTS": "PROTECTS — UPS protects the target",
+    "type_REPLICATES_TO": "REPLICATES_TO — source replicates data to target",
+    "type_RUNS_ON": "RUNS_ON — software runs on infrastructure target",
+    "type_QUERIES": "QUERIES — source queries the target datastore",
+    "type_LICENSES": "LICENSES — license covers the target",
+    "type_MANAGES": "MANAGES — source manages the target",
+    "cat_structural": "Structural",
+    "cat_network": "Network",
+    "cat_power": "Power",
+    "cat_logical": "Logical",
+    "types_filtered_hint": "Types filtered by selected CI types"
   },
   "ci_detail": {
     "edit_btn": "Edit",
@@ -1230,6 +1297,7 @@
     "field_model": "Model",
     "field_serial": "Serial No.",
     "section_software": "Software / License",
+    "section_infra": "Infrastructure specs",
     "field_version": "Version",
     "field_license_type": "License Type",
     "section_vulns": "Vulnerabilities",
@@ -1264,6 +1332,13 @@
     "remove_doc": "Remove document",
     "confirm_remove_doc": "Remove this document from the CI?",
     "view_all_docs": "View all documents →",
+    "bsw_title": "Base Software",
+    "bsw_add": "Add",
+    "bsw_select": "— Select base software —",
+    "bsw_loading": "Loading base software…",
+    "bsw_empty": "No base software associated.",
+    "bsw_remove": "Remove base software",
+    "bsw_confirm_remove": "Remove this base software from the CI?",
     "btn_close": "Close",
     "btn_edit_ci": "Edit CI",
     "subdoc_title": "Associate Documents",
@@ -1516,5 +1591,12 @@
       "current": "Current placement",
       "change": "Change rack placement"
     }
+  },
+  "pagination": {
+    "records_per_page": "Rows per page:",
+    "page_of": "Page {page} of {total}",
+    "prev": "Previous page",
+    "next": "Next page",
+    "showing": "Showing {from}–{to} of {total}"
   }
 }

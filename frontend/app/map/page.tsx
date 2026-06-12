@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import AddRelationModal from "@/components/AddRelationModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { CATEGORY_COLORS, RELATION_CATEGORIES, type RelationTypeValue } from "@/lib/relationTypes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,13 +70,28 @@ type ViewMode = "graph" | "table";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const RELATION_COLORS: Record<string, { stroke: string; label: string; bg: string; text: string }> = {
-  HOSTS:            { stroke: "var(--accent)", label: "HOSTS",            bg: "color-mix(in srgb, var(--accent) 10%, white)", text: "text-[var(--accent)]" },
-  DEPENDS_ON:       { stroke: "#f97316", label: "DEPENDS_ON",       bg: "#fff7ed", text: "text-orange-700" },
-  CONNECTED_TO:     { stroke: "#0d9488", label: "CONNECTED_TO",     bg: "#f0fdfa", text: "text-teal-700"   },
-  PROVIDES_SERVICE: { stroke: "#10b981", label: "PROVIDES_SERVICE", bg: "#f0fdf4", text: "text-emerald-700"},
-  BACKED_UP_BY:     { stroke: "#8b5cf6", label: "BACKED_UP_BY",     bg: "#faf5ff", text: "text-violet-700" },
-};
+function colorForType(type: string): { stroke: string; bg: string; text: string } {
+  const cat = RELATION_CATEGORIES[type as RelationTypeValue];
+  const c   = cat ? CATEGORY_COLORS[cat] : CATEGORY_COLORS.logical;
+  const textMap: Record<string, string> = {
+    structural: "text-indigo-700",
+    network:    "text-teal-700",
+    power:      "text-amber-700",
+    logical:    "text-orange-700",
+  };
+  return { stroke: c.stroke, bg: c.bg, text: textMap[cat ?? "logical"] ?? "text-slate-700" };
+}
+
+// All 17 relation types with category-based colors
+const RELATION_COLORS: Record<string, { stroke: string; label: string; bg: string; text: string }> = Object.fromEntries(
+  [
+    "HOSTS","DEPENDS_ON","CONNECTED_TO","PROVIDES_SERVICE","BACKED_UP_BY",
+    "CONTAINS","COMPOSED_OF","ATTACHED_TO",
+    "CONNECTS_TO","UPLINKS_TO",
+    "POWERS","PROTECTS",
+    "REPLICATES_TO","RUNS_ON","QUERIES","LICENSES","MANAGES",
+  ].map((k) => [k, { label: k, ...colorForType(k) }])
+) as Record<string, { stroke: string; label: string; bg: string; text: string }>;
 
 const CRIT_DOT: Record<string, string> = {
   MISSION_CRITICAL: "bg-red-500",
@@ -294,7 +310,7 @@ async function exportToExcel(rows: RelationRow[], center: CIOption, t: (key: str
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `dependencias-${center.apiSlug}.xlsx`;
+  a.href = url; a.download = `relaciones-${center.apiSlug}.xlsx`;
   a.click(); URL.revokeObjectURL(url);
 }
 
@@ -429,6 +445,28 @@ function TableView({
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ─── Relation Legend ──────────────────────────────────────────────────────────
+
+function RelationLegend() {
+  const { t } = useLanguage();
+  const cats: Array<{ key: string; color: string }> = [
+    { key: "structural", color: "#6366f1" },
+    { key: "network",    color: "#0d9488" },
+    { key: "power",      color: "#f59e0b" },
+    { key: "logical",    color: "#f97316" },
+  ];
+  return (
+    <div className="absolute bottom-12 left-3 z-10 flex flex-col gap-1 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 shadow text-xs backdrop-blur-sm">
+      {cats.map(({ key, color }) => (
+        <span key={key} className="flex items-center gap-1.5 text-slate-600">
+          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+          {t(`relation.cat_${key}`)}
+        </span>
+      ))}
     </div>
   );
 }
@@ -833,6 +871,7 @@ export default function MapPage() {
             <Controls position="bottom-right" />
           </ReactFlow>
         )}
+        {viewMode === "graph" && !loadingRels && !error && <RelationLegend />}
 
         {/* Table view */}
         {viewMode === "table" && !loadingRels && !error && relations && relations.total > 0 && (

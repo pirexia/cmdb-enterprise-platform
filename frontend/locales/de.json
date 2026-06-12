@@ -4,13 +4,14 @@
     "tagline": "Enterprise Platform"
   },
   "footer": {
-    "copyright": "© {year} CMDB Platform v2.4.0"
+    "copyright": "© {year} CMDB Platform",
+    "version": "v{version} · {commit}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
     "inventory": "CI-Inventar",
     "vulnerabilities": "Schwachstellen",
-    "map": "Abhängigkeitskarte",
+    "map": "Beziehungskarte",
     "integrations": "Konnektoren",
     "reports": "Berichte",
     "contracts": "Verträge & Zusätze",
@@ -215,7 +216,11 @@
       "empty": "Dieser Batch hat keine Zeilen",
       "refresh": "Aktualisieren",
       "empty_batch": "Keine Zeilen in diesem Batch",
-      "no_items_to_commit": "Keine bestätigungsfähigen Elemente"
+      "no_items_to_commit": "Keine bestätigungsfähigen Elemente",
+      "select_page": "Diese Seite auswählen ({count})",
+      "select_all_filtered": "Alle gefilterten auswählen ({count})",
+      "all_filtered_banner": "{count} CIs ausgewählt — alle, die den Filtern entsprechen",
+      "dropdown_label": "Auswahloptionen"
     },
     "my_imports": "Meine Importe",
     "criticality": {
@@ -577,11 +582,15 @@
       "branches": "Standorte",
       "manufacturers": "Hersteller",
       "models": "Modelle",
-      "providers": "Anbieter"
+      "providers": "Anbieter",
+      "operating_systems": "Betriebssysteme",
+      "base_software": "Basissoftware"
     },
     "doc_types": "Dokumenttypen",
     "license_metrics": "Lizenzmetriken",
     "license_types": "Lizenztypen",
+    "operating_systems": "Betriebssysteme",
+    "base_software": "Basissoftware",
     "models": {
       "new": "Neues Modell",
       "placeholder": "z.B.: PowerEdge R740",
@@ -623,6 +632,22 @@
       "new": "Neuer Anbieter",
       "placeholder": "z.B.: Telekom, AWS, Microsoft",
       "empty": "Keine Anbieter erfasst."
+    },
+    "os": {
+      "new": "Neues Betriebssystem",
+      "name_placeholder": "z.B.: Windows Server 2022",
+      "version_placeholder": "Version (optional, z.B.: 2022, 11, 14.04)",
+      "manufacturer_label": "— Hersteller (optional) —",
+      "empty": "Keine Betriebssysteme erfasst.",
+      "add": "Hinzufügen",
+      "system": "System",
+      "in_use": "In Verwendung"
+    },
+    "bsw": {
+      "new": "Neue Basissoftware",
+      "name_placeholder": "z.B.: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Version (optional, z.B.: 19c, 10.1)",
+      "empty": "Keine Basissoftware erfasst."
     }
   },
   "settings": {
@@ -846,6 +871,18 @@
     "manufacturer_hint": "Verknüpft mit dem ausgewählten Modell",
     "eol_section": "Lebenszyklus-Daten (EoL / EoS)",
     "eol_hint": "— werden automatisch über endoflife.date ausgefüllt, wenn leer",
+    "infra_section": "Infrastruktur-Spezifikationen",
+    "cpu_model_label": "CPU-Modell",
+    "vcpus_label": "vCPUs",
+    "ram_label": "RAM",
+    "disk_label": "Festplatte",
+    "hostname_label": "Hostname",
+    "cluster_label": "Cluster",
+    "admin_ip_label": "Admin-IP",
+    "mgmt_ip_label": "Management-IP",
+    "os_label": "Betriebssystem",
+    "firmware_label": "Firmware-Version",
+    "dns_label": "DNS",
     "nis2_section": "NIS2 · Resilienz · DSGVO",
     "business_impact_label": "Geschäftsauswirkung (NIS2)",
     "unclassified": "— Nicht klassifiziert —",
@@ -970,7 +1007,8 @@
     "no_events": "Noch keine Auditereignisse aufgezeichnet.",
     "no_filtered": "Keine Ergebnisse für Ihre Suche.",
     "active_filters": "{count} aktiver Filter",
-    "active_filters_plural": "{count} aktive Filter"
+    "active_filters_plural": "{count} aktive Filter",
+    "entity_name_placeholder": "Nach Name filtern…"
   },
   "integrations": {
     "title": "Integrations-Konnektoren",
@@ -1060,8 +1098,8 @@
   },
   "map": {
     "search_placeholder": "CI nach Name oder Slug suchen…",
-    "select_ci_prompt": "Wählen Sie einen CI aus, um seine Abhängigkeitskarte zu sehen",
-    "view_dependencies": "Abhängigkeiten anzeigen",
+    "select_ci_prompt": "Wählen Sie einen CI aus, um seine Beziehungskarte zu sehen",
+    "view_dependencies": "Beziehungen anzeigen",
     "load_error": "Fehler beim Laden der Karte",
     "confirm_delete": "Diese Beziehung löschen?",
     "graph_view": "Diagrammansicht",
@@ -1072,7 +1110,19 @@
     "relation_type_DEPENDS_ON": "DEPENDS_ON — Quelle hängt von Ziel ab",
     "relation_type_CONNECTED_TO": "CONNECTED_TO — Netzwerkverbindung zwischen beiden",
     "relation_type_PROVIDES_SERVICE": "PROVIDES_SERVICE — Quelle stellt Dienst für Ziel bereit",
-    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — Quelle wird von Ziel gesichert"
+    "relation_type_BACKED_UP_BY": "BACKED_UP_BY — Quelle wird von Ziel gesichert",
+    "relation_type_CONTAINS": "CONTAINS — Quelle enthält Ziel",
+    "relation_type_COMPOSED_OF": "COMPOSED_OF — Quelle besteht aus Ziel",
+    "relation_type_ATTACHED_TO": "ATTACHED_TO — Quelle ist physisch an Ziel angeschlossen",
+    "relation_type_CONNECTS_TO": "CONNECTS_TO — Quelle verbindet sich mit Netzwerkziel",
+    "relation_type_UPLINKS_TO": "UPLINKS_TO — Quelle verbindet sich mit übergeordnetem Netz",
+    "relation_type_POWERS": "POWERS — Quelle versorgt Ziel mit Strom",
+    "relation_type_PROTECTS": "PROTECTS — USV schützt Ziel",
+    "relation_type_REPLICATES_TO": "REPLICATES_TO — Quelle repliziert Daten zu Ziel",
+    "relation_type_RUNS_ON": "RUNS_ON — Software läuft auf Infrastrukturziel",
+    "relation_type_QUERIES": "QUERIES — Quelle fragt Datenspeicher ab",
+    "relation_type_LICENSES": "LICENSES — Lizenz deckt Ziel ab",
+    "relation_type_MANAGES": "MANAGES — Quelle verwaltet Ziel"
   },
   "relation": {
     "modal_title": "Beziehung erstellen",
@@ -1092,7 +1142,24 @@
     "type_DEPENDS_ON": "DEPENDS_ON — Quelle hängt von Ziel ab",
     "type_CONNECTED_TO": "CONNECTED_TO — Netzwerkverbindung zwischen beiden",
     "type_PROVIDES_SERVICE": "PROVIDES_SERVICE — Quelle stellt Dienst für Ziel bereit",
-    "type_BACKED_UP_BY": "BACKED_UP_BY — Quelle wird von Ziel gesichert"
+    "type_BACKED_UP_BY": "BACKED_UP_BY — Quelle wird von Ziel gesichert",
+    "type_CONTAINS": "CONTAINS — Quelle enthält Ziel",
+    "type_COMPOSED_OF": "COMPOSED_OF — Quelle besteht aus Ziel",
+    "type_ATTACHED_TO": "ATTACHED_TO — Quelle ist physisch an Ziel angeschlossen",
+    "type_CONNECTS_TO": "CONNECTS_TO — Quelle verbindet sich mit Netzwerkziel",
+    "type_UPLINKS_TO": "UPLINKS_TO — Quelle verbindet sich mit übergeordnetem Netz",
+    "type_POWERS": "POWERS — Quelle versorgt Ziel mit Strom",
+    "type_PROTECTS": "PROTECTS — USV schützt Ziel",
+    "type_REPLICATES_TO": "REPLICATES_TO — Quelle repliziert Daten zu Ziel",
+    "type_RUNS_ON": "RUNS_ON — Software läuft auf Infrastrukturziel",
+    "type_QUERIES": "QUERIES — Quelle fragt Datenspeicher ab",
+    "type_LICENSES": "LICENSES — Lizenz deckt Ziel ab",
+    "type_MANAGES": "MANAGES — Quelle verwaltet Ziel",
+    "cat_structural": "Strukturell",
+    "cat_network": "Netzwerk",
+    "cat_power": "Stromversorgung",
+    "cat_logical": "Logisch",
+    "types_filtered_hint": "Typen gefiltert nach gewählten CI-Typen"
   },
   "ci_detail": {
     "edit_btn": "Bearbeiten",
@@ -1111,6 +1178,7 @@
     "field_model": "Modell",
     "field_serial": "Seriennummer",
     "section_software": "Software / Lizenz",
+    "section_infra": "Infrastruktur-Spezifikationen",
     "field_version": "Version",
     "field_license_type": "Lizenztyp",
     "section_vulns": "Schwachstellen",
@@ -1145,6 +1213,13 @@
     "remove_doc": "Dokument entfernen",
     "confirm_remove_doc": "Dieses Dokument vom CI entfernen?",
     "view_all_docs": "Alle Dokumente anzeigen →",
+    "bsw_title": "Basissoftware",
+    "bsw_add": "Hinzufügen",
+    "bsw_select": "— Basissoftware auswählen —",
+    "bsw_loading": "Basissoftware wird geladen…",
+    "bsw_empty": "Keine Basissoftware zugeordnet.",
+    "bsw_remove": "Basissoftware entfernen",
+    "bsw_confirm_remove": "Diese Basissoftware vom CI entfernen?",
     "btn_close": "Schließen",
     "btn_edit_ci": "CI bearbeiten",
     "subdoc_title": "Dokumente verknüpfen",
@@ -1397,5 +1472,12 @@
       "current": "Aktuelle Position",
       "change": "Rack-Position ändern"
     }
+  },
+  "pagination": {
+    "records_per_page": "Zeilen pro Seite:",
+    "page_of": "Seite {page} von {total}",
+    "prev": "Vorherige Seite",
+    "next": "Nächste Seite",
+    "showing": "{from}–{to} von {total} angezeigt"
   }
 }

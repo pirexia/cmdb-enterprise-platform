@@ -292,7 +292,43 @@ const CICreateSchema = z.object({
   spofRisk:           z.boolean().optional(),
   containsPii:        z.boolean().optional(),
   dataClassification: z.enum(['PUBLIC','INTERNAL','CONFIDENTIAL','RESTRICTED']).optional(),
+  // Infrastructure specs (v2.7.0 T6)
+  cpuModel:          z.string().max(255).optional().nullable(),
+  vCpus:             z.number().int().min(1).max(4096).optional().nullable(),
+  ram:               z.string().max(100).optional().nullable(),
+  disk:              z.string().max(100).optional().nullable(),
+  adminIp:           z.string().ip().optional().nullable().or(z.literal('')),
+  mgmtIp:            z.string().ip().optional().nullable().or(z.literal('')),
+  hostName:          z.string().max(255).optional().nullable(),
+  clusterName:       z.string().max(255).optional().nullable(),
+  operatingSystemId: z.string().uuid().optional().nullable(),
+  firmwareVersion:   z.string().max(100).optional().nullable(),
+  dns:               z.string().max(255).optional().nullable(),
 });
+
+// D3 (v2.7.0): cpuModel only applies to physical servers, vCpus only to virtual ones.
+const INFRA_PHYSICAL_CI_TYPES = ['PHYSICAL_SERVER'];
+const INFRA_VIRTUAL_CI_TYPES  = ['VIRTUAL_SERVER', 'CLOUD_INSTANCE'];
+
+async function validateInfraFieldsForType(
+  ciTypeId: string | null | undefined,
+  cpuModel: string | null | undefined,
+  vCpus:    number | null | undefined,
+): Promise<string | null> {
+  if (cpuModel && vCpus != null) {
+    return 'cpuModel (servidor físico) y vCpus (servidor virtual) son mutuamente excluyentes';
+  }
+  if (!ciTypeId) return null;
+  const t = await prisma.cIType.findUnique({ where: { id: ciTypeId }, select: { code: true } });
+  if (!t) return null;
+  if (INFRA_PHYSICAL_CI_TYPES.includes(t.code) && vCpus != null) {
+    return `vCpus no aplica a un CI de tipo ${t.code} (físico) — use cpuModel`;
+  }
+  if (INFRA_VIRTUAL_CI_TYPES.includes(t.code) && cpuModel) {
+    return `cpuModel no aplica a un CI de tipo ${t.code} (virtual) — use vCpus`;
+  }
+  return null;
+}
 
 const ContractCreateSchema = z.object({
   contractNumber:    z.string().min(1).max(100),
@@ -533,6 +569,7 @@ const CI_INCLUDE = {
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
+  operatingSystem: { select: { id: true, name: true, version: true } },
   contracts: {
     select: {
       id:             true,
@@ -1400,6 +1437,8 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       businessOwnerId, technicalLeadId, hardware, software,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
+      cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
+      operatingSystemId, firmwareVersion, dns,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
@@ -1411,6 +1450,9 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       eolDate?: string; eosDate?: string;
       businessImpact?: string; recoveryPriority?: number; rto?: number; rpo?: number;
       spofRisk?: boolean; containsPii?: boolean; dataClassification?: string;
+      cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
+      adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
+      operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
     };
 
     if (!name || !apiSlug || !criticality || !environment) {
@@ -1423,6 +1465,10 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     if (!validCriticalities.includes(criticality)) { res.status(400).json({ error: `Invalid criticality: ${criticality}` }); return; }
     if (!validEnvironments.includes(environment))  { res.status(400).json({ error: `Invalid environment: ${environment}` });  return; }
     if (hardware && software)                      { res.status(400).json({ error: 'A CI cannot be both Hardware and Software' }); return; }
+
+    // D3: physical/virtual infra field exclusion
+    const infraErr = await validateInfraFieldsForType(ciTypeId, cpuModel, vCpus);
+    if (infraErr) { res.status(400).json({ error: infraErr }); return; }
 
     // ── EOL auto-populate from endoflife.date if dates not provided ───────────
     let resolvedEolDate:     Date | null = eolDateRaw  ? new Date(eolDateRaw)  : null;
@@ -1460,6 +1506,17 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
         spofRisk:           spofRisk           ?? false,
         containsPii:        containsPii        ?? false,
         dataClassification: dataClassification || null,
+        cpuModel:           cpuModel           || null,
+        vCpus:              vCpus              ?? null,
+        ram:                ram                || null,
+        disk:               disk               || null,
+        adminIp:            adminIp            || null,
+        mgmtIp:             mgmtIp             || null,
+        hostName:           hostName           || null,
+        clusterName:        clusterName        || null,
+        operatingSystemId:  operatingSystemId  || null,
+        firmwareVersion:    firmwareVersion    || null,
+        dns:                dns                || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
         ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
       } as Parameters<typeof prisma.cI.create>[0]['data'],
@@ -1600,6 +1657,8 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       branchId, ciModelId, businessOwnerId, technicalLeadId,
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
+      cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
+      operatingSystemId, firmwareVersion, dns,
     } = req.body as {
       name?: string; criticality?: Criticality; environment?: Environment;
       ciTypeId?: string | null; status?: string; inventoryNumber?: string;
@@ -1608,15 +1667,30 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       eolDate?: string | null; eosDate?: string | null;
       businessImpact?: string | null; recoveryPriority?: number | null; rto?: number | null; rpo?: number | null;
       spofRisk?: boolean; containsPii?: boolean; dataClassification?: string | null;
+      cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
+      adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
+      operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
     };
 
     // Reject any FK field that is a non-null, non-empty string but not a valid UUID
     // (prevents P2023 "invalid UUID" from Prisma when callers send "null"/garbage strings)
-    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId })) {
+    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId, operatingSystemId })) {
       if (val !== undefined && val !== null && !UUID_RE.test(val)) {
         res.status(400).json({ error: `El campo ${field} contiene un valor inválido.` });
         return;
       }
+    }
+
+    // D3: physical/virtual infra field exclusion (resolve effective ciTypeId if not changing it)
+    if (cpuModel !== undefined || vCpus !== undefined) {
+      const effectiveTypeId = ciTypeId !== undefined
+        ? ciTypeId
+        : (await prisma.cI.findUnique({ where: { id }, select: { ciTypeId: true } }))?.ciTypeId ?? null;
+      const current = await prisma.cI.findUnique({ where: { id }, select: { cpuModel: true, vCpus: true } });
+      const effCpuModel = cpuModel !== undefined ? cpuModel : current?.cpuModel ?? null;
+      const effVCpus    = vCpus    !== undefined ? vCpus    : current?.vCpus    ?? null;
+      const infraErr = await validateInfraFieldsForType(effectiveTypeId, effCpuModel, effVCpus);
+      if (infraErr) { res.status(400).json({ error: infraErr }); return; }
     }
 
     const updateData: Record<string, unknown> = {};
@@ -1639,6 +1713,17 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
     if (spofRisk           !== undefined) updateData.spofRisk           = spofRisk;
     if (containsPii        !== undefined) updateData.containsPii        = containsPii;
     if (dataClassification !== undefined) updateData.dataClassification = dataClassification || null;
+    if (cpuModel           !== undefined) updateData.cpuModel           = cpuModel           || null;
+    if (vCpus              !== undefined) updateData.vCpus              = vCpus              ?? null;
+    if (ram                !== undefined) updateData.ram                = ram                || null;
+    if (disk               !== undefined) updateData.disk               = disk               || null;
+    if (adminIp            !== undefined) updateData.adminIp            = adminIp            || null;
+    if (mgmtIp             !== undefined) updateData.mgmtIp             = mgmtIp             || null;
+    if (hostName           !== undefined) updateData.hostName           = hostName           || null;
+    if (clusterName        !== undefined) updateData.clusterName        = clusterName        || null;
+    if (operatingSystemId  !== undefined) updateData.operatingSystemId  = operatingSystemId  || null;
+    if (firmwareVersion    !== undefined) updateData.firmwareVersion    = firmwareVersion    || null;
+    if (dns                !== undefined) updateData.dns                = dns                || null;
 
     const ci = await prisma.cI.update({
       where: { id },

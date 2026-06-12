@@ -305,6 +305,20 @@ model CI {
   rack            String?      @map("rack") @db.VarChar(50)
   rackUnit        String?      @map("rack_unit") @db.VarChar(20)
 
+  // Infrastructure specs (v2.7.0 T6)
+  cpuModel          String?          @map("cpu_model") @db.VarChar(255)
+  vCpus             Int?             @map("v_cpus")
+  ram               String?          @map("ram") @db.VarChar(100)
+  disk              String?          @map("disk") @db.VarChar(100)
+  adminIp           String?          @map("admin_ip") @db.VarChar(45)
+  mgmtIp            String?          @map("mgmt_ip") @db.VarChar(45)
+  hostName          String?          @map("host_name") @db.VarChar(255)
+  clusterName       String?          @map("cluster_name") @db.VarChar(255)
+  operatingSystemId String?          @db.Uuid @map("operating_system_id")
+  operatingSystem   OperatingSystem? @relation(fields: [operatingSystemId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  firmwareVersion   String?          @map("firmware_version") @db.VarChar(100)
+  dns               String?          @map("dns") @db.VarChar(255)
+
   // Network
   vlan            String?      @map("vlan") @db.VarChar(20)
   consoleIp       String?      @map("console_ip") @db.VarChar(45)
@@ -726,6 +740,7 @@ model OperatingSystem {
   manufacturer     Manufacturer?             @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   documents        DocumentOperatingSystem[]
   licenses         LicenseOperatingSystem[]
+  cis              CI[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

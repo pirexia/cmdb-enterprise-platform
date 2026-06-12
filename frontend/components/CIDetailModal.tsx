@@ -58,6 +58,18 @@ export interface CIDetail {
   spofRisk:           boolean;
   containsPii:        boolean;
   dataClassification: string | null;
+  // Infrastructure specs (T6)
+  cpuModel?:          string | null;
+  vCpus?:             number | null;
+  ram?:               string | null;
+  disk?:              string | null;
+  adminIp?:           string | null;
+  mgmtIp?:            string | null;
+  hostName?:          string | null;
+  clusterName?:       string | null;
+  operatingSystem?:   { id: string; name: string; version: string | null } | null;
+  firmwareVersion?:   string | null;
+  dns?:               string | null;
 }
 
 interface Props {
@@ -510,6 +522,23 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
             <Section title={t("ci_detail.section_software")} color="slate">
               <Field label={t("ci_detail.field_version")} value={ci.software.version} icon={<Package className="h-3 w-3" />} />
               <Field label={t("ci_detail.field_license_type")} value={ci.software.licenseType} icon={<Key className="h-3 w-3" />} />
+            </Section>
+          )}
+
+          {/* Infrastructure specs (T6) */}
+          {(ci.cpuModel || ci.vCpus != null || ci.ram || ci.disk || ci.adminIp || ci.mgmtIp || ci.hostName || ci.clusterName || ci.operatingSystem || ci.firmwareVersion || ci.dns) && (
+            <Section title={t("ci_detail.section_infra")} color="slate">
+              {ci.cpuModel        && <Field label={t("add_ci_modal.cpu_model_label")} value={ci.cpuModel} icon={<Cpu className="h-3 w-3" />} />}
+              {ci.vCpus != null   && <Field label={t("add_ci_modal.vcpus_label")} value={String(ci.vCpus)} icon={<Cpu className="h-3 w-3" />} />}
+              {ci.ram             && <Field label={t("add_ci_modal.ram_label")} value={ci.ram} />}
+              {ci.disk            && <Field label={t("add_ci_modal.disk_label")} value={ci.disk} icon={<HardDrive className="h-3 w-3" />} />}
+              {ci.hostName        && <Field label={t("add_ci_modal.hostname_label")} value={ci.hostName} icon={<Terminal className="h-3 w-3" />} />}
+              {ci.clusterName     && <Field label={t("add_ci_modal.cluster_label")} value={ci.clusterName} icon={<Network className="h-3 w-3" />} />}
+              {ci.adminIp         && <Field label={t("add_ci_modal.admin_ip_label")} value={ci.adminIp} icon={<Network className="h-3 w-3" />} />}
+              {ci.mgmtIp          && <Field label={t("add_ci_modal.mgmt_ip_label")} value={ci.mgmtIp} icon={<Network className="h-3 w-3" />} />}
+              {ci.operatingSystem && <Field label={t("add_ci_modal.os_label")} value={`${ci.operatingSystem.name}${ci.operatingSystem.version ? ` ${ci.operatingSystem.version}` : ""}`} icon={<Monitor className="h-3 w-3" />} />}
+              {ci.firmwareVersion && <Field label={t("add_ci_modal.firmware_label")} value={ci.firmwareVersion} />}
+              {ci.dns             && <Field label={t("add_ci_modal.dns_label")} value={ci.dns} />}
             </Section>
           )}
 

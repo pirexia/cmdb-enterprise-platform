@@ -1,10 +1,10 @@
 # Plan de desarrollo v2.7.0 — Mejoras y Correcciones CMDB Enterprise Platform
 
-> Estado general: 🟡 **PENDIENTE DE APROBACIÓN** (plan elaborado en Opus, sin ejecución)
+> Estado general: 🟡 **EN PROGRESO** — 5/10 tareas completadas (T1, T9, T2, T3, T4)
 > Rama base: `develop`
 > Target: `main` tag `v2.7.0`
-> Fecha de inicio: —
-> Última actualización: 2026-06-10
+> Fecha de inicio: 2026-06-11
+> Última actualización: 2026-06-12
 > Plan documento: `docs/PLAN_v2.7.0.md`
 > Flujo: feature branches desde `develop`, merge **vía PR** (no merge directo). Parar tras cada tarea para revisión.
 
@@ -39,15 +39,15 @@ v2.7.0 agrupa **10 tareas** en 7 fases: un bugfix crítico (creación de Tipos d
 
 | ID | Tarea | Fase | Complejidad | Rama | Depende de | Estado |
 |----|-------|------|-------------|------|------------|--------|
-| **T1** | Fix creación de Tipos de CI | 1 | Baja | `feature/fix-ci-types-master` | — | ⬜ PENDIENTE |
-| **T2** | Paginación con selector de registros/página | 2 | Media | `feature/pagination-records-per-page` | — | ⬜ PENDIENTE |
-| **T3** | Multiselect "todos los filtrados" | 2 | Alta | `feature/bulk-select-all-filtered` | T2 | ⬜ PENDIENTE |
-| **T4** | Maestro: Sistema Operativo | 3 | Alta | `feature/master-operating-system` | — | ⬜ PENDIENTE |
+| **T1** | Fix creación de Tipos de CI | 1 | Baja | `feature/fix-ci-types-master` | — | ✅ COMPLETADA (PR #90) |
+| **T2** | Paginación con selector de registros/página | 2 | Media | `feature/pagination-records-per-page` | — | ✅ COMPLETADA (PR #92) |
+| **T3** | Multiselect "todos los filtrados" | 2 | Alta | `feature/bulk-select-all-filtered` | T2 | ✅ COMPLETADA (PR #93) |
+| **T4** | Maestro: Sistema Operativo | 3 | Alta | `feature/catalog-operating-system` | — | ✅ COMPLETADA (PR #94) |
 | **T5** | Maestro: Software Base | 3 | Alta | `feature/master-base-software` | (T4 patrón) | ⬜ PENDIENTE |
 | **T6** | Nuevos campos de infraestructura en CI | 4 | Media | `feature/ci-infrastructure-fields` | T4, T5 | ⬜ PENDIENTE |
 | **T7** | Creación en cascada en alta masiva | 5 | Alta | `feature/bulk-import-cascade` | T4, T5 | ⬜ PENDIENTE |
 | **T8** | Mapa de Relaciones: renombrar + nuevos tipos | 6 | Alta | `feature/relation-map-types` | — | ⬜ PENDIENTE |
-| **T9** | Versión dinámica en footer | 7 | Baja | `feature/dynamic-version` | — | ⬜ PENDIENTE |
+| **T9** | Versión dinámica en footer | 7 | Baja | `feature/dynamic-version` | — | ✅ COMPLETADA (PR #91) |
 | **T10** | Mejoras en Registro de Eventos (audit) | 7 | Media | `feature/audit-log-improvements` | — | ⬜ PENDIENTE |
 
 Leyenda estado: ⬜ PENDIENTE · 🟡 EN PROGRESO · ✅ COMPLETADA · ❌ BLOQUEADA
@@ -115,12 +115,12 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 |---|---|
 | ID | T1 |
 | Rama | `feature/fix-ci-types-master` |
-| Estado | ⬜ PENDIENTE |
+| Estado | ✅ COMPLETADA |
 | Complejidad | Baja |
 | Depende de | — |
-| Inicio / Fin | — / — |
-| Commits | — |
-| Notas | Causa raíz confirmada (ver abajo). Requiere decisión D2. |
+| Inicio / Fin | 2026-06-11 / 2026-06-11 |
+| Commits | PR #90 — `fix(masters): auto-generate CIType code from name` |
+| Notas | D2 opción A aplicada: auto-code backend (slug uppercase + sufijo incremental en colisión). Test Jest diferido (sin infraestructura Jest en el repo). |
 
 **Causa raíz (confirmada en exploración):** `frontend/app/admin/masters/page.tsx:114` define `newCIType = { name: "", categoryCode: "" }` (sin `code`), pero `POST /api/masters/ci-types` (`backend/src/index.ts:3166`) exige `code`, `name` y `categoryCode`. El frontend nunca envía `code` → error 400 *"code, name and categoryCode are required"*.
 
@@ -135,13 +135,13 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - `fix(masters): auto-generate code for CI types when omitted` (o `fix(masters): add code input to CI type form`)
 
 #### Subtareas
-- [ ] Confirmar decisión D2 con usuario
-- [ ] Implementar fix (backend auto-code o frontend input)
-- [ ] Test unitario de generación/normalización de `code`
-- [ ] Validar en UI con `claude@cmdb.local`
-- [ ] `tsc --noEmit` + health check
-- [ ] Commit + push + PR a `develop`
-- [ ] Actualizar PLAN_v2.7.0.md
+- [x] Confirmar decisión D2 con usuario
+- [x] Implementar fix (backend auto-code o frontend input)
+- [ ] Test unitario de generación/normalización de `code` *(diferido — no hay infraestructura Jest en el repo)*
+- [x] Validar en UI con `claude@cmdb.local`
+- [x] `tsc --noEmit` + health check
+- [x] Commit + push + PR a `develop` (PR #90, merged 2026-06-11)
+- [x] Actualizar PLAN_v2.7.0.md
 
 ---
 
@@ -153,7 +153,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 |---|---|
 | ID | T2 |
 | Rama | `feature/pagination-records-per-page` |
-| Estado | ⬜ PENDIENTE |
+| Estado | ✅ COMPLETADA — PR #92 (merged 2026-06-11) |
 | Complejidad | Media |
 | Depende de | — |
 
@@ -166,12 +166,12 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - `feat(api): accept validated pageSize param on list endpoints`
 
 #### Subtareas
-- [ ] Componente reutilizable `PageSizeSelector`
-- [ ] Hook `usePageSize` con `localStorage`
-- [ ] Integrar en inventory / contracts / documents / licenses
-- [ ] Backend: validar `pageSize` (tope máximo) en endpoints de listado
-- [ ] i18n (6 idiomas)
-- [ ] tsc + health + commit + PR + actualizar plan
+- [x] Componente reutilizable `PageSizeSelector`
+- [x] Hook `usePageSize` con `localStorage` (clave `cmdb_page_size`, opciones 10/25/50/100/250)
+- [x] Integrar en inventory / contracts / documents / licenses
+- [x] Backend: validar `pageSize` (topes `*_MAX_PAGE_SIZE` reducidos 500→250)
+- [x] i18n (6 idiomas — namespace `pagination.*`)
+- [x] tsc + health + commit + PR (#92) + actualizar plan
 
 ### Tarea 3 (T3): Multiselect — "todos los filtrados" vs "solo página"
 
@@ -179,7 +179,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 |---|---|
 | ID | T3 |
 | Rama | `feature/bulk-select-all-filtered` |
-| Estado | ⬜ PENDIENTE |
+| Estado | ✅ COMPLETADA — PR #93 (merged 2026-06-11) |
 | Complejidad | Alta |
 | Depende de | T2 |
 
@@ -193,12 +193,12 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - `feat(api): bulk update accepts selectAllFiltered + filter payload`
 
 #### Subtareas
-- [ ] UI dropdown de modo de selección
-- [ ] Estado de selección (página vs filtrado) en inventory
-- [ ] Backend: resolver IDs por filtro server-side + tope/batch
-- [ ] Audit log de bulk update (con recuento real)
-- [ ] i18n + confirmación de recuento
-- [ ] tsc + health + commit + PR + actualizar plan
+- [x] UI dropdown de modo de selección (checkbox dividido + ▼ en cabecera)
+- [x] Estado de selección (página vs filtrado) en inventory + banner de modo
+- [x] ~~Backend: resolver IDs por filtro server-side~~ *(N/A — la paginación es client-side, el listado filtrado completo ya está en memoria; los IDs se resuelven en cliente sin payload de filtros)*
+- [x] Audit log de bulk update (reutiliza el flujo existente de `BulkUpdateCIModal` con los IDs resueltos)
+- [x] i18n + confirmación de recuento (namespace `inventory.bulk.*`)
+- [x] tsc + health + commit + PR (#93) + actualizar plan
 
 ---
 
@@ -209,8 +209,8 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 | Campo | Valor |
 |---|---|
 | ID | T4 |
-| Rama | `feature/master-operating-system` |
-| Estado | ⬜ PENDIENTE |
+| Rama | `feature/catalog-operating-system` |
+| Estado | ✅ COMPLETADA — PR #94 (merged 2026-06-12) |
 | Complejidad | Alta |
 | Depende de | — (D1: módulo `catalog`) |
 
@@ -228,13 +228,16 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - `docs(manual): document Operating System master`
 
 #### Subtareas
-- [ ] Migración SQL manual (`IF NOT EXISTS`) + `migrate deploy`
-- [ ] `prisma generate`
-- [ ] Módulo `catalog/` router+schemas+queries+audit (OS)
-- [ ] Montar router en `index.ts` (solo init)
-- [ ] Frontend: pestaña OS + CRUD + asociaciones
-- [ ] i18n (6) + docs
-- [ ] tsc + health + commit + PR + actualizar plan
+- [x] Migración SQL manual (`IF NOT EXISTS`) + `migrate deploy` (`20260612100000_catalog_operating_systems`)
+- [x] `prisma generate` (modelos `OperatingSystem`, `DocumentOperatingSystem`, `LicenseOperatingSystem`)
+- [x] Módulo `catalog/` router+schemas+queries+audit (OS) — GET abierto a roles autenticados, escrituras ADMIN, delete con guarda 409 si en uso, auto-code servidor
+- [x] Montar router en `index.ts` (solo init: `/api/catalog`)
+- [x] Frontend: pestaña OS + CRUD en `/admin/masters`
+- [ ] Asociación documentos/licencias en UI *(capa DB lista — join tables + modelos; la UI de asociación se integrará con T5/T6 cuando documentos/licencias incorporen selector de OS)*
+- [x] i18n (6)
+- [ ] docs (manual de usuario) *(pendiente — agrupar con actualización doc de cierre)*
+- [x] tsc + health + commit + PR (#94) + actualizar plan
+- [x] *(Extra)* Dockerfile backend: despin de versiones tesseract-ocr que rompían el build Alpine
 
 ### Tarea 5 (T5): Maestro — Software Base
 
@@ -368,7 +371,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 |---|---|
 | ID | T9 |
 | Rama | `feature/dynamic-version` |
-| Estado | ⬜ PENDIENTE |
+| Estado | ✅ COMPLETADA — PR #91 (merged 2026-06-11) |
 | Complejidad | Baja |
 | Depende de | — |
 
@@ -380,11 +383,11 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - `feat(version): build-time version.json + dynamic footer`
 
 #### Subtareas
-- [ ] Script `scripts/gen-version.mjs` + hook `prebuild`
-- [ ] `version.json` en `.gitignore` (artefacto generado)
-- [ ] Footer lee y muestra versión + commit
-- [ ] i18n del footer
-- [ ] tsc + health + commit + PR + actualizar plan
+- [x] Script `scripts/gen-version.mjs` + hook `prebuild` (prefiere env `GIT_COMMIT` para builds Docker sin `.git`; ARG en Dockerfile + compose)
+- [x] `version.json` en `.gitignore` (artefacto generado)
+- [x] Footer lee y muestra versión + commit (`Sidebar.tsx`)
+- [x] i18n del footer (clave `footer.version`; `footer.copyright` sin versión hardcodeada)
+- [x] tsc + health + commit + PR (#91) + actualizar plan
 
 ### Tarea 10 (T10): Mejoras en Registro de Eventos (Audit Log)
 

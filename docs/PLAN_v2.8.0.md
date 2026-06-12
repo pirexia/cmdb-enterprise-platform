@@ -1,6 +1,6 @@
 # Plan de desarrollo v2.8.0 — Plugin Engine (Motor de Plugins)
 
-> Estado general: 🟡 **EN PROGRESO** — 1/10 tareas completadas (T1)
+> Estado general: 🟡 **EN PROGRESO** — 1/10 tareas completadas (T1); T2+T8 PRs abiertos
 > Rama base: `develop`
 > Target: `main` tag `v2.8.0`
 > Fecha de inicio: 2026-06-12
@@ -40,13 +40,13 @@ v2.8.0 implementa un **Motor de Plugins** completo que permite a usuarios con ro
 | ID | Tarea | Fase | Complejidad | Rama | Depende de | Estado |
 |----|-------|------|-------------|------|------------|--------|
 | **T1** | Schema Prisma + migración (6 modelos) | 1 | Media | `feature/plugin-engine-schema` | — | ✅ COMPLETADA (PR #100) |
-| **T2** | Backend core: engine, sandbox, registries, validator, migration-runner | 1 | Alta | `feature/plugin-engine-core` | T1 | ⬜ PENDIENTE |
+| **T2** | Backend core: engine, sandbox, registries, validator, migration-runner | 1 | Alta | `feature/plugin-engine-core` | T1 | 🟡 PR #102 abierto |
 | **T3** | API REST router (12 endpoints + 4-eyes + audit) | 1 | Alta | `feature/plugin-engine-api` | T2 | ⬜ PENDIENTE |
 | **T4** | Frontend panel admin (`/plugins/admin`) | 2 | Media | `feature/plugin-engine-frontend-admin` | T3 | ⬜ PENDIENTE |
 | **T5** | Slots por iframe + PluginContext + puente postMessage | 2 | Alta | `feature/plugin-engine-slots` | T4 | ⬜ PENDIENTE |
 | **T6** | Hooks del core en index.ts (emitHook) | 3 | Alta | `feature/plugin-engine-hooks` | T2 | ⬜ PENDIENTE |
 | **T7** | Inicialización del engine en arranque + reactivación | 3 | Media | `feature/plugin-engine-init` | T2,T3,T5,T6 | ⬜ PENDIENTE |
-| **T8** | Infra: volumen Docker, rol DB cmdb_plugin, env vars, CSP iframe | 4 | Media | `feature/plugin-engine-infra` | T1 | ⬜ PENDIENTE |
+| **T8** | Infra: volumen Docker, rol DB cmdb_plugin, env vars, CSP iframe | 4 | Media | `feature/plugin-engine-infra` | T1 | 🟡 PR #101 abierto |
 | **T9** | Tests Jest (validator, sandbox, lifecycle, api) | 4 | Media | `feature/plugin-engine-tests` | T2,T3 | ⬜ PENDIENTE |
 | **T10** | Documentación (3 guías nuevas + 6 docs actualizados + CHANGELOG) | 5 | Media | `feature/plugin-engine-docs` | T1–T9 | ⬜ PENDIENTE |
 
@@ -114,13 +114,16 @@ Parar tras cada tarea para revisión del usuario antes de continuar.
 
 ---
 
-## T2 — Backend Core (pendiente)
+## T2 — Backend Core
 
 | Campo | Valor |
 |-------|-------|
-| Estado | ⬜ PENDIENTE |
+| Estado | 🟡 PR #102 abierto |
+| Rama | `feature/plugin-engine-core` |
+| Commit | 6f82662 |
+| PR | #102 |
 
-Archivos: `backend/src/modules/plugins/{engine,schemas,audit,middleware,queries,index}.ts`
+Archivos: `backend/src/modules/plugins/{engine,schemas,audit,middleware,router,index}.ts`
 Engine: PluginLifecycleManager, HookRegistry, RouteRegistry, CronRegistry, PluginValidator, MigrationRunner, SandboxExecutor (vm.Script, timeout 5s, contexto congelado).
 
 ---
@@ -180,13 +183,16 @@ Patrón: `emitHook('pre*')` (puede cancelar) → operación Prisma → `emitHook
 
 ---
 
-## T8 — Infra Docker + Rol DB (pendiente)
+## T8 — Infra Docker + Rol DB
 
 | Campo | Valor |
 |-------|-------|
-| Estado | ⬜ PENDIENTE |
+| Estado | 🟡 PR #101 abierto |
+| Rama | `feature/plugin-engine-infra` |
+| Commit | ae9d2ca |
+| PR | #101 |
 
-Volumen `cmdb-plugins` en compose files. Rol PostgreSQL `cmdb_plugin` (GRANT mínimo, REVOKE sobre core). Env vars en `.env.example`. CSP `frame-src 'self'` en nginx si aplica.
+Volumen `cmdb-plugins` en compose files. Rol PostgreSQL `cmdb_plugin` (GRANT mínimo, REVOKE sobre core). Env vars en `.env.example`. CSP `frame-src 'self'` en nginx: ya compatible (no requirió cambios).
 
 ---
 

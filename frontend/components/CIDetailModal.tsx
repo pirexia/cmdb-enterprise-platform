@@ -158,6 +158,15 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
   const [showAddContracts, setShowAddContracts] = useState(false);
   const [showPlaceModal, setShowPlaceModal] = useState(false);
 
+  // Base Software (only for physical/virtual server CIs)
+  interface BswRef { id: string; code: string; name: string; version: string | null; manufacturer: { id: string; name: string } | null }
+  const bswEligible = ci.ciType !== null && ["PHYSICAL_SERVER", "VIRTUAL_SERVER", "CLOUD_INSTANCE"].includes(ci.ciType);
+  const [baseSw, setBaseSw]           = useState<BswRef[]>([]);
+  const [bswLoading, setBswLoading]   = useState(false);
+  const [allBsw, setAllBsw]           = useState<BswRef[]>([]);
+  const [bswToAdd, setBswToAdd]       = useState("");
+  const [showAddBsw, setShowAddBsw]   = useState(false);
+
   interface RackLocation {
     footprintLabel: string;
     roomName: string; floorName: string;
@@ -228,6 +237,50 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data: ContractRef[]) => setContracts(data))
       .catch(() => {/* keep existing */});
+  };
+
+  const loadBaseSw = () => {
+    if (!bswEligible) return;
+    setBswLoading(true);
+    apiFetch(`/api/catalog/cis/${ci.id}/base-software`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data: BswRef[]) => setBaseSw(Array.isArray(data) ? data : []))
+      .catch(() => setBaseSw([]))
+      .finally(() => setBswLoading(false));
+  };
+
+  useEffect(() => {
+    loadBaseSw();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ci.id]);
+
+  const handleAddBsw = async () => {
+    if (!bswToAdd) return;
+    const res = await apiFetch(`/api/catalog/cis/${ci.id}/base-software`, {
+      method: "POST",
+      body: JSON.stringify({ baseSoftwareId: bswToAdd }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({})) as { error?: string };
+      alert(d.error ?? `Error ${res.status}`);
+      return;
+    }
+    setBswToAdd(""); setShowAddBsw(false);
+    loadBaseSw();
+  };
+
+  const handleRemoveBsw = async (bswId: string) => {
+    if (!confirm(t("ci_detail.bsw_confirm_remove"))) return;
+    const res = await apiFetch(`/api/catalog/cis/${ci.id}/base-software/${bswId}`, { method: "DELETE" });
+    if (res.ok || res.status === 404) loadBaseSw();
+  };
+
+  const openAddBsw = () => {
+    setShowAddBsw(true);
+    apiFetch("/api/catalog/base-software")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setAllBsw(Array.isArray(data) ? data : []))
+      .catch(() => setAllBsw([]));
   };
 
   useEffect(() => {
@@ -618,6 +671,92 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               </div>
             )}
           </div>
+
+          {/* ── Base Software (physical/virtual servers only) ── */}
+          {bswEligible && (
+            <div className="mt-6 rounded-xl bg-slate-50 border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <Package className="h-4 w-4 text-indigo-500" />
+                  {t("ci_detail.bsw_title")}
+                  <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 tabular-nums">{baseSw.length}</span>
+                </h3>
+                {isAdmin && (
+                  <button
+                    onClick={openAddBsw}
+                    className="flex items-center gap-1 rounded-lg bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-300 transition-colors"
+                  >
+                    <Plus className="h-3 w-3" />{t("ci_detail.bsw_add")}
+                  </button>
+                )}
+              </div>
+              {showAddBsw && (
+                <div className="mb-3 flex items-center gap-2">
+                  <select
+                    value={bswToAdd}
+                    onChange={(e) => setBswToAdd(e.target.value)}
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-700 focus:border-indigo-400 focus:outline-none"
+                  >
+                    <option value="">{t("ci_detail.bsw_select")}</option>
+                    {allBsw
+                      .filter((sw) => !baseSw.some((b) => b.id === sw.id))
+                      .map((sw) => (
+                        <option key={sw.id} value={sw.id}>
+                          {sw.name}{sw.version ? ` ${sw.version}` : ""}{sw.manufacturer ? ` — ${sw.manufacturer.name}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    onClick={handleAddBsw}
+                    disabled={!bswToAdd}
+                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => { setShowAddBsw(false); setBswToAdd(""); }}
+                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              {bswLoading ? (
+                <div className="flex items-center gap-2 text-slate-400 text-sm">
+                  <Package className="h-4 w-4 animate-pulse" />
+                  <span>{t("ci_detail.bsw_loading")}</span>
+                </div>
+              ) : baseSw.length === 0 ? (
+                <p className="text-sm italic text-slate-400">{t("ci_detail.bsw_empty")}</p>
+              ) : (
+                <div className="space-y-2">
+                  {baseSw.map((sw) => (
+                    <div key={sw.id} className="flex items-center justify-between rounded-lg bg-white border border-slate-100 px-3 py-2 gap-3 group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Package className="h-4 w-4 flex-shrink-0 text-indigo-400" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate">
+                            {sw.name}
+                            {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
+                          </p>
+                          {sw.manufacturer && <p className="text-[11px] text-slate-400">{sw.manufacturer.name}</p>}
+                        </div>
+                      </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleRemoveBsw(sw.id)}
+                          className="rounded p-1 text-slate-300 hover:bg-red-50 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                          title={t("ci_detail.bsw_remove")}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}

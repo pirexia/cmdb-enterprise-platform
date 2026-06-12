@@ -583,12 +583,14 @@
       "manufacturers": "Hersteller",
       "models": "Modelle",
       "providers": "Anbieter",
-      "operating_systems": "Betriebssysteme"
+      "operating_systems": "Betriebssysteme",
+      "base_software": "Basissoftware"
     },
     "doc_types": "Dokumenttypen",
     "license_metrics": "Lizenzmetriken",
     "license_types": "Lizenztypen",
     "operating_systems": "Betriebssysteme",
+    "base_software": "Basissoftware",
     "models": {
       "new": "Neues Modell",
       "placeholder": "z.B.: PowerEdge R740",
@@ -640,6 +642,12 @@
       "add": "Hinzufügen",
       "system": "System",
       "in_use": "In Verwendung"
+    },
+    "bsw": {
+      "new": "Neue Basissoftware",
+      "name_placeholder": "z.B.: Oracle Database, Apache Tomcat",
+      "version_placeholder": "Version (optional, z.B.: 19c, 10.1)",
+      "empty": "Keine Basissoftware erfasst."
     }
   },
   "settings": {
@@ -1162,6 +1170,13 @@
     "remove_doc": "Dokument entfernen",
     "confirm_remove_doc": "Dieses Dokument vom CI entfernen?",
     "view_all_docs": "Alle Dokumente anzeigen →",
+    "bsw_title": "Basissoftware",
+    "bsw_add": "Hinzufügen",
+    "bsw_select": "— Basissoftware auswählen —",
+    "bsw_loading": "Basissoftware wird geladen…",
+    "bsw_empty": "Keine Basissoftware zugeordnet.",
+    "bsw_remove": "Basissoftware entfernen",
+    "bsw_confirm_remove": "Diese Basissoftware vom CI entfernen?",
     "btn_close": "Schließen",
     "btn_edit_ci": "CI bearbeiten",
     "subdoc_title": "Dokumente verknüpfen",

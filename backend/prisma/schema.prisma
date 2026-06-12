@@ -63,11 +63,28 @@ model CIType {
 }
 
 enum RelationType {
+  // ── Legacy (kept for compat) ──
   HOSTS              // Source hosts/contains target (e.g., Physical Server hosts VM)
   DEPENDS_ON         // Source depends on target (e.g., App depends on Database)
   CONNECTED_TO       // Source is connected to target (e.g., Server connected to Switch)
   PROVIDES_SERVICE   // Source provides service to target
   BACKED_UP_BY       // Source is backed up by target
+  // ── v2.7.0 T8 — Structural ──
+  CONTAINS           // Source physically contains target (e.g., Rack contains Server)
+  COMPOSED_OF        // Source is composed of target (logical composition)
+  ATTACHED_TO        // Source is physically attached to target
+  // ── v2.7.0 T8 — Network ──
+  CONNECTS_TO        // Source connects to target (network link)
+  UPLINKS_TO         // Source uplinks to target (switch → core)
+  // ── v2.7.0 T8 — Power ──
+  POWERS             // Source powers target (e.g., UPS powers Server)
+  PROTECTS           // Source protects target (e.g., UPS protects Rack)
+  // ── v2.7.0 T8 — Logical ──
+  REPLICATES_TO      // Source replicates data to target
+  RUNS_ON            // Source (software) runs on target (server)
+  QUERIES            // Source queries target (e.g., App queries Database)
+  LICENSES           // Source (license) licenses target
+  MANAGES            // Source manages target
 }
 
 // ─── NIS2 / GDPR Enums (stored as TEXT in DB) ─────────────────────────────────

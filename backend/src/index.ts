@@ -45,6 +45,7 @@ import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
+import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -3544,9 +3545,8 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
     return;
   }
 
-  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
-  if (!validTypes.includes(relationType)) {
-    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+  if (!VALID_RELATION_TYPES.includes(relationType as never)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${VALID_RELATION_TYPES.join(', ')}` });
     return;
   }
 
@@ -3556,6 +3556,16 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
+    // T8: CI-type restriction matrix validation (source/target type codes)
+    const typeRows = await prisma.$queryRaw<{ id: string; code: string | null }[]>`
+      SELECT ci.id::text AS id, t.code
+      FROM configuration_items ci LEFT JOIN ci_types t ON t.id = ci.ci_type_id
+      WHERE ci.id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)`;
+    const srcCode = typeRows.find(r => r.id === sourceCiId)?.code ?? null;
+    const tgtCode = typeRows.find(r => r.id === targetCiId)?.code ?? null;
+    const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
+    if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
@@ -3603,9 +3613,8 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
     return;
   }
 
-  const validTypes = ['HOSTS', 'DEPENDS_ON', 'CONNECTED_TO', 'PROVIDES_SERVICE', 'BACKED_UP_BY'];
-  if (!validTypes.includes(relationType)) {
-    res.status(400).json({ error: `Invalid relationType. Must be one of: ${validTypes.join(', ')}` });
+  if (!VALID_RELATION_TYPES.includes(relationType as never)) {
+    res.status(400).json({ error: `Invalid relationType. Must be one of: ${VALID_RELATION_TYPES.join(', ')}` });
     return;
   }
 
@@ -3615,6 +3624,16 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
   }
 
   try {
+    // T8: CI-type restriction matrix validation (source/target type codes)
+    const typeRows = await prisma.$queryRaw<{ id: string; code: string | null }[]>`
+      SELECT ci.id::text AS id, t.code
+      FROM configuration_items ci LEFT JOIN ci_types t ON t.id = ci.ci_type_id
+      WHERE ci.id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)`;
+    const srcCode = typeRows.find(r => r.id === sourceCiId)?.code ?? null;
+    const tgtCode = typeRows.find(r => r.id === targetCiId)?.code ?? null;
+    const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
+    if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)

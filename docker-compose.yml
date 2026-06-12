@@ -113,10 +113,18 @@ services:
       BULK_MAX_OPEN_BATCHES: ${BULK_MAX_OPEN_BATCHES:-5}
       BULK_MAX_USER_STAGING_MB: ${BULK_MAX_USER_STAGING_MB:-500}
       BULK_REAPED_RETENTION_DAYS: ${BULK_REAPED_RETENTION_DAYS:-7}
+      # ── Plugin Engine ─────────────────────────────────────────────────────────
+      PLUGIN_STORAGE_PATH: ${PLUGIN_STORAGE_PATH:-/var/lib/cmdb/plugins}
+      PLUGIN_MAX_SIZE_MB:  ${PLUGIN_MAX_SIZE_MB:-50}
+      PLUGIN_DATABASE_URL: ${PLUGIN_DATABASE_URL:-}
+      PLUGIN_REQUIRE_APPROVAL_PROD: ${PLUGIN_REQUIRE_APPROVAL_PROD:-false}
+      PLUGIN_ENABLE_MARKETPLACE: ${PLUGIN_ENABLE_MARKETPLACE:-true}
+      PLUGIN_MARKETPLACE_URL: ${PLUGIN_MARKETPLACE_URL:-}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z
       - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
+      - cmdb-plugins:/var/lib/cmdb/plugins:Z
     # Backend NOT exposed to host — reachable only via nginx (/api/*)
     depends_on:
       postgres:
@@ -191,6 +199,8 @@ volumes:
   postgres-data:
     name: cmdb-postgres-data
   ollama-models:
+  cmdb-plugins:
+    name: cmdb-plugins
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 networks:

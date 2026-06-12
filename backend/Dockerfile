@@ -69,6 +69,15 @@ COPY --from=builder /app/prisma ./prisma
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
 
+# ── Plugin Engine storage directories ────────────────────────────────────────
+# Created here so they exist on first boot before the volume is mounted.
+# The volume mount (docker-compose) will overlay /var/lib/cmdb/plugins at runtime.
+RUN mkdir -p /var/lib/cmdb/plugins/staging \
+             /var/lib/cmdb/plugins/installed \
+             /var/lib/cmdb/plugins/backups \
+             /var/lib/cmdb/plugins/logs \
+    && chown -R node:node /var/lib/cmdb
+
 # ── Security: run as non-root node user ──────────────────────────────────────
 # node:alpine ships with a pre-created "node" user (uid 1000)
 RUN chown -R node:node /app

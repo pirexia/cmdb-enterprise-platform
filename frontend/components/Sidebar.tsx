@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Monitor, FileText, Building2, Settings,
   Server, Network, User, LogOut, Plug, Shield, BarChart,
-  ClipboardList, UserCircle, FolderOpen, Key, Sparkles,
+  ClipboardList, UserCircle, FolderOpen, Key, Sparkles, Puzzle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
@@ -37,6 +37,7 @@ const NAV_ITEMS: NavEntry[] = [
   { type: "link", labelKey: "sidebar.masters",         href: "/admin/masters",  icon: Building2,    roles: ["ADMIN"]            },
   { type: "link", labelKey: "sidebar.audit",           href: "/audit",          icon: ClipboardList, roles: ["ADMIN","AUDITOR"] },
   { type: "link", labelKey: "sidebar.settings",        href: "/settings",       icon: Settings,     roles: ["ADMIN"]            },
+  { type: "link", labelKey: "sidebar.plugins",         href: "/plugins/admin",  icon: Puzzle,       roles: ["ADMIN"]            },
 ];
 
 function LangSelector() {

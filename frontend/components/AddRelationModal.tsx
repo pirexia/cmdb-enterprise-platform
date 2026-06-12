@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link2, Search, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { RELATION_TYPES, RELATION_CATEGORIES, relationAllowed, type RelationTypeValue } from "@/lib/relationTypes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,7 @@ interface CIOption {
   id: string;
   name: string;
   apiSlug: string;
+  ciType?: string | null;
 }
 
 interface Props {
@@ -18,8 +20,6 @@ interface Props {
   onCreated: () => void;
   preselectedSourceId?: string;
 }
-
-const RELATION_TYPE_KEYS = ["HOSTS", "DEPENDS_ON", "CONNECTED_TO", "PROVIDES_SERVICE", "BACKED_UP_BY"] as const;
 
 // ─── Searchable CI dropdown ───────────────────────────────────────────────────
 
@@ -150,6 +150,21 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
       .finally(() => setLoadingCIs(false));
   }, []);
 
+  // T8: filter selectable relation types by the source/target CI type matrix
+  const sourceType = cis.find((c) => c.id === sourceId)?.ciType ?? null;
+  const targetType = cis.find((c) => c.id === targetId)?.ciType ?? null;
+  const availableTypes = RELATION_TYPES.filter((k) =>
+    relationAllowed(k as RelationTypeValue, sourceType, targetType)
+  );
+
+  // Keep selection valid when endpoints change
+  useEffect(() => {
+    if (!availableTypes.includes(relType as RelationTypeValue)) {
+      setRelType(availableTypes[0] ?? "DEPENDS_ON");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceId, targetId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourceId || !targetId) {
@@ -233,12 +248,23 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
                   disabled={submitting}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
                 >
-                  {RELATION_TYPE_KEYS.map((key) => (
-                    <option key={key} value={key}>
-                      {t(`relation.type_${key}`)}
-                    </option>
-                  ))}
+                  {(["structural", "network", "power", "logical"] as const).map((cat) => {
+                    const opts = availableTypes.filter((k) => RELATION_CATEGORIES[k] === cat);
+                    if (opts.length === 0) return null;
+                    return (
+                      <optgroup key={cat} label={t(`relation.cat_${cat}`)}>
+                        {opts.map((key) => (
+                          <option key={key} value={key}>
+                            {t(`relation.type_${key}`)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
+                {availableTypes.length < RELATION_TYPES.length && (
+                  <p className="text-[11px] text-slate-400">{t("relation.types_filtered_hint")}</p>
+                )}
               </div>
 
               <CISelect

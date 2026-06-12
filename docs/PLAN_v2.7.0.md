@@ -107,6 +107,41 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 
 ---
 
+## Estrategia de pruebas y verificación v2.7.0
+
+> Añadido 2026-06-12 por petición del usuario. Aplica a **todas** las tareas (T1–T10, incl. las ya completadas, que se cubren retroactivamente en la pasada final).
+
+### 1. Tests funcionales
+
+- **Método:** suites de peticiones `curl` contra la API desplegada (nginx → backend) + verificación de UI donde aplique. Sin infraestructura Jest en el repo, los tests funcionales se ejecutan contra el entorno real y se documentan con comando, resultado esperado y resultado obtenido.
+- **Credenciales:** `claude@cmdb.local` (AUDITOR) para lecturas y verificación de RBAC (403 esperado en escrituras); cuenta ADMIN de prueba con MFA pre-enrolada vía seed para los flujos de escritura.
+- **Cobertura mínima por tarea:** caso feliz, caso de validación (400), caso RBAC (403), caso de conflicto/guarda (409) si aplica, y verificación de registro `AuditLog`.
+- **Entregable:** `docs/testing/FUNCTIONAL_TESTS_v2.7.0.md` con tabla de casos por tarea y veredicto PASS/FAIL real (no aspiracional).
+
+### 2. Tests OWASP (Top 10 2021)
+
+- Revisión A01–A10 de **cada endpoint/flujo nuevo** del release: catalog (OS, BaseSoftware), asociaciones CI↔BSW, campos infra CI, cascada bulk-import, tipos de relación, filtro audit.
+- Verificaciones activas donde sea posible (p. ej. intento de SQLi en filtros LIKE, path traversal en params UUID, escalada AUDITOR→escritura, inyección en payloads Zod).
+- **Entregable:** `docs/security/OWASP_v2.7.0.md` (formato `owasp-v2.6.0.md`), con severidades y estado (abierto/mitigado).
+
+### 3. Tests de compliance normativo
+
+- **ISO 27001:2022** — A.8.15 (todas las escrituras nuevas generan `AuditLog`; insert-only verificado), A.9.2 (cambios de acceso auditados), A.8.12 (sin secretos hardcodeados en código nuevo).
+- **GDPR** — sin nuevos campos PII en v2.7.0 (verificar); sin datos personales en logs nuevos; los `details` JSONB de T10 no deben volcar PII (usar IDs).
+- **NIS2** — sin consumo no acotado (topes de paginación, batch en cascada); nuevos maestros desactivables de forma independiente; logging compatible con notificación 24/72h.
+- **ISO 22301** — migraciones con `IF NOT EXISTS` re-ejecutables; arranque limpio < 15 min verificado tras rebuild; sin nuevos puntos únicos de fallo.
+- **Entregable:** `docs/security/COMPLIANCE_v2.7.0.md` (formato `COMPLIANCE_v2.6.0.md`).
+
+### 4. Subtareas de test por tarea
+
+Cada tarea restante (T5–T10) incorpora estas subtareas; las completadas (T1–T4, T9) se cubren retroactivamente en la pasada final de tests:
+
+- [ ] Tests funcionales de la tarea ejecutados y documentados
+- [ ] Revisión OWASP de los endpoints/flujos de la tarea
+- [ ] Revisión compliance (ISO 27001 / GDPR / NIS2 / ISO 22301) de la tarea
+
+---
+
 ## FASE 1 — Bugs Críticos
 
 ### Tarea 1 (T1): Fix creación de Tipos de CI en Datos Maestros
@@ -262,6 +297,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - [ ] Frontend: pestaña masters + pestaña en CIDetailModal
 - [ ] Validación ciType (físico/virtual) — depende D3
 - [ ] i18n (6) + docs
+- [ ] Tests funcionales + revisión OWASP + revisión compliance (ver § Estrategia de pruebas)
 - [ ] tsc + health + commit + PR + actualizar plan
 
 ---
@@ -294,6 +330,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - [ ] Zod schemas + validación exclusión mutua (D3)
 - [ ] Modales Add/Edit/Detail + selector OS
 - [ ] i18n (6)
+- [ ] Tests funcionales + revisión OWASP + revisión compliance (ver § Estrategia de pruebas)
 - [ ] tsc + health + commit + PR + actualizar plan
 
 ---
@@ -322,7 +359,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - [ ] Extender lógica de commit de batch (OS + SW Base)
 - [ ] Upsert idempotente por clave natural
 - [ ] Audit de cascada
-- [ ] Tests Jest (idempotencia, reutilización)
+- [ ] Tests funcionales (idempotencia, reutilización) + revisión OWASP + compliance
 - [ ] tsc + health + commit + PR + actualizar plan
 
 ---
@@ -359,6 +396,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - [ ] `AddRelationModal`: filtrar relaciones válidas por tipo origen/destino
 - [ ] ReactFlow: estilos por categoría + leyenda
 - [ ] i18n (6) + docs
+- [ ] Tests funcionales + revisión OWASP + revisión compliance (ver § Estrategia de pruebas)
 - [ ] tsc + health + commit + PR + actualizar plan
 
 ---
@@ -415,6 +453,7 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 - [ ] Query: filtro por nombre (LEFT JOIN, LIKE escapado)
 - [ ] UI: input de filtro por nombre
 - [ ] i18n (6)
+- [ ] Tests funcionales + revisión OWASP + revisión compliance (ver § Estrategia de pruebas)
 - [ ] tsc + health + commit + PR + actualizar plan
 
 ---
@@ -423,11 +462,16 @@ Dado el requisito de **parar tras cada tarea**, el orden secuencial recomendado 
 
 - [ ] Todas las tareas mergeadas a `develop` vía PR
 - [ ] `docs/PLAN_v2.7.0.md` 100% ✅ y fechado
+- [ ] Tests funcionales ejecutados y documentados → `docs/testing/FUNCTIONAL_TESTS_v2.7.0.md`
+- [ ] Revisión OWASP de todos los endpoints nuevos → `docs/security/OWASP_v2.7.0.md`
+- [ ] Revisión compliance (ISO 27001 / GDPR / NIS2 / ISO 22301) → `docs/security/COMPLIANCE_v2.7.0.md`
+- [ ] Actualizar `scripts/install.sh` y `scripts/update.sh` para v2.7.0 (GIT_COMMIT, build fiable, nginx restart)
 - [ ] Crear `CHANGELOG.md` con entrada `[2.7.0]` (D6)
-- [ ] Actualizar `docs/USER_MANUAL.md`(.en), `SYSADMIN_MANUAL`, `ARCHITECTURE` donde aplique
-- [ ] OWASP / compliance review de los endpoints nuevos (catalog, bulk, audit)
+- [ ] Actualizar `docs/USER_MANUAL.md`(.en), `SYSADMIN_MANUAL`(.en), `ARCHITECTURE`(.en) y `README.md`
+- [ ] Crear `docs/RELEASE_v2.7.0.md` (release notes + checklist de tag, pendiente de revisión del usuario)
+- [ ] Crear `docs/PLAN_v2.8.0.md` (Plugin Engine — solo planificación, sin ejecución)
 - [ ] `tsc --noEmit` limpio · rebuild · health
-- [ ] PR final develop→main, tag `v2.7.0`, push tag
+- [ ] ⚠️ **El tag `v2.7.0` y el merge develop→main quedan PENDIENTES de revisión manual del usuario** — no se ejecutan de forma autónoma
 
 ---
 

@@ -2266,3 +2266,83 @@ podman-compose -f docker-compose.prod.yml restart backend
 - **A08 — Integridad:** el bloque CDI `devices: nvidia.com/gpu=all` concede acceso al dispositivo GPU al contenedor Ollama únicamente; los demás contenedores no tienen acceso al hardware.
 - **ISO 22301 / RTO:** una GPU dedicada al contenedor `ollama` se convierte en un componente de disponibilidad. Documentar el procedimiento de arranque sin GPU (fallback a CPU) como modo degradado aceptable.
 - **Drivers:** mantener el driver NVIDIA actualizado. Los CVE de drivers de kernel con acceso DMA son de alta severidad.
+
+---
+
+## 22. Plugin Engine (v2.8.0) — instalación y operación
+
+Esta sección cubre la puesta en marcha y operación del Motor de Plugins desde el punto de vista del administrador de sistemas. Para la arquitectura interna, ver [`docs/PLUGIN_ENGINE.md`](PLUGIN_ENGINE.md); para el procedimiento de aprobación, [`docs/PLUGIN_SECURITY_CHECKLIST.md`](PLUGIN_SECURITY_CHECKLIST.md).
+
+### 22.1 Variables de entorno `PLUGIN_*`
+
+Configurables en `.env` (valores por defecto entre paréntesis):
+
+| Variable | Default | Descripción |
+|----------|---------|-------------|
+| `PLUGIN_STORAGE_PATH` | `/var/lib/cmdb/plugins` | Directorio persistente de bundles, backups y ficheros instalados |
+| `PLUGIN_MAX_SIZE_MB` | `50` | Tamaño máximo del bundle subido (MB) |
+| `PLUGIN_DATABASE_URL` | (vacío en dev) | Conexión con el rol restringido `cmdb_plugin` para ejecutar migraciones DDL. **Obligatoria en producción** (el compose prod la exige) |
+| `PLUGIN_REQUIRE_APPROVAL_PROD` | `false` (dev) / `true` (prod) | Exige aprobación 4-eyes de un segundo ADMIN para activar plugins |
+| `PLUGIN_ENABLE_MARKETPLACE` | `true` | Habilita la consulta al marketplace |
+| `PLUGIN_MARKETPLACE_URL` | (vacío) | URL del repositorio del marketplace (puede ser privado) |
+| `PLUGIN_SIGNING_PUBLIC_KEY` | (no presente) | **Clave pública Ed25519 (base64 SPKI/DER)** para verificar firmas. **No** está en `.env.example` ni en los compose por defecto — añádela manualmente si vas a usar plugins firmados. Si un manifest declara firma y esta variable no está configurada, la validación falla |
+
+> En `docker-compose.prod.yml`, `PLUGIN_DATABASE_URL` está marcada como requerida (`:?...`) y `PLUGIN_REQUIRE_APPROVAL_PROD` por defecto `true`. En `docker-compose.yml` (desarrollo) la aprobación está deshabilitada y `PLUGIN_DATABASE_URL` puede dejarse vacía (cae a `DATABASE_URL`).
+
+### 22.2 Crear el rol de base de datos `cmdb_plugin`
+
+Las migraciones de plugins se ejecutan con un rol PostgreSQL **restringido** que solo puede crear objetos nuevos (prefijo `plg_*`) y **no** tiene acceso a las tablas core. Créalo **una vez** como superusuario:
+
+```bash
+# Aplicar el script de bootstrap (incluido en el repo)
+sg docker -c "docker exec -i cmdb-postgres psql -U admin -d cmdb_db" < scripts/create-plugin-db-role.sql
+```
+
+El script (`scripts/create-plugin-db-role.sql`):
+- Crea el rol `cmdb_plugin` con `LOGIN` (cambia la contraseña — el placeholder es `CHANGE_ME_IN_PRODUCTION`).
+- `REVOKE ALL` sobre el esquema `public`, luego `GRANT USAGE` + `GRANT CREATE` (solo crear objetos nuevos, sin acceso a los existentes).
+- `ALTER DEFAULT PRIVILEGES` para que gestione sus propios objetos (necesario para down-migrations).
+- `GRANT CONNECT` a la base de datos.
+
+Después, ajusta la contraseña real y refléjala en `PLUGIN_DATABASE_URL`:
+
+```sql
+ALTER ROLE cmdb_plugin PASSWORD 'una-contraseña-fuerte';
+```
+
+```bash
+# .env
+PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:una-contraseña-fuerte@postgres:5432/cmdb_db
+```
+
+> **Defensa en profundidad:** el `MigrationRunner` valida el SQL (allowlist DDL + prefijo `plg_`) **antes** de ejecutarlo, y usa `execFile('psql')` (no `exec`, sin inyección de shell). El rol restringido es la segunda barrera a nivel de base de datos.
+
+### 22.3 Volumen `cmdb-plugins`
+
+El almacenamiento de plugins se persiste en un volumen Docker dedicado, ya declarado en ambos compose:
+
+- `docker-compose.yml`: volumen `cmdb-plugins` montado en `/var/lib/cmdb/plugins`.
+- `docker-compose.prod.yml`: volumen `cmdb-plugins-prod`.
+
+Estructura interna: `staging/` (bundles subidos), `installed/<uuid>/` (ficheros extraídos), `backups/` (backups JSON pre-uninstall).
+
+### 22.4 Backup y restauración del storage de plugins
+
+El storage de plugins **no** lo cubre el `pg_dump` de la base de datos (son ficheros). Inclúyelo en tu rutina de backup:
+
+```bash
+# Backup del volumen de plugins (ficheros: bundles, instalados, backups JSON)
+sg docker -c "docker run --rm -v cmdb-plugins:/data -v \$(pwd):/backup alpine \
+  tar czf /backup/plugins_storage_\$(date +%F).tar.gz -C /data ."
+
+# Las tablas plg_* viven en PostgreSQL y SÍ las cubre el pg_dump habitual:
+sg docker -c "docker exec cmdb-postgres pg_dump -U admin cmdb_db" > backup_\$(date +%F).sql
+```
+
+Para una recuperación completa necesitas **ambos**: el dump de PostgreSQL (registro de plugins + tablas `plg_*`) y el tar del volumen (ficheros instalados + backups). Restaura el volumen con el `tar` inverso y la BD con `psql`.
+
+> **NIS2 / cadena de suministro:** cada plugin es un proveedor externo. Mantén un inventario de plugins instalados (consultable vía `GET /api/plugins` o el panel) y asegúrate de poder **desactivar** cualquiera de forma independiente sin afectar al core.
+
+### 22.5 CSP y iframe
+
+La UI de los plugins se sirve en iframes del mismo origen. La política CSP de nginx (`frame-src 'self'`) ya es compatible y **no requirió cambios**; no relajes `frame-src` a orígenes externos para plugins.

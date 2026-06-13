@@ -1404,3 +1404,79 @@ La columna **Entidad** del registro dispone ahora de un campo de búsqueda que f
 - La búsqueda es **insensible a mayúsculas/minúsculas**.
 - Acepta fragmentos: `SRV` coincide con `SRV-PROD-01`, `SRV-TEST-02`, etc.
 - Se combina con los filtros de fecha existentes.
+
+---
+
+## 31. Gestión de Plugins (v2.8.0) — solo ADMIN
+
+> Esta sección es exclusiva del rol **ADMIN**. Los plugins son extensiones de terceros; revisa siempre el [Checklist de seguridad de plugins](PLUGIN_SECURITY_CHECKLIST.md) antes de activar uno en producción.
+
+El panel de plugins (`/plugins/admin`) permite instalar y gobernar extensiones del CMDB. Un plugin atraviesa un **ciclo de vida** de estados antes de quedar operativo.
+
+### 31.1 El ciclo de vida de un plugin
+
+```
+Subido → Validado → Instalado → Activo  ⇄  Inactivo
+                                   └────────────────▶ (Desinstalar)
+```
+
+| Estado | Significado | Acción disponible |
+|--------|-------------|-------------------|
+| **Subido** (UPLOADED) | El bundle se ha cargado | **Validar** |
+| **Validado** (VALIDATED) | Checksum y firma verificados | **Instalar** |
+| **Instalado** (INSTALLED) | Migración aplicada, ficheros extraídos | **Activar** / **Desinstalar** |
+| **Activo** (ACTIVE) | En ejecución (hooks/cron activos) | **Desactivar** |
+| **Inactivo** (INACTIVE) | Pausado, sin desinstalar | **Activar** / **Desinstalar** |
+| **Error** (ERROR) | Fallo en validación o arranque | **Desinstalar** |
+
+### 31.2 Subir un plugin
+
+1. Pulsa **Subir Plugin** (botón superior derecho).
+2. Selecciona el archivo del plugin (`.zip`, `.tar.gz` o `.tgz`, máx. 50 MB por defecto).
+3. La plataforma valida los **magic bytes**, extrae el `manifest.json` y registra el plugin en estado **Subido**.
+   - Si el `manifest.json` falta o es inválido, la subida se rechaza con un mensaje explicativo.
+   - Si ya existe un plugin con el mismo identificador, se rechaza (sin duplicados).
+
+### 31.3 Validar
+
+Pulsa **Validar** en la fila del plugin. El sistema:
+- Recalcula el **checksum SHA-256** y lo compara con el del bundle.
+- Verifica la **firma Ed25519** (si el manifest la incluye; requiere clave pública configurada por el administrador del sistema).
+- Re-valida el manifest.
+
+Si todo pasa → estado **Validado**. Si falla (checksum/firma incorrectos) → **Error** con el motivo.
+
+### 31.4 Instalar
+
+Pulsa **Instalar**. El sistema ejecuta la **migración** del plugin (crea sus tablas `plg_…` con un rol de base de datos restringido) y extrae los ficheros. Resultado: estado **Instalado**.
+
+### 31.5 Activar (4-eyes en producción)
+
+Pulsa **Activar**. El plugin pasa a **Activo** y sus hooks/cron empiezan a ejecutarse.
+
+> **Doble aprobación (4-eyes) en producción.** Si el servidor está configurado para exigirlo, la activación requiere la **aprobación de un segundo ADMIN distinto** del que la solicita. Coordina con otro administrador: el revisor aplica el [Checklist de seguridad](PLUGIN_SECURITY_CHECKLIST.md) y aporta su autorización. Si intentas aprobar tu propia solicitud, el sistema lo rechaza.
+
+### 31.6 Desactivar
+
+Pulsa **Desactivar** en un plugin **Activo**. Pasa a **Inactivo**: deja de ejecutar hooks/cron, pero conserva sus datos y ficheros. Es la acción recomendada ante un **comportamiento sospechoso** (no desinstales: preservarías la evidencia).
+
+### 31.7 Desinstalar
+
+Pulsa **Desinstalar** (disponible en **Instalado**, **Inactivo** o **Error**). El sistema:
+1. **Hace un backup JSON** de todos los datos del plugin (tablas `plg_…`).
+2. Ejecuta la **down-migration** (elimina esas tablas).
+3. Borra los ficheros y el registro del plugin.
+
+> El backup queda almacenado en el servidor para recuperación o análisis posterior.
+
+### 31.8 Configurar
+
+Pulsa **Configuración** para abrir el editor de configuración del plugin (pares clave/valor en JSON). Los cambios se **fusionan** con la configuración existente y quedan auditados. El plugin recibe esta configuración en tiempo de ejecución.
+
+### 31.9 Ver logs
+
+Pulsa **Logs** para desplegar el registro de auditoría del plugin (subidas, validaciones, activaciones, errores, cambios de configuración). Cada entrada muestra fecha, nivel y mensaje. Toda acción sobre un plugin queda registrada de forma inmutable.
+
+### 31.10 Marketplace
+
+Si el administrador del sistema ha configurado un **marketplace**, el panel muestra los plugins disponibles para descargar. Si no está configurado, se indica explícitamente.

@@ -1050,3 +1050,51 @@ ORDER BY created_at DESC LIMIT 500
 | CTE for `entity_name` in audit-logs | `entity_name` is a computed alias; not referenceable in WHERE without CTE |
 | `RELATION_TYPE_MATRIX` in shared module | Single source of truth; frontend imports as mirror (backlog: auto-generation) |
 | `details` jsonb on `audit_logs` (not a new table) | Keeps table flat; `jsonb` supports GIN indexes for future searches |
+
+---
+
+## 14. Plugin Engine (v2.8.0)
+
+Extension engine that lets **ADMIN** users install third-party plugins without touching the core. Full technical reference in [`docs/PLUGIN_ENGINE.md`](PLUGIN_ENGINE.md); development guide in [`docs/PLUGIN_DEVELOPMENT_GUIDE.md`](PLUGIN_DEVELOPMENT_GUIDE.md); admission checklist in [`docs/PLUGIN_SECURITY_CHECKLIST.md`](PLUGIN_SECURITY_CHECKLIST.md).
+
+### 14.1 `backend/src/modules/plugins/` module
+
+Follows the repo module pattern (same as `dcim/` and `catalog/`); does **not** grow `index.ts`:
+
+| File | Responsibility |
+|------|----------------|
+| `engine.ts` | `SandboxExecutor` (`vm.Script`), `HookRegistry`, `CronRegistry`, `RouteRegistry`, `PluginValidator`, `MigrationRunner`, `PluginLifecycleManager`, `emitHook()` |
+| `router.ts` | 12 REST endpoints under `/api/plugins` (`requireAdmin` + rate-limit) |
+| `schemas.ts` | `PluginManifestSchema` (Zod), permissions, slots, statuses |
+| `middleware.ts` | `pluginRateLimiter`, `requirePluginExists`, upload validation |
+| `queries.ts` | `getActivePlugins`, `setPluginStatus`, `createBackupRecord` |
+| `audit.ts` | `pluginAudit()` → inserts into `audit_logs` (`entity='PLUGIN'`) |
+| `index.ts` | `initializePluginEngine(app, prisma)` — mount + re-activation at boot |
+
+### 14.2 Core integration
+
+- **Hooks:** `index.ts` emits `emitHook('pre*'/'post*')` at 13 points (CI CRUD, contract/document/license creation, login). Pre-hooks can cancel the operation (`{ cancel, reason }` → 409); post-hooks are fire-and-forget. `emitHook` early-returns when no plugins are active (zero cost).
+- **Boot:** `initializePluginEngine` is called at the end of `index.ts`; it mounts the router and re-activates `ACTIVE` plugins (hooks + cron). A failing plugin is marked `ERROR` without blocking startup (ISO 22301 RTO).
+- **Frontend:** `PluginProvider` (in `app/layout.tsx`) loads active plugins; `PluginSlot` renders one `PluginIframe` per slot. Plugin UI is served inside an `<iframe sandbox="allow-scripts allow-same-origin">` with a `postMessage` bridge (`cmdb:init`/`cmdb:resize`/`cmdb:navigate`).
+
+### 14.3 Trust model and data
+
+| Decision | Choice |
+|----------|--------|
+| **D1 — Sandbox** | `vm.Script` pure-trust (not a security boundary). The real boundary is the **admission gate**: Ed25519 signature + SHA-256 checksum + checklist + 4-eyes in prod. Frozen vm context (no `fs`/`process`/`require`/`eval`/`globalThis`), 5 s timeout, `fetch` restricted to the manifest allowlist |
+| **D2 — Data** | DDL migrations prefixed `plg_<id>_`, run by the PostgreSQL role `cmdb_plugin` (no privileges on core tables). DDL allowlist; down-migrations + JSON backup before uninstall |
+| **D3 — UI** | Isolated iframe + `postMessage` host↔iframe bridge |
+| **D4 — Scope** | Complete: marketplace, Ed25519 signing, migration runner (rollback as a `501` placeholder) |
+
+### 14.4 Data model
+
+6 Prisma models (`plugin_registry`, `plugin_hooks`, `plugin_cron_jobs`, `plugin_routes`, `plugin_data_backups`, `plugin_data_store`) — field detail in [`PLUGIN_ENGINE.md §4`](PLUGIN_ENGINE.md#4-modelos-de-datos). On-disk storage under the `cmdb-plugins` volume (`staging/`, `installed/`, `backups/`).
+
+### 14.5 Implementation decisions (2026-06-13)
+
+| Decision | Rationale |
+|----------|-----------|
+| Sandbox via `vm`, not `worker_threads`/separate process | Simplicity; the strong control is the human + cryptographic admission gate, documented explicitly |
+| Migrations via `execFile('psql')` with the `cmdb_plugin` role | `execFile` avoids shell injection; the restricted role is the DB barrier |
+| JSON backup pre-uninstall | Reversibility and forensic preservation (NIS2) before dropping `plg_*` tables |
+| 4-eyes in production only | Balances operational friction (dev/test) with control in the critical environment |

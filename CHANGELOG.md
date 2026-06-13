@@ -7,6 +7,36 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.1] — 2026-06-13
+
+### Fixed (security)
+
+- **Validador de migraciones DDL endurecido** — `PluginValidator.validateMigrationSql` ahora captura el identificador de destino de cada verbo peligroso y bloquea `TRUNCATE`, `DELETE FROM`, `ALTER TABLE`, `DROP INDEX` (y demás `DROP`) y `UPDATE` cuyo objetivo no empiece por `plg_`; `GRANT`/`REVOKE` quedan prohibidos por completo. Comentarios y literales se eliminan antes de validar para evitar smuggling.
+- **Sin fallback a superusuario en migraciones** — `MigrationRunner` rechaza ejecutar `migration.sql`/`down.sql` si `PLUGIN_DATABASE_URL` (rol `cmdb_plugin`) no está configurada, en lugar de caer al `DATABASE_URL` del core.
+- **Rate limiter IPv6** — `pluginRateLimiter` usa `ipKeyGenerator` para normalizar direcciones IPv6 a su subred /64, evitando el bypass del límite por rotación de IPv6.
+- **Panel de administración** — corregido el shape de respuesta esperado por `frontend/app/plugins/admin/page.tsx` y añadido el visor de logs del plugin.
+
+### Added
+
+- **Runtime de ejecución de plugins** — el motor queda cableado de extremo a extremo:
+  - `install` parsea el bundle a filas `PluginHook`/`PluginCronJob`/`PluginRoute` (`parseBundleArtifacts`); la instalación falla si un hook/cron/route declarado en el manifest no tiene su fichero de handler.
+  - `activate` registra hooks, cron jobs y rutas en vivo (`pluginRuntime.registerPlugin`); `deactivate`/`uninstall` los desmontan.
+  - **Proxy Prisma con scope** (`buildPrismaProxy`) enrutado por el rol `cmdb_plugin` (solo objetos `plg_*`): expone `$queryRaw`/`$queryRawUnsafe` (gate `db:read`) y `$executeRaw`/`$executeRawUnsafe` (gate `db:write`); el cliente Prisma del core nunca se expone.
+  - **Rutas dinámicas** servidas en `/api/ext/:pluginId/*` (dispatcher contra el `RouteRegistry`, auth `requiresAuth`/`requiredRole` por ruta).
+  - **Servido de UI** en `GET /api/plugins/:id/ui[/*]` (default `index.html`) a cualquier usuario autenticado, con CSP estricta y validación de `?slot` contra `manifest.uiSlots`.
+- **Plugin de referencia `hello-world`** — `examples/plugins/hello-world/` con manifest, migración, hook `postCreateCI`, ruta `GET /ping`, cron `heartbeat` y UI de dashboard.
+- **Suite de tests del runtime** — cobertura del proxy Prisma con scope, registro/desmontaje de hooks/cron/routes y dispatcher de rutas.
+
+### Security (sandbox)
+
+- **`eval` y `Function` bloqueados** en el contexto `vm` del sandbox (forzados a `undefined`), alineando el contexto de ejecución con la blocklist documentada.
+
+### Docs
+
+- **Documentos actualizados**: `docs/PLUGIN_DEVELOPMENT_GUIDE.md` (bundle solo `.zip`; secciones de rutas, cron y proxy Prisma; UI implementada) y `docs/PLUGIN_ENGINE.md` (estado de implementación: H-01/H-02/H-04 resueltos; endpoints `/api/ext/*` y `/api/plugins/:id/ui`).
+
+---
+
 ## [2.8.0] — 2026-06-13
 
 ### Added

@@ -1,9 +1,11 @@
 # Guía de desarrollo de plugins
 
-> Versión: v2.8.0 · Audiencia: desarrolladores que construyen plugins para el CMDB
+> Versión: v2.8.1 · Audiencia: desarrolladores que construyen plugins para el CMDB
 > Referencia técnica del motor: [PLUGIN_ENGINE.md](PLUGIN_ENGINE.md) · Checklist de revisión: [PLUGIN_SECURITY_CHECKLIST.md](PLUGIN_SECURITY_CHECKLIST.md)
 
-Esta guía combina un **tutorial** (construye tu primer plugin paso a paso) con **how-tos** de referencia (manifest, permisos, hooks, migraciones, UI, firma, empaquetado).
+Esta guía combina un **tutorial** (construye tu primer plugin paso a paso) con **how-tos** de referencia (manifest, permisos, hooks, rutas, cron, migraciones, UI, firma, empaquetado).
+
+> **Plugin de referencia.** El repo incluye un plugin completo y funcional en [`examples/plugins/hello-world/`](../examples/plugins/hello-world/) con manifest, migración, hook, ruta, cron job y UI. Los fragmentos de esta guía coinciden con ese ejemplo; úsalo como plantilla.
 
 > **Antes de empezar — modelo de confianza.** El runtime que ejecuta tu código (`vm.Script`) **no es una caja fuerte**. Tu plugin será admitido en producción solo tras pasar un **gate de admisión**: firma Ed25519, checksum, revisión humana de código y aprobación de un segundo ADMIN (4-eyes). Escribe tu plugin para que sea *auditable*: permisos mínimos, hosts declarados, sin trucos para acceder a globals bloqueados. Un plugin que parezca intentar evadir el sandbox será rechazado en revisión.
 
@@ -11,20 +13,26 @@ Esta guía combina un **tutorial** (construye tu primer plugin paso a paso) con 
 
 ## 1. Estructura de un plugin
 
-Un plugin es un archivo comprimido (`.zip`, `.tar.gz` o `.tgz`) con esta estructura en la raíz:
+Un plugin es un archivo **`.zip`** (único formato aceptado — la extracción es unzip-only) con esta estructura en la raíz:
 
 ```
 mi-plugin.zip
-├── manifest.json        # OBLIGATORIO — metadatos, permisos, slots, hooks
+├── manifest.json        # OBLIGATORIO — metadatos, permisos, slots, hooks, rutas, cron
 ├── migration.sql        # opcional — DDL de tablas plg_<id>_*
 ├── down.sql             # opcional — revierte migration.sql (si falta, se autogenera DROP)
-├── hooks/               # opcional — código de los handlers de hooks
-│   └── post-create-ci.js
+├── hooks/               # opcional — un .js por cada evento de manifest.hooks
+│   └── post-create-ci.js     # hooks/<kebab(evento)>.js  (postCreateCI → post-create-ci.js)
+├── routes/              # opcional — un .js por cada entrada de manifest.routes
+│   └── get_ping.js           # routes/<método>_<slug(path)>.js  (GET /ping → get_ping.js)
+├── cron/                # opcional — un .js por cada entrada de manifest.cronJobs
+│   └── heartbeat.js          # cron/<name>.js  (name del cron job en el manifest)
 └── ui/                  # opcional — HTML/JS servido en los slots (iframe)
-    └── widget.html
+    └── index.html            # por defecto se sirve index.html
 ```
 
 > Solo `manifest.json` es obligatorio. El motor lo extrae con `unzip -p manifest.json`, así que **debe estar en la raíz del archivo**, no en un subdirectorio.
+>
+> **Cada hook, ruta y cron declarado en el manifest debe tener su fichero de handler** en el bundle, en la ruta exacta que se indica arriba. Si falta uno, **la instalación falla** (`PLUGIN_HANDLER_MISSING`).
 
 ---
 
@@ -82,11 +90,19 @@ Declara en `permissions[]` solo lo que tu plugin necesita (**mínimo privilegio*
 | `routes:register` | Registrar rutas REST |
 | `ui:iframe` | Servir UI embebida en slots |
 
-> El acceso real a Prisma desde el sandbox aún está en cableado (ver "Estado de implementación" en [PLUGIN_ENGINE.md](PLUGIN_ENGINE.md)). Declara `db:read`/`db:write` igualmente para que tu manifest sea correcto a futuro.
+> El acceso a Prisma desde el sandbox está **cableado** (v2.8.1). Tu handler recibe un objeto `prisma` con scope (ver [§9](#9-acceso-a-la-base-de-datos-prisma-del-sandbox)); `db:read` habilita las lecturas y `db:write` las escrituras.
 
 ---
 
 ## 4. Escribir un hook handler
+
+Por cada evento que declares en `manifest.hooks` (p. ej. `"postCreateCI"`), el código va en **`hooks/<kebab(evento)>.js`**: el motor convierte el nombre camelCase del evento a kebab-case para localizar el fichero.
+
+| Evento en `manifest.hooks` | Fichero esperado en el bundle |
+|----------------------------|-------------------------------|
+| `postCreateCI` | `hooks/post-create-ci.js` |
+| `preUpdateCI` | `hooks/pre-update-ci.js` |
+| `postLogin` | `hooks/post-login.js` |
 
 Tu handler es un fichero JS que define una función llamada **`handler`**. El motor lo ejecuta dentro del sandbox así (simplificado):
 
@@ -115,13 +131,74 @@ async function handler(data) {
 
 ---
 
+## 4.1. Escribir una ruta REST
+
+Por cada entrada de `manifest.routes` (`{ method, path, requiresAuth, requiredRole? }`) el código va en **`routes/<método-en-minúsculas>_<slug>.js`**, donde `slug` es el `path` con cada secuencia de caracteres no alfanuméricos reemplazada por `_`:
+
+| Entrada en `manifest.routes` | Fichero esperado | URL servida |
+|------------------------------|------------------|-------------|
+| `{ "method": "GET", "path": "/ping" }` | `routes/get_ping.js` | `GET /api/ext/<pluginId>/ping` |
+| `{ "method": "POST", "path": "/items/list" }` | `routes/post_items_list.js` | `POST /api/ext/<pluginId>/items/list` |
+
+El handler es una función `async function handler(req)` que:
+
+- Recibe **un argumento** `req` con la forma `{ method, path, query, body, user }`, donde `user` es `{ email, role }` si la petición está autenticada, o `null` si no lo está.
+- Devuelve `{ status?, body? }` (el motor responde con ese `status`, por defecto `200`, y serializa `body` como JSON). Si devuelves un valor plano (no un objeto con `status`/`body`), se responde `200` con ese valor como JSON.
+
+```js
+// routes/get_ping.js — GET /api/ext/hello-world/ping  (requiresAuth: true)
+async function handler(req) {
+  const rows = await prisma.$queryRawUnsafe(
+    "SELECT count(*)::int AS n FROM plg_hello_world_log"
+  );
+  return {
+    status: 200,
+    body: {
+      plugin: "hello-world",
+      logged: rows[0].n,
+      you: req.user ? req.user.role : null,
+    },
+  };
+}
+```
+
+**Autenticación por ruta:** se aplica según el manifest, no de forma global.
+
+- `requiresAuth: true` (valor por defecto): el dispatcher exige una sesión válida (JWT en cabecera `Authorization: Bearer` o cookie `token`); sin ella responde `401`.
+- `requiredRole`: si lo declaras (`ADMIN`/`AUDITOR`/`VIEWER`), una sesión con otro rol recibe `403`.
+- `requiresAuth: false`: la ruta es accesible sin sesión y `req.user` será `null`.
+
+Las rutas se sirven bajo **`/api/ext/:pluginId/<path>`** y están sujetas al mismo rate-limit que el resto del módulo. El emparejamiento es exacto por método + path (sin patrones de parámetros en v2.8.1).
+
+---
+
+## 4.2. Escribir un cron job
+
+Por cada entrada de `manifest.cronJobs` (`{ name, schedule }`) el código va en **`cron/<name>.js`** (el `name` debe ser alfanumérico, `-` o `_`). El motor lo agenda con `node-cron` según `schedule` cuando el plugin se activa, y lo detiene al desactivarlo o desinstalarlo. Cada ejecución actualiza `lastRunAt`.
+
+El handler es una función **`async function handler()`** (sin argumentos):
+
+```js
+// cron/heartbeat.js — schedule "*/30 * * * *" (cada 30 min)
+// El sandbox no expone setTimeout/setInterval; el scheduling lo hace el motor.
+async function handler() {
+  logger.info("hello-world heartbeat", new Date().toISOString());
+}
+```
+
+> Dentro del handler de cron dispones del mismo sandbox que en los hooks (`prisma`, `logger`, `config`, `fetch` restringido, etc.) y del mismo timeout de 5 s.
+
+---
+
 ## 5. Escribir una migración
 
 Coloca tu DDL en `migration.sql`. Reglas (impuestas por `PluginValidator.validateMigrationSql`):
 
 - **Toda** `CREATE TABLE` debe usar el prefijo `plg_<id>_` (con guiones del `id` convertidos a `_`). Para `id: "hello-world"` el prefijo es `plg_hello_world_`.
-- Solo se permite: `CREATE TABLE`, `CREATE INDEX`, `CREATE UNIQUE INDEX`, `INSERT INTO plg_*`, comentarios.
-- **Prohibido:** `DROP`/`TRUNCATE`/`ALTER`/`DELETE` sobre cualquier tabla que **no** empiece por `plg_`. Tocar una tabla core hace fallar la instalación.
+- Solo se permite tocar objetos `plg_*`: `CREATE TABLE`/`CREATE INDEX` sobre tablas con tu prefijo, `INSERT INTO plg_*`, comentarios.
+- **Prohibido sobre cualquier objeto que no empiece por `plg_`:** `DROP TABLE`/`DROP INDEX` (y demás `DROP`), `TRUNCATE`, `ALTER TABLE`, `DELETE FROM`, `UPDATE`. El validador captura el identificador de destino y exige que empiece por `plg_`; tocar una tabla core hace fallar la instalación (`PLUGIN_DDL_FORBIDDEN`).
+- **Prohibido por completo:** `GRANT` y `REVOKE` (no se permiten en migraciones de plugin bajo ninguna circunstancia).
+- Los comentarios (`--`, `/* */`) y literales entre comillas se eliminan antes de validar, de modo que no se puede colar un verbo peligroso comentado o entrecomillado.
 - Usa `IF NOT EXISTS` para idempotencia.
 
 ```sql
@@ -147,6 +224,13 @@ DROP TABLE IF EXISTS plg_hello_world_log CASCADE;
 
 Si declaras `uiSlots`, el host embebe tu UI en un `<iframe sandbox="allow-scripts allow-same-origin">` cuyo `src` es `/api/plugins/:id/ui?slot=<slot>`. Tu plugin sirve el HTML/JS bajo esa ruta.
 
+El endpoint `GET /api/plugins/:id/ui[/*]` está **implementado** (v2.8.1) y sirve los ficheros de `installed/<id>/ui/*`:
+
+- Por defecto sirve **`index.html`**; cualquier otra ruta (`/widget.html`, `/assets/app.js`, …) se resuelve dentro de `ui/` con protección contra path traversal.
+- Es accesible a **cualquier usuario autenticado** (no solo ADMIN); una petición sin sesión válida recibe `401`.
+- El parámetro `?slot=<slot>` se valida contra tu `manifest.uiSlots`; si pides un slot que no declaras, responde `400`.
+- Las respuestas llevan una **CSP estricta** (`default-src 'self'`; se permiten `script-src`/`style-src` inline para UIs HTML simples; `frame-ancestors 'self'`) y `X-Content-Type-Options: nosniff`.
+
 Slots disponibles (`uiSlots[]`): `DashboardWidget`, `CIDetailTab`, `ContractDetailTab`, `TopBarMenu`, `SettingsPanel`, `InventoryColumn`, `MapOverlay`.
 
 El puente `postMessage` (validado por origen) funciona así:
@@ -157,7 +241,7 @@ El puente `postMessage` (validado por origen) funciona así:
   - `cmdb:navigate` `{ type, path }` — para navegar internamente (paths que empiezan por `/`).
 
 ```html
-<!-- ui/widget.html -->
+<!-- ui/index.html -->
 <!DOCTYPE html>
 <html>
 <body>
@@ -169,6 +253,10 @@ El puente `postMessage` (validado por origen) funciona así:
       if (e.data?.type === "cmdb:init") {
         document.getElementById("root").textContent =
           "Hola desde el plugin (locale: " + e.data.locale + ")";
+        // Llamar a la ruta propia del plugin (la cookie de sesión viaja sola)
+        fetch("/api/ext/hello-world/ping", { credentials: "same-origin" })
+          .then((r) => r.json())
+          .then((d) => { /* … */ });
         // Informar de la altura real al host
         parent.postMessage(
           { type: "cmdb:resize", height: document.body.scrollHeight },
@@ -181,7 +269,7 @@ El puente `postMessage` (validado por origen) funciona así:
 </html>
 ```
 
-> El endpoint backend `/api/plugins/:id/ui` aún no está implementado en v2.8.0 (ver "Estado de implementación" en [PLUGIN_ENGINE.md](PLUGIN_ENGINE.md)). Prepara tu `ui/` para cuando se habilite.
+> Ejemplo real y completo en [`examples/plugins/hello-world/ui/index.html`](../examples/plugins/hello-world/ui/index.html): consume su propia ruta `GET /api/ext/hello-world/ping` desde el iframe reutilizando la cookie de sesión.
 
 ---
 
@@ -221,7 +309,7 @@ console.log(sig.toString("base64"));                  // → manifest.signature
 
 ## 8. Ejemplo completo: `hello-world`
 
-Plugin mínimo funcional: un hook `postCreateCI` que registra cada CI creado en su propia tabla, más un widget de dashboard.
+Plugin de referencia completo y funcional. Fuente en [`examples/plugins/hello-world/`](../examples/plugins/hello-world/): un hook `postCreateCI` que registra cada CI creado en su propia tabla, una ruta `GET /ping`, un cron `heartbeat` y un widget de dashboard.
 
 **`manifest.json`**
 
@@ -232,10 +320,17 @@ Plugin mínimo funcional: un hook `postCreateCI` que registra cada CI creado en 
   "version": "1.0.0",
   "author": "Equipo Plataforma",
   "license": "MIT",
-  "description": "Registra cada CI creado en plg_hello_world_log y muestra un widget.",
-  "permissions": ["db:schema", "db:write", "hooks:register", "ui:iframe"],
+  "description": "Plugin de referencia: registra cada CI creado en plg_hello_world_log, expone GET /ping y un widget de dashboard.",
+  "permissions": ["db:schema", "db:write", "db:read", "hooks:register", "routes:register", "cron:register", "ui:iframe"],
   "hooks": ["postCreateCI"],
-  "uiSlots": ["DashboardWidget"]
+  "routes": [
+    { "method": "GET", "path": "/ping", "requiresAuth": true }
+  ],
+  "cronJobs": [
+    { "name": "heartbeat", "schedule": "*/30 * * * *" }
+  ],
+  "uiSlots": ["DashboardWidget"],
+  "allowedHosts": []
 }
 ```
 
@@ -247,6 +342,7 @@ CREATE TABLE IF NOT EXISTS plg_hello_world_log (
   ci_id       uuid NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS plg_hello_world_log_ci_idx ON plg_hello_world_log (ci_id);
 ```
 
 **`hooks/post-create-ci.js`**
@@ -261,17 +357,54 @@ async function handler(data) {
 }
 ```
 
-**`ui/widget.html`** — ver el ejemplo de [§6](#6-ui-del-plugin-iframe--postmessage).
+**`routes/get_ping.js`** — ver [§4.1](#41-escribir-una-ruta-rest).
+
+**`cron/heartbeat.js`** — ver [§4.2](#42-escribir-un-cron-job).
+
+**`ui/index.html`** — ver el ejemplo de [§6](#6-ui-del-plugin-iframe--postmessage).
 
 ---
 
-## 9. Empaquetar y subir
+## 9. Acceso a la base de datos: `prisma` del sandbox
 
-1. **Empaquetar** (comprime el contenido en la raíz, no la carpeta contenedora):
+Dentro de cualquier handler (hook, ruta o cron) dispones de un objeto **`prisma`**. **No** es el cliente Prisma del core: es un **proxy con scope** que enruta todas las consultas a través del rol de base de datos `cmdb_plugin`, que solo puede tocar objetos `plg_*` (tus propias tablas). El cliente Prisma del core **nunca** se expone al plugin.
+
+El proxy ofrece únicamente cuatro métodos de SQL crudo, cada uno protegido por un permiso (gate):
+
+| Método | Permiso requerido | Uso |
+|--------|-------------------|-----|
+| `prisma.$queryRaw` (tagged template) | `db:read` | Lectura parametrizada |
+| `prisma.$queryRawUnsafe(sql)` | `db:read` | Lectura con SQL en string |
+| `prisma.$executeRaw` (tagged template) | `db:write` | Escritura/DDL parametrizada |
+| `prisma.$executeRawUnsafe(sql)` | `db:write` | Escritura con SQL en string |
+
+- `db:read` habilita los dos métodos de lectura; `db:write` (o `db:schema`) habilita además los de escritura. Llamar a un método sin el permiso declarado lanza `PLUGIN_PERM`.
+- Como el SQL se ejecuta bajo el rol `cmdb_plugin`, una consulta contra una tabla core fallará a nivel de base de datos aunque el código intente acceder a ella.
+- **No hay métodos de modelo** (`prisma.user.findMany`, etc.): solo SQL crudo sobre tus tablas `plg_*`.
+
+```js
+// Lectura (requiere db:read)
+const rows = await prisma.$queryRawUnsafe(
+  "SELECT count(*)::int AS n FROM plg_hello_world_log"
+);
+
+// Escritura parametrizada (requiere db:write)
+await prisma.$executeRaw`
+  INSERT INTO plg_hello_world_log (ci_id) VALUES (${ciId}::uuid)
+`;
+```
+
+> Requiere que el administrador haya configurado `PLUGIN_DATABASE_URL` (rol `cmdb_plugin`, ver `scripts/create-plugin-db-role.sql`). Si no está configurada, el acceso a `prisma` desde el plugin está deshabilitado.
+
+---
+
+## 10. Empaquetar y subir
+
+1. **Empaquetar** (comprime el contenido en la raíz, no la carpeta contenedora). El único formato aceptado es **`.zip`**:
 
 ```bash
 cd mi-plugin/
-zip -r ../hello-world.zip manifest.json migration.sql hooks/ ui/
+zip -r ../hello-world.zip manifest.json migration.sql hooks/ routes/ cron/ ui/
 # Verifica que manifest.json está en la raíz:
 unzip -l ../hello-world.zip | grep manifest.json   # debe mostrar "manifest.json", no "mi-plugin/manifest.json"
 ```
@@ -291,4 +424,4 @@ curl -sk -X POST https://localhost/api/plugins/$ID/install  -H "Authorization: B
 curl -sk -X POST https://localhost/api/plugins/$ID/activate -H "Authorization: Bearer $ADMIN_TOKEN"
 ```
 
-Límites: el bundle no puede superar `PLUGIN_MAX_SIZE_MB` (50 MB por defecto) y debe ser un `.zip`/`.tar.gz`/`.tgz` real (se valida por magic bytes). El `id` del manifest debe ser único; subir uno ya registrado devuelve `409`.
+Límites: el bundle no puede superar `PLUGIN_MAX_SIZE_MB` (50 MB por defecto) y debe ser un **`.zip`** real (se valida por extensión y magic bytes `50 4B 03 04`; se rechazan symlinks). El `id` del manifest debe ser único; subir uno ya registrado devuelve `409`.

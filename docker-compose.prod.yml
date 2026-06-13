@@ -120,6 +120,7 @@ services:
       PLUGIN_REQUIRE_APPROVAL_PROD: ${PLUGIN_REQUIRE_APPROVAL_PROD:-true}
       PLUGIN_ENABLE_MARKETPLACE: ${PLUGIN_ENABLE_MARKETPLACE:-true}
       PLUGIN_MARKETPLACE_URL: ${PLUGIN_MARKETPLACE_URL:-}
+      PLUGIN_SIGNING_PUBLIC_KEY: ${PLUGIN_SIGNING_PUBLIC_KEY:-}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z

@@ -272,26 +272,24 @@ export class PluginValidator {
     return actual === expectedHash;
   }
 
-  // Rejects symlinks, path traversal, executables, postinstall scripts
+  // Rejects symlinks and non-zip files. Extraction is unzip-only, so we accept
+  // ONLY .zip (a .tar.gz would pass an ext check but fail at extraction → L-07).
   static validateUploadedFile(filePath: string, originalName: string): void {
     const ext = path.extname(originalName).toLowerCase();
-    if (!['.gz', '.zip', '.tgz'].includes(ext)) {
-      throw new Error('PLUGIN_INVALID_EXT: only .tar.gz / .tgz / .zip allowed');
+    if (ext !== '.zip') {
+      throw new Error('PLUGIN_INVALID_EXT: only .zip bundles are supported');
     }
     const stat = fs.lstatSync(filePath);
     if (stat.isSymbolicLink()) {
       throw new Error('PLUGIN_SYMLINK: symbolic links are not allowed');
     }
-    // Check magic bytes: gz=1f8b, zip=504b
+    // Check magic bytes: zip = 50 4b 03 04
     const fd = fs.openSync(filePath, 'r');
     const magic = Buffer.alloc(4);
     fs.readSync(fd, magic, 0, 4, 0);
     fs.closeSync(fd);
-    const hex = magic.toString('hex');
-    const isGzip = hex.startsWith('1f8b');
-    const isZip = hex.startsWith('504b');
-    if (!isGzip && !isZip) {
-      throw new Error('PLUGIN_MAGIC_BYTES: file is not a valid gzip or zip archive');
+    if (!magic.toString('hex').startsWith('504b')) {
+      throw new Error('PLUGIN_MAGIC_BYTES: file is not a valid zip archive');
     }
   }
 

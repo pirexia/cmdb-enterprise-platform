@@ -83,6 +83,8 @@ function buildFrozenContext(
     clearInterval: undefined,
     process: undefined,      // blocked
     require: undefined,      // blocked
+    eval: undefined,         // blocked — align with documented blocklist
+    Function: undefined,     // blocked — prevents Function() constructor use
     __filename: undefined,
     __dirname: undefined,
     module: undefined,

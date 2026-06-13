@@ -46,6 +46,7 @@ import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
+import { emitHook, initializePluginEngine } from './modules/plugins/index';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -1044,6 +1045,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
           await prisma.$executeRaw`UPDATE "trusted_devices" SET last_seen_at = now() WHERE token = ${deviceToken}`;
           const t1 = signFullToken();
           setAuthCookie(res, t1);
+          try { await emitHook('postLogin', { userId: user!.id, role: user!.role, email: user!.email }); } catch(e) { console.error('[plugin-hook] postLogin', e); }
           res.json({ token: t1, user: userObj() });
           return;
         }
@@ -1066,6 +1068,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
       const t2 = signFullToken();
       setAuthCookie(res, t2);
+      try { await emitHook('postLogin', { userId: user!.id, role: user!.role, email: user!.email }); } catch(e) { console.error('[plugin-hook] postLogin', e); }
       res.json({ token: t2, user: userObj(), ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
       return;
     }
@@ -1076,6 +1079,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const limitedPayload: JwtPayload = { id: user.id, username: user.username, email: user.email, role: user.role as UserRole, mfaSetupRequired: true };
       const limitedToken = jwt.sign(limitedPayload, JWT_SECRET_VALUE, { expiresIn: '15m', algorithm: 'HS256' as const });
       setAuthCookie(res, limitedToken);
+      // postLogin not emitted for limited token — MFA setup not complete yet
       res.json({ token: limitedToken, user: userObj(), requireAction: 'MFA_SETUP_REQUIRED' });
       return;
     }
@@ -1085,6 +1089,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       await prisma.$executeRaw`UPDATE "users" SET mfa_prompted_at = now(), updated_at = now() WHERE id = ${user.id}::uuid`;
       const t4a = signFullToken();
       setAuthCookie(res, t4a);
+      try { await emitHook('postLogin', { userId: user.id, role: user.role, email: user.email }); } catch(e) { console.error('[plugin-hook] postLogin', e); }
       res.json({ token: t4a, user: userObj(), requireAction: 'MFA_SETUP_SUGGESTED' });
       return;
     }
@@ -1092,6 +1097,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     // Normal login (non-admin, already prompted before or MFA skipped)
     const t4b = signFullToken();
     setAuthCookie(res, t4b);
+    try { await emitHook('postLogin', { userId: user.id, role: user.role, email: user.email }); } catch(e) { console.error('[plugin-hook] postLogin', e); }
     res.json({ token: t4b, user: userObj() });
 
   } catch (error) {
@@ -1490,6 +1496,13 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     const infraErr = await validateInfraFieldsForType(ciTypeId, cpuModel, vCpus);
     if (infraErr) { res.status(400).json({ error: infraErr }); return; }
 
+    // Plugin pre-hook — may cancel creation
+    const preCreateCI = await emitHook('preCreateCI', { body: req.body, user: req.user }, 'pre');
+    if (preCreateCI?.cancel) {
+      res.status(409).json({ error: preCreateCI.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     // ── EOL auto-populate from endoflife.date if dates not provided ───────────
     let resolvedEolDate:     Date | null = eolDateRaw  ? new Date(eolDateRaw)  : null;
     let resolvedSupportDate: Date | null = eosDateRaw  ? new Date(eosDateRaw)  : null;
@@ -1552,6 +1565,9 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', ci.id);
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postCreateCI', { id: ci.id, body: req.body, user: req.user }); } catch(e) { console.error('[plugin-hook] postCreateCI', e); }
 
     res.status(201).json(flattenCI(ci));
   } catch (error: unknown) {
@@ -1746,6 +1762,13 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
     if (firmwareVersion    !== undefined) updateData.firmwareVersion    = firmwareVersion    || null;
     if (dns                !== undefined) updateData.dns                = dns                || null;
 
+    // Plugin pre-hook — may cancel update
+    const preUpdateCI = await emitHook('preUpdateCI', { id, body: req.body, user: req.user }, 'pre');
+    if (preUpdateCI?.cancel) {
+      res.status(409).json({ error: preUpdateCI.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     const ci = await prisma.cI.update({
       where: { id },
       data: updateData,
@@ -1759,6 +1782,9 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', id);
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postUpdateCI', { id, body: req.body, user: req.user }); } catch(e) { console.error('[plugin-hook] postUpdateCI', e); }
 
     res.json(flattenCI(ci));
   } catch (error: unknown) {
@@ -1892,6 +1918,13 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id
   const id = req.params.id as string;
 
   try {
+    // Plugin pre-hook — may cancel deletion
+    const preDeleteCI = await emitHook('preDeleteCI', { id, user: req.user }, 'pre');
+    if (preDeleteCI?.cancel) {
+      res.status(409).json({ error: preDeleteCI.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     // Check if CI exists
     const ci = await prisma.cI.findUnique({ where: { id }, select: { name: true } });
     if (!ci) {
@@ -1914,6 +1947,9 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id
 
     // Purge RAG asynchronously (don't block the response — RAG is eventually consistent)
     void purgeEntityFromRag('ci', id).catch((e) => console.error('[DELETE /api/cis/:id] RAG purge error:', e));
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postDeleteCI', { id, user: req.user }); } catch(e) { console.error('[plugin-hook] postDeleteCI', e); }
 
     res.json({ id, message: `CI "${ci.name}" deleted successfully` });
   } catch (error) {
@@ -2022,6 +2058,13 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
   try {
     const { contractNumber, startDate, endDate, vendorId, parentContractId, ciIds } = contractParsed.data;
 
+    // Plugin pre-hook — may cancel creation
+    const preCreateContract = await emitHook('preCreateContract', { body: req.body, user: req.user }, 'pre');
+    if (preCreateContract?.cancel) {
+      res.status(409).json({ error: preCreateContract.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     const contract = await prisma.contract.create({
       data: {
         contractNumber,
@@ -2042,6 +2085,9 @@ app.post('/api/contracts', authenticateToken, requireAdmin, async (req: Request,
     // Re-index the contract ROOT (addenda roll up to their root)
     const contractRootId = await getContractRoot(contract.id);
     void queueEntityForIndexing('contract', contractRootId);
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postCreateContract', { id: contract.id, body: req.body, user: req.user }); } catch(e) { console.error('[plugin-hook] postCreateContract', e); }
 
     res.status(201).json(contract);
   } catch (error: unknown) {
@@ -5785,6 +5831,13 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
   }
 
   try {
+    // Plugin pre-hook — may cancel upload
+    const preCreateDocument = await emitHook('preCreateDocument', { body: req.body, user: req.user }, 'pre');
+    if (preCreateDocument?.cancel) {
+      res.status(409).json({ error: preCreateDocument.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     const parsedCiIds: string[] = ciIds ? JSON.parse(ciIds) : [];
     const parsedContractIds: string[] = contractIds ? JSON.parse(contractIds) : [];
 
@@ -5808,6 +5861,10 @@ app.post('/api/documents', authenticateToken, requireAdmin, upload.single('file'
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE','Document',${docId},${req.user!.email},now())`;
 
     void queueDocumentForIndexing(docId, 1);
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postCreateDocument', { id: docId, body: req.body, user: req.user }); } catch(e) { console.error('[plugin-hook] postCreateDocument', e); }
+
     res.status(201).json({ id: docId });
   } catch (e) {
     // Clean up uploaded file on DB error
@@ -7514,6 +7571,13 @@ app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
   if (!parsed.success) { res.status(400).json({ error: 'Invalid license data', details: parsed.error.flatten() }); return; }
   const d = parsed.data;
   try {
+    // Plugin pre-hook — may cancel creation
+    const preCreateLicense = await emitHook('preCreateLicense', { body: req.body, user: req.user }, 'pre');
+    if (preCreateLicense?.cancel) {
+      res.status(409).json({ error: preCreateLicense.reason ?? 'Blocked by plugin' });
+      return;
+    }
+
     const license = await prisma.license.create({
       data: {
         name: d.name,
@@ -7537,6 +7601,9 @@ app.post('/api/licenses', authenticateToken, requireAdmin, async (req, res) => {
     // Re-index the license ROOT (addenda roll up to their root)
     const licenseRootId = await getLicenseRoot(license.id);
     void queueEntityForIndexing('license', licenseRootId);
+
+    // Plugin post-hook — fire-and-forget, must not fail the response
+    try { await emitHook('postCreateLicense', { id: license.id, body: req.body, user: req.user }); } catch(e) { console.error('[plugin-hook] postCreateLicense', e); }
 
     res.status(201).json(license);
   } catch (e) { res.status(500).json({ error: 'Failed to create license' }); }
@@ -8011,13 +8078,18 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
 // TLS is terminated by the nginx gateway; the backend always starts as plain
 // HTTP on PORT (default 3000) and is NOT exposed to the host.
 
-app.listen(PORT, () => {
-  console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
-  console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
-});
+(async () => {
+  // Mount plugin router and re-activate ACTIVE plugins before accepting traffic.
+  await initializePluginEngine(app, prisma);
 
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Closing Prisma connection...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+  app.listen(PORT, () => {
+    console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
+    console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('SIGTERM received. Closing Prisma connection...');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+})();

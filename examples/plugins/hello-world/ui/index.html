@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hello World — widget</title>
+  <style>
+    body { font: 13px/1.5 system-ui, sans-serif; margin: 0; padding: 12px; color: #e2e8f0; background: transparent; }
+    .card { border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 12px 14px; }
+    .n { font-size: 22px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div id="title">Hello World</div>
+    <div class="n" id="count">…</div>
+    <div id="meta"></div>
+  </div>
+  <script>
+    // Recibe cmdb:init del host (token null por diseño — la cookie de sesión viaja sola)
+    window.addEventListener("message", function (e) {
+      if (e.origin !== window.location.origin) return;
+      if (e.data && e.data.type === "cmdb:init") {
+        document.getElementById("meta").textContent =
+          "locale: " + e.data.locale + " · slot: " + (e.data.context && e.data.context.slot || "—");
+        // Llama a la ruta propia del plugin (cookie de sesión reutilizada)
+        fetch("/api/ext/hello-world/ping", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) { document.getElementById("count").textContent = (d.logged != null ? d.logged : "?") + " CIs"; })
+          .catch(function () { document.getElementById("count").textContent = "—"; });
+        // Informa de la altura al host
+        parent.postMessage({ type: "cmdb:resize", height: document.body.scrollHeight }, window.location.origin);
+      }
+    });
+  </script>
+</body>
+</html>

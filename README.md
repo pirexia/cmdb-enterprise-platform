@@ -59,6 +59,7 @@
 | 💾 **Capacity Planning** | Documentación LVM dedicado para /home (Podman rootless), tablas de dimensionamiento por volumen de CIs (1K, 5K, 20K+). |
 | 🏗️ **ISO 27001 Ready** | Usuario de servicio dedicado, permisos restrictivos (750/600), cgroupfs configuration para estabilidad RHEL/Podman. |
 | 🌐 **Dynamic Branding** | White-label: nombre de empresa, logo y colores corporativos configurables vía variables de entorno. |
+| 🧩 **Plugin Engine** (v2.8.0) | Motor de extensiones para ADMIN: instalar/activar/desinstalar plugins de terceros con sandbox `vm.Script`, gate de admisión (firma Ed25519 + checksum SHA-256 + aprobación 4-eyes en prod), 12 endpoints REST, hooks del ciclo de vida del core, migraciones DDL aisladas (rol DB restringido + prefijo `plg_`), UI por iframe en 7 slots, marketplace y panel `/plugins/admin`. Ver [docs/PLUGIN_ENGINE.md](docs/PLUGIN_ENGINE.md). |
 
 ---
 
@@ -135,6 +136,9 @@ Para una comprensión completa del sistema, su despliegue y uso, consulta la doc
 | Guía de Despliegue | [DEPLOY.md](DEPLOY.md) | [DEPLOY.en.md](DEPLOY.en.md) |
 | Arquitectura Técnica | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | [ARCHITECTURE.en.md](docs/ARCHITECTURE.en.md) |
 | Auditoría de Seguridad | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | [SECURITY_AUDIT.md](SECURITY_AUDIT.md) *(en inglés)* |
+| Plugin Engine — Referencia técnica | [PLUGIN_ENGINE.md](docs/PLUGIN_ENGINE.md) | *(bilingüe)* |
+| Plugin Engine — Guía de desarrollo | [PLUGIN_DEVELOPMENT_GUIDE.md](docs/PLUGIN_DEVELOPMENT_GUIDE.md) | *(bilingüe)* |
+| Plugin Engine — Checklist de seguridad | [PLUGIN_SECURITY_CHECKLIST.md](docs/PLUGIN_SECURITY_CHECKLIST.md) | *(bilingüe)* |
 
 ---
 

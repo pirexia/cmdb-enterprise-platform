@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import PluginSlot from "@/components/plugins/PluginSlot";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -346,6 +347,9 @@ export default function DashboardPage() {
 
         {/* Contracts Widget */}
         <ContractsWidget contracts={contracts} loading={loading} />
+
+        {/* Plugin DashboardWidget slots */}
+        <PluginSlot slotName="DashboardWidget" />
 
         {/* Quick Tips */}
         <section className="border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-6">

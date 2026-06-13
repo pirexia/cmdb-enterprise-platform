@@ -46,7 +46,7 @@ import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
-import { emitHook } from './modules/plugins/index';
+import { emitHook, initializePluginEngine } from './modules/plugins/index';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -8078,13 +8078,18 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
 // TLS is terminated by the nginx gateway; the backend always starts as plain
 // HTTP on PORT (default 3000) and is NOT exposed to the host.
 
-app.listen(PORT, () => {
-  console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
-  console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
-});
+(async () => {
+  // Mount plugin router and re-activate ACTIVE plugins before accepting traffic.
+  await initializePluginEngine(app, prisma);
 
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received. Closing Prisma connection...');
-  await prisma.$disconnect();
-  process.exit(0);
-});
+  app.listen(PORT, () => {
+    console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
+    console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('SIGTERM received. Closing Prisma connection...');
+    await prisma.$disconnect();
+    process.exit(0);
+  });
+})();

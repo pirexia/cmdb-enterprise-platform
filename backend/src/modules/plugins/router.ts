@@ -177,10 +177,10 @@ const pluginUpload = multer({
   limits: { fileSize: PLUGIN_MAX_SIZE_MB * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (['.gz', '.zip', '.tgz'].includes(ext)) {
+    if (ext === '.zip') {
       cb(null, true);
     } else {
-      cb(new Error('PLUGIN_INVALID_EXT: only .tar.gz / .tgz / .zip allowed'));
+      cb(new Error('PLUGIN_INVALID_EXT: only .zip bundles are supported'));
     }
   },
 }).single('plugin');

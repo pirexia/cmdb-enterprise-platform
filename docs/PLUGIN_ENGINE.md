@@ -1,6 +1,6 @@
 # Motor de Plugins (Plugin Engine) — Referencia técnica
 
-> Versión: v2.8.0 · Audiencia: arquitectos, desarrolladores backend, equipo de plataforma
+> Versión: v2.8.1 · Audiencia: arquitectos, desarrolladores backend, equipo de plataforma
 > Documentos relacionados: [PLUGIN_DEVELOPMENT_GUIDE.md](PLUGIN_DEVELOPMENT_GUIDE.md) (cómo construir un plugin) · [PLUGIN_SECURITY_CHECKLIST.md](PLUGIN_SECURITY_CHECKLIST.md) (gate de admisión 4-eyes)
 
 Esta guía describe **lo que el motor hace realmente** según el código fuente en `backend/src/modules/plugins/`. No describe capacidades planificadas que no estén implementadas; las brechas conocidas se señalan explícitamente en la sección [Estado de implementación](#estado-de-implementación).
@@ -9,13 +9,15 @@ Esta guía describe **lo que el motor hace realmente** según el código fuente 
 
 ## 1. Visión general
 
-El Motor de Plugins permite a usuarios con rol **ADMIN** extender el CMDB sin modificar el core ni romper sus garantías de seguridad y compliance. Un plugin es un bundle (`.zip` / `.tar.gz`) que puede aportar:
+El Motor de Plugins permite a usuarios con rol **ADMIN** extender el CMDB sin modificar el core ni romper sus garantías de seguridad y compliance. Un plugin es un bundle **`.zip`** (único formato aceptado — extracción unzip-only) que puede aportar:
 
 - **Hooks** del ciclo de vida del core (p. ej. ejecutar lógica tras crear un CI).
 - **Migraciones DDL aisladas** que crean tablas propias con prefijo `plg_<id>_`.
 - **Cron jobs** programados (node-cron).
-- **UI por iframe** embebida en slots predefinidos del frontend.
-- **Rutas REST** declaradas en el manifest (registro previsto; ver [Estado de implementación](#estado-de-implementación)).
+- **UI por iframe** embebida en slots predefinidos del frontend (servida en `GET /api/plugins/:id/ui`).
+- **Rutas REST** declaradas en el manifest, servidas dinámicamente bajo `/api/ext/:pluginId/*`.
+
+> **Runtime cableado (v2.8.1).** El registro en vivo de hooks/cron/routes, el proxy Prisma con scope y el servido de UI están **implementados**. Ver [Estado de implementación](#11-estado-de-implementación).
 
 El módulo vive en `backend/src/modules/plugins/` siguiendo la **convención de módulos** del repo (router, schemas, middleware, queries, audit, engine), montado desde `index.ts`. No añade código a `index.ts` salvo los puntos de emisión de hooks y la llamada de arranque.
 
@@ -68,7 +70,7 @@ La **frontera de seguridad real es el gate de admisión**, una combinación de c
 |---------|-------|--------------|
 | Firma **Ed25519** | `router.ts` → `crypto.verify` con `PLUGIN_SIGNING_PUBLIC_KEY` | Que el bundle proviene de un editor de confianza (firma sobre el checksum) |
 | Checksum **SHA-256** | `PluginValidator.validateChecksum` | Que el `.zip` no se alteró tras la subida |
-| **Magic bytes** + extensión | `PluginValidator.validateUploadedFile` | Que el archivo es realmente gzip (`1f8b`) o zip (`504b`); rechaza symlinks |
+| **Magic bytes** + extensión | `PluginValidator.validateUploadedFile` | Que el archivo es realmente un zip (`504b`) y tiene extensión `.zip`; rechaza symlinks (la extracción es unzip-only) |
 | **Allowlist DDL** + prefijo `plg_` | `PluginValidator.validateMigrationSql` | Que la migración no toca tablas core |
 | **Checklist de revisión** humana | [PLUGIN_SECURITY_CHECKLIST.md](PLUGIN_SECURITY_CHECKLIST.md) | Que el código no exfiltra PII, no accede a `process`/`require`/`fs`, no hace `fetch` a hosts no declarados |
 | Aprobación **4-eyes** en producción | `router.ts` → `/:id/activate` | Que un segundo ADMIN distinto al solicitante autoriza la activación |
@@ -78,7 +80,7 @@ La **frontera de seguridad real es el gate de admisión**, una combinación de c
 `SandboxExecutor.runHandler` (en `engine.ts`) ejecuta el código del plugin con `vm.Script` sobre un **contexto congelado** (`Object.freeze` antes de `vm.createContext`). El contexto expone deliberadamente un subconjunto mínimo:
 
 - **Disponible:** `prisma` (proxy), `logger`, `config` (congelado), `fetch` (restringido), `console`, `JSON`, `Math`, `Date`, `parseInt`, `parseFloat`, `isNaN`, `isFinite`, `encodeURIComponent`, `decodeURIComponent`, y los datos del evento en `__pluginData__`.
-- **Bloqueado (forzado a `undefined`):** `process`, `require`, `module`, `exports`, `global`, `globalThis`, `__filename`, `__dirname`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`. No se inyecta `fs` ni `child_process`.
+- **Bloqueado (forzado a `undefined`):** `process`, `require`, `module`, `exports`, `global`, `globalThis`, `__filename`, `__dirname`, `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, **`eval`** y **`Function`** (constructor). No se inyecta `fs` ni `child_process`.
 - **Timeout:** `SANDBOX_TIMEOUT_MS = 5000` ms. Al superarlo se lanza `PLUGIN_TIMEOUT`.
 - **`fetch` restringido (anti-SSRF, OWASP A10):** el wrapper `safeFetch` valida el `origin` de cada URL contra `allowedHosts` del manifest; si no coincide, lanza `PLUGIN_SSRF`.
 
@@ -113,8 +115,8 @@ stateDiagram-v2
 |--------|-------------|-------------------------|
 | `UPLOADED` | Bundle subido y registrado; manifest parseado | `VALIDATED`, `ERROR` |
 | `VALIDATED` | Checksum (+ firma si presente) verificados; manifest re-validado | `INSTALLED`, `ERROR` |
-| `INSTALLED` | Migración ejecutada; bundle extraído a `installed/` | `ACTIVE`, `UNINSTALLING`, `ERROR` |
-| `ACTIVE` | Hooks/cron registrados; plugin en ejecución | `INACTIVE`, `ERROR` |
+| `INSTALLED` | Migración ejecutada; bundle extraído a `installed/`; hooks/cron/routes parseados a sus tablas | `ACTIVE`, `UNINSTALLING`, `ERROR` |
+| `ACTIVE` | Hooks/cron/routes registrados en vivo; plugin en ejecución | `INACTIVE`, `ERROR` |
 | `INACTIVE` | Desactivado; código presente pero sin registrar | `ACTIVE`, `UNINSTALLING` |
 | `ERROR` | Fallo en validación, instalación o reactivación; `lastError` poblado | `UNINSTALLING`, `VALIDATED` |
 | `UNINSTALLING` | Estado terminal durante el borrado | — |
@@ -166,7 +168,7 @@ Tareas programadas del plugin.
 | `lastRunAt`, `nextRunAt` | DateTime? | Última/próxima ejecución |
 
 ### `PluginRoute` (`plugin_routes`)
-Rutas REST declaradas por el plugin (registro de metadatos).
+Rutas REST del plugin; al activar se cargan en el `RouteRegistry` y se sirven en `/api/ext/:pluginId/<path>`.
 
 | Campo | Tipo | Notas |
 |-------|------|-------|
@@ -251,6 +253,17 @@ Todas las rutas se montan bajo `/api/plugins` y aplican `pluginRateLimiter` (100
 
 **Auditoría:** toda escritura inserta un registro en `audit_logs` con `entity='PLUGIN'` vía `pluginAudit()`. Acciones: `PLUGIN_UPLOADED`, `PLUGIN_VALIDATED`, `PLUGIN_VALIDATION_FAILED`, `PLUGIN_INSTALLED`, `PLUGIN_ACTIVATED`, `PLUGIN_DEACTIVATED`, `PLUGIN_UNINSTALLED`, `PLUGIN_CONFIG_UPDATED`, `PLUGIN_ERROR`.
 
+### Endpoints dinámicos servidos por el runtime (v2.8.1)
+
+Además del router de gestión, dos routers atienden el tráfico en vivo de los plugins activos. **No** requieren rol ADMIN: aplican la autenticación que corresponda según el caso.
+
+| Método | Path | Router | Auth | Descripción |
+|--------|------|--------|------|-------------|
+| (según ruta) | `/api/ext/:pluginId/<path>` | `createPluginExtRouter` | por ruta | **Rutas dinámicas del plugin.** El dispatcher empareja `método + path` contra el `RouteRegistry` en vivo y ejecuta el handler en el sandbox. Aplica `requiresAuth`/`requiredRole` de cada ruta y el rate-limit del módulo. `404` si no hay coincidencia |
+| `GET`/`HEAD` | `/api/plugins/:id/ui[/*]` | `createPluginPublicRouter` | sesión válida (cualquier rol) | **UI del plugin.** Sirve `installed/<id>/ui/*` (por defecto `index.html`) con CSP estricta; valida `?slot` contra `manifest.uiSlots`. Montado **antes** del router de gestión |
+
+> El `RouteRegistry` **no** monta/desmonta rutas de Express dinámicamente (Express 5 no lo permite de forma limpia): un único dispatcher en `/api/ext/:pluginId/*` empareja contra el registro, lo que sí es seguro de modificar en vivo. El emparejamiento es exacto por método + path (sin patrones de parámetros en v2.8.1).
+
 ### Aprobación 4-eyes (activación en producción)
 
 Solo se exige cuando `NODE_ENV === 'production'` **y** `PLUGIN_REQUIRE_APPROVAL_PROD === 'true'`. El `approvalToken` es un JWT (firmado con el `JWT_SECRET` de la plataforma) que debe:
@@ -299,11 +312,13 @@ Validado por origen (`event.origin === window.location.origin`) y por fuente (so
 
 1. Monta el router de gestión en `/api/plugins`.
 2. Lee los plugins en estado `ACTIVE` (`getActivePlugins`, incluye hooks/cron/routes). Si las tablas aún no existen (primer arranque antes de migrar), avisa y sale sin error.
-3. Por cada plugin ACTIVE:
-   - **Re-registra hooks** activos en el `HookRegistry`, envolviendo cada `handlerCode` en el `SandboxExecutor`.
-   - **Re-registra cron jobs** activos con `node-cron`; cada ejecución corre en el sandbox y actualiza `lastRunAt`.
-   - Marca sus rutas como montadas (`routeRegistry.mount`).
+3. Por cada plugin ACTIVE invoca `pluginRuntime.registerPlugin(plugin)`, que:
+   - **Re-registra hooks** activos en el `HookRegistry`, envolviendo cada `handlerCode` en el `SandboxExecutor` (con el proxy Prisma con scope y los `allowedHosts`/`config`/`permissions` del plugin).
+   - **Re-registra cron jobs** activos con `node-cron` (valida el `schedule`; los inválidos se omiten con log); cada ejecución corre en el sandbox y actualiza `lastRunAt`.
+   - **Añade sus rutas** al `RouteRegistry` (`routeRegistry.add`), que el dispatcher de `/api/ext/:pluginId/*` consulta en cada petición.
 4. Si un plugin falla al reactivarse → se marca `ERROR` (con `lastError`) y se audita `PLUGIN_ERROR`, **sin bloquear el arranque** del resto.
+
+El mismo `registerPlugin` se ejecuta en `POST /:id/activate`; `pluginRuntime.unregisterPlugin(dbId, pluginId)` (en `deactivate`/`uninstall`) deshace las tres registraciones: limpia el `HookRegistry`, detiene los cron del plugin y elimina sus rutas del `RouteRegistry`.
 
 Este diseño cumple el RTO de ISO 22301: un fallo de plugin no impide que la aplicación arranque.
 
@@ -323,22 +338,39 @@ Bajo `PLUGIN_STORAGE_PATH` (volumen `cmdb-plugins`):
 
 ## 10. Aislamiento de migraciones (D2)
 
-- Las migraciones (`migration.sql` en el bundle) las ejecuta `MigrationRunner` vía `execFile('psql', ...)` (nunca `exec` — sin inyección de shell), con la conexión `PLUGIN_DATABASE_URL` (rol `cmdb_plugin`). En desarrollo, si no está definida, cae a `DATABASE_URL`.
-- `PluginValidator.validateMigrationSql` aplica una **allowlist DDL**: solo `CREATE TABLE`/`CREATE INDEX`/`CREATE UNIQUE INDEX`/`INSERT INTO plg_*`/comentarios. Rechaza `DROP`/`TRUNCATE`/`ALTER`/`DELETE` sobre tablas que no empiecen por `plg_`. Toda `CREATE TABLE` debe usar el prefijo `plg_<plugin-id>_`.
+- Las migraciones (`migration.sql` en el bundle) las ejecuta `MigrationRunner` vía `execFile('psql', ...)` (nunca `exec` — sin inyección de shell), con la conexión `PLUGIN_DATABASE_URL` (rol `cmdb_plugin`). Si `PLUGIN_DATABASE_URL` no está configurada, el runner **rechaza** ejecutar la migración (no hay fallback al `DATABASE_URL` de superusuario del core).
+- `PluginValidator.validateMigrationSql` aplica una **allowlist DDL** sobre el SQL con comentarios y literales eliminados: rechaza `DROP TABLE`/`DROP INDEX` (y demás `DROP`), `TRUNCATE`, `ALTER TABLE`, `DELETE FROM` y `UPDATE` cuyo destino no empiece por `plg_`, y prohíbe `GRANT`/`REVOKE` por completo. Toda `CREATE TABLE` debe usar el prefijo `plg_<plugin-id>_`.
 - **Down-migration:** si el bundle incluye `down.sql` se ejecuta; si no, el runner genera automáticamente `DROP TABLE` para todas las tablas `plg_<id>_*` (consultando `pg_tables`).
 - **Backup previo:** antes de la down-migration, el uninstall vuelca a JSON todas las tablas `plg_*` del plugin y registra un `PluginDataBackup`.
 
 El rol `cmdb_plugin` se crea con `scripts/create-plugin-db-role.sql` (ver SYSADMIN_MANUAL): `GRANT CREATE` sobre `public` para crear objetos nuevos, **sin** privilegios `SELECT/UPDATE/DELETE` sobre tablas core.
 
+> El validador de DDL (`validateMigrationSql`) endurecido en v2.8.1 captura el identificador de destino de cada verbo peligroso (`DROP TABLE`/`DROP INDEX`/`TRUNCATE`/`ALTER TABLE`/`DELETE FROM`/`UPDATE`) y exige que empiece por `plg_`; `GRANT`/`REVOKE` quedan prohibidos por completo. El `MigrationRunner` **nunca** cae al `DATABASE_URL` del core: si `PLUGIN_DATABASE_URL` no está configurada, rechaza ejecutar la migración en lugar de usar credenciales de superusuario.
+
+### Proxy Prisma con scope en runtime (H-02)
+
+El acceso a datos **en tiempo de ejecución** (hooks, rutas, cron) usa el mismo rol restringido pero por una vía distinta a las migraciones: `buildPrismaProxy(permissions)` (en `engine.ts`) devuelve un objeto congelado que envuelve un `PrismaClient` ligado a `PLUGIN_DATABASE_URL`.
+
+- Expone solo SQL crudo: `$queryRaw`/`$queryRawUnsafe` (gate de capacidad `db:read`) y `$executeRaw`/`$executeRawUnsafe` (gate `db:write`/`db:schema`). Llamar a un método sin el permiso declarado lanza `PLUGIN_PERM`.
+- El **doble control** es deliberado: el permiso del manifest es la *capacidad* declarada; el rol `cmdb_plugin` es el *aislamiento* a nivel de base de datos (solo objetos `plg_*`). Un intento de leer una tabla core falla en el motor de base de datos aunque el código lo intente.
+- El **cliente Prisma del core nunca se entrega** al sandbox. Si `PLUGIN_DATABASE_URL` no está configurada, el proxy lanza al primer uso y el acceso a datos del plugin queda deshabilitado.
+
 ---
 
 ## 11. Estado de implementación
 
-Diferencias conocidas entre el diseño completo y el código actual (v2.8.0). Documentadas para evitar suponer capacidades inexistentes:
+### Resuelto en v2.8.1 — runtime cableado
 
-- **Endpoint `GET /api/plugins/:id/ui` — no implementado en backend.** El `PluginIframe` del frontend apunta a esta ruta, pero `router.ts` no la define. Hasta que se añada, los iframes de slot fallarán al cargar (mostrarán el estado de error del componente).
-- **Registro real de rutas de plugin (`PluginRoute`) — pendiente.** El `RouteRegistry` solo marca rutas como "montadas"; el montaje efectivo en Express no está implementado.
-- **Proxy de Prisma para el sandbox — pendiente.** En la reactivación, los handlers reciben `{}` como `prismaProxy` (comentario `prismaProxy — wired in T3` en `index.ts`). El acceso `db:read`/`db:write` desde un hook aún no está cableado al cliente real.
-- **`/api/plugins/:id/rollback` — `501 Not Implemented`** (placeholder explícito).
-- **`PLUGIN_SIGNING_PUBLIC_KEY`** lo lee `router.ts` para verificar firmas, pero **no** aparece en `.env.example` ni en los `docker-compose`. Debe configurarse manualmente si se usan plugins firmados.
-- **Respuesta de `GET /api/plugins`:** el backend devuelve `{ plugins: [...] }`, pero `frontend/app/plugins/admin/page.tsx` espera un array plano. El `PluginContext` sí maneja ambas formas; el panel admin podría no listar correctamente hasta alinear el shape.
+El runtime de ejecución está completo. Lo que en v2.8.0 figuraba como pendiente ya está implementado:
+
+- **Parseo del bundle a artefactos (`install`).** `parseBundleArtifacts` (en `router.ts`) lee del bundle extraído los handlers de cada hook/cron/route declarado en el manifest y los persiste en `PluginHook`/`PluginCronJob`/`PluginRoute`. Convención de ficheros: hooks en `hooks/<kebab(evento)>.js`, cron en `cron/<name>.js`, rutas en `routes/<método>_<slug(path)>.js`. **Si falta el fichero de un handler declarado, la instalación falla** (`PLUGIN_HANDLER_MISSING`).
+- **Registro en vivo (H-01) — resuelto.** `pluginRuntime.registerPlugin` (en `activate` y al arranque) inscribe hooks en el `HookRegistry`, agenda los cron con `node-cron` y añade las rutas al `RouteRegistry`. `unregisterPlugin` (en `deactivate`/`uninstall`) las desmonta.
+- **Rutas dinámicas de plugin (`PluginRoute`) — resuelto.** El dispatcher `createPluginExtRouter` sirve `/api/ext/:pluginId/*`, empareja contra el `RouteRegistry` y ejecuta el handler en el sandbox. Aplica `requiresAuth`/`requiredRole` por ruta. El handler recibe `{ method, path, query, body, user }` y devuelve `{ status?, body? }`.
+- **Proxy de Prisma con scope (H-02) — resuelto.** `buildPrismaProxy(permissions)` entrega a cada handler un `prisma` que solo expone `$queryRaw`/`$queryRawUnsafe` (gate `db:read`) y `$executeRaw`/`$executeRawUnsafe` (gate `db:write`), enrutados por un `PrismaClient` ligado a `PLUGIN_DATABASE_URL` (rol `cmdb_plugin`). El cliente Prisma del core **nunca** se expone (ver [§10](#10-aislamiento-de-migraciones-d2)).
+- **Endpoint `GET /api/plugins/:id/ui` (H-04) — resuelto.** `createPluginPublicRouter` sirve `installed/<id>/ui/*` (por defecto `index.html`) a cualquier usuario autenticado, con CSP estricta y validación de `?slot` contra `manifest.uiSlots`. El `src` del iframe (`/api/plugins/:id/ui?slot=<slot>`) ya carga correctamente.
+
+### Pendiente / diferido
+
+- **`POST /api/plugins/:id/rollback` — `501 Not Implemented`** (placeholder explícito; operación multi-paso aún no construida).
+- **Lows diferidos:** L-01, L-03, L-08, L-09 (ver `docs/security/` del release). No bloquean el funcionamiento del motor.
+- **`PLUGIN_SIGNING_PUBLIC_KEY`** lo lee `router.ts` para verificar firmas; configúrese manualmente en el entorno si se usan plugins firmados.

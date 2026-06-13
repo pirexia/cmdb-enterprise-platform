@@ -1,32 +1,33 @@
 import type { Application } from 'express';
 import { PrismaClient } from '@prisma/client';
-import {
-  hookRegistry,
-  cronRegistry,
-  routeRegistry,
-  lifecycleManager,
-  createSandboxExecutor,
-  createMigrationRunner,
-} from './engine.js';
+import { pluginRuntime, RuntimePlugin } from './engine.js';
 import { pluginAudit } from './audit.js';
 import { getActivePlugins, setPluginStatus } from './queries.js';
-import { createPluginRouter } from './router.js';
+import { createPluginRouter, createPluginPublicRouter, createPluginExtRouter } from './router.js';
 
 export { emitHook } from './engine.js';
 export { createPluginRouter };
 
-const PLUGIN_STORAGE_PATH = process.env.PLUGIN_STORAGE_PATH ?? '/var/lib/cmdb/plugins';
-
 /**
- * Called once from index.ts after all middleware/routes are set up.
- * Re-activates any plugins that were ACTIVE before a restart.
+ * Called once from index.ts after all core middleware/routes are set up.
+ * Mounts the plugin API (public UI + admin + dynamic ext routes) and
+ * re-activates any plugins that were ACTIVE before a restart.
  */
 export async function initializePluginEngine(
   app: Application,
   prisma: PrismaClient,
 ): Promise<void> {
-  // Mount the plugin management API
+  pluginRuntime.init(app, prisma);
+
+  // 1. Public UI assets (GET /api/plugins/:id/ui[/*]) — NOT behind requireAdmin.
+  //    Unmatched paths fall through to the admin router mounted next.
+  app.use('/api/plugins', createPluginPublicRouter(prisma));
+
+  // 2. Admin management API (requireAdmin on every route).
   app.use('/api/plugins', createPluginRouter(prisma));
+
+  // 3. Dynamic plugin routes dispatcher (/api/ext/:pluginId/*).
+  app.use('/api/ext', createPluginExtRouter(prisma));
 
   // Re-activate plugins that were ACTIVE before restart
   let active: Awaited<ReturnType<typeof getActivePlugins>>;
@@ -38,68 +39,14 @@ export async function initializePluginEngine(
     return;
   }
 
-  const sandbox = createSandboxExecutor(PLUGIN_STORAGE_PATH);
-  const migRunner = createMigrationRunner(PLUGIN_STORAGE_PATH);
-
   for (const plugin of active) {
     try {
-      // Re-register hooks
-      for (const hook of plugin.hooks.filter((h: { isActive: boolean }) => h.isActive)) {
-        hookRegistry.register(hook.event, {
-          pluginDbId: plugin.id,
-          pluginId: plugin.pluginId,
-          priority: hook.priority,
-          handler: async (data) => {
-            const manifest = plugin.manifest as { allowedHosts?: string[] };
-            return sandbox.runHandler(
-              hook.handlerCode,
-              'handler',
-              data,
-              {} /* prismaProxy — wired in T3 */,
-              console,
-              plugin.config as Record<string, unknown>,
-              manifest.allowedHosts ?? [],
-            );
-          },
-        });
-      }
-
-      // Re-register cron jobs (node-cron)
-      for (const job of plugin.cronJobs.filter((j: { isActive: boolean }) => j.isActive)) {
-        try {
-          const cron = await import('node-cron');
-          const task = cron.schedule(job.schedule, async () => {
-            try {
-              const manifest = plugin.manifest as { allowedHosts?: string[] };
-              await sandbox.runHandler(
-                job.handlerCode,
-                'handler',
-                {},
-                {},
-                console,
-                plugin.config as Record<string, unknown>,
-                manifest.allowedHosts ?? [],
-              );
-              await prisma.pluginCronJob.update({
-                where: { id: job.id },
-                data: { lastRunAt: new Date() },
-              });
-            } catch (err) {
-              console.error(`[plugin:${plugin.pluginId}] cron ${job.name} error:`, err);
-            }
-          });
-          cronRegistry.register(plugin.id, { pluginDbId: plugin.id, stop: () => task.stop() });
-        } catch (cronErr) {
-          console.error(`[plugin:${plugin.pluginId}] failed to re-register cron ${job.name}:`, cronErr);
-        }
-      }
-
-      routeRegistry.mount(app, plugin.id, plugin.pluginId);
+      pluginRuntime.registerPlugin(plugin as unknown as RuntimePlugin);
       console.info(`[plugin-engine] re-activated plugin: ${plugin.pluginId} v${plugin.version}`);
     } catch (err) {
       console.error(`[plugin-engine] failed to re-activate plugin ${plugin.pluginId}:`, err);
       await setPluginStatus(prisma, plugin.id, 'ERROR', (err as Error).message).catch(() => {});
-      await pluginAudit(prisma, 'PLUGIN_ERROR', plugin.pluginId, 'system', {
+      await pluginAudit(prisma, 'PLUGIN_ERROR', plugin.id, 'system', {
         description: `Re-activation failed: ${(err as Error).message}`,
       }).catch(() => {});
     }

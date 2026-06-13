@@ -13,11 +13,6 @@ module.exports = {
   testMatch: ['**/__tests__/**/*.test.ts'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   resolver: '<rootDir>/jest.resolver.js',
-  moduleNameMapper: {
-    // Resolve supertest from jest-tools when not in local node_modules
-    '^supertest$': '/tmp/jest-tools/node_modules/supertest',
-    '^supertest/(.*)$': '/tmp/jest-tools/node_modules/supertest/$1',
-  },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
@@ -29,7 +24,6 @@ module.exports = {
           strict: false,
           skipLibCheck: true,
           typeRoots: [
-            '/tmp/jest-tools/node_modules/@types',
             './node_modules/@types',
           ],
         },
@@ -42,6 +36,5 @@ module.exports = {
   testTimeout: 10000,
   modulePaths: [
     '<rootDir>/node_modules',
-    '/tmp/jest-tools/node_modules',
   ],
 };

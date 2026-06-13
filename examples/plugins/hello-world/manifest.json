@@ -1,0 +1,18 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "author": "Equipo Plataforma",
+  "license": "MIT",
+  "description": "Plugin de referencia: registra cada CI creado en plg_hello_world_log, expone GET /ping y un widget de dashboard.",
+  "permissions": ["db:schema", "db:write", "db:read", "hooks:register", "routes:register", "cron:register", "ui:iframe"],
+  "hooks": ["postCreateCI"],
+  "routes": [
+    { "method": "GET", "path": "/ping", "requiresAuth": true }
+  ],
+  "cronJobs": [
+    { "name": "heartbeat", "schedule": "*/30 * * * *" }
+  ],
+  "uiSlots": ["DashboardWidget"],
+  "allowedHosts": []
+}

@@ -1390,3 +1390,79 @@ The **Entity** column now has a search field that filters in real time by entity
 - Search is **case-insensitive**.
 - Accepts fragments: `SRV` matches `SRV-PROD-01`, `SRV-TEST-02`, etc.
 - Combines with existing date filters.
+
+---
+
+## 31. Plugin Management (v2.8.0) — ADMIN only
+
+> This section is exclusive to the **ADMIN** role. Plugins are third-party extensions; always run the [Plugin Security Checklist](PLUGIN_SECURITY_CHECKLIST.md) before activating one in production.
+
+The plugin panel (`/plugins/admin`) lets you install and govern CMDB extensions. A plugin goes through a **lifecycle** of states before it becomes operational.
+
+### 31.1 The plugin lifecycle
+
+```
+Uploaded → Validated → Installed → Active  ⇄  Inactive
+                                     └────────────────▶ (Uninstall)
+```
+
+| State | Meaning | Available action |
+|-------|---------|------------------|
+| **Uploaded** | The bundle has been uploaded | **Validate** |
+| **Validated** | Checksum and signature verified | **Install** |
+| **Installed** | Migration applied, files extracted | **Activate** / **Uninstall** |
+| **Active** | Running (hooks/cron active) | **Deactivate** |
+| **Inactive** | Paused, not uninstalled | **Activate** / **Uninstall** |
+| **Error** | Validation or startup failure | **Uninstall** |
+
+### 31.2 Upload a plugin
+
+1. Click **Upload Plugin** (top-right button).
+2. Select the plugin file (`.zip`, `.tar.gz` or `.tgz`, max 50 MB by default).
+3. The platform validates the **magic bytes**, extracts `manifest.json`, and registers the plugin in the **Uploaded** state.
+   - If `manifest.json` is missing or invalid, the upload is rejected with an explanatory message.
+   - If a plugin with the same identifier already exists, it is rejected (no duplicates).
+
+### 31.3 Validate
+
+Click **Validate** on the plugin row. The system:
+- Recomputes the **SHA-256 checksum** and compares it with the bundle's.
+- Verifies the **Ed25519 signature** (if the manifest includes one; requires a public key configured by the system administrator).
+- Re-validates the manifest.
+
+If everything passes → **Validated** state. If it fails (bad checksum/signature) → **Error** with the reason.
+
+### 31.4 Install
+
+Click **Install**. The system runs the plugin's **migration** (creates its `plg_…` tables with a restricted database role) and extracts the files. Result: **Installed** state.
+
+### 31.5 Activate (4-eyes in production)
+
+Click **Activate**. The plugin moves to **Active** and its hooks/cron start running.
+
+> **Dual approval (4-eyes) in production.** If the server is configured to require it, activation needs the **approval of a second ADMIN, different** from the requester. Coordinate with another administrator: the reviewer applies the [Security Checklist](PLUGIN_SECURITY_CHECKLIST.md) and provides their authorization. If you try to approve your own request, the system rejects it.
+
+### 31.6 Deactivate
+
+Click **Deactivate** on an **Active** plugin. It moves to **Inactive**: it stops running hooks/cron but keeps its data and files. This is the recommended action for **suspicious behavior** (do not uninstall — you would preserve the evidence).
+
+### 31.7 Uninstall
+
+Click **Uninstall** (available in **Installed**, **Inactive** or **Error**). The system:
+1. **Takes a JSON backup** of all the plugin's data (`plg_…` tables).
+2. Runs the **down-migration** (drops those tables).
+3. Deletes the plugin's files and registry record.
+
+> The backup is stored on the server for later recovery or analysis.
+
+### 31.8 Configure
+
+Click **Configuration** to open the plugin's config editor (JSON key/value pairs). Changes are **merged** into the existing configuration and audited. The plugin receives this configuration at runtime.
+
+### 31.9 View logs
+
+Click **Logs** to expand the plugin's audit log (uploads, validations, activations, errors, configuration changes). Each entry shows date, level and message. Every action on a plugin is recorded immutably.
+
+### 31.10 Marketplace
+
+If the system administrator has configured a **marketplace**, the panel shows plugins available for download. If it is not configured, this is stated explicitly.

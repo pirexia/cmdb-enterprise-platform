@@ -1118,3 +1118,51 @@ ORDER BY created_at DESC LIMIT 500
 | CTE para `entity_name` en audit-logs | `entity_name` es un alias calculado; no referenciable en WHERE sin CTE |
 | `RELATION_TYPE_MATRIX` en módulo compartido | Única fuente de verdad; frontend la importa como espejo (backlog: generación automática) |
 | `details` jsonb en `audit_logs` (no nueva tabla) | Mantiene la tabla plana; `jsonb` soporta índices GIN para búsquedas futuras |
+
+---
+
+## 14. Plugin Engine (v2.8.0)
+
+Motor de extensiones que permite a usuarios **ADMIN** instalar plugins de terceros sin tocar el core. Referencia técnica completa en [`docs/PLUGIN_ENGINE.md`](PLUGIN_ENGINE.md); guía de desarrollo en [`docs/PLUGIN_DEVELOPMENT_GUIDE.md`](PLUGIN_DEVELOPMENT_GUIDE.md); checklist de admisión en [`docs/PLUGIN_SECURITY_CHECKLIST.md`](PLUGIN_SECURITY_CHECKLIST.md).
+
+### 14.1 Módulo `backend/src/modules/plugins/`
+
+Sigue el patrón de módulos del repo (igual que `dcim/` y `catalog/`); **no** crece `index.ts`:
+
+| Archivo | Responsabilidad |
+|---------|-----------------|
+| `engine.ts` | `SandboxExecutor` (`vm.Script`), `HookRegistry`, `CronRegistry`, `RouteRegistry`, `PluginValidator`, `MigrationRunner`, `PluginLifecycleManager`, `emitHook()` |
+| `router.ts` | 12 endpoints REST bajo `/api/plugins` (`requireAdmin` + rate-limit) |
+| `schemas.ts` | `PluginManifestSchema` (Zod), permisos, slots, estados |
+| `middleware.ts` | `pluginRateLimiter`, `requirePluginExists`, validación de upload |
+| `queries.ts` | `getActivePlugins`, `setPluginStatus`, `createBackupRecord` |
+| `audit.ts` | `pluginAudit()` → inserta en `audit_logs` (`entity='PLUGIN'`) |
+| `index.ts` | `initializePluginEngine(app, prisma)` — montaje + reactivación al arranque |
+
+### 14.2 Integración con el core
+
+- **Hooks:** `index.ts` emite `emitHook('pre*'/'post*')` en 13 puntos (CRUD de CIs, creación de contratos/documentos/licencias, login). Los pre-hooks pueden cancelar la operación (`{ cancel, reason }` → 409); los post-hooks son fire-and-forget. `emitHook` hace early-return si no hay plugins activos (coste cero).
+- **Arranque:** `initializePluginEngine` se llama al final de `index.ts`; monta el router y reactiva los plugins `ACTIVE` (hooks + cron). Un plugin que falle se marca `ERROR` sin bloquear el arranque (RTO ISO 22301).
+- **Frontend:** `PluginProvider` (en `app/layout.tsx`) carga los plugins activos; `PluginSlot` renderiza un `PluginIframe` por slot. La UI del plugin se sirve en `<iframe sandbox="allow-scripts allow-same-origin">` con puente `postMessage` (`cmdb:init`/`cmdb:resize`/`cmdb:navigate`).
+
+### 14.3 Modelo de confianza y datos
+
+| Decisión | Elección |
+|----------|----------|
+| **D1 — Sandbox** | `vm.Script` pure-trust (no es frontera de seguridad). La frontera real es el **gate de admisión**: firma Ed25519 + checksum SHA-256 + checklist + 4-eyes en prod. Contexto vm congelado (sin `fs`/`process`/`require`/`eval`/`globalThis`), timeout 5 s, `fetch` con allowlist del manifest |
+| **D2 — Datos** | Migraciones DDL con prefijo `plg_<id>_`, ejecutadas por el rol PostgreSQL `cmdb_plugin` (sin privilegios sobre tablas core). Allowlist DDL; down-migrations + backup JSON antes de desinstalar |
+| **D3 — UI** | iframe aislado + puente `postMessage` host↔iframe |
+| **D4 — Alcance** | Completo: marketplace, firma Ed25519, runner de migraciones (rollback como placeholder `501`) |
+
+### 14.4 Modelo de datos
+
+6 modelos Prisma (`plugin_registry`, `plugin_hooks`, `plugin_cron_jobs`, `plugin_routes`, `plugin_data_backups`, `plugin_data_store`) — detalle de campos en [`PLUGIN_ENGINE.md §4`](PLUGIN_ENGINE.md#4-modelos-de-datos). Almacenamiento en disco bajo el volumen `cmdb-plugins` (`staging/`, `installed/`, `backups/`).
+
+### 14.5 Decisiones de implementación (2026-06-13)
+
+| Decisión | Justificación |
+|----------|---------------|
+| Sandbox con `vm`, no `worker_threads`/proceso aislado | Simplicidad; el control fuerte es el gate de admisión humano + criptográfico, documentado explícitamente |
+| Migraciones vía `execFile('psql')` con rol `cmdb_plugin` | `execFile` evita inyección de shell; el rol restringido es la barrera de BD |
+| Backup JSON pre-uninstall | Reversibilidad y preservación forense (NIS2) antes de borrar tablas `plg_*` |
+| 4-eyes solo en producción | Equilibra fricción operativa (dev/test) con control en el entorno crítico |

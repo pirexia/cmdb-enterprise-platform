@@ -1,7 +1,7 @@
 import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { PluginValidator } from './engine.js';
@@ -38,7 +38,9 @@ export const pluginRateLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => {
     const pluginId = (req.params as { id?: string }).id ?? 'global';
-    return `${req.ip}-${pluginId}`;
+    // ipKeyGenerator normalises IPv6 to a /64 subnet so v6 clients can't bypass the
+    // limit by rotating within their prefix (express-rate-limit ERR_ERL_KEY_GEN_IPV6).
+    return `${ipKeyGenerator(req.ip ?? '')}-${pluginId}`;
   },
   message: { error: 'Too many plugin requests, slow down.' },
 });

@@ -223,9 +223,18 @@ export class RouteRegistry {
 
 // ── Plugin Validator ──────────────────────────────────────────────────────────
 
-// DDL statements allowed in plugin migrations (others rejected)
-const ALLOWED_DDL_PATTERN = /^\s*(CREATE\s+(TABLE|INDEX|UNIQUE\s+INDEX)|INSERT\s+INTO\s+plg_|--)/im;
-const DANGEROUS_DDL_PATTERN = /\b(DROP|TRUNCATE|ALTER\s+TABLE\s+(?!plg_)|DELETE\s+FROM\s+(?!plg_))\b/i;
+// Dangerous SQL verbs. Each captures the target identifier so we can verify it
+// is a plugin-owned (plg_*) object. Any such verb against a non-plg_ object is rejected.
+const DANGEROUS_DDL_RULES: Array<{ re: RegExp; label: string }> = [
+  { re: /\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?["']?(\w+)/gi, label: 'DROP TABLE' },
+  { re: /\bDROP\s+(?:INDEX|VIEW|MATERIALIZED\s+VIEW|SEQUENCE|TRIGGER|FUNCTION|SCHEMA)\s+(?:IF\s+EXISTS\s+)?["']?(\w+)/gi, label: 'DROP' },
+  { re: /\bTRUNCATE\s+(?:TABLE\s+)?["']?(\w+)/gi, label: 'TRUNCATE' },
+  { re: /\bALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?["']?(\w+)/gi, label: 'ALTER TABLE' },
+  { re: /\bDELETE\s+FROM\s+(?:ONLY\s+)?["']?(\w+)/gi, label: 'DELETE FROM' },
+  { re: /\bUPDATE\s+(?:ONLY\s+)?["']?(\w+)/gi, label: 'UPDATE' },
+  { re: /\bGRANT\b/gi, label: 'GRANT' },
+  { re: /\bREVOKE\b/gi, label: 'REVOKE' },
+];
 
 export class PluginValidator {
   static validateManifest(raw: unknown): PluginManifest {
@@ -261,18 +270,34 @@ export class PluginValidator {
     }
   }
 
-  // Validate plugin migration SQL: only allow safe DDL on plg_* objects
+  // Validate plugin migration SQL: only allow safe DDL on plg_* objects.
+  // Every dangerous verb (DROP/TRUNCATE/ALTER/DELETE/UPDATE/GRANT/REVOKE) must
+  // target a plg_* object; GRANT/REVOKE are forbidden outright.
   static validateMigrationSql(sql: string, pluginId: string): void {
     const prefix = `plg_${pluginId.replace(/-/g, '_')}`;
-    if (DANGEROUS_DDL_PATTERN.test(sql)) {
-      // Allow DROP only on plg_* tables
-      const dropOnCore = sql.match(/\bDROP\s+TABLE\s+(?!plg_)(\w+)/i);
-      if (dropOnCore) {
-        throw new Error(`PLUGIN_DDL_FORBIDDEN: DROP on non-plugin table ${dropOnCore[1]}`);
+
+    // Strip line/block comments and single-quoted string literals so commented-out
+    // or quoted SQL cannot smuggle a dangerous verb past (or trip) the checks.
+    const stripped = sql
+      .replace(/--[^\n]*/g, ' ')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/'(?:[^']|'')*'/g, "''");
+
+    for (const { re, label } of DANGEROUS_DDL_RULES) {
+      re.lastIndex = 0;
+      for (const match of stripped.matchAll(re)) {
+        // GRANT/REVOKE have no captured target — never allowed from a plugin migration
+        if (match[1] === undefined) {
+          throw new Error(`PLUGIN_DDL_FORBIDDEN: ${label} is not permitted in plugin migrations`);
+        }
+        if (!match[1].toLowerCase().startsWith('plg_')) {
+          throw new Error(`PLUGIN_DDL_FORBIDDEN: ${label} on non-plugin object "${match[1]}" (must start with plg_)`);
+        }
       }
     }
+
     // Every CREATE TABLE must use the plugin prefix
-    const creates = sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?/gi);
+    const creates = stripped.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["']?(\w+)["']?/gi);
     for (const match of creates) {
       if (!match[1].startsWith(prefix) && !match[1].startsWith('plg_')) {
         throw new Error(`PLUGIN_DDL_PREFIX: table "${match[1]}" must start with "${prefix}"`);
@@ -289,12 +314,24 @@ export class MigrationRunner {
     private pluginStoragePath: string,
   ) {}
 
+  // Resolve the DB connection for plugin migrations. NEVER falls back to the core
+  // DATABASE_URL (superuser): plugin DDL must run under the restricted cmdb_plugin role.
+  private resolveUrl(): string {
+    if (!this.pluginDatabaseUrl) {
+      throw new Error(
+        'PLUGIN_DATABASE_URL is not configured — refusing to run plugin migrations with core DB credentials. ' +
+        'Set PLUGIN_DATABASE_URL to the restricted cmdb_plugin role (see scripts/create-plugin-db-role.sql).',
+      );
+    }
+    return this.pluginDatabaseUrl;
+  }
+
   async runUp(pluginId: string, sql: string): Promise<void> {
     PluginValidator.validateMigrationSql(sql, pluginId);
     // Execute via psql against restricted role
     // In production this uses PLUGIN_DATABASE_URL (cmdb_plugin role)
     // Fallback to main connection in dev when PLUGIN_DATABASE_URL is not set
-    const url = this.pluginDatabaseUrl ?? process.env.DATABASE_URL!;
+    const url = this.resolveUrl();
     await this.executeSql(url, sql);
   }
 
@@ -307,14 +344,14 @@ export class MigrationRunner {
     }
     const sql = fs.readFileSync(downPath, 'utf-8');
     PluginValidator.validateMigrationSql(sql, pluginId);
-    const url = this.pluginDatabaseUrl ?? process.env.DATABASE_URL!;
+    const url = this.resolveUrl();
     await this.executeSql(url, sql);
   }
 
   private async dropPluginTables(pluginId: string): Promise<void> {
     const prefix = `plg_${pluginId.replace(/-/g, '_')}`;
     // Query information_schema to find all tables with this prefix
-    const url = this.pluginDatabaseUrl ?? process.env.DATABASE_URL!;
+    const url = this.resolveUrl();
     await this.executeSql(
       url,
       `DO $$

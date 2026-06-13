@@ -1621,6 +1621,9 @@
   "pluginStatusActive": "Active",
   "pluginStatusInactive": "Inactive",
   "pluginStatusError": "Error",
+  "pluginSlotEmpty": "No plugins installed for this slot",
+  "pluginIframeLoading": "Loading plugin...",
+  "pluginIframeError": "Plugin failed to load",
   "pagination": {
     "records_per_page": "Rows per page:",
     "page_of": "Page {page} of {total}",

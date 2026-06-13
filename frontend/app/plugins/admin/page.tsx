@@ -50,10 +50,13 @@ interface MarketplaceResponse {
   plugins?: MarketplacePlugin[];
 }
 
+// Matches the audit-log rows returned by GET /api/plugins/:id/logs
 interface LogEntry {
-  level: string;
-  message: string;
-  timestamp: string;
+  id: string;
+  action: string;
+  user_email: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -223,17 +226,18 @@ function PluginRow({
               <div className="text-xs text-slate-500">No logs available.</div>
             ) : (
               <div className="space-y-0.5 max-h-48 overflow-y-auto font-mono text-xs">
-                {logs.map((l, i) => (
-                  <div key={i} className={`flex gap-2 ${
-                    l.level === "error" ? "text-red-400" :
-                    l.level === "warn"  ? "text-yellow-400" :
-                    "text-slate-400"
-                  }`}>
-                    <span className="text-slate-600 flex-shrink-0">{l.timestamp ? new Date(l.timestamp).toLocaleTimeString() : ""}</span>
-                    <span className="uppercase text-[10px] w-10 flex-shrink-0">{l.level}</span>
-                    <span>{l.message}</span>
-                  </div>
-                ))}
+                {logs.map((l) => {
+                  const isError = /FAILED|ERROR/.test(l.action);
+                  return (
+                    <div key={l.id} className={`flex gap-2 ${isError ? "text-red-400" : "text-slate-400"}`}>
+                      <span className="text-slate-600 flex-shrink-0">{l.created_at ? new Date(l.created_at).toLocaleTimeString() : ""}</span>
+                      <span className="uppercase text-[10px] w-40 flex-shrink-0 truncate" title={l.action}>{l.action}</span>
+                      <span className="truncate" title={l.user_email}>
+                        {l.user_email}{l.details ? ` — ${JSON.stringify(l.details)}` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </td>
@@ -272,8 +276,9 @@ export default function PluginAdminPage() {
     try {
       const res = await apiFetch("/api/plugins");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as Plugin[];
-      setPlugins(data);
+      // Backend returns { plugins: [...] } — unwrap to the array.
+      const data = await res.json() as { plugins: Plugin[] };
+      setPlugins(data.plugins ?? []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

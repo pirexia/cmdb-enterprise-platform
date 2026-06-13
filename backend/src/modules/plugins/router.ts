@@ -14,12 +14,14 @@ import { pluginAudit } from './audit.js';
 import {
   pluginRateLimiter,
   requirePluginExists,
-  validateUploadedFile,
 } from './middleware.js';
 import {
   lifecycleManager,
   PluginValidator,
   createMigrationRunner,
+  pluginRuntime,
+  routeRegistry,
+  RuntimePlugin,
 } from './engine.js';
 import { createBackupRecord } from './queries.js';
 
@@ -30,6 +32,113 @@ const execFileAsync = promisify(execFile);
 const PLUGIN_STORAGE_PATH = process.env.PLUGIN_STORAGE_PATH ?? '/var/lib/cmdb/plugins';
 const PLUGIN_MAX_SIZE_MB  = parseInt(process.env.PLUGIN_MAX_SIZE_MB ?? '50', 10);
 const JWT_SECRET          = process.env.JWT_SECRET ?? '';
+
+// camelCase event → kebab filename: postCreateCI → post-create-ci
+function kebab(s: string): string {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+// path → filename slug: /status → status, /items/list → items_list
+function slugifyPath(p: string): string {
+  return p.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase();
+}
+
+// Read a handler file from inside installDir, guarding against path traversal.
+function safeReadHandler(installDir: string, relPath: string): string {
+  const full = path.resolve(installDir, relPath);
+  const base = path.resolve(installDir);
+  if (full !== base && !full.startsWith(base + path.sep)) {
+    throw new Error(`PLUGIN_PATH_TRAVERSAL: ${relPath} escapes the plugin directory`);
+  }
+  if (!fs.existsSync(full)) {
+    throw new Error(`PLUGIN_HANDLER_MISSING: declared handler file "${relPath}" not found in bundle`);
+  }
+  return fs.readFileSync(full, 'utf-8');
+}
+
+// Parse a plugin's manifest + bundle into PluginHook/PluginCronJob/PluginRoute rows.
+// Throws (→ install fails) if a declared hook/cron/route has no handler file.
+async function parseBundleArtifacts(
+  prisma: PrismaClient,
+  pluginDbId: string,
+  installDir: string,
+  manifest: {
+    hooks?: string[];
+    cronJobs?: Array<{ name: string; schedule: string }>;
+    routes?: Array<{ method: string; path: string; requiresAuth?: boolean; requiredRole?: string }>;
+  },
+): Promise<{ hooks: number; cron: number; routes: number }> {
+  const hookRows = (manifest.hooks ?? []).map((event) => ({
+    pluginId: pluginDbId,
+    event,
+    priority: 50,
+    handlerCode: safeReadHandler(installDir, path.join('hooks', `${kebab(event)}.js`)),
+    isActive: true,
+  }));
+
+  const cronRows = (manifest.cronJobs ?? []).map((job) => {
+    if (!/^[a-z0-9_-]+$/i.test(job.name)) {
+      throw new Error(`PLUGIN_CRON_NAME: cron name "${job.name}" must be alphanumeric/-/_`);
+    }
+    return {
+      pluginId: pluginDbId,
+      name: job.name,
+      schedule: job.schedule,
+      handlerCode: safeReadHandler(installDir, path.join('cron', `${job.name}.js`)),
+      isActive: true,
+    };
+  });
+
+  const routeRows = (manifest.routes ?? []).map((r) => ({
+    pluginId: pluginDbId,
+    method: r.method.toUpperCase(),
+    path: r.path.startsWith('/') ? r.path : `/${r.path}`,
+    handlerCode: safeReadHandler(installDir, path.join('routes', `${r.method.toLowerCase()}_${slugifyPath(r.path)}.js`)),
+    isActive: true,
+    requiresAuth: r.requiresAuth ?? true,
+    requiredRole: r.requiredRole ?? null,
+  }));
+
+  await prisma.$transaction([
+    prisma.pluginHook.deleteMany({ where: { pluginId: pluginDbId } }),
+    prisma.pluginCronJob.deleteMany({ where: { pluginId: pluginDbId } }),
+    prisma.pluginRoute.deleteMany({ where: { pluginId: pluginDbId } }),
+    ...hookRows.map((data) => prisma.pluginHook.create({ data })),
+    ...cronRows.map((data) => prisma.pluginCronJob.create({ data })),
+    ...routeRows.map((data) => prisma.pluginRoute.create({ data })),
+  ]);
+
+  return { hooks: hookRows.length, cron: cronRows.length, routes: routeRows.length };
+}
+
+// Minimal MIME map for plugin UI static assets.
+const UI_MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js':   'text/javascript; charset=utf-8',
+  '.css':  'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg':  'image/svg+xml',
+  '.png':  'image/png',
+  '.jpg':  'image/jpeg',
+  '.gif':  'image/gif',
+  '.woff2':'font/woff2',
+};
+
+// Verify a session JWT from Authorization header or token cookie. Returns payload or null.
+function verifyJwt(req: Request): { id?: string; email?: string; role?: string } | null {
+  let token: string | undefined;
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) token = auth.slice(7);
+  if (!token && (req as Request & { cookies?: Record<string, string> }).cookies) {
+    token = (req as Request & { cookies: Record<string, string> }).cookies.token;
+  }
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET) as { id?: string; email?: string; role?: string };
+  } catch {
+    return null;
+  }
+}
 
 // ── requireAdmin (local copy — keeps module self-contained) ───────────────────
 
@@ -441,10 +550,16 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         // Extract zip contents to installed/<db-uuid>/
         await extractZipTo(zipPath, installDir);
 
+        // Parse the bundle's hooks/cron/routes into DB rows (fails if a declared
+        // hook/cron/route has no handler file in the bundle).
+        const manifest = plugin.manifest as Parameters<typeof parseBundleArtifacts>[3];
+        const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest);
+
         await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
         await pluginAudit(prisma, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
           installDir,
           hasMigration: migrationSql !== null,
+          ...counts,
         });
 
         res.json({ id: plugin.id, status: 'INSTALLED' });
@@ -512,6 +627,13 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           },
         });
 
+        // Register the plugin's hooks/cron/routes into the live runtime
+        const full = await prisma.pluginRegistry.findUnique({
+          where: { id: plugin.id },
+          include: { hooks: true, cronJobs: true, routes: true },
+        });
+        if (full) pluginRuntime.registerPlugin(full as unknown as RuntimePlugin);
+
         await pluginAudit(prisma, 'PLUGIN_ACTIVATED', plugin.id, userEmail);
 
         res.json({ id: plugin.id, status: 'ACTIVE' });
@@ -539,6 +661,8 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
+        // Tear down live hooks/cron/routes before flipping status
+        pluginRuntime.unregisterPlugin(plugin.id, plugin.pluginId);
         await lifecycleManager.updateStatus(prisma, plugin.id, 'INACTIVE');
         await pluginAudit(prisma, 'PLUGIN_DEACTIVATED', plugin.id, userEmail);
 
@@ -567,6 +691,9 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
+        // Defensively tear down any live runtime registration
+        pluginRuntime.unregisterPlugin(plugin.id, plugin.pluginId);
+
         // Backup plugin tables data to JSON
         const backupsDir = path.join(PLUGIN_STORAGE_PATH, 'backups');
         await fs.promises.mkdir(backupsDir, { recursive: true });
@@ -756,6 +883,107 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       res.status(501).json({ error: 'Rollback not yet implemented' });
     },
   );
+
+  return router;
+}
+
+// ── Public router: plugin UI static assets (H-04) ─────────────────────────────
+// Mounted at /api/plugins (BEFORE the admin router). Serves installed/<id>/ui/*
+// to any authenticated user (NOT just ADMIN). Unmatched paths fall through.
+
+export function createPluginPublicRouter(prisma: PrismaClient): Router {
+  const router = Router();
+
+  router.use('/:id/ui', requireUuidParam('id'), async (req: Request, res: Response) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.status(405).end(); return; }
+
+    // Require a valid session (any role) — plugin UI is not public to anonymous users
+    const user = verifyJwt(req);
+    if (!user) { res.status(401).json({ error: 'Authentication required' }); return; }
+
+    const id = String(req.params.id);
+    const plugin = await prisma.pluginRegistry.findUnique({ where: { id } });
+    if (!plugin) { res.status(404).json({ error: 'Plugin not found' }); return; }
+
+    // Validate the requested slot against the manifest's declared uiSlots
+    const slot = typeof req.query.slot === 'string' ? req.query.slot : null;
+    const uiSlots = ((plugin.manifest as { uiSlots?: string[] })?.uiSlots) ?? [];
+    if (slot && !uiSlots.includes(slot)) {
+      res.status(400).json({ error: `Plugin does not expose slot "${slot}"` });
+      return;
+    }
+
+    const uiDir = path.join(PLUGIN_STORAGE_PATH, 'installed', id, 'ui');
+    // req.path is the remainder after the mount (e.g. '/', '/widget.html', '/a/b.js')
+    const rel = req.path === '/' || req.path === '' ? 'index.html' : req.path.replace(/^\/+/, '');
+    const full = path.resolve(uiDir, rel);
+    const base = path.resolve(uiDir);
+    if (full !== base && !full.startsWith(base + path.sep)) {
+      res.status(400).json({ error: 'Invalid asset path' });
+      return;
+    }
+    if (!fs.existsSync(full) || !fs.statSync(full).isFile()) {
+      res.status(404).json({ error: 'Asset not found' });
+      return;
+    }
+
+    // Strict CSP for the sandboxed iframe content. Allow inline scripts/styles
+    // (plugin UIs are simple HTML), but lock down origins and framing.
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'",
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Type', UI_MIME[path.extname(full).toLowerCase()] ?? 'application/octet-stream');
+    fs.createReadStream(full).pipe(res);
+  });
+
+  return router;
+}
+
+// ── Ext router: dynamic plugin routes dispatcher (H-01) ───────────────────────
+// Mounted at /api/ext. Matches /:pluginId/<route-path> against the live
+// RouteRegistry and runs the handler in the sandbox. No Express routes are
+// mounted/unmounted dynamically — the dispatcher matches the registry.
+
+export function createPluginExtRouter(_prisma: PrismaClient): Router {
+  const router = Router();
+  router.use(pluginRateLimiter);
+
+  router.use('/:pluginId', async (req: Request, res: Response) => {
+    const pluginId = String(req.params.pluginId);
+    const subPath = req.path === '' ? '/' : req.path;
+
+    const def = routeRegistry.match(pluginId, req.method, subPath);
+    if (!def) { res.status(404).json({ error: 'No such plugin route' }); return; }
+
+    let user: { email?: string; role?: string } | null = null;
+    if (def.requiresAuth) {
+      user = verifyJwt(req);
+      if (!user) { res.status(401).json({ error: 'Authentication required' }); return; }
+      if (def.requiredRole && user.role !== def.requiredRole) {
+        res.status(403).json({ error: 'Forbidden' }); return;
+      }
+    }
+
+    const reqLike = {
+      method: req.method,
+      path: subPath,
+      query: req.query,
+      body: req.body,
+      user: user ? { email: user.email, role: user.role } : null,
+    };
+
+    try {
+      const result = await pluginRuntime.runRoute(def, reqLike) as { status?: number; body?: unknown } | undefined;
+      const status = typeof result?.status === 'number' ? result.status : 200;
+      const body = result && typeof result === 'object' && 'body' in result ? result.body : (result ?? {});
+      res.status(status).json(body);
+    } catch (err) {
+      console.error('[plugins-ext] handler error:', err);
+      res.status(500).json({ error: 'Plugin route handler failed' });
+    }
+  });
 
   return router;
 }

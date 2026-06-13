@@ -10,8 +10,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "test": "node /tmp/jest-tools/node_modules/.bin/jest --testPathPattern=src/modules/plugins",
-    "test:plugins": "node /tmp/jest-tools/node_modules/.bin/jest --testPathPattern=src/modules/plugins --passWithNoTests"
+    "test": "jest",
+    "test:plugins": "jest --testPathPatterns src/modules/plugins --passWithNoTests"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -2,6 +2,7 @@ import vm from 'vm';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
+import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import type { Application } from 'express';
 import { PluginManifest, PluginManifestSchema, PluginStatus } from './schemas.js';
@@ -206,20 +207,42 @@ export class CronRegistry {
 
 // ── Route Registry ────────────────────────────────────────────────────────────
 
+export interface PluginRouteDef {
+  pluginDbId: string;
+  method: string;            // GET|POST|PATCH|PUT|DELETE
+  path: string;              // '/status' (relative to /api/ext/:pluginId)
+  handlerCode: string;
+  requiresAuth: boolean;
+  requiredRole: string | null;
+  permissions: string[];
+  allowedHosts: string[];
+  config: Record<string, unknown>;
+}
+
+// Stores plugin route definitions. Routes are NOT mounted as Express routes
+// (Express 5 cannot cleanly unmount); instead a single dispatcher at
+// /api/ext/:pluginId/* matches against this registry — safe to add/remove live.
 export class RouteRegistry {
-  private mounted = new Set<string>(); // pluginDbId
+  private routes = new Map<string, PluginRouteDef[]>(); // pluginId(kebab) → defs
 
-  mount(_app: Application, pluginDbId: string, _pluginId: string): void {
-    this.mounted.add(pluginDbId);
-    // Actual route mounting happens in router.ts via initializePluginEngine
+  add(pluginId: string, def: PluginRouteDef): void {
+    const list = this.routes.get(pluginId) ?? [];
+    list.push(def);
+    this.routes.set(pluginId, list);
   }
 
-  unmount(_app: Application, pluginDbId: string): void {
-    this.mounted.delete(pluginDbId);
+  removePlugin(pluginId: string): void {
+    this.routes.delete(pluginId);
   }
 
-  isMounted(pluginDbId: string): boolean {
-    return this.mounted.has(pluginDbId);
+  // Exact method+path match (no param patterns in v2.8.1 — keep it simple & safe)
+  match(pluginId: string, method: string, reqPath: string): PluginRouteDef | null {
+    const list = this.routes.get(pluginId);
+    if (!list) return null;
+    const norm = reqPath.startsWith('/') ? reqPath : `/${reqPath}`;
+    return list.find(
+      (r) => r.method.toUpperCase() === method.toUpperCase() && r.path === norm,
+    ) ?? null;
   }
 }
 
@@ -437,6 +460,153 @@ export function createSandboxExecutor(storagePath: string): SandboxExecutor {
 export function createMigrationRunner(storagePath: string): MigrationRunner {
   return new MigrationRunner(process.env.PLUGIN_DATABASE_URL, storagePath);
 }
+
+// ── Scoped Prisma proxy (H-02) ─────────────────────────────────────────────────
+//
+// Plugin DB access goes through a dedicated PrismaClient bound to PLUGIN_DATABASE_URL
+// (the restricted cmdb_plugin role). The DB role enforces table-level isolation
+// (no privileges on core tables; can only touch plg_* objects it owns); the
+// permission check here enforces capability (db:read / db:write). We never hand the
+// core PrismaClient to plugin code.
+
+let _pluginPrisma: PrismaClient | null = null;
+
+function getPluginPrisma(): PrismaClient {
+  if (!process.env.PLUGIN_DATABASE_URL) {
+    throw new Error(
+      'PLUGIN_DATABASE_URL is not configured — plugin DB access is disabled. ' +
+      'Set it to the restricted cmdb_plugin role (scripts/create-plugin-db-role.sql).',
+    );
+  }
+  if (!_pluginPrisma) {
+    _pluginPrisma = new PrismaClient({ datasourceUrl: process.env.PLUGIN_DATABASE_URL });
+  }
+  return _pluginPrisma;
+}
+
+export function buildPrismaProxy(permissions: string[]): object {
+  const canRead = permissions.includes('db:read') || permissions.includes('db:write') || permissions.includes('db:schema');
+  const canWrite = permissions.includes('db:write') || permissions.includes('db:schema');
+  const lazy = () => getPluginPrisma() as unknown as Record<string, (...a: unknown[]) => unknown>;
+  const needRead = () => { if (!canRead) throw new Error('PLUGIN_PERM: db:read permission required'); };
+  const needWrite = () => { if (!canWrite) throw new Error('PLUGIN_PERM: db:write permission required'); };
+  return Object.freeze({
+    $queryRaw:        (...a: unknown[]) => { needRead();  return lazy().$queryRaw(...a); },
+    $queryRawUnsafe:  (...a: unknown[]) => { needRead();  return lazy().$queryRawUnsafe(...a); },
+    $executeRaw:      (...a: unknown[]) => { needWrite(); return lazy().$executeRaw(...a); },
+    $executeRawUnsafe:(...a: unknown[]) => { needWrite(); return lazy().$executeRawUnsafe(...a); },
+  });
+}
+
+// Logger handed to plugin handlers. Prefixes the plugin id; callers must not log PII.
+function pluginLogger(pluginId: string) {
+  return {
+    info:  (...args: unknown[]) => console.info(`[plugin:${pluginId}]`, ...args),
+    warn:  (...args: unknown[]) => console.warn(`[plugin:${pluginId}]`, ...args),
+    error: (...args: unknown[]) => console.error(`[plugin:${pluginId}]`, ...args),
+  };
+}
+
+// ── Plugin Runtime (H-01) ──────────────────────────────────────────────────────
+//
+// Registers/unregisters a plugin's hooks, cron jobs and routes into the live
+// registries. Used both on boot (reactivation) and on the activate/deactivate
+// endpoints. Holds the Express app + sandbox so the API layer stays decoupled.
+
+interface RuntimeHook { event: string; priority: number; handlerCode: string; isActive: boolean; }
+interface RuntimeCron { id: string; name: string; schedule: string; handlerCode: string; isActive: boolean; }
+interface RuntimeRoute { method: string; path: string; handlerCode: string; isActive: boolean; requiresAuth: boolean; requiredRole: string | null; }
+export interface RuntimePlugin {
+  id: string;
+  pluginId: string;
+  version: string;
+  permissions: string[];
+  manifest: unknown;
+  config: unknown;
+  hooks: RuntimeHook[];
+  cronJobs: RuntimeCron[];
+  routes: RuntimeRoute[];
+}
+
+export class PluginRuntime {
+  private prisma!: PrismaClient;
+  private sandbox!: SandboxExecutor;
+  private initialized = false;
+
+  init(_app: Application, prisma: PrismaClient): void {
+    this.prisma = prisma;
+    this.sandbox = createSandboxExecutor(process.env.PLUGIN_STORAGE_PATH ?? '/var/lib/cmdb/plugins');
+    this.initialized = true;
+  }
+
+  isReady(): boolean { return this.initialized; }
+
+  runRoute(def: PluginRouteDef, reqLike: unknown): Promise<HookResult | void> {
+    return this.sandbox.runHandler(
+      def.handlerCode, 'handler', reqLike,
+      buildPrismaProxy(def.permissions), pluginLogger(`route`), def.config, def.allowedHosts,
+    );
+  }
+
+  // Register all active hooks/cron/routes for a plugin into the live registries.
+  registerPlugin(plugin: RuntimePlugin): void {
+    const manifest = (plugin.manifest ?? {}) as { allowedHosts?: string[] };
+    const permissions = plugin.permissions ?? [];
+    const allowedHosts = manifest.allowedHosts ?? [];
+    const config = (plugin.config ?? {}) as Record<string, unknown>;
+
+    for (const hook of plugin.hooks.filter((h) => h.isActive)) {
+      hookRegistry.register(hook.event, {
+        pluginDbId: plugin.id,
+        pluginId: plugin.pluginId,
+        priority: hook.priority,
+        handler: (data) => this.sandbox.runHandler(
+          hook.handlerCode, 'handler', data,
+          buildPrismaProxy(permissions), pluginLogger(plugin.pluginId), config, allowedHosts,
+        ),
+      });
+    }
+
+    for (const job of plugin.cronJobs.filter((j) => j.isActive)) {
+      if (!cron.validate(job.schedule)) {
+        console.error(`[plugin:${plugin.pluginId}] invalid cron schedule "${job.schedule}" for ${job.name}`);
+        continue;
+      }
+      const task = cron.schedule(job.schedule, async () => {
+        try {
+          await this.sandbox.runHandler(
+            job.handlerCode, 'handler', {},
+            buildPrismaProxy(permissions), pluginLogger(plugin.pluginId), config, allowedHosts,
+          );
+          await this.prisma.pluginCronJob.update({ where: { id: job.id }, data: { lastRunAt: new Date() } }).catch(() => {});
+        } catch (err) {
+          console.error(`[plugin:${plugin.pluginId}] cron ${job.name} error:`, err);
+        }
+      });
+      cronRegistry.register(plugin.id, { pluginDbId: plugin.id, stop: () => task.stop() });
+    }
+
+    for (const route of plugin.routes.filter((r) => r.isActive)) {
+      routeRegistry.add(plugin.pluginId, {
+        pluginDbId: plugin.id,
+        method: route.method,
+        path: route.path.startsWith('/') ? route.path : `/${route.path}`,
+        handlerCode: route.handlerCode,
+        requiresAuth: route.requiresAuth,
+        requiredRole: route.requiredRole,
+        permissions, allowedHosts, config,
+      });
+    }
+  }
+
+  unregisterPlugin(pluginDbId: string, pluginIdKebab: string): void {
+    hookRegistry.unregisterPlugin(pluginDbId);
+    cronRegistry.stopPlugin(pluginDbId);
+    routeRegistry.removePlugin(pluginIdKebab);
+  }
+}
+
+export const pluginRuntime = new PluginRuntime();
 
 // ── emitHook public API (used by core index.ts) ───────────────────────────────
 

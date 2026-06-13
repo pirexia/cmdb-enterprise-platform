@@ -5,6 +5,10 @@
 > Severity: **High** = documented feature does not execute end-to-end · **Medium** = security/correctness · **Low** = hygiene/consistency.
 > Security analysis: `docs/security/OWASP_v2.8.0.md`. Each H/M item has a GitHub issue (see "Issue" column).
 
+> **v2.8.1 progress (2026-06-13):** ✅ **RESOLVED** — H-03 (#111), M-01 (#113), M-02 (#114), M-03 (#115) — merged in PR #118. Also enabled the real sandbox isolation test suite and blocked `eval`/`Function` in the vm context.
+> ⬜ **REMAINING** — H-01 (#109), H-02 (#110), H-04 (#112) runtime wiring; Low batch (#116).
+> *(GitHub issue auto-close is blocked by PAT permissions; #111/#114/#115 may still show OPEN despite being fixed — close manually.)*
+
 ## Context
 
 The v2.8.0 lifecycle (upload → validate → install → activate → deactivate → uninstall) works at the **status/governance** layer: bundles are validated, signed, checksummed, audited, and 4-eyes-gated. What is **not** wired is the **runtime execution** layer — turning an activated plugin's bundle into live hooks, cron jobs, routes, and UI. Several pieces were scaffolded as stubs (`prismaProxy — wired in T3`, `RouteRegistry.mount` no-op, no `/ui` route) and never connected. An inert runtime is fail-safe (no security exposure), but the feature is partially non-functional versus the documentation.

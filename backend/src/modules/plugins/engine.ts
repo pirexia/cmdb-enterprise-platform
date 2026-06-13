@@ -45,6 +45,7 @@ function buildFrozenContext(
   logger: object,
   config: Record<string, unknown>,
   allowedHosts: string[],
+  data?: unknown,
 ): vm.Context {
   // Minimal safe fetch wrapper — only allows declared hosts
   const safeFetch = async (url: string, options?: RequestInit): Promise<globalThis.Response> => {
@@ -88,6 +89,8 @@ function buildFrozenContext(
     exports: undefined,
     global: undefined,
     globalThis: undefined,
+    // Data injected before freeze — avoids mutating a frozen object in runHandler
+    __pluginData__: data,
   };
 
   return vm.createContext(Object.freeze(ctx));
@@ -105,7 +108,7 @@ export class SandboxExecutor {
     config: Record<string, unknown>,
     allowedHosts: string[],
   ): Promise<HookResult | void> {
-    const ctx = buildFrozenContext(prismaProxy, logger, config, allowedHosts);
+    const ctx = buildFrozenContext(prismaProxy, logger, config, allowedHosts, data);
     // Wrap in an async IIFE so the code can use await
     const wrapped = `
       (async function __pluginRunner__() {
@@ -116,8 +119,6 @@ export class SandboxExecutor {
         return await ${handlerExport}(__pluginData__);
       })()
     `;
-    // Inject data via context (not string interpolation — no injection risk)
-    (ctx as Record<string, unknown>).__pluginData__ = data;
 
     const script = new vm.Script(wrapped, { filename: `plugin:${handlerExport}` });
     try {

@@ -29,36 +29,67 @@ describe('PluginValidator', () => {
       ).toThrow('PLUGIN_DDL_FORBIDDEN');
     });
 
-    it('rejects TRUNCATE on any table', () => {
-      // TRUNCATE matches DANGEROUS_DDL_PATTERN but does NOT match the DROP exception path.
-      // The regex test passes but there is no specific throw for TRUNCATE via dropOnCore —
-      // however the DANGEROUS_DDL_PATTERN check enters the if-block and then checks dropOnCore.
-      // TRUNCATE on a non-plg_ table should reach the CREATE TABLE check and not throw from DROP,
-      // but validateMigrationSql has no explicit TRUNCATE throw — let's verify behavior:
-      // The code: if (DANGEROUS_DDL_PATTERN.test(sql)) { check dropOnCore only }
-      // For TRUNCATE there is no DROP match so dropOnCore is null — no throw from DANGEROUS block.
-      // Then CREATE TABLE check: no CREATE TABLE => no throw.
-      // So TRUNCATE currently passes validation! Document this known limitation.
-      // The test verifies the actual current behavior (no throw for TRUNCATE without CREATE TABLE).
+    it('rejects TRUNCATE on a core table', () => {
       expect(() =>
         PluginValidator.validateMigrationSql(
           'TRUNCATE TABLE configuration_items;',
           'my-plugin',
         ),
-      ).not.toThrow(); // TRUNCATE is matched by DANGEROUS_DDL_PATTERN but not explicitly blocked
+      ).toThrow('PLUGIN_DDL_FORBIDDEN');
     });
 
-    it('rejects ALTER TABLE on non-plg_ table', () => {
-      // ALTER TABLE non-plg_ matches DANGEROUS_DDL_PATTERN but like TRUNCATE,
-      // only DROP on non-plg_ tables is explicitly thrown.
-      // Document: ALTER TABLE on core tables is matched by DANGEROUS_DDL_PATTERN
-      // but the explicit block only covers DROP TABLE on non-plg_ tables.
+    it('rejects ALTER TABLE on a core table', () => {
       expect(() =>
         PluginValidator.validateMigrationSql(
           'ALTER TABLE users ADD COLUMN hacked TEXT;',
           'my-plugin',
         ),
-      ).not.toThrow(); // Current implementation only blocks DROP on non-plg_ tables explicitly
+      ).toThrow('PLUGIN_DDL_FORBIDDEN');
+    });
+
+    it('rejects DELETE FROM a core table', () => {
+      expect(() =>
+        PluginValidator.validateMigrationSql(
+          'DELETE FROM users WHERE 1=1;',
+          'my-plugin',
+        ),
+      ).toThrow('PLUGIN_DDL_FORBIDDEN');
+    });
+
+    it('rejects DROP INDEX on a core object', () => {
+      expect(() =>
+        PluginValidator.validateMigrationSql(
+          'DROP INDEX users_email_idx;',
+          'my-plugin',
+        ),
+      ).toThrow('PLUGIN_DDL_FORBIDDEN');
+    });
+
+    it('rejects GRANT/REVOKE outright', () => {
+      expect(() =>
+        PluginValidator.validateMigrationSql(
+          'GRANT ALL ON configuration_items TO cmdb_plugin;',
+          'my-plugin',
+        ),
+      ).toThrow('PLUGIN_DDL_FORBIDDEN');
+    });
+
+    it('allows ALTER/TRUNCATE on the plugin own tables', () => {
+      expect(() =>
+        PluginValidator.validateMigrationSql(
+          'ALTER TABLE plg_my_plugin_items ADD COLUMN extra TEXT; TRUNCATE TABLE plg_my_plugin_items;',
+          'my-plugin',
+        ),
+      ).not.toThrow();
+    });
+
+    it('does not flag dangerous verbs inside comments or string literals', () => {
+      expect(() =>
+        PluginValidator.validateMigrationSql(
+          "CREATE TABLE plg_my_plugin_log (msg TEXT DEFAULT 'do not DROP TABLE users'); -- DROP TABLE users",
+          'my-plugin',
+        ),
+      ).not.toThrow();
     });
 
     it('rejects CREATE TABLE without plg_<id>_ prefix', () => {

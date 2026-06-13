@@ -1,6 +1,6 @@
 # Plan de desarrollo v2.8.0 — Plugin Engine (Motor de Plugins)
 
-> Estado general: 🟡 **EN PROGRESO** — T1✅ T2✅ T8✅ mergeadas; T3 PR#103 T6 PR#104 abiertos
+> Estado general: 🟡 **EN PROGRESO** — T1-T4✅ T6✅ T8✅ T9✅ mergeadas; T5 PR#106 T7 PR#107 abiertos
 > Rama base: `develop`
 > Target: `main` tag `v2.8.0`
 > Fecha de inicio: 2026-06-12
@@ -43,9 +43,9 @@ v2.8.0 implementa un **Motor de Plugins** completo que permite a usuarios con ro
 | **T2** | Backend core: engine, sandbox, registries, validator, migration-runner | 1 | Alta | `feature/plugin-engine-core` | T1 | 🟡 PR #102 abierto |
 | **T3** | API REST router (12 endpoints + 4-eyes + audit) | 1 | Alta | `feature/plugin-engine-api` | T2 | 🟡 PR #103 abierto |
 | **T4** | Frontend panel admin (`/plugins/admin`) | 2 | Media | `feature/plugin-engine-frontend-admin` | T3 | 🟡 PR #105 abierto |
-| **T5** | Slots por iframe + PluginContext + puente postMessage | 2 | Alta | `feature/plugin-engine-slots` | T4 | ⬜ PENDIENTE |
+| **T5** | Slots por iframe + PluginContext + puente postMessage | 2 | Alta | `feature/plugin-engine-slots` | T4 | 🟡 PR #106 abierto |
 | **T6** | Hooks del core en index.ts (emitHook) | 3 | Alta | `feature/plugin-engine-hooks` | T2 | 🟡 PR #104 abierto |
-| **T7** | Inicialización del engine en arranque + reactivación | 3 | Media | `feature/plugin-engine-init` | T2,T3,T5,T6 | ⬜ PENDIENTE |
+| **T7** | Inicialización del engine en arranque + reactivación | 3 | Media | `feature/plugin-engine-init` | T2,T3,T5,T6 | 🟡 PR #107 abierto |
 | **T8** | Infra: volumen Docker, rol DB cmdb_plugin, env vars, CSP iframe | 4 | Media | `feature/plugin-engine-infra` | T1 | 🟡 PR #101 abierto |
 | **T9** | Tests Jest (validator, sandbox, lifecycle, api) | 4 | Media | `feature/plugin-engine-tests` | T2,T3 | 🟡 PR #105 abierto |
 | **T10** | Documentación (3 guías nuevas + 6 docs actualizados + CHANGELOG) | 5 | Media | `feature/plugin-engine-docs` | T1–T9 | ⬜ PENDIENTE |

@@ -141,6 +141,7 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           installedAt: true,
           updatedAt: true,
           permissions: true,
+          manifest: true,
         },
       });
       res.json({ plugins });

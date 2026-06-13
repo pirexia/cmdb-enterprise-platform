@@ -1502,6 +1502,9 @@
   "pluginStatusActive": "Actif",
   "pluginStatusInactive": "Inactif",
   "pluginStatusError": "Erreur",
+  "pluginSlotEmpty": "Aucun plugin installé pour ce slot",
+  "pluginIframeLoading": "Chargement du plugin...",
+  "pluginIframeError": "Échec du chargement du plugin",
   "pagination": {
     "records_per_page": "Lignes par page :",
     "page_of": "Page {page} sur {total}",

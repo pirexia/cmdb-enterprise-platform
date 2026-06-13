@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
 import PlaceCIModal from "@/components/dcim/PlaceCIModal";
+import PluginSlot from "@/components/plugins/PluginSlot";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
 
@@ -787,6 +788,9 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
             </div>
           )}
         </div>
+
+        {/* Plugin CIDetailTab slots */}
+        <PluginSlot slotName="CIDetailTab" context={{ ciId: ci.id }} className="px-6 py-2" />
 
         {/* Footer */}
         <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 space-y-2">

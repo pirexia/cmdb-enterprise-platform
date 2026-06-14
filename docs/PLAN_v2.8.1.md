@@ -1,7 +1,7 @@
 # Plan consolidado v2.8.x — Plugin Engine (estado y backlog)
 
 > Documento único de seguimiento del Plugin Engine: qué se entregó, qué queda pendiente y los issues abiertos.
-> Última actualización: 2026-06-13.
+> Última actualización: 2026-06-14.
 > Planes relacionados: `docs/PLAN_v2.8.0.md` (plan original T1–T10), `docs/BACKLOG_v2.8.0.md` (hallazgos de la revisión), `docs/security/OWASP_v2.8.0.md` (auditoría).
 
 ---
@@ -65,6 +65,7 @@
 | L-04* | #116 | Low | `lifecycleManager.canTransition` no se invoca desde `updateStatus` (resto del dead code ya eliminado) | Hacer cumplir las transiciones válidas en `updateStatus` |
 | L-08 | #116 | Low | Los zips en `staging/` se localizan por escaneo O(n) del manifest; los huérfanos no se recolectan | Guardar la ruta de staging en `PluginRegistry`; GC de huérfanos |
 | L-09 | #116 | Low | El `approvalToken` 4-eyes es un JWT de sesión genérico (sin scope/nonce, replay dentro del TTL) | Emitir un token de aprobación efímero acotado a `{pluginId, action}` |
+| L-10 | #116 | Info | Comentario obsoleto en `MigrationRunner.runUp` ("Fallback to main connection in dev…"): el código hace hard-fail vía `resolveUrl()`, no existe tal fallback | ✅ Corregido 2026-06-14 (comentario alineado con el hard-fail real; pendiente solo commit en rama v2.8.2) |
 
 \* L-04 quedó parcialmente cerrado (dead code eliminado; falta solo enforcement de `canTransition`).
 

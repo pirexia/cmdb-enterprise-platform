@@ -351,9 +351,9 @@ export class MigrationRunner {
 
   async runUp(pluginId: string, sql: string): Promise<void> {
     PluginValidator.validateMigrationSql(sql, pluginId);
-    // Execute via psql against restricted role
-    // In production this uses PLUGIN_DATABASE_URL (cmdb_plugin role)
-    // Fallback to main connection in dev when PLUGIN_DATABASE_URL is not set
+    // Run the plugin DDL under the restricted cmdb_plugin role (PLUGIN_DATABASE_URL),
+    // via psql. resolveUrl() hard-fails if PLUGIN_DATABASE_URL is unset — it never
+    // falls back to the core DATABASE_URL (superuser), in dev or prod.
     const url = this.resolveUrl();
     await this.executeSql(url, sql);
   }

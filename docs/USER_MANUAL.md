@@ -1305,6 +1305,8 @@ Los sistemas operativos registrados aquí pueden asignarse a cualquier CI desde 
 | Fecha EoL | Fecha | End-of-Life; activa alertas automáticas |
 | Notas | Texto | Notas técnicas |
 
+> **Editar, fechas y borrado.** Haz clic sobre cualquier fila para abrir la ventana de edición: ahí cambias los datos (nombre/versión/fabricante) y gestionas las **fechas de ciclo de vida** (asignar/editar/eliminar) mediante el catálogo de Tipos de Fecha. Las entradas de sistema abren la ventana en solo lectura, pero permiten gestionar fechas. Para eliminar un SO usa la papelera; **solo se permite si ningún CI, documento o licencia lo tiene asignado** (en caso contrario verás un aviso de conflicto).
+
 ### 26.2 Maestro: Software Base
 
 Accede desde **Administración → Maestros → Software Base** (solo ADMIN).
@@ -1320,6 +1322,8 @@ El software base modela middleware y agentes del sistema instalados en servidore
 | Fecha EoL | Fecha | End-of-Life para alertas |
 
 Para asociar software base a un CI: abre el CI, ve a la pestaña **Software Base** y usa **Añadir software base**. Un CI puede tener múltiples entradas de software base.
+
+> **Editar, fechas y borrado.** Haz clic sobre cualquier fila para abrir la ventana de edición, donde cambias los datos y gestionas las **fechas de ciclo de vida** (asignar/editar/eliminar) mediante Tipos de Fecha. Para eliminar un software base usa la papelera; **solo se permite si ningún CI, documento o licencia lo tiene asignado**.
 
 ---
 

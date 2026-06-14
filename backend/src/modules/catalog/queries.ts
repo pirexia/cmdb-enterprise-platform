@@ -244,11 +244,12 @@ export function osQueries(prisma: PrismaClient) {
       prisma.operatingSystem.delete({ where: { id } }),
 
     countUsage: async (id: string) => {
-      const [docs, lics] = await Promise.all([
+      const [cis, docs, lics] = await Promise.all([
+        prisma.cI.count({ where: { operatingSystemId: id } }),
         prisma.documentOperatingSystem.count({ where: { operatingSystemId: id } }),
         prisma.licenseOperatingSystem.count({ where: { operatingSystemId: id } }),
       ]);
-      return docs + lics;
+      return cis + docs + lics;
     },
   };
 }

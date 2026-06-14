@@ -1295,6 +1295,8 @@ Operating systems registered here can be assigned to any CI from its edit form (
 | EoL date | Date | End-of-Life; triggers automated alerts |
 | Notes | Text | Technical notes |
 
+> **Edit, dates and deletion.** Click any row to open the edit window: there you change the data (name/version/manufacturer) and manage the **lifecycle dates** (assign/edit/delete) through the Date Types catalog. System entries open the window read-only but still allow managing dates. To delete an OS use the trash icon; **it is only allowed when no CI, document, or license references it** (otherwise you get a conflict notice).
+
 ### 26.2 Base Software Master
 
 Access from **Administration → Masters → Base Software** (ADMIN only).
@@ -1310,6 +1312,8 @@ Base software models middleware and system agents installed on physical, virtual
 | EoL date | Date | End-of-Life for alerts |
 
 To associate base software with a CI: open the CI, go to the **Base Software** tab and use **Add base software**. A CI can have multiple base software entries.
+
+> **Edit, dates and deletion.** Click any row to open the edit window, where you change the data and manage the **lifecycle dates** (assign/edit/delete) through Date Types. To delete a base software use the trash icon; **it is only allowed when no CI, document, or license references it**.
 
 ---
 

@@ -621,6 +621,26 @@
     "notes_placeholder": "Observations, usage restrictions, etc."
   },
   "masters": {
+    "field": {
+      "name": "Name",
+      "version": "Version",
+      "manufacturer": "Manufacturer",
+      "code": "Code",
+      "category": "Category",
+      "sort_order": "Order",
+      "description": "Description",
+      "type": "Type"
+    },
+    "entity_modal": {
+      "section_data": "Data",
+      "save": "Save",
+      "saved": "Saved",
+      "close": "Close",
+      "name_required": "Enter the name",
+      "manufacturer_required": "Select a manufacturer",
+      "open_hint": "Click to edit and manage dates",
+      "system_note": "System entry (read-only). You can only manage dates."
+    },
     "title": "Master Data Administration",
     "subtitle": "Manage master tables: Areas, Branches, Manufacturers, Models, Providers",
     "tabs": {
@@ -692,6 +712,7 @@
       "empty": "No providers registered."
     },
     "os": {
+      "modal_title": "Edit Operating System",
       "new": "New Operating System",
       "name_placeholder": "E.g.: Windows Server 2022",
       "version_placeholder": "Version (optional, e.g.: 2022, 11, 14.04)",
@@ -702,6 +723,7 @@
       "in_use": "In use"
     },
     "bsw": {
+      "modal_title": "Edit Base Software",
       "new": "New Base Software",
       "name_placeholder": "E.g.: Oracle Database, Apache Tomcat",
       "version_placeholder": "Version (optional, e.g.: 19c, 10.1)",

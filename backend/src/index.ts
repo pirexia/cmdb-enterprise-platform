@@ -3257,6 +3257,11 @@ app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, req
 });
 app.delete('/api/masters/device-models/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
   try {
+    // Block deletion when CIs still reference this model (avoid silent SET NULL on ci_model_id)
+    const usage = await prisma.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM "configuration_items" WHERE ci_model_id=${req.params.id}::uuid`;
+    const inUse = Number(usage[0]?.count ?? 0);
+    if (inUse > 0) { res.status(409).json({ error: `Cannot delete: in use by ${inUse} CI(s)` }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','DeviceModel',${req.params.id}::uuid,${req.user!.email},now())`;
     await prisma.$executeRaw`DELETE FROM "device_models" WHERE id=${req.params.id}::uuid`;
     res.json({ ok: true });

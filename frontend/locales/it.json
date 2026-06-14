@@ -576,6 +576,26 @@
     "notes_placeholder": "Osservazioni, restrizioni d'uso, ecc."
   },
   "masters": {
+    "field": {
+      "name": "Nome",
+      "version": "Versione",
+      "manufacturer": "Produttore",
+      "code": "Codice",
+      "category": "Categoria",
+      "sort_order": "Ordine",
+      "description": "Descrizione",
+      "type": "Tipo"
+    },
+    "entity_modal": {
+      "section_data": "Dati",
+      "save": "Salva",
+      "saved": "Salvato",
+      "close": "Chiudi",
+      "name_required": "Inserisci il nome",
+      "manufacturer_required": "Seleziona un produttore",
+      "open_hint": "Clicca per modificare e gestire le date",
+      "system_note": "Voce di sistema (sola lettura). Puoi solo gestire le date."
+    },
     "title": "Amministrazione dati anagrafici",
     "subtitle": "Gestione tabelle anagrafiche: Aree, Sedi, Produttori, Modelli, Fornitori",
     "tabs": {
@@ -647,6 +667,7 @@
       "empty": "Nessun fornitore registrato."
     },
     "os": {
+      "modal_title": "Modifica sistema operativo",
       "new": "Nuovo sistema operativo",
       "name_placeholder": "Es: Windows Server 2022",
       "version_placeholder": "Versione (opzionale, es: 2022, 11, 14.04)",
@@ -657,6 +678,7 @@
       "in_use": "In uso"
     },
     "bsw": {
+      "modal_title": "Modifica software di base",
       "new": "Nuovo software di base",
       "name_placeholder": "Es: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versione (opzionale, es: 19c, 10.1)",

@@ -13,6 +13,12 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 - **Modelos de Hardware — edición por modal** — al pulsar sobre un modelo en **Datos Maestros → Modelos de Hardware** se abre una ventana de edición que permite cambiar nombre/fabricante y gestionar las fechas de ciclo de vida mediante el catálogo de **Tipos de Fecha** (`DateType`, categoría HARDWARE) con `LifecycleDatesEditor`. Sustituye al antiguo "Centro de Consulta de Ciclo de Vida".
 - **`PATCH /api/masters/device-models/:id`** ya no sobrescribe `eol_date`/`eos_date`: esas columnas espejo las mantienen los disparadores desde los `DateType` `hw-end-of-life`/`hw-end-of-support`. El endpoint solo actualiza nombre y fabricante.
+- **Sistemas Operativos y Software Base — edición por modal** — al pulsar sobre una fila se abre la misma ventana de edición que en Modelos de Hardware (componente genérico `EditCatalogEntityModal`), con campos (nombre/versión/fabricante) + gestión de fechas de ciclo de vida. Se elimina la edición inline y el panel de fechas separado. Las entradas de sistema abren el modal en solo lectura pero permiten gestionar fechas.
+- **Cabeceras en formularios de alta** — los campos de los formularios de alta de Tipos de Fecha, Sistemas Operativos, Software Base y Modelos de Hardware muestran ahora una etiqueta/cabecera sobre cada campo.
+
+### Fixed
+
+- **Protección de borrado en maestros** — eliminar un Modelo de Hardware ahora devuelve 409 si algún CI lo tiene asignado (`ci_model_id`), evitando el `SET NULL` silencioso; el conteo de uso de Sistemas Operativos incluye ahora los CIs (`operating_system_id`) además de documentos y licencias. (Software Base ya contemplaba los CIs.)
 
 ### Removed
 

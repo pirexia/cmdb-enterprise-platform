@@ -576,6 +576,26 @@
     "notes_placeholder": "Observações, restrições de uso, etc."
   },
   "masters": {
+    "field": {
+      "name": "Nome",
+      "version": "Versão",
+      "manufacturer": "Fabricante",
+      "code": "Código",
+      "category": "Categoria",
+      "sort_order": "Ordem",
+      "description": "Descrição",
+      "type": "Tipo"
+    },
+    "entity_modal": {
+      "section_data": "Dados",
+      "save": "Guardar",
+      "saved": "Guardado",
+      "close": "Fechar",
+      "name_required": "Introduza o nome",
+      "manufacturer_required": "Selecione um fabricante",
+      "open_hint": "Clique para editar e gerir datas",
+      "system_note": "Entrada de sistema (apenas leitura). Só pode gerir datas."
+    },
     "title": "Administração de Dados Mestres",
     "subtitle": "Gestão de tabelas mestras: Áreas, Sedes, Fabricantes, Modelos, Fornecedores",
     "tabs": {
@@ -647,6 +667,7 @@
       "empty": "Sem fornecedores registados."
     },
     "os": {
+      "modal_title": "Editar Sistema Operativo",
       "new": "Novo Sistema Operativo",
       "name_placeholder": "Ex: Windows Server 2022",
       "version_placeholder": "Versão (opcional, ex: 2022, 11, 14.04)",
@@ -657,6 +678,7 @@
       "in_use": "Em uso"
     },
     "bsw": {
+      "modal_title": "Editar Software Base",
       "new": "Novo Software Base",
       "name_placeholder": "Ex: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versão (opcional, ex: 19c, 10.1)",

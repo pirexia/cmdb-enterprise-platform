@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { LifecycleDatesEditor } from "@/components/LifecycleDatesEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,9 @@ export default function MastersPage() {
   const [newOs,        setNewOs]        = useState({ name: "", version: "", manufacturerId: "" });
   const [newBsw,       setNewBsw]       = useState({ name: "", version: "", manufacturerId: "" });
   const [newDt,        setNewDt]        = useState({ code: "", name: "", description: "", category: "GENERAL", sortOrder: "0" });
+
+  const [expandedOsId,  setExpandedOsId]  = useState<string | null>(null);
+  const [expandedBswId, setExpandedBswId] = useState<string | null>(null);
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -1467,35 +1471,48 @@ export default function MastersPage() {
                     </div>
                   );
                 }
+                const osExpanded = expandedOsId === os.id;
                 return (
-                  <div key={os.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">
-                        {os.name}
-                        {os.version && <span className="ml-1.5 text-xs text-slate-400">{os.version}</span>}
-                        {os.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
-                      </p>
-                      {os.manufacturer && <p className="text-xs text-slate-400">{os.manufacturer.name}</p>}
-                      <p className="text-[10px] font-mono text-slate-300">{os.code}</p>
+                  <div key={os.id} className="border-b border-slate-50 last:border-0">
+                    <div className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          {os.name}
+                          {os.version && <span className="ml-1.5 text-xs text-slate-400">{os.version}</span>}
+                          {os.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
+                        </p>
+                        {os.manufacturer && <p className="text-xs text-slate-400">{os.manufacturer.name}</p>}
+                        <p className="text-[10px] font-mono text-slate-300">{os.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedOsId(osExpanded ? null : os.id)}
+                          title={t('masters.dates_section')}
+                          className={`rounded p-1.5 transition-colors ${osExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
+                        ><Calendar className="h-4 w-4" /></button>
+                        {!os.isSystem && (
+                          <>
+                            <button
+                              onClick={() => setEditState({ kind: "os", id: os.id, name: os.name, version: os.version ?? "", manufacturerId: os.manufacturer?.id ?? "" })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar "${os.name}"?`)) return;
+                                const res = await apiFetch(`/api/catalog/operating-systems/${os.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {!os.isSystem && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button
-                          onClick={() => setEditState({ kind: "os", id: os.id, name: os.name, version: os.version ?? "", manufacturerId: os.manufacturer?.id ?? "" })}
-                          className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                        ><Pencil className="h-4 w-4" /></button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`¿Eliminar "${os.name}"?`)) return;
-                            const res = await apiFetch(`/api/catalog/operating-systems/${os.id}`, { method: "DELETE" });
-                            if (!res.ok) {
-                              const d = await res.json().catch(() => ({})) as { error?: string };
-                              alert(d.error ?? `Error ${res.status}`); return;
-                            }
-                            load();
-                          }}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                        ><Trash2 className="h-4 w-4" /></button>
+                    {osExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
+                        <LifecycleDatesEditor entityType="operating-systems" entityId={os.id} categoryFilter="OS" />
                       </div>
                     )}
                   </div>
@@ -1594,35 +1611,48 @@ export default function MastersPage() {
                     </div>
                   );
                 }
+                const bswExpanded = expandedBswId === sw.id;
                 return (
-                  <div key={sw.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">
-                        {sw.name}
-                        {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
-                        {sw.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
-                      </p>
-                      {sw.manufacturer && <p className="text-xs text-slate-400">{sw.manufacturer.name}</p>}
-                      <p className="text-[10px] font-mono text-slate-300">{sw.code}</p>
+                  <div key={sw.id} className="border-b border-slate-50 last:border-0">
+                    <div className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          {sw.name}
+                          {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
+                          {sw.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
+                        </p>
+                        {sw.manufacturer && <p className="text-xs text-slate-400">{sw.manufacturer.name}</p>}
+                        <p className="text-[10px] font-mono text-slate-300">{sw.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedBswId(bswExpanded ? null : sw.id)}
+                          title={t('masters.dates_section')}
+                          className={`rounded p-1.5 transition-colors ${bswExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
+                        ><Calendar className="h-4 w-4" /></button>
+                        {!sw.isSystem && (
+                          <>
+                            <button
+                              onClick={() => setEditState({ kind: "bsw", id: sw.id, name: sw.name, version: sw.version ?? "", manufacturerId: sw.manufacturer?.id ?? "" })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar "${sw.name}"?`)) return;
+                                const res = await apiFetch(`/api/catalog/base-software/${sw.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {!sw.isSystem && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button
-                          onClick={() => setEditState({ kind: "bsw", id: sw.id, name: sw.name, version: sw.version ?? "", manufacturerId: sw.manufacturer?.id ?? "" })}
-                          className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                        ><Pencil className="h-4 w-4" /></button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`¿Eliminar "${sw.name}"?`)) return;
-                            const res = await apiFetch(`/api/catalog/base-software/${sw.id}`, { method: "DELETE" });
-                            if (!res.ok) {
-                              const d = await res.json().catch(() => ({})) as { error?: string };
-                              alert(d.error ?? `Error ${res.status}`); return;
-                            }
-                            load();
-                          }}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                        ><Trash2 className="h-4 w-4" /></button>
+                    {bswExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
+                        <LifecycleDatesEditor entityType="base-software" entityId={sw.id} categoryFilter="SOFTWARE" />
                       </div>
                     )}
                   </div>

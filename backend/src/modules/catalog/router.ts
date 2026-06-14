@@ -2,12 +2,13 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import {
   DateTypeCreateSchema, DateTypeUpdateSchema, DATE_TYPE_CATEGORIES,
+  EntityDateCreateSchema, EntityDateUpdateSchema,
   OsCreateSchema, OsUpdateSchema,
   BswCreateSchema, BswUpdateSchema, CIBswAssociateSchema,
   BASE_SOFTWARE_ALLOWED_CI_TYPES,
 } from './schemas.js';
 import { catalogAudit } from './audit.js';
-import { dtQueries, osQueries, bswQueries } from './queries.js';
+import { dtQueries, ciDateQueries, osDateQueries, bswDateQueries, dmDateQueries, osQueries, bswQueries } from './queries.js';
 
 function requireUuidParam(paramName: string) {
   return (req: Request, res: Response, next: () => void): void => {
@@ -30,9 +31,13 @@ function requireAdmin(req: Request, res: Response, next: () => void): void {
 
 export function createCatalogRouter(prisma: PrismaClient): Router {
   const router = Router();
-  const dt  = dtQueries(prisma);
-  const os  = osQueries(prisma);
-  const bsw = bswQueries(prisma);
+  const dt    = dtQueries(prisma);
+  const ciDt  = ciDateQueries(prisma);
+  const osDt  = osDateQueries(prisma);
+  const bswDt = bswDateQueries(prisma);
+  const dmDt  = dmDateQueries(prisma);
+  const os    = osQueries(prisma);
+  const bsw   = bswQueries(prisma);
 
   // ─── Date Types ────────────────────────────────────────────────────────────
 
@@ -139,6 +144,78 @@ export function createCatalogRouter(prisma: PrismaClient): Router {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // ─── Entity Lifecycle Dates ────────────────────────────────────────────────
+  // Reusable helper to build 4 CRUD routes for one entity type.
+  // entityParam   : URL param name (ciId, osId, bswId, dmId)
+  // parentCheck   : async fn that returns true if the parent entity exists
+  // q             : the entity-date query object
+
+  function entityDateRoutes<T extends {
+    list    : (eid: string) => Promise<unknown[]>;
+    findById: (id: string)  => Promise<unknown | null>;
+    create  : (eid: string, d: { dateTypeId: string; dateValue: string; notes?: string | null }) => Promise<unknown>;
+    update  : (id: string,  d: { dateValue?: string; notes?: string | null }) => Promise<unknown>;
+    delete  : (id: string)  => Promise<unknown>;
+  }>(prefix: string, entityParam: string, parentExists: (eid: string) => Promise<boolean>, q: T) {
+    const uuidParam = requireUuidParam(entityParam);
+
+    // GET /api/catalog/<prefix>/:entityId/dates
+    router.get(`/${prefix}/:${entityParam}/dates`, uuidParam, async (req: Request, res: Response) => {
+      try {
+        const eid = req.params[entityParam] as string;
+        if (!(await parentExists(eid))) { res.status(404).json({ error: 'Not found' }); return; }
+        res.json(await q.list(eid));
+      } catch (err) { console.error(`[catalog] list ${prefix} dates error:`, err); res.status(500).json({ error: 'Internal server error' }); }
+    });
+
+    // POST /api/catalog/<prefix>/:entityId/dates
+    router.post(`/${prefix}/:${entityParam}/dates`, requireAdmin, uuidParam, async (req: Request, res: Response) => {
+      const parsed = EntityDateCreateSchema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: parsed.error.errors }); return; }
+      try {
+        const eid = req.params[entityParam] as string;
+        if (!(await parentExists(eid))) { res.status(404).json({ error: 'Not found' }); return; }
+        const record = await q.create(eid, parsed.data);
+        await catalogAudit(prisma, `CREATE_${prefix.toUpperCase().replace(/-/g, '_')}_DATE`, prefix, eid, (req as any).user!.email);
+        res.status(201).json(record);
+      } catch (err: any) {
+        if (err?.code === 'P2002') { res.status(409).json({ error: 'Date type already set for this entity' }); return; }
+        if (err?.code === 'P2003') { res.status(422).json({ error: 'Invalid date type' }); return; }
+        console.error(`[catalog] create ${prefix} date error:`, err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // PATCH /api/catalog/<prefix>/:entityId/dates/:dateId
+    router.patch(`/${prefix}/:${entityParam}/dates/:dateId`, requireAdmin, uuidParam, requireUuidParam('dateId'), async (req: Request, res: Response) => {
+      const parsed = EntityDateUpdateSchema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: parsed.error.errors }); return; }
+      try {
+        const existing = await q.findById(req.params['dateId'] as string);
+        if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+        const record = await q.update(req.params['dateId'] as string, parsed.data);
+        await catalogAudit(prisma, `UPDATE_${prefix.toUpperCase().replace(/-/g, '_')}_DATE`, prefix, req.params[entityParam] as string, (req as any).user!.email);
+        res.json(record);
+      } catch (err) { console.error(`[catalog] update ${prefix} date error:`, err); res.status(500).json({ error: 'Internal server error' }); }
+    });
+
+    // DELETE /api/catalog/<prefix>/:entityId/dates/:dateId
+    router.delete(`/${prefix}/:${entityParam}/dates/:dateId`, requireAdmin, uuidParam, requireUuidParam('dateId'), async (req: Request, res: Response) => {
+      try {
+        const existing = await q.findById(req.params['dateId'] as string);
+        if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+        await q.delete(req.params['dateId'] as string);
+        await catalogAudit(prisma, `DELETE_${prefix.toUpperCase().replace(/-/g, '_')}_DATE`, prefix, req.params[entityParam] as string, (req as any).user!.email);
+        res.status(204).send();
+      } catch (err) { console.error(`[catalog] delete ${prefix} date error:`, err); res.status(500).json({ error: 'Internal server error' }); }
+    });
+  }
+
+  entityDateRoutes('cis',               'ciId',  (id) => prisma.cI.findUnique({ where: { id } }).then(Boolean),              ciDt);
+  entityDateRoutes('operating-systems', 'osId',  (id) => prisma.operatingSystem.findUnique({ where: { id } }).then(Boolean), osDt);
+  entityDateRoutes('base-software',     'bswId', (id) => prisma.baseSoftware.findUnique({ where: { id } }).then(Boolean),    bswDt);
+  entityDateRoutes('device-models',     'dmId',  (id) => prisma.deviceModel.findUnique({ where: { id } }).then(Boolean),     dmDt);
 
   // ─── Operating Systems ─────────────────────────────────────────────────────
 

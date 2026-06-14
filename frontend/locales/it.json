@@ -664,7 +664,8 @@
       "add": "Aggiungi tipo",
       "empty": "Nessun tipo di data in questa categoria.",
       "system": "Sistema"
-    }
+    },
+    "dates_section": "Date del ciclo di vita"
   },
   "settings": {
     "title": "Impostazioni",
@@ -1526,5 +1527,14 @@
     "prev": "Pagina precedente",
     "next": "Pagina successiva",
     "showing": "Visualizzazione {from}–{to} di {total}"
+  },
+  "lde": {
+    "loading": "Caricamento date...",
+    "empty": "Nessuna data registrata.",
+    "select_type": "— Tipo di data —",
+    "notes_placeholder": "Note (opzionale)",
+    "confirm_delete": "Elimina data",
+    "add_required": "Seleziona tipo e data.",
+    "all_types_set": "Tutti i tipi già impostati."
   }
 }

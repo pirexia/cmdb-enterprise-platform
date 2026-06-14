@@ -636,7 +636,6 @@
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
     "operating_systems": "Sistemas Operativos",
-    "operating_systems": "Sistemas Operativos",
     "base_software": "Software Base",
     "models": {
       "new": "Nuevo Modelo",
@@ -710,7 +709,8 @@
       "add": "Añadir Tipo",
       "empty": "Sin tipos de fecha en esta categoría.",
       "system": "Sistema"
-    }
+    },
+    "dates_section": "Fechas de Ciclo de Vida"
   },
   "settings": {
     "title": "Configuración",
@@ -1646,5 +1646,14 @@
     "prev": "Página anterior",
     "next": "Página siguiente",
     "showing": "Mostrando {from}–{to} de {total}"
+  },
+  "lde": {
+    "loading": "Cargando fechas...",
+    "empty": "Sin fechas registradas.",
+    "select_type": "— Tipo de fecha —",
+    "notes_placeholder": "Notas (opcional)",
+    "confirm_delete": "¿Eliminar fecha",
+    "add_required": "Selecciona tipo y fecha.",
+    "all_types_set": "Todos los tipos configurados."
   }
 }

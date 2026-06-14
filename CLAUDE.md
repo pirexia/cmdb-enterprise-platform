@@ -416,3 +416,34 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+---
+
+## Plan Activo
+
+**Plan en ejecución:** `docs/PLAN_v2.8.2.md`
+**Versión objetivo:** v2.8.2
+**Estado general:** EN PROGRESO
+**Tarea actual:** T1 — Fix dropdown selección masiva
+**Última acción:** T0 completada — commit `28896d6` (fix L-10 engine.ts comment); PLAN_v2.8.2.md creado y Plan Activo añadido
+**Última actualización:** 2026-06-14
+**Rama activa:** `fix/plugins-l10-comment` (T0) → siguiente: `fix/bulk-select-dropdown` (T1)
+**PRs abiertos:** T0 pendiente push/PR
+
+### Progreso por fase
+- T0 Pre-flight: ✅ COMPLETADA
+- T1 Fix dropdown: ⬜ PENDIENTE
+- T2+T3 Modal CI: ⬜ PENDIENTE
+- T4 Maestro DateType: ⬜ PENDIENTE
+- T5 Asociaciones + espejo: ⬜ PENDIENTE
+- T6 Modelos Hardware: ⬜ PENDIENTE
+- T7 Fechas en modal CI: ⬜ PENDIENTE
+- T8 Docs + release: ⬜ PENDIENTE
+
+### Instrucción de reanudación tras corte de sesión
+Si esta sesión se reinicia:
+1. Leer `docs/PLAN_v2.8.2.md` § 3 para identificar la tarea 🟡 EN PROGRESO o primera ⬜ PENDIENTE.
+2. Leer esta sección para confirmar la última acción realizada.
+3. Verificar `git status` y `git log --oneline -10`.
+4. **NO asumir nada** — si hay discrepancia entre el plan y el repo, preguntar al usuario.
+5. Continuar desde la tarea marcada como 🟡 o la primera ⬜ después de la última ✅.

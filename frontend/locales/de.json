@@ -664,7 +664,8 @@
       "add": "Typ hinzufügen",
       "empty": "Keine Datumstypen in dieser Kategorie.",
       "system": "System"
-    }
+    },
+    "dates_section": "Lebenszyklusdaten"
   },
   "settings": {
     "title": "Einstellungen",
@@ -1526,5 +1527,14 @@
     "prev": "Vorherige Seite",
     "next": "Nächste Seite",
     "showing": "{from}–{to} von {total} angezeigt"
+  },
+  "lde": {
+    "loading": "Daten werden geladen...",
+    "empty": "Keine Daten erfasst.",
+    "select_type": "— Datumstyp —",
+    "notes_placeholder": "Notizen (optional)",
+    "confirm_delete": "Datum löschen",
+    "add_required": "Typ und Datum wählen.",
+    "all_types_set": "Alle Typen bereits gesetzt."
   }
 }

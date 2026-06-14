@@ -664,7 +664,8 @@
       "add": "Ajouter un type",
       "empty": "Aucun type de date dans cette catégorie.",
       "system": "Système"
-    }
+    },
+    "dates_section": "Dates de cycle de vie"
   },
   "settings": {
     "title": "Paramètres",
@@ -1526,5 +1527,14 @@
     "prev": "Page précédente",
     "next": "Page suivante",
     "showing": "Affichage de {from}–{to} sur {total}"
+  },
+  "lde": {
+    "loading": "Chargement des dates...",
+    "empty": "Aucune date enregistrée.",
+    "select_type": "— Type de date —",
+    "notes_placeholder": "Notes (optionnel)",
+    "confirm_delete": "Supprimer la date",
+    "add_required": "Sélectionnez le type et la date.",
+    "all_types_set": "Tous les types déjà définis."
   }
 }

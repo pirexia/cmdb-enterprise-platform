@@ -709,7 +709,8 @@
       "add": "Add Type",
       "empty": "No date types in this category.",
       "system": "System"
-    }
+    },
+    "dates_section": "Lifecycle Dates"
   },
   "settings": {
     "title": "Settings",
@@ -1645,5 +1646,14 @@
     "prev": "Previous page",
     "next": "Next page",
     "showing": "Showing {from}–{to} of {total}"
+  },
+  "lde": {
+    "loading": "Loading dates...",
+    "empty": "No dates registered.",
+    "select_type": "— Date type —",
+    "notes_placeholder": "Notes (optional)",
+    "confirm_delete": "Delete date",
+    "add_required": "Select type and date.",
+    "all_types_set": "All types already set."
   }
 }

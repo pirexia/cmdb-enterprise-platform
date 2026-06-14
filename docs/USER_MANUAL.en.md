@@ -751,6 +751,21 @@ As a quick reference when creating a model:
 2. Click **"Suggest Standard Dates"**.
 3. The platform shows an indicative date (software: today + 2 years; hardware: today + 5 years) you can use as a starting point when entering the dates in the edit window.
 
+### CI's own dates vs. inherited dates
+
+Not every date lives on the model. Each date has a natural owner:
+
+| Date | Where it is assigned |
+|------|----------------------|
+| End of Life (EOL) | **Hardware Model** (shared by all units of that model) |
+| OS End of Support | **Operating System** |
+| Base software End of Life/Support | **Base Software** |
+| **End of Warranty** | **The CI** (each unit has its own warranty based on its purchase) |
+| **End of Maintenance** | **The CI** (per its maintenance contract) |
+| Purchase, Deployment, Decommission, Review | **The CI** |
+
+To manage an asset's own dates, open its detail (**Inventory → click the CI**) and go to the **"CI Dates"** section: there an ADMIN can assign, edit, or delete dates (End of Warranty, End of Maintenance, Purchase…) by choosing a Date Type from the **CI / General** category. Right below, the **"Inherited dates"** section shows (read-only) the dates that come from the model, the OS, and the base software, indicating their source.
+
 ---
 
 ## 15. Automated Daily Alerts

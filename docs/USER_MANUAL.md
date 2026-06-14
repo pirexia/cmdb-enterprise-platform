@@ -751,6 +751,21 @@ Como referencia rápida al dar de alta un modelo:
 2. Haz clic en **"Sugerir Fechas Estándar"**.
 3. La plataforma muestra una fecha orientativa (software: hoy + 2 años; hardware: hoy + 5 años) que puedes usar como punto de partida al introducir las fechas en la ventana de edición.
 
+### Fechas propias del CI vs. fechas heredadas
+
+No todas las fechas viven en el modelo. Cada fecha tiene su "dueño" natural:
+
+| Fecha | ¿Dónde se asigna? |
+|-------|-------------------|
+| Fin de Vida (EOL) | **Modelo de Hardware** (la comparten todos los equipos de ese modelo) |
+| Fin de Soporte del SO | **Sistema Operativo** |
+| Fin de Vida/Soporte del software base | **Software Base** |
+| **Fin de Garantía** | **El CI** (cada unidad tiene su propia garantía según su compra) |
+| **Fin de Mantenimiento** | **El CI** (según su contrato de mantenimiento) |
+| Compra, Despliegue, Baja, Revisión | **El CI** |
+
+Para gestionar las fechas propias de un activo, abre su ficha (**Inventario → clic en el CI**) y ve a la sección **"Fechas del CI"**: ahí un ADMIN puede asignar, editar o eliminar fechas (Fin de Garantía, Fin de Mantenimiento, Compra…) eligiendo un Tipo de Fecha de la categoría **CI / Generales**. Justo debajo, la sección **"Fechas heredadas"** muestra (solo lectura) las fechas que provienen del modelo, el SO y el software base, indicando su procedencia.
+
 ---
 
 ## 15. Alertas Diarias Automáticas

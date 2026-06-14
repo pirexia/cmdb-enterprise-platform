@@ -593,6 +593,18 @@
     "operating_systems": "Sistemi operativi",
     "base_software": "Software di base",
     "models": {
+      "modal": {
+        "title": "Modifica modello hardware",
+        "section_data": "Dati del modello",
+        "name_label": "Nome",
+        "name_required": "Inserisci il nome del modello",
+        "manufacturer_field": "Produttore",
+        "manufacturer_required": "Seleziona un produttore",
+        "save": "Salva",
+        "saved": "Salvato",
+        "close": "Chiudi",
+        "open_hint": "Clicca per modificare il modello e le sue date del ciclo di vita"
+      },
       "new": "Nuovo modello hardware",
       "placeholder": "Es: PowerEdge R740",
       "manufacturer_label": "— Produttore —",

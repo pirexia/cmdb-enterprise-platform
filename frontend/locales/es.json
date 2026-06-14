@@ -638,6 +638,18 @@
     "operating_systems": "Sistemas Operativos",
     "base_software": "Software Base",
     "models": {
+      "modal": {
+        "title": "Editar Modelo de Hardware",
+        "section_data": "Datos del modelo",
+        "name_label": "Nombre",
+        "name_required": "Introduce el nombre del modelo",
+        "manufacturer_field": "Fabricante",
+        "manufacturer_required": "Selecciona un fabricante",
+        "save": "Guardar",
+        "saved": "Guardado",
+        "close": "Cerrar",
+        "open_hint": "Haz clic para editar el modelo y sus fechas de ciclo de vida"
+      },
       "new": "Nuevo Modelo de Hardware",
       "placeholder": "Ej: PowerEdge R740",
       "manufacturer_label": "— Fabricante —",

@@ -7,6 +7,19 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+- **Modelos de Hardware — edición por modal** — al pulsar sobre un modelo en **Datos Maestros → Modelos de Hardware** se abre una ventana de edición que permite cambiar nombre/fabricante y gestionar las fechas de ciclo de vida mediante el catálogo de **Tipos de Fecha** (`DateType`, categoría HARDWARE) con `LifecycleDatesEditor`. Sustituye al antiguo "Centro de Consulta de Ciclo de Vida".
+- **`PATCH /api/masters/device-models/:id`** ya no sobrescribe `eol_date`/`eos_date`: esas columnas espejo las mantienen los disparadores desde los `DateType` `hw-end-of-life`/`hw-end-of-support`. El endpoint solo actualiza nombre y fabricante.
+
+### Removed
+
+- **Centro de Consulta de Ciclo de Vida** (Modelos de Hardware) — se eliminan las tarjetas de consulta externa (endoflife.date, Park Place, Cloud-Shelf), la edición inline de fechas y el botón de sincronización EOL por fila. La importación de versiones ("Catálogo EOL") y "Sugerir Fechas Estándar" del formulario de alta se mantienen.
+
+---
+
 ## [2.8.2] — 2026-06-14
 
 ### Added

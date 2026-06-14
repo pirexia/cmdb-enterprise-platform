@@ -21,7 +21,7 @@
 11. [Repositorio Documental](#11-repositorio-documental)
 12. [Contratos y Adendas](#12-contratos-y-adendas)
 13. [Repositorio de Licencias](#13-repositorio-de-licencias)
-14. [Centro de Consulta de Ciclo de Vida (EOL/EoS)](#14-centro-de-consulta-de-ciclo-de-vida-eoless)
+14. [Modelos de Hardware y Fechas de Ciclo de Vida](#14-modelos-de-hardware-y-fechas-de-ciclo-de-vida)
 15. [Alertas Diarias Automáticas](#15-alertas-diarias-automáticas)
 16. [Centro de Reportes](#16-centro-de-reportes)
 17. [Configuración y Gestión de Usuarios](#17-configuración-y-gestión-de-usuarios)
@@ -718,39 +718,38 @@ Registra los usuarios finales asignados a esta licencia. No tienen que ser usuar
 
 ---
 
-## 14. Centro de Consulta de Ciclo de Vida (EOL/EoS)
+## 14. Modelos de Hardware y Fechas de Ciclo de Vida
 
-Este centro permite verificar las fechas de fin de soporte y fin de vida de hardware y software consultando fuentes externas especializadas.
+En **Datos Maestros → Modelos de Hardware** gestionas el catálogo de modelos (p. ej. "PowerEdge R740") y sus fechas de ciclo de vida (fin de vida, fin de soporte, fin de garantía…).
 
-### Acceder al centro de consulta
+### Crear un modelo
 
-1. Ve a **Datos Maestros → Modelos**.
-2. Haz clic sobre cualquier fila de modelo para desplegar el panel de consulta.
+1. Ve a **Datos Maestros → Modelos de Hardware**.
+2. En el formulario **Nuevo Modelo**, escribe el nombre y selecciona el fabricante.
+3. Haz clic en **"Añadir"**.
 
-### Tres fuentes de referencia
+### Editar un modelo y sus fechas
 
-**endoflife.date — Software, sistemas operativos y firmware**
-Base de datos comunitaria con fechas EOL para Windows, Linux, MySQL, Java, y muchos más. Haz clic en **"Buscar en endoflife.date"** para abrir la página del producto en una nueva pestaña. También puedes hacer clic en **"Importar versiones"** para traer directamente las versiones disponibles como modelos en la plataforma.
+1. Haz clic sobre cualquier fila de modelo: se abre la ventana de edición.
+2. En **Datos del modelo** puedes cambiar el nombre y el fabricante; pulsa **"Guardar"**.
+3. En **Fechas de Ciclo de Vida** añade, edita o elimina fechas seleccionando un **Tipo de Fecha** (p. ej. *hw-end-of-life*, *hw-end-of-support*, *hw-end-of-warranty*) y la fecha correspondiente.
+   - Los tipos de fecha disponibles se gestionan en **Datos Maestros → Tipos de Fechas**.
+   - Las fechas *hw-end-of-life* y *hw-end-of-support* actualizan automáticamente los indicadores EOL/EOS que ves en la lista de modelos y en el detalle de los activos que usan ese modelo.
+4. Cierra la ventana al terminar.
 
-**Park Place Technologies — Hardware enterprise**
-Especializado en servidores, almacenamiento y equipamiento de red de marcas como Dell, HP, Cisco, IBM y NetApp. Haz clic en **"Buscar en Park Place"** para abrir el buscador de fin de vida oficial de ese fabricante.
+### Importar modelos desde endoflife.date (Catálogo EOL)
 
-**Cloud-Shelf — Hardware general**
-Buscador general con información de ciclo de vida y disponibilidad de hardware multimarca. Haz clic en **"Buscar en Cloud-Shelf"**.
+Para dar de alta varios modelos a partir de un producto conocido:
+1. En el formulario **Nuevo Modelo**, haz clic en **"Catálogo EOL"**.
+2. Busca el producto (p. ej. *windows*, *ubuntu*, *mysql*).
+3. Selecciona el fabricante e importa como modelos las versiones que necesites.
 
 ### Sugerir fechas estándar
 
-Cuando las fuentes externas no tienen datos claros para un modelo:
+Como referencia rápida al dar de alta un modelo:
 1. En el formulario **Nuevo Modelo**, selecciona el tipo: Software o Hardware.
 2. Haz clic en **"Sugerir Fechas Estándar"**.
-3. La plataforma calcula una fecha orientativa: para software, EoL = hoy + 2 años; para hardware, EoL = hoy + 5 años.
-4. Usa estas fechas como punto de partida y ajústalas cuando tengas información oficial.
-
-### Sincronizar EOL con endoflife.date
-
-Una vez confirmadas las fechas con las fuentes externas:
-1. En la lista de modelos, haz clic en el botón **"EOL"** junto al modelo.
-2. La plataforma consulta endoflife.date automáticamente y actualiza las fechas de todos los activos que usan ese modelo.
+3. La plataforma muestra una fecha orientativa (software: hoy + 2 años; hardware: hoy + 5 años) que puedes usar como punto de partida al introducir las fechas en la ventana de edición.
 
 ---
 

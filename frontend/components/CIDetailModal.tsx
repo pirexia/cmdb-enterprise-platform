@@ -8,6 +8,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
 import PlaceCIModal from "@/components/dcim/PlaceCIModal";
 import PluginSlot from "@/components/plugins/PluginSlot";
+import { LifecycleDatesEditor } from "@/components/LifecycleDatesEditor";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
 
@@ -188,6 +189,10 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
       .catch(() => setLifecycleDates([]))
       .finally(() => setLifecycleDatesLoading(false));
   }, [ci.id]);
+
+  // Inherited dates come from the model / OS / base software (source !== "CI");
+  // the CI's own dates are managed by the editable LifecycleDatesEditor below.
+  const inheritedDates = lifecycleDates.filter((e) => e.source !== "CI");
 
   // Base Software (only for physical/virtual server CIs)
   interface BswRef { id: string; code: string; name: string; version: string | null; manufacturer: { id: string; name: string } | null }
@@ -808,61 +813,73 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
         </div>
 
         {/* Lifecycle Dates */}
-        <div className="mt-6 rounded-xl bg-slate-50 border border-slate-200 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Calendar className="h-4 w-4 text-indigo-500" />
-            <h3 className="text-sm font-semibold text-slate-700">{t("ci_detail.lifecycle_dates_title")}</h3>
-          </div>
-          {lifecycleDatesLoading ? (
-            <p className="text-sm italic text-slate-400">{t("ci_detail.lifecycle_dates_loading")}</p>
-          ) : lifecycleDates.length === 0 ? (
-            <p className="text-sm italic text-slate-400">{t("ci_detail.lifecycle_dates_empty")}</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-slate-200 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                    <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_type")}</th>
-                    <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_source")}</th>
-                    <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_date")}</th>
-                    <th className="pb-1.5 text-left">{t("ci_detail.lifecycle_col_notes")}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {lifecycleDates.map((entry, i) => {
-                    const today = Date.now();
-                    const dateMs = new Date(entry.dateValue + "T00:00:00Z").getTime();
-                    const daysLeft = Math.floor((dateMs - today) / 86400000);
-                    const badge = daysLeft < 0
-                      ? <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700">{t("ci_detail.lifecycle_badge_expired")}</span>
-                      : daysLeft < 90
-                      ? <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">{t("ci_detail.lifecycle_badge_soon")}</span>
-                      : null;
-                    const fmtDate = new Date(entry.dateValue + "T00:00:00Z").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-                    const sourceLabel: Record<string, string> = {
-                      CI: t("ci_detail.lifecycle_source_ci"),
-                      OperatingSystem: t("ci_detail.lifecycle_source_os"),
-                      DeviceModel: t("ci_detail.lifecycle_source_dm"),
-                      BaseSoftware: t("ci_detail.lifecycle_source_bsw"),
-                    };
-                    return (
-                      <tr key={i} className="hover:bg-slate-100/50">
-                        <td className="py-1.5 pr-3 font-medium text-slate-700">{entry.dateType.name}</td>
-                        <td className="py-1.5 pr-3 text-slate-500">
-                          {sourceLabel[entry.source] ?? entry.source}
-                          {entry.entityName && <span className="block text-[10px] text-slate-400">{entry.entityName}</span>}
-                        </td>
-                        <td className="py-1.5 pr-3 font-mono text-slate-700 whitespace-nowrap">
-                          {fmtDate}{badge}
-                        </td>
-                        <td className="py-1.5 text-slate-400 italic">{entry.notes ?? "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+        <div className="mt-6 space-y-4">
+          {/* CI's own dates (editable by ADMIN) */}
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="h-4 w-4 text-indigo-500" />
+              <h3 className="text-sm font-semibold text-slate-700">{t("ci_detail.lifecycle_own_title")}</h3>
             </div>
-          )}
+            <LifecycleDatesEditor entityType="cis" entityId={ci.id} categoryFilter="GENERAL" readOnly={!isAdmin} />
+          </div>
+
+          {/* Inherited dates (read-only: model / OS / base software) */}
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Calendar className="h-4 w-4 text-slate-400" />
+              <h3 className="text-sm font-semibold text-slate-700">{t("ci_detail.lifecycle_inherited_title")}</h3>
+            </div>
+            {lifecycleDatesLoading ? (
+              <p className="text-sm italic text-slate-400">{t("ci_detail.lifecycle_dates_loading")}</p>
+            ) : inheritedDates.length === 0 ? (
+              <p className="text-sm italic text-slate-400">{t("ci_detail.lifecycle_inherited_empty")}</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_type")}</th>
+                      <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_source")}</th>
+                      <th className="pb-1.5 pr-3 text-left">{t("ci_detail.lifecycle_col_date")}</th>
+                      <th className="pb-1.5 text-left">{t("ci_detail.lifecycle_col_notes")}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {inheritedDates.map((entry, i) => {
+                      const today = Date.now();
+                      const dateMs = new Date(entry.dateValue + "T00:00:00Z").getTime();
+                      const daysLeft = Math.floor((dateMs - today) / 86400000);
+                      const badge = daysLeft < 0
+                        ? <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700">{t("ci_detail.lifecycle_badge_expired")}</span>
+                        : daysLeft < 90
+                        ? <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700">{t("ci_detail.lifecycle_badge_soon")}</span>
+                        : null;
+                      const fmtDate = new Date(entry.dateValue + "T00:00:00Z").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+                      const sourceLabel: Record<string, string> = {
+                        CI: t("ci_detail.lifecycle_source_ci"),
+                        OperatingSystem: t("ci_detail.lifecycle_source_os"),
+                        DeviceModel: t("ci_detail.lifecycle_source_dm"),
+                        BaseSoftware: t("ci_detail.lifecycle_source_bsw"),
+                      };
+                      return (
+                        <tr key={i} className="hover:bg-slate-100/50">
+                          <td className="py-1.5 pr-3 font-medium text-slate-700">{entry.dateType.name}</td>
+                          <td className="py-1.5 pr-3 text-slate-500">
+                            {sourceLabel[entry.source] ?? entry.source}
+                            {entry.entityName && <span className="block text-[10px] text-slate-400">{entry.entityName}</span>}
+                          </td>
+                          <td className="py-1.5 pr-3 font-mono text-slate-700 whitespace-nowrap">
+                            {fmtDate}{badge}
+                          </td>
+                          <td className="py-1.5 text-slate-400 italic">{entry.notes ?? "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Plugin CIDetailTab slots */}

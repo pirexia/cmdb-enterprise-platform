@@ -90,7 +90,7 @@ docs(plan): mark T1 as completed
 
 ---
 
-### T2+T3 — Modal de CI: campos por tipo + ensanchar ⬜ PENDIENTE
+### T2+T3 — Modal de CI: campos por tipo + ensanchar ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|

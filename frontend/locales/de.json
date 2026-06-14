@@ -576,6 +576,26 @@
     "notes_placeholder": "Beobachtungen, Nutzungsbeschränkungen, etc."
   },
   "masters": {
+    "field": {
+      "name": "Name",
+      "version": "Version",
+      "manufacturer": "Hersteller",
+      "code": "Code",
+      "category": "Kategorie",
+      "sort_order": "Reihenfolge",
+      "description": "Beschreibung",
+      "type": "Typ"
+    },
+    "entity_modal": {
+      "section_data": "Daten",
+      "save": "Speichern",
+      "saved": "Gespeichert",
+      "close": "Schließen",
+      "name_required": "Namen eingeben",
+      "manufacturer_required": "Hersteller auswählen",
+      "open_hint": "Klicken zum Bearbeiten und Verwalten der Daten",
+      "system_note": "Systemeintrag (schreibgeschützt). Sie können nur Daten verwalten."
+    },
     "title": "Stammdatenverwaltung",
     "subtitle": "Verwaltung von Stammdaten: Bereiche, Standorte, Hersteller, Modelle, Anbieter",
     "tabs": {
@@ -593,6 +613,18 @@
     "operating_systems": "Betriebssysteme",
     "base_software": "Basissoftware",
     "models": {
+      "modal": {
+        "title": "Hardware-Modell bearbeiten",
+        "section_data": "Modelldaten",
+        "name_label": "Name",
+        "name_required": "Modellnamen eingeben",
+        "manufacturer_field": "Hersteller",
+        "manufacturer_required": "Hersteller auswählen",
+        "save": "Speichern",
+        "saved": "Gespeichert",
+        "close": "Schließen",
+        "open_hint": "Klicken, um das Modell und seine Lebenszyklusdaten zu bearbeiten"
+      },
       "new": "Neues Hardware-Modell",
       "placeholder": "z.B.: PowerEdge R740",
       "manufacturer_label": "— Hersteller —",
@@ -635,6 +667,7 @@
       "empty": "Keine Anbieter erfasst."
     },
     "os": {
+      "modal_title": "Betriebssystem bearbeiten",
       "new": "Neues Betriebssystem",
       "name_placeholder": "z.B.: Windows Server 2022",
       "version_placeholder": "Version (optional, z.B.: 2022, 11, 14.04)",
@@ -645,6 +678,7 @@
       "in_use": "In Verwendung"
     },
     "bsw": {
+      "modal_title": "Basissoftware bearbeiten",
       "new": "Neue Basissoftware",
       "name_placeholder": "z.B.: Oracle Database, Apache Tomcat",
       "version_placeholder": "Version (optional, z.B.: 19c, 10.1)",

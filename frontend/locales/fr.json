@@ -576,6 +576,26 @@
     "notes_placeholder": "Observations, restrictions d'utilisation, etc."
   },
   "masters": {
+    "field": {
+      "name": "Nom",
+      "version": "Version",
+      "manufacturer": "Fabricant",
+      "code": "Code",
+      "category": "Catégorie",
+      "sort_order": "Ordre",
+      "description": "Description",
+      "type": "Type"
+    },
+    "entity_modal": {
+      "section_data": "Données",
+      "save": "Enregistrer",
+      "saved": "Enregistré",
+      "close": "Fermer",
+      "name_required": "Saisissez le nom",
+      "manufacturer_required": "Sélectionnez un fabricant",
+      "open_hint": "Cliquez pour modifier et gérer les dates",
+      "system_note": "Entrée système (lecture seule). Vous ne pouvez gérer que les dates."
+    },
     "title": "Administration des données de référence",
     "subtitle": "Gestion des tables de référence : Zones, Sites, Fabricants, Modèles, Fournisseurs",
     "tabs": {
@@ -593,6 +613,18 @@
     "operating_systems": "Systèmes d'exploitation",
     "base_software": "Logiciels de base",
     "models": {
+      "modal": {
+        "title": "Modifier le modèle matériel",
+        "section_data": "Données du modèle",
+        "name_label": "Nom",
+        "name_required": "Saisissez le nom du modèle",
+        "manufacturer_field": "Fabricant",
+        "manufacturer_required": "Sélectionnez un fabricant",
+        "save": "Enregistrer",
+        "saved": "Enregistré",
+        "close": "Fermer",
+        "open_hint": "Cliquez pour modifier le modèle et ses dates de cycle de vie"
+      },
       "new": "Nouveau modèle matériel",
       "placeholder": "Ex : PowerEdge R740",
       "manufacturer_label": "— Fabricant —",
@@ -635,6 +667,7 @@
       "empty": "Aucun fournisseur enregistré."
     },
     "os": {
+      "modal_title": "Modifier le système d'exploitation",
       "new": "Nouveau système d'exploitation",
       "name_placeholder": "Ex : Windows Server 2022",
       "version_placeholder": "Version (optionnel, ex : 2022, 11, 14.04)",
@@ -645,6 +678,7 @@
       "in_use": "En usage"
     },
     "bsw": {
+      "modal_title": "Modifier le logiciel de base",
       "new": "Nouveau logiciel de base",
       "name_placeholder": "Ex : Oracle Database, Apache Tomcat",
       "version_placeholder": "Version (optionnel, ex : 19c, 10.1)",

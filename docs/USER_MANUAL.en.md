@@ -21,7 +21,7 @@
 11. [Document Repository](#11-document-repository)
 12. [Contracts and Addenda](#12-contracts-and-addenda)
 13. [License Repository](#13-license-repository)
-14. [Lifecycle Lookup Center (EOL/EoS)](#14-lifecycle-lookup-center-eoless)
+14. [Hardware Models and Lifecycle Dates](#14-hardware-models-and-lifecycle-dates)
 15. [Automated Daily Alerts](#15-automated-daily-alerts)
 16. [Reports Center](#16-reports-center)
 17. [Configuration and User Management](#17-configuration-and-user-management)
@@ -718,39 +718,38 @@ Records the end users assigned to this licence. They do not need to be CMDB syst
 
 ---
 
-## 14. Lifecycle Lookup Center (EOL/EoS)
+## 14. Hardware Models and Lifecycle Dates
 
-This centre lets you verify end-of-support and end-of-life dates for hardware and software by querying specialised external sources.
+In **Master Data → Hardware Models** you manage the catalogue of models (e.g. "PowerEdge R740") and their lifecycle dates (end of life, end of support, end of warranty…).
 
-### Accessing the lookup centre
+### Create a model
 
-1. Go to **Master Data → Models**.
-2. Click on any model row to expand the lookup panel.
+1. Go to **Master Data → Hardware Models**.
+2. In the **New Model** form, type the name and select the manufacturer.
+3. Click **"Add"**.
 
-### Three reference sources
+### Edit a model and its dates
 
-**endoflife.date — Software, operating systems, and firmware**
-A community database with EOL dates for Windows, Linux, MySQL, Java, and many more. Click **"Search on endoflife.date"** to open the product page in a new tab. You can also click **"Import versions"** to bring the available versions directly into the platform as models.
+1. Click on any model row: the edit window opens.
+2. Under **Model data** you can change the name and manufacturer; click **"Save"**.
+3. Under **Lifecycle Dates** add, edit, or delete dates by selecting a **Date Type** (e.g. *hw-end-of-life*, *hw-end-of-support*, *hw-end-of-warranty*) and the corresponding date.
+   - The available date types are managed in **Master Data → Date Types**.
+   - The *hw-end-of-life* and *hw-end-of-support* dates automatically update the EOL/EOS indicators shown in the model list and in the detail of assets that use that model.
+4. Close the window when you are done.
 
-**Park Place Technologies — Enterprise hardware**
-Specialised in servers, storage, and network equipment from brands such as Dell, HP, Cisco, IBM, and NetApp. Click **"Search on Park Place"** to open the official end-of-life search for that manufacturer.
+### Import models from endoflife.date (EOL Catalog)
 
-**Cloud-Shelf — General hardware**
-A general-purpose hardware search engine with lifecycle and availability information for multiple brands. Click **"Search on Cloud-Shelf"**.
+To create several models from a known product:
+1. In the **New Model** form, click **"EOL Catalog"**.
+2. Search for the product (e.g. *windows*, *ubuntu*, *mysql*).
+3. Select the manufacturer and import the versions you need as models.
 
 ### Suggest standard dates
 
-When external sources do not have clear data for a model:
+As a quick reference when creating a model:
 1. In the **New Model** form, select the type: Software or Hardware.
 2. Click **"Suggest Standard Dates"**.
-3. The platform calculates an indicative date: for software, EoL = today + 2 years; for hardware, EoL = today + 5 years.
-4. Use these dates as a starting point and adjust them when you have official information.
-
-### Synchronise EOL with endoflife.date
-
-Once you have confirmed the dates using external sources:
-1. In the model list, click the **"EOL"** button next to the model.
-2. The platform queries endoflife.date automatically and updates the dates for all assets that use that model.
+3. The platform shows an indicative date (software: today + 2 years; hardware: today + 5 years) you can use as a starting point when entering the dates in the edit window.
 
 ---
 
@@ -1296,6 +1295,8 @@ Operating systems registered here can be assigned to any CI from its edit form (
 | EoL date | Date | End-of-Life; triggers automated alerts |
 | Notes | Text | Technical notes |
 
+> **Edit, dates and deletion.** Click any row to open the edit window: there you change the data (name/version/manufacturer) and manage the **lifecycle dates** (assign/edit/delete) through the Date Types catalog. System entries open the window read-only but still allow managing dates. To delete an OS use the trash icon; **it is only allowed when no CI, document, or license references it** (otherwise you get a conflict notice).
+
 ### 26.2 Base Software Master
 
 Access from **Administration → Masters → Base Software** (ADMIN only).
@@ -1311,6 +1312,8 @@ Base software models middleware and system agents installed on physical, virtual
 | EoL date | Date | End-of-Life for alerts |
 
 To associate base software with a CI: open the CI, go to the **Base Software** tab and use **Add base software**. A CI can have multiple base software entries.
+
+> **Edit, dates and deletion.** Click any row to open the edit window, where you change the data and manage the **lifecycle dates** (assign/edit/delete) through Date Types. To delete a base software use the trash icon; **it is only allowed when no CI, document, or license references it**.
 
 ---
 

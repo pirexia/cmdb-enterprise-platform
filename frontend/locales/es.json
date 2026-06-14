@@ -621,6 +621,26 @@
     "notes_placeholder": "Observaciones, restricciones de uso, etc."
   },
   "masters": {
+    "field": {
+      "name": "Nombre",
+      "version": "Versión",
+      "manufacturer": "Fabricante",
+      "code": "Código",
+      "category": "Categoría",
+      "sort_order": "Orden",
+      "description": "Descripción",
+      "type": "Tipo"
+    },
+    "entity_modal": {
+      "section_data": "Datos",
+      "save": "Guardar",
+      "saved": "Guardado",
+      "close": "Cerrar",
+      "name_required": "Introduce el nombre",
+      "manufacturer_required": "Selecciona un fabricante",
+      "open_hint": "Haz clic para editar y gestionar fechas",
+      "system_note": "Entrada de sistema (solo lectura). Solo puedes gestionar fechas."
+    },
     "title": "Administración de Datos Maestros",
     "subtitle": "Gestión de tablas maestras: Áreas, Sedes, Fabricantes, Modelos, Proveedores",
     "tabs": {
@@ -638,6 +658,18 @@
     "operating_systems": "Sistemas Operativos",
     "base_software": "Software Base",
     "models": {
+      "modal": {
+        "title": "Editar Modelo de Hardware",
+        "section_data": "Datos del modelo",
+        "name_label": "Nombre",
+        "name_required": "Introduce el nombre del modelo",
+        "manufacturer_field": "Fabricante",
+        "manufacturer_required": "Selecciona un fabricante",
+        "save": "Guardar",
+        "saved": "Guardado",
+        "close": "Cerrar",
+        "open_hint": "Haz clic para editar el modelo y sus fechas de ciclo de vida"
+      },
       "new": "Nuevo Modelo de Hardware",
       "placeholder": "Ej: PowerEdge R740",
       "manufacturer_label": "— Fabricante —",
@@ -680,6 +712,7 @@
       "empty": "Sin proveedores registrados."
     },
     "os": {
+      "modal_title": "Editar Sistema Operativo",
       "new": "Nuevo Sistema Operativo",
       "name_placeholder": "Ej: Windows Server 2022",
       "version_placeholder": "Versión (opcional, ej: 2022, 11, 14.04)",
@@ -690,6 +723,7 @@
       "in_use": "En uso"
     },
     "bsw": {
+      "modal_title": "Editar Software Base",
       "new": "Nuevo Software Base",
       "name_placeholder": "Ej: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versión (opcional, ej: 19c, 10.1)",

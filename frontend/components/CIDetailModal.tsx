@@ -71,6 +71,7 @@ export interface CIDetail {
   operatingSystem?:   { id: string; name: string; version: string | null } | null;
   firmwareVersion?:   string | null;
   dns?:               string | null;
+  ciModel?:           { id: string; name: string; manufacturer: { id: string; name: string } | null } | null;
 }
 
 interface Props {
@@ -346,7 +347,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="relative flex max-h-[90vh] w-full max-w-3xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 overflow-hidden">
+      <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 overflow-hidden">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
@@ -421,7 +422,10 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-4">
+          {/* ── Left column ── */}
+          <div className="space-y-4">
 
           {/* General info */}
           <Section title={t("ci_detail.section_general")} color="slate">
@@ -525,10 +529,21 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               <Field label={t("ci_detail.field_license_type")} value={ci.software.licenseType} icon={<Key className="h-3 w-3" />} />
             </Section>
           )}
+          </div>{/* end left column */}
 
-          {/* Infrastructure specs (T6) */}
-          {(ci.cpuModel || ci.vCpus != null || ci.ram || ci.disk || ci.adminIp || ci.mgmtIp || ci.hostName || ci.clusterName || ci.operatingSystem || ci.firmwareVersion || ci.dns) && (
+          {/* ── Right column ── */}
+          <div className="space-y-4">
+
+          {/* Infrastructure specs + device model */}
+          {(ci.cpuModel || ci.vCpus != null || ci.ram || ci.disk || ci.adminIp || ci.mgmtIp || ci.hostName || ci.clusterName || ci.operatingSystem || ci.firmwareVersion || ci.dns || ci.ciModel) && (
             <Section title={t("ci_detail.section_infra")} color="slate">
+              {ci.ciModel && (
+                <Field
+                  label={t("ci_detail.field_hw_model")}
+                  value={ci.ciModel.manufacturer ? `${ci.ciModel.manufacturer.name} ${ci.ciModel.name}` : ci.ciModel.name}
+                  icon={<Cpu className="h-3 w-3" />}
+                />
+              )}
               {ci.cpuModel        && <Field label={t("add_ci_modal.cpu_model_label")} value={ci.cpuModel} icon={<Cpu className="h-3 w-3" />} />}
               {ci.vCpus != null   && <Field label={t("add_ci_modal.vcpus_label")} value={String(ci.vCpus)} icon={<Cpu className="h-3 w-3" />} />}
               {ci.ram             && <Field label={t("add_ci_modal.ram_label")} value={ci.ram} />}
@@ -586,6 +601,11 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               <Field label={t("ci_detail.field_data_class")} value={ci.dataClassification} />
             </Section>
           )}
+          </div>{/* end right column */}
+          </div>{/* end two-column grid */}
+
+          {/* ── Full-width sections ── */}
+          <div className="space-y-4 mt-4">
 
           {/* Contracts */}
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
@@ -787,6 +807,7 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               )}
             </div>
           )}
+          </div>{/* end full-width sections */}
         </div>
 
         {/* Plugin CIDetailTab slots */}

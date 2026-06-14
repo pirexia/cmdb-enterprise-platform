@@ -9,7 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ## [2.8.3] — 2026-06-14
 
+### Added
+
+- **Fechas propias del CI** — el detalle de un activo (`CIDetailModal`) incorpora una sección editable **"Fechas del CI"** (`LifecycleDatesEditor` sobre las rutas existentes `/api/catalog/cis/:ciId/dates`, solo ADMIN) para asignar/editar/eliminar fechas específicas de la instancia: **Fin de Garantía**, **Fin de Mantenimiento**, Compra, Despliegue, Baja, Revisión… Debajo, una sección **"Fechas heredadas"** (solo lectura) muestra las fechas que provienen del modelo, el SO y el software base, con su procedencia.
+- **Nuevos tipos de fecha asignables al CI** (categoría GENERAL): `warranty-end` (Fin de Garantía) y `maintenance-end` (Fin de Mantenimiento). Modelo de "hogar" por tipo de fecha: EOL → modelo, fin de soporte → SO, garantía/mantenimiento → CI.
+
 ### Changed
+
+- **Categoría GENERAL → "CI / Generales"** en la UI de Tipos de Fecha: la categoría GENERAL es el bucket de fechas por-instancia del CI (compra, despliegue, baja, revisión, garantía, mantenimiento, EOL/EOS genéricos).
+- `hw-end-of-warranty` (garantía a nivel de modelo) queda obsoleto en favor de `warranty-end` (CI); la migración lo retira solo si ningún modelo lo usa (no destructivo).
 
 - **Modelos de Hardware — edición por modal** — al pulsar sobre un modelo en **Datos Maestros → Modelos de Hardware** se abre una ventana de edición que permite cambiar nombre/fabricante y gestionar las fechas de ciclo de vida mediante el catálogo de **Tipos de Fecha** (`DateType`, categoría HARDWARE) con `LifecycleDatesEditor`. Sustituye al antiguo "Centro de Consulta de Ciclo de Vida".
 - **`PATCH /api/masters/device-models/:id`** ya no sobrescribe `eol_date`/`eos_date`: esas columnas espejo las mantienen los disparadores desde los `DateType` `hw-end-of-life`/`hw-end-of-support`. El endpoint solo actualiza nombre y fabricante.

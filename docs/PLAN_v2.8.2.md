@@ -65,11 +65,13 @@ Lógica de escritura:
 
 ---
 
-### T1 — Fix desplegable de selección masiva ⬜ PENDIENTE
+### T1 — Fix desplegable de selección masiva ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
 | Rama | `fix/bulk-select-dropdown` |
+| Estado | ✅ COMPLETADA 2026-06-14 |
+| Commits | `2192812` — `fix(inventory): render bulk-select dropdown via portal to escape overflow clip` |
 | Complejidad | Baja |
 | Dependencias | T0 |
 | Skills | `vercel-react-best-practices`, `frontend-design`, `find-bugs`, `webapp-testing` |

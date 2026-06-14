@@ -424,15 +424,15 @@ Rules:
 **Plan en ejecución:** `docs/PLAN_v2.8.2.md`
 **Versión objetivo:** v2.8.2
 **Estado general:** EN PROGRESO
-**Tarea actual:** T1 — Fix dropdown selección masiva
-**Última acción:** T0 completada — commit `28896d6` (fix L-10 engine.ts comment); PLAN_v2.8.2.md creado y Plan Activo añadido
+**Tarea actual:** T2+T3 — Modal CI campos+tamaño
+**Última acción:** T1 completada — commit `2192812` (dropdown portal fix); PR #122 pendiente
 **Última actualización:** 2026-06-14
-**Rama activa:** `fix/plugins-l10-comment` (T0) → siguiente: `fix/bulk-select-dropdown` (T1)
-**PRs abiertos:** T0 pendiente push/PR
+**Rama activa:** `feature/ci-modal-fields-and-size` (T2+T3)
+**PRs abiertos:** #121 (T0), #122 (T1)
 
 ### Progreso por fase
 - T0 Pre-flight: ✅ COMPLETADA
-- T1 Fix dropdown: ⬜ PENDIENTE
+- T1 Fix dropdown: ✅ COMPLETADA
 - T2+T3 Modal CI: ⬜ PENDIENTE
 - T4 Maestro DateType: ⬜ PENDIENTE
 - T5 Asociaciones + espejo: ⬜ PENDIENTE

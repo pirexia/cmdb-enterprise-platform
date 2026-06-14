@@ -3241,15 +3241,14 @@ app.post('/api/masters/device-models', authenticateToken, requireAdmin, async (r
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 app.patch('/api/masters/device-models/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req, res) => {
-  const { name, manufacturerId, eolDate, eosDate } = req.body as { name?: string; manufacturerId?: string; eolDate?: unknown; eosDate?: unknown };
+  const { name, manufacturerId } = req.body as { name?: string; manufacturerId?: string };
   if (!name?.trim() || !manufacturerId) { res.status(400).json({ error: 'name, manufacturerId required' }); return; }
-  const eol = isoDateOrNull(eolDate);
-  const eos = isoDateOrNull(eosDate);
+  // EOL/EOS are managed via DateType lifecycle dates (hw-end-of-life / hw-end-of-support) and synced
+  // to the mirror columns (eol_date/eos_date) by DB triggers — this endpoint no longer overwrites them.
   try {
     const rows = await prisma.$queryRaw<MasterRow[]>`
       UPDATE "device_models"
-      SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid,
-          eol_date=${eol}, eos_date=${eos}, updated_at=now()
+      SET name=${name.trim()}, manufacturer_id=${manufacturerId}::uuid, updated_at=now()
       WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','DeviceModel',${rows[0].id}::uuid,${req.user!.email},now())`;

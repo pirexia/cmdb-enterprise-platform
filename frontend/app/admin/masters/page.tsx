@@ -8,6 +8,7 @@ import {
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { LifecycleDatesEditor } from "@/components/LifecycleDatesEditor";
+import EditDeviceModelModal from "@/components/EditDeviceModelModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,6 @@ type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "provid
 type EditState =
   | { kind: "simple";    path: string; id: string; name: string }
   | { kind: "branch";    id: string; name: string; code: string; address: string; supportAreaId: string }
-  | { kind: "model";     id: string; name: string; manufacturerId: string; eolDate: string; eosDate: string }
   | { kind: "cc";        id: string; code: string; name: string }
   | { kind: "citype";    id: string; name: string; categoryCode: string }
   | { kind: "doctype";   id: string; name: string }
@@ -131,7 +131,6 @@ export default function MastersPage() {
 
   const [expandedOsId,  setExpandedOsId]  = useState<string | null>(null);
   const [expandedBswId, setExpandedBswId] = useState<string | null>(null);
-  const [expandedDmId,  setExpandedDmId]  = useState<string | null>(null);
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -140,8 +139,8 @@ export default function MastersPage() {
   const [eolResults,       setEolResults]       = useState<{ product: string; found: boolean; cycles: { cycle: string; eol?: string | boolean | null; support?: string | boolean | null; latest?: string }[]; message?: string } | null>(null);
   const [eolImportMfrId,   setEolImportMfrId]   = useState("");
 
-  // Life Cycle Consultation Center state (Models tab)
-  const [consultModel,   setConsultModel]   = useState<DeviceModel | null>(null);
+  // Edit modal state (Models tab)
+  const [editModel,      setEditModel]      = useState<DeviceModel | null>(null);
   const [newModelType,   setNewModelType]   = useState<"software" | "hardware" | "">("");
   const [suggestedDates, setSuggestedDates] = useState<{ eolDate: string; eosDate: string; label: string } | null>(null);
 
@@ -614,221 +613,49 @@ export default function MastersPage() {
               </div>
             </div>
 
-            {/* ── Life Cycle Consultation Center (Tarea 1) ── */}
-            {consultModel && (
-              <div className="border-2 border-[var(--accent)]/40 bg-[var(--accent)]/5 shadow-md overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-3 bg-[var(--accent)]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg"></span>
-                    <div>
-                      <p className="text-sm font-bold text-white">Centro de Consulta de Ciclo de Vida</p>
-                      <p className="text-xs text-white/70">{consultModel.name} · {consultModel.manufacturer_name}</p>
-                    </div>
-                  </div>
-                  <button onClick={() => setConsultModel(null)} className="rounded-none p-1.5 text-white/70 hover:bg-[var(--accent)]/80 transition-colors">✕</button>
-                </div>
-                <div className="px-6 py-4 space-y-3">
-                  <p className="text-xs text-[var(--accent)] font-medium">Consulta las fuentes de referencia para validar las fechas de fin de vida/soporte de este modelo:</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-
-                    {/* Source 1: endoflife.date (internal API) */}
-                    <div className="rounded-xl border border-teal-200 bg-white p-4 space-y-2 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl"></span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">endoflife.date</p>
-                          <p className="text-[10px] text-slate-500">Software / OS / Firmware</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-600">Base de datos comunitaria para software, sistemas operativos y firmware.</p>
-                      <button
-                        onClick={async () => {
-                          const slug = consultModel.name.toLowerCase().replace(/\s+/g, "-");
-                          window.open(`https://endoflife.date/${encodeURIComponent(slug)}`, "_blank");
-                        }}
-                        className="w-full rounded-lg bg-teal-600 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-700 transition-colors">
-                        Buscar en endoflife.date
-                      </button>
-                      <button
-                        onClick={async () => {
-                          try {
-                            const res = await apiFetch("/api/masters/sync-catalog", { method: "POST", body: JSON.stringify({ action: "search", query: consultModel.name }) });
-                            const d = await res.json();
-                            if (d.found) {
-                              setEolResults(d);
-                              setEolSearchOpen(true);
-                              setEolQuery(consultModel.name);
-                              setConsultModel(null);
-                            } else {
-                              alert(`No encontrado en endoflife.date: ${d.message ?? consultModel.name}`);
-                            }
-                          } catch { alert("Error al consultar endoflife.date"); }
-                        }}
-                        className="w-full rounded-lg border border-teal-400 px-3 py-1.5 text-xs font-medium text-teal-700 hover:bg-teal-50 transition-colors">
-                        Importar versiones
-                      </button>
-                    </div>
-
-                    {/* Source 2: Park Place Technologies */}
-                    <div className="rounded-xl border border-orange-200 bg-white p-4 space-y-2 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl"></span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">Park Place Technologies</p>
-                          <p className="text-[10px] text-slate-500">Enterprise Hardware EOSL</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-600">Base de datos especializada en hardware enterprise: servidores, storage y networking.</p>
-                      <button
-                        onClick={() => {
-                          const q = encodeURIComponent(consultModel.name);
-                          window.open(`https://www.parkplacetechnologies.com/eosl-search/?search=${q}`, "_blank");
-                        }}
-                        className="w-full rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 transition-colors">
-                        Buscar en Park Place
-                      </button>
-                      <p className="text-[10px] text-slate-400 text-center">Dell, HP, Cisco, IBM, NetApp…</p>
-                    </div>
-
-                    {/* Source 3: Cloud-Shelf */}
-                    <div className="rounded-xl border border-blue-200 bg-white p-4 space-y-2 shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl"></span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">Cloud-Shelf</p>
-                          <p className="text-[10px] text-slate-500">General Hardware Search</p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-600">Buscador general de hardware con información de ciclo de vida y disponibilidad.</p>
-                      <button
-                        onClick={() => {
-                          const q = encodeURIComponent(consultModel.name);
-                          window.open(`https://cloud-shelf.com/search?q=${q}`, "_blank");
-                        }}
-                        className="w-full rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 transition-colors">
-                        Buscar en Cloud-Shelf
-                      </button>
-                      <p className="text-[10px] text-slate-400 text-center">Multimarca · Precios · Stock</p>
-                    </div>
-                  </div>
-
-                  <div className="border border-[var(--accent)]/20 bg-[var(--accent)]/5 px-4 py-2 flex items-center justify-between gap-4">
-                    <p className="text-xs text-[var(--accent)]">
-                      <strong>Fuente verificada:</strong> Tras consultar las fuentes, usa "Sincronizar EOL" en el modelo para actualizar los CIs.
-                    </p>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await apiFetch(`/api/masters/device-models/${consultModel.id}/sync-eol`, { method: "POST" });
-                          const d = await res.json();
-                          alert(d.message ?? "Sincronización completada");
-                        } catch { alert("Error al sincronizar EOL"); }
-                      }}
-                      className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors">
-                      Sincronizar EOL ahora
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* ── Models list ── */}
             <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
               <div className="divide-y divide-slate-50">
-                {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">Sin modelos registrados.</p> :
-                  models.map((m) => {
-                    const isEditing = editState?.kind === "model" && editState.id === m.id;
-                    if (isEditing && editState?.kind === "model") {
-                      return (
-                        <div key={m.id} className="flex flex-wrap items-center gap-2 px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
-                          <Input value={editState.name} onChange={(e) => setEditState({ ...editState, name: e.target.value })} placeholder="Nombre del modelo" className="flex-1 min-w-[160px]" />
-                          <Sel value={editState.manufacturerId} onChange={(e) => setEditState({ ...editState, manufacturerId: e.target.value })} className="flex-1 min-w-[140px]">
-                            <option value="">— Fabricante —</option>
-                            {manufacturers.map((mfr) => <option key={mfr.id} value={mfr.id}>{mfr.name}</option>)}
-                          </Sel>
-                          <label className="flex items-center gap-1 text-xs text-slate-500">
-                            {t("masters.models.eol_date")}
-                            <input type="date" value={editState.eolDate} onChange={(e) => setEditState({ ...editState, eolDate: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                          </label>
-                          <label className="flex items-center gap-1 text-xs text-slate-500">
-                            {t("masters.models.eos_date")}
-                            <input type="date" value={editState.eosDate} onChange={(e) => setEditState({ ...editState, eosDate: e.target.value })} className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                          </label>
-                          <button onClick={async () => { try { await patch(`/api/masters/device-models/${m.id}`, { name: editState.name, manufacturerId: editState.manufacturerId, eolDate: editState.eolDate || null, eosDate: editState.eosDate || null }); setEditState(null); load(); } catch (e) { alert(e instanceof Error ? e.message : "Error"); }}} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"><Check className="h-3.5 w-3.5" />Guardar</button>
-                          <button onClick={() => setEditState(null)} className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"><X className="h-3.5 w-3.5" />Cancelar</button>
-                        </div>
-                      );
-                    }
-                    const dmExpanded = expandedDmId === m.id;
-                    return (
-                      <div key={m.id} className="border-b border-slate-50 last:border-0">
-                        <div
-                          className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20" : "hover:bg-slate-50"}`}
-                          onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                          title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
-                        >
-                          <div>
-                            <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                              {consultModel?.id === m.id && <span className="text-[var(--accent)] text-xs">Ver</span>}
-                              {m.name}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              {m.manufacturer_name}
-                              {(m.eolDate || m.eosDate) && (
-                                <span className="ml-2 text-slate-500">
-                                  {m.eolDate && <> · EOL <span className="font-mono text-slate-600">{m.eolDate}</span></>}
-                                  {m.eosDate && <> · EOS <span className="font-mono text-slate-600">{m.eosDate}</span></>}
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => setExpandedDmId(dmExpanded ? null : m.id)}
-                              title={t('masters.dates_section')}
-                              className={`rounded p-1.5 transition-colors ${dmExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
-                            ><Calendar className="h-4 w-4" /></button>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
-                                  const d = await res.json();
-                                  alert(d.message ?? "Sincronización completada");
-                                } catch { alert("Error al sincronizar EOL"); }
-                              }}
-                              className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
-                              title="Sincronizar EOL desde endoflife.date"
-                            >
-                              EOL
-                            </button>
-                            <button
-                              onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                              className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors opacity-0 group-hover:opacity-100"
-                              title="Abrir Centro de Consulta Multi-Fuente"
-                            >
-                              Consultar
-                            </button>
-                            <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id, eolDate: m.eolDate ?? "", eosDate: m.eosDate ?? "" })}
-                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors opacity-0 group-hover:opacity-100" title="Editar modelo">
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
-                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {dmExpanded && (
-                          <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
-                            <LifecycleDatesEditor entityType="device-models" entityId={m.id} categoryFilter="HARDWARE" />
-                          </div>
-                        )}
+                {models.length === 0 ? <p className="py-8 text-center text-sm text-slate-400">{t("masters.models.empty")}</p> :
+                  models.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer hover:bg-slate-50"
+                      onClick={() => setEditModel(m)}
+                      title={t("masters.models.modal.open_hint")}
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">{m.name}</p>
+                        <p className="text-xs text-slate-400">
+                          {m.manufacturer_name}
+                          {(m.eolDate || m.eosDate) && (
+                            <span className="ml-2 text-slate-500">
+                              {m.eolDate && <> · EOL <span className="font-mono text-slate-600">{m.eolDate}</span></>}
+                              {m.eosDate && <> · EOS <span className="font-mono text-slate-600">{m.eosDate}</span></>}
+                            </span>
+                          )}
+                        </p>
                       </div>
-                    );
-                  })}
+                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
+                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                          title={t("actions.delete")}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
               </div>
             </div>
+
+            {editModel && (
+              <EditDeviceModelModal
+                model={editModel}
+                manufacturers={manufacturers}
+                onClose={() => { setEditModel(null); load(); }}
+                onSaved={load}
+              />
+            )}
           </div>
         )}
 

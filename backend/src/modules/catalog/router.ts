@@ -510,5 +510,60 @@ export function createCatalogRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // GET /api/catalog/cis/:ciId/lifecycle-dates
+  router.get('/cis/:ciId/lifecycle-dates', requireUuidParam('ciId'), async (req: Request, res: Response) => {
+    try {
+      const ciId = req.params.ciId as string;
+      const ci = await (prisma as any).cI.findUnique({
+        where: { id: ciId },
+        include: {
+          lifecycleDates: { include: { dateType: true } },
+          operatingSystem: { include: { lifecycleDates: { include: { dateType: true } } } },
+          ciModel: { include: { lifecycleDates: { include: { dateType: true } } } },
+          baseSoftwares: {
+            include: { baseSoftware: { include: { lifecycleDates: { include: { dateType: true } } } } },
+          },
+        },
+      });
+      if (!ci) { res.status(404).json({ error: 'CI not found' }); return; }
+
+      type DateEntry = {
+        source: string; entityName?: string;
+        dateType: { code: string; name: string; category: string; sortOrder: number };
+        dateValue: string; notes: string | null;
+      };
+      const pushEntry = (entries: DateEntry[], source: string, entityName: string | undefined, d: any) =>
+        entries.push({
+          source, entityName,
+          dateType: { code: d.dateType.code, name: d.dateType.name, category: d.dateType.category, sortOrder: d.dateType.sortOrder },
+          dateValue: (d.dateValue as Date).toISOString().slice(0, 10),
+          notes: d.notes ?? null,
+        });
+
+      const entries: DateEntry[] = [];
+      for (const d of ci.lifecycleDates) pushEntry(entries, 'CI', undefined, d);
+      if (ci.operatingSystem) {
+        const label = ci.operatingSystem.version
+          ? `${ci.operatingSystem.name} ${ci.operatingSystem.version}`
+          : ci.operatingSystem.name;
+        for (const d of ci.operatingSystem.lifecycleDates) pushEntry(entries, 'OperatingSystem', label, d);
+      }
+      if (ci.ciModel) {
+        for (const d of ci.ciModel.lifecycleDates) pushEntry(entries, 'DeviceModel', ci.ciModel.name, d);
+      }
+      for (const link of ci.baseSoftwares) {
+        const label = link.baseSoftware.version
+          ? `${link.baseSoftware.name} ${link.baseSoftware.version}`
+          : link.baseSoftware.name;
+        for (const d of link.baseSoftware.lifecycleDates) pushEntry(entries, 'BaseSoftware', label, d);
+      }
+      entries.sort((a, b) => a.dateType.sortOrder - b.dateType.sortOrder || a.dateValue.localeCompare(b.dateValue));
+      res.json(entries);
+    } catch (err) {
+      console.error('[catalog] lifecycle-dates error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   return router;
 }

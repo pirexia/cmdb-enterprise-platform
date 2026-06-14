@@ -1,4 +1,65 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, DateTypeCategory } from '@prisma/client';
+
+// ─── Date Types ───────────────────────────────────────────────────────────────
+
+export function dtQueries(prisma: PrismaClient) {
+  return {
+    list: (category?: DateTypeCategory) =>
+      prisma.dateType.findMany({
+        where  : category ? { category } : undefined,
+        orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+
+    findById: (id: string) =>
+      prisma.dateType.findUnique({ where: { id } }),
+
+    findByCode: (code: string) =>
+      prisma.dateType.findUnique({ where: { code } }),
+
+    create: (data: {
+      code        : string;
+      name        : string;
+      description?: string | null;
+      category    : DateTypeCategory;
+      sortOrder?  : number;
+      isSystem?   : boolean;
+    }) =>
+      prisma.dateType.create({ data }),
+
+    update: (
+      id   : string,
+      data : {
+        code?       : string;
+        name?       : string;
+        description?: string | null;
+        category?   : DateTypeCategory;
+        sortOrder?  : number;
+      },
+    ) =>
+      prisma.dateType.update({ where: { id }, data }),
+
+    delete: (id: string) =>
+      prisma.dateType.delete({ where: { id } }),
+
+    countUsage: async (id: string) => {
+      // After T5 migration runs, these counts will reflect real associations.
+      // Returns 0 until T5 association tables exist.
+      try {
+        const [cis, oss, bsws, dms] = await Promise.all([
+          prisma.cIDate.count({ where: { dateTypeId: id } }),
+          prisma.operatingSystemDate.count({ where: { dateTypeId: id } }),
+          prisma.baseSoftwareDate.count({ where: { dateTypeId: id } }),
+          prisma.deviceModelDate.count({ where: { dateTypeId: id } }),
+        ]);
+        return cis + oss + bsws + dms;
+      } catch {
+        return 0;
+      }
+    },
+  };
+}
+
+// ─── Operating Systems ────────────────────────────────────────────────────────
 
 export function osQueries(prisma: PrismaClient) {
   return {

@@ -1,12 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import {
+  DateTypeCreateSchema, DateTypeUpdateSchema, DATE_TYPE_CATEGORIES,
   OsCreateSchema, OsUpdateSchema,
   BswCreateSchema, BswUpdateSchema, CIBswAssociateSchema,
   BASE_SOFTWARE_ALLOWED_CI_TYPES,
 } from './schemas.js';
 import { catalogAudit } from './audit.js';
-import { osQueries, bswQueries } from './queries.js';
+import { dtQueries, osQueries, bswQueries } from './queries.js';
 
 function requireUuidParam(paramName: string) {
   return (req: Request, res: Response, next: () => void): void => {
@@ -29,8 +30,115 @@ function requireAdmin(req: Request, res: Response, next: () => void): void {
 
 export function createCatalogRouter(prisma: PrismaClient): Router {
   const router = Router();
+  const dt  = dtQueries(prisma);
   const os  = osQueries(prisma);
   const bsw = bswQueries(prisma);
+
+  // ─── Date Types ────────────────────────────────────────────────────────────
+
+  // GET /api/catalog/date-types[?category=HARDWARE|SOFTWARE|OS|GENERAL]
+  router.get('/date-types', async (req: Request, res: Response) => {
+    const raw = req.query['category'] as string | undefined;
+    const category = raw && (DATE_TYPE_CATEGORIES as readonly string[]).includes(raw)
+      ? (raw as (typeof DATE_TYPE_CATEGORIES)[number])
+      : undefined;
+    try {
+      res.json(await dt.list(category));
+    } catch (err) {
+      console.error('[catalog] list DateType error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/catalog/date-types/:id
+  router.get('/date-types/:id', requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const record = await dt.findById(req.params.id as string);
+      if (!record) { res.status(404).json({ error: 'Not found' }); return; }
+      res.json(record);
+    } catch (err) {
+      console.error('[catalog] get DateType error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // POST /api/catalog/date-types
+  router.post('/date-types', requireAdmin, async (req: Request, res: Response) => {
+    const parsed = DateTypeCreateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.errors }); return; }
+
+    const { code, name, description, category, sortOrder, isSystem } = parsed.data;
+    try {
+      const existing = await dt.findByCode(code);
+      if (existing) { res.status(409).json({ error: 'Code already exists' }); return; }
+
+      const record = await dt.create({
+        code,
+        name,
+        description : description ?? null,
+        category,
+        sortOrder   : sortOrder ?? 0,
+        isSystem    : isSystem ?? false,
+      });
+      await catalogAudit(prisma, 'CREATE_DATE_TYPE', 'DateType', record.id, (req as any).user!.email);
+      res.status(201).json(record);
+    } catch (err: any) {
+      if (err?.code === 'P2002') { res.status(409).json({ error: 'Code already exists' }); return; }
+      console.error('[catalog] create DateType error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PATCH /api/catalog/date-types/:id
+  router.patch('/date-types/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+    const parsed = DateTypeUpdateSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.errors }); return; }
+
+    try {
+      const existing = await dt.findById(req.params.id as string);
+      if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+
+      const { code, name, description, category, sortOrder } = parsed.data;
+      const record = await dt.update(req.params.id as string, {
+        ...(code        !== undefined ? { code }        : {}),
+        ...(name        !== undefined ? { name }        : {}),
+        ...(description !== undefined ? { description } : {}),
+        ...(category    !== undefined ? { category }    : {}),
+        ...(sortOrder   !== undefined ? { sortOrder }   : {}),
+      });
+      await catalogAudit(prisma, 'UPDATE_DATE_TYPE', 'DateType', record.id, (req as any).user!.email);
+      res.json(record);
+    } catch (err: any) {
+      if (err?.code === 'P2002') { res.status(409).json({ error: 'Code already exists' }); return; }
+      console.error('[catalog] update DateType error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // DELETE /api/catalog/date-types/:id
+  router.delete('/date-types/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const existing = await dt.findById(req.params.id as string);
+      if (!existing) { res.status(404).json({ error: 'Not found' }); return; }
+      if (existing.isSystem) {
+        res.status(409).json({ error: 'System date types cannot be deleted' });
+        return;
+      }
+
+      const usage = await dt.countUsage(req.params.id as string);
+      if (usage > 0) {
+        res.status(409).json({ error: `Cannot delete: in use by ${usage} record(s)` });
+        return;
+      }
+
+      await dt.delete(req.params.id as string);
+      await catalogAudit(prisma, 'DELETE_DATE_TYPE', 'DateType', req.params.id as string, (req as any).user!.email);
+      res.status(204).send();
+    } catch (err) {
+      console.error('[catalog] delete DateType error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // ─── Operating Systems ─────────────────────────────────────────────────────
 

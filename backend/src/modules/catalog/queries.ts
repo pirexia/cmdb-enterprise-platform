@@ -1,4 +1,199 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, DateTypeCategory } from '@prisma/client';
+
+// ─── Date Types ───────────────────────────────────────────────────────────────
+
+export function dtQueries(prisma: PrismaClient) {
+  return {
+    list: (category?: DateTypeCategory) =>
+      prisma.dateType.findMany({
+        where  : category ? { category } : undefined,
+        orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      }),
+
+    findById: (id: string) =>
+      prisma.dateType.findUnique({ where: { id } }),
+
+    findByCode: (code: string) =>
+      prisma.dateType.findUnique({ where: { code } }),
+
+    create: (data: {
+      code        : string;
+      name        : string;
+      description?: string | null;
+      category    : DateTypeCategory;
+      sortOrder?  : number;
+      isSystem?   : boolean;
+    }) =>
+      prisma.dateType.create({ data }),
+
+    update: (
+      id   : string,
+      data : {
+        code?       : string;
+        name?       : string;
+        description?: string | null;
+        category?   : DateTypeCategory;
+        sortOrder?  : number;
+      },
+    ) =>
+      prisma.dateType.update({ where: { id }, data }),
+
+    delete: (id: string) =>
+      prisma.dateType.delete({ where: { id } }),
+
+    countUsage: async (id: string) => {
+      // After T5 migration runs, these counts will reflect real associations.
+      // Returns 0 until T5 association tables exist.
+      try {
+        const [cis, oss, bsws, dms] = await Promise.all([
+          prisma.cIDate.count({ where: { dateTypeId: id } }),
+          prisma.operatingSystemDate.count({ where: { dateTypeId: id } }),
+          prisma.baseSoftwareDate.count({ where: { dateTypeId: id } }),
+          prisma.deviceModelDate.count({ where: { dateTypeId: id } }),
+        ]);
+        return cis + oss + bsws + dms;
+      } catch {
+        return 0;
+      }
+    },
+  };
+}
+
+// ─── Entity Lifecycle Date Queries ───────────────────────────────────────────
+
+function parseDateValue(v: string): Date {
+  return new Date(`${v}T00:00:00.000Z`);
+}
+
+export function ciDateQueries(prisma: PrismaClient) {
+  return {
+    list: (ciId: string) =>
+      prisma.cIDate.findMany({
+        where  : { ciId },
+        include: { dateType: true },
+        orderBy: [{ dateType: { sortOrder: 'asc' } }, { dateType: { name: 'asc' } }],
+      }),
+
+    findById: (id: string) =>
+      prisma.cIDate.findUnique({ where: { id }, include: { dateType: true } }),
+
+    create: (ciId: string, data: { dateTypeId: string; dateValue: string; notes?: string | null }) =>
+      prisma.cIDate.create({
+        data   : { ciId, dateTypeId: data.dateTypeId, dateValue: parseDateValue(data.dateValue), notes: data.notes ?? null },
+        include: { dateType: true },
+      }),
+
+    update: (id: string, data: { dateValue?: string; notes?: string | null }) =>
+      prisma.cIDate.update({
+        where  : { id },
+        data   : {
+          ...(data.dateValue !== undefined ? { dateValue: parseDateValue(data.dateValue) } : {}),
+          ...(data.notes     !== undefined ? { notes: data.notes }                         : {}),
+        },
+        include: { dateType: true },
+      }),
+
+    delete: (id: string) => prisma.cIDate.delete({ where: { id } }),
+  };
+}
+
+export function osDateQueries(prisma: PrismaClient) {
+  return {
+    list: (operatingSystemId: string) =>
+      prisma.operatingSystemDate.findMany({
+        where  : { operatingSystemId },
+        include: { dateType: true },
+        orderBy: [{ dateType: { sortOrder: 'asc' } }, { dateType: { name: 'asc' } }],
+      }),
+
+    findById: (id: string) =>
+      prisma.operatingSystemDate.findUnique({ where: { id }, include: { dateType: true } }),
+
+    create: (operatingSystemId: string, data: { dateTypeId: string; dateValue: string; notes?: string | null }) =>
+      prisma.operatingSystemDate.create({
+        data   : { operatingSystemId, dateTypeId: data.dateTypeId, dateValue: parseDateValue(data.dateValue), notes: data.notes ?? null },
+        include: { dateType: true },
+      }),
+
+    update: (id: string, data: { dateValue?: string; notes?: string | null }) =>
+      prisma.operatingSystemDate.update({
+        where  : { id },
+        data   : {
+          ...(data.dateValue !== undefined ? { dateValue: parseDateValue(data.dateValue) } : {}),
+          ...(data.notes     !== undefined ? { notes: data.notes }                         : {}),
+        },
+        include: { dateType: true },
+      }),
+
+    delete: (id: string) => prisma.operatingSystemDate.delete({ where: { id } }),
+  };
+}
+
+export function bswDateQueries(prisma: PrismaClient) {
+  return {
+    list: (baseSoftwareId: string) =>
+      prisma.baseSoftwareDate.findMany({
+        where  : { baseSoftwareId },
+        include: { dateType: true },
+        orderBy: [{ dateType: { sortOrder: 'asc' } }, { dateType: { name: 'asc' } }],
+      }),
+
+    findById: (id: string) =>
+      prisma.baseSoftwareDate.findUnique({ where: { id }, include: { dateType: true } }),
+
+    create: (baseSoftwareId: string, data: { dateTypeId: string; dateValue: string; notes?: string | null }) =>
+      prisma.baseSoftwareDate.create({
+        data   : { baseSoftwareId, dateTypeId: data.dateTypeId, dateValue: parseDateValue(data.dateValue), notes: data.notes ?? null },
+        include: { dateType: true },
+      }),
+
+    update: (id: string, data: { dateValue?: string; notes?: string | null }) =>
+      prisma.baseSoftwareDate.update({
+        where  : { id },
+        data   : {
+          ...(data.dateValue !== undefined ? { dateValue: parseDateValue(data.dateValue) } : {}),
+          ...(data.notes     !== undefined ? { notes: data.notes }                         : {}),
+        },
+        include: { dateType: true },
+      }),
+
+    delete: (id: string) => prisma.baseSoftwareDate.delete({ where: { id } }),
+  };
+}
+
+export function dmDateQueries(prisma: PrismaClient) {
+  return {
+    list: (deviceModelId: string) =>
+      prisma.deviceModelDate.findMany({
+        where  : { deviceModelId },
+        include: { dateType: true },
+        orderBy: [{ dateType: { sortOrder: 'asc' } }, { dateType: { name: 'asc' } }],
+      }),
+
+    findById: (id: string) =>
+      prisma.deviceModelDate.findUnique({ where: { id }, include: { dateType: true } }),
+
+    create: (deviceModelId: string, data: { dateTypeId: string; dateValue: string; notes?: string | null }) =>
+      prisma.deviceModelDate.create({
+        data   : { deviceModelId, dateTypeId: data.dateTypeId, dateValue: parseDateValue(data.dateValue), notes: data.notes ?? null },
+        include: { dateType: true },
+      }),
+
+    update: (id: string, data: { dateValue?: string; notes?: string | null }) =>
+      prisma.deviceModelDate.update({
+        where  : { id },
+        data   : {
+          ...(data.dateValue !== undefined ? { dateValue: parseDateValue(data.dateValue) } : {}),
+          ...(data.notes     !== undefined ? { notes: data.notes }                         : {}),
+        },
+        include: { dateType: true },
+      }),
+
+    delete: (id: string) => prisma.deviceModelDate.delete({ where: { id } }),
+  };
+}
+
+// ─── Operating Systems ────────────────────────────────────────────────────────
 
 export function osQueries(prisma: PrismaClient) {
   return {

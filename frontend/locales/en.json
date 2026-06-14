@@ -627,7 +627,7 @@
       "support_areas": "Support Areas",
       "branches": "Branches",
       "manufacturers": "Manufacturers",
-      "models": "Models",
+      "models": "Hardware Models",
       "providers": "Providers",
       "operating_systems": "Operating Systems",
       "base_software": "Base Software"
@@ -638,7 +638,7 @@
     "operating_systems": "Operating Systems",
     "base_software": "Base Software",
     "models": {
-      "new": "New Model",
+      "new": "New Hardware Model",
       "placeholder": "E.g.: PowerEdge R740",
       "manufacturer_label": "— Manufacturer —",
       "type_label": "— Type —",
@@ -694,7 +694,23 @@
       "name_placeholder": "E.g.: Oracle Database, Apache Tomcat",
       "version_placeholder": "Version (optional, e.g.: 19c, 10.1)",
       "empty": "No base software registered."
-    }
+    },
+    "date_types": "Date Types",
+    "dt": {
+      "new": "New Date Type",
+      "code_placeholder": "Code (e.g.: end-of-life)",
+      "name_placeholder": "Date type name",
+      "description_placeholder": "Description (optional)",
+      "sort_order_placeholder": "Order",
+      "category_general": "General",
+      "category_hardware": "Hardware",
+      "category_software": "Software",
+      "category_os": "Operating System",
+      "add": "Add Type",
+      "empty": "No date types in this category.",
+      "system": "System"
+    },
+    "dates_section": "Lifecycle Dates"
   },
   "settings": {
     "title": "Settings",
@@ -1340,6 +1356,19 @@
     "bsw_empty": "No base software associated.",
     "bsw_remove": "Remove base software",
     "bsw_confirm_remove": "Remove this base software from the CI?",
+    "lifecycle_dates_title": "Lifecycle Dates",
+    "lifecycle_dates_loading": "Loading dates…",
+    "lifecycle_dates_empty": "No lifecycle dates recorded.",
+    "lifecycle_col_type": "Date type",
+    "lifecycle_col_source": "Source",
+    "lifecycle_col_date": "Date",
+    "lifecycle_col_notes": "Notes",
+    "lifecycle_badge_expired": "Expired",
+    "lifecycle_badge_soon": "< 90 days",
+    "lifecycle_source_ci": "This CI",
+    "lifecycle_source_os": "Operating System",
+    "lifecycle_source_dm": "HW Model",
+    "lifecycle_source_bsw": "Base Software",
     "btn_close": "Close",
     "btn_edit_ci": "Edit CI",
     "subdoc_title": "Associate Documents",
@@ -1630,5 +1659,14 @@
     "prev": "Previous page",
     "next": "Next page",
     "showing": "Showing {from}–{to} of {total}"
+  },
+  "lde": {
+    "loading": "Loading dates...",
+    "empty": "No dates registered.",
+    "select_type": "— Date type —",
+    "notes_placeholder": "Notes (optional)",
+    "confirm_delete": "Delete date",
+    "add_required": "Select type and date.",
+    "all_types_set": "All types already set."
   }
 }

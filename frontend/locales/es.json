@@ -627,7 +627,7 @@
       "support_areas": "Áreas de Soporte",
       "branches": "Sedes",
       "manufacturers": "Fabricantes",
-      "models": "Modelos",
+      "models": "Modelos de Hardware",
       "providers": "Proveedores",
       "operating_systems": "Sistemas Operativos",
       "base_software": "Software Base"
@@ -636,10 +636,9 @@
     "license_metrics": "Métricas de Licencia",
     "license_types": "Tipos de Licencia",
     "operating_systems": "Sistemas Operativos",
-    "operating_systems": "Sistemas Operativos",
     "base_software": "Software Base",
     "models": {
-      "new": "Nuevo Modelo",
+      "new": "Nuevo Modelo de Hardware",
       "placeholder": "Ej: PowerEdge R740",
       "manufacturer_label": "— Fabricante —",
       "type_label": "— Tipo —",
@@ -695,7 +694,23 @@
       "name_placeholder": "Ej: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versión (opcional, ej: 19c, 10.1)",
       "empty": "Sin software base registrado."
-    }
+    },
+    "date_types": "Tipos de Fechas",
+    "dt": {
+      "new": "Nuevo Tipo de Fecha",
+      "code_placeholder": "Código (ej: end-of-life)",
+      "name_placeholder": "Nombre del tipo de fecha",
+      "description_placeholder": "Descripción (opcional)",
+      "sort_order_placeholder": "Orden",
+      "category_general": "General",
+      "category_hardware": "Hardware",
+      "category_software": "Software",
+      "category_os": "Sistema Operativo",
+      "add": "Añadir Tipo",
+      "empty": "Sin tipos de fecha en esta categoría.",
+      "system": "Sistema"
+    },
+    "dates_section": "Fechas de Ciclo de Vida"
   },
   "settings": {
     "title": "Configuración",
@@ -1341,6 +1356,19 @@
     "bsw_empty": "Sin software base asociado.",
     "bsw_remove": "Quitar software base",
     "bsw_confirm_remove": "¿Quitar este software base del CI?",
+    "lifecycle_dates_title": "Fechas de Ciclo de Vida",
+    "lifecycle_dates_loading": "Cargando fechas…",
+    "lifecycle_dates_empty": "Sin fechas de ciclo de vida registradas.",
+    "lifecycle_col_type": "Tipo de fecha",
+    "lifecycle_col_source": "Fuente",
+    "lifecycle_col_date": "Fecha",
+    "lifecycle_col_notes": "Notas",
+    "lifecycle_badge_expired": "Vencido",
+    "lifecycle_badge_soon": "< 90 días",
+    "lifecycle_source_ci": "Este CI",
+    "lifecycle_source_os": "Sistema Operativo",
+    "lifecycle_source_dm": "Modelo HW",
+    "lifecycle_source_bsw": "Software Base",
     "btn_close": "Cerrar",
     "btn_edit_ci": "Editar CI",
     "subdoc_title": "Asociar Documentos",
@@ -1631,5 +1659,14 @@
     "prev": "Página anterior",
     "next": "Página siguiente",
     "showing": "Mostrando {from}–{to} de {total}"
+  },
+  "lde": {
+    "loading": "Cargando fechas...",
+    "empty": "Sin fechas registradas.",
+    "select_type": "— Tipo de fecha —",
+    "notes_placeholder": "Notas (opcional)",
+    "confirm_delete": "¿Eliminar fecha",
+    "add_required": "Selecciona tipo y fecha.",
+    "all_types_set": "Todos los tipos configurados."
   }
 }

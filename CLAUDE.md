@@ -423,27 +423,31 @@ Rules:
 
 **Plan en ejecución:** `docs/PLAN_v2.8.2.md`
 **Versión objetivo:** v2.8.2
-**Estado general:** EN PROGRESO
-**Tarea actual:** T1 — Fix dropdown selección masiva
-**Última acción:** T0 completada — commit `28896d6` (fix L-10 engine.ts comment); PLAN_v2.8.2.md creado y Plan Activo añadido
+**Estado general:** ✅ COMPLETADO — pendiente merge PRs #124→#127 + tag v2.8.2
+**Tarea actual:** —
+**Última acción:** T8 completada — CHANGELOG + ARCHITECTURE + SYSADMIN_MANUAL actualizados; PRs #124 (T4), #125 (T5), #126 (T6), #127 (T7) abiertos contra develop
 **Última actualización:** 2026-06-14
-**Rama activa:** `fix/plugins-l10-comment` (T0) → siguiente: `fix/bulk-select-dropdown` (T1)
-**PRs abiertos:** T0 pendiente push/PR
+**Rama activa:** `docs/v2.8.2` (T8)
+**PRs abiertos:** #124 (T4), #125 (T5), #126 (T6), #127 (T7), T8 pendiente push/PR
 
 ### Progreso por fase
 - T0 Pre-flight: ✅ COMPLETADA
-- T1 Fix dropdown: ⬜ PENDIENTE
-- T2+T3 Modal CI: ⬜ PENDIENTE
-- T4 Maestro DateType: ⬜ PENDIENTE
-- T5 Asociaciones + espejo: ⬜ PENDIENTE
-- T6 Modelos Hardware: ⬜ PENDIENTE
-- T7 Fechas en modal CI: ⬜ PENDIENTE
-- T8 Docs + release: ⬜ PENDIENTE
+- T1 Fix dropdown: ✅ COMPLETADA (PR mergeado en develop)
+- T2+T3 Modal CI: ✅ COMPLETADA (PR mergeado en develop)
+- T4 Maestro DateType: ✅ COMPLETADA (PR #124)
+- T5 Asociaciones + espejo: ✅ COMPLETADA (PR #125)
+- T6 Modelos Hardware: ✅ COMPLETADA (PR #126)
+- T7 Fechas en modal CI: ✅ COMPLETADA (PR #127)
+- T8 Docs + release: ✅ COMPLETADA
+
+### Próximos pasos para cerrar v2.8.2
+1. Revisar y mergear PRs #124, #125, #126, #127 en `develop`
+2. Mergear PR de T8 (`docs/v2.8.2`) en `develop`
+3. Mergear `develop` → `main`
+4. Tag `v2.8.2` en `main`
 
 ### Instrucción de reanudación tras corte de sesión
-Si esta sesión se reinicia:
-1. Leer `docs/PLAN_v2.8.2.md` § 3 para identificar la tarea 🟡 EN PROGRESO o primera ⬜ PENDIENTE.
-2. Leer esta sección para confirmar la última acción realizada.
-3. Verificar `git status` y `git log --oneline -10`.
-4. **NO asumir nada** — si hay discrepancia entre el plan y el repo, preguntar al usuario.
-5. Continuar desde la tarea marcada como 🟡 o la primera ⬜ después de la última ✅.
+Si esta sesión se reinicia con v2.8.2 pendiente de cierre:
+1. Verificar `git log --oneline -10` y PRs abiertos en GitHub.
+2. Si los PRs siguen abiertos, continuar desde el punto "Próximos pasos" arriba.
+3. Si ya están mergeados, proceder con el tag `v2.8.2`.

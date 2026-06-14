@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText, Key, Monitor,
+  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText, Key, Monitor, Calendar,
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { LifecycleDatesEditor } from "@/components/LifecycleDatesEditor";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,8 +26,9 @@ interface LicenseTypeItem { id: string; code: string; name: string; isSystem: bo
 interface LicenseTypeCategory { code: string; name: string; sortOrder: number; types: LicenseTypeItem[] }
 interface OsItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
 interface BswItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
+interface DateTypeItem { id: string; code: string; name: string; description: string | null; category: "HARDWARE" | "SOFTWARE" | "OS" | "GENERAL"; sortOrder: number; isSystem: boolean }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems" | "base-software";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems" | "base-software" | "date-types";
 
 type EditState =
   | { kind: "simple";    path: string; id: string; name: string }
@@ -39,6 +41,7 @@ type EditState =
   | { kind: "lictype";   id: string; name: string; description: string }
   | { kind: "os";        id: string; name: string; version: string; manufacturerId: string }
   | { kind: "bsw";       id: string; name: string; version: string; manufacturerId: string }
+  | { kind: "datetype";  id: string; code: string; name: string; description: string; category: string; sortOrder: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -105,6 +108,7 @@ export default function MastersPage() {
   const [licenseTypeCats,   setLicenseTypeCats]   = useState<LicenseTypeCategory[]>([]);
   const [operatingSystems,  setOperatingSystems]  = useState<OsItem[]>([]);
   const [baseSoftwares,     setBaseSoftwares]     = useState<BswItem[]>([]);
+  const [dateTypes,         setDateTypes]         = useState<DateTypeItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -123,6 +127,11 @@ export default function MastersPage() {
   const [newLicType,   setNewLicType]   = useState<{ catCode: string; code: string; name: string; description: string } | null>(null);
   const [newOs,        setNewOs]        = useState({ name: "", version: "", manufacturerId: "" });
   const [newBsw,       setNewBsw]       = useState({ name: "", version: "", manufacturerId: "" });
+  const [newDt,        setNewDt]        = useState({ code: "", name: "", description: "", category: "GENERAL", sortOrder: "0" });
+
+  const [expandedOsId,  setExpandedOsId]  = useState<string | null>(null);
+  const [expandedBswId, setExpandedBswId] = useState<string | null>(null);
+  const [expandedDmId,  setExpandedDmId]  = useState<string | null>(null);
 
   // EOL catalog search state (Models tab)
   const [eolSearchOpen,    setEolSearchOpen]    = useState(false);
@@ -139,7 +148,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes, bswRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes, bswRes, dateTypeRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
@@ -152,6 +161,7 @@ export default function MastersPage() {
         apiFetch("/api/masters/license-type-categories"),
         apiFetch("/api/catalog/operating-systems"),
         apiFetch("/api/catalog/base-software"),
+        apiFetch("/api/catalog/date-types"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -165,19 +175,21 @@ export default function MastersPage() {
       const lmcData = await lmcRes.json();
       const ltcData = await ltcRes.json();
       const osData  = await osRes.json();
-      const bswData = await bswRes.json();
-      setSupportAreas(    safe(saData) as SupportArea[]);
-      setBranches(        safe(brData) as Branch[]);
-      setManufacturers(   safe(mfData) as Manufacturer[]);
-      setModels(          safe(dmData) as DeviceModel[]);
-      setProviders(       safe(pvData) as Provider[]);
-      setCostCenters(     safe(ccData) as CostCenter[]);
-      setCiTypeCategories(safe(ctData) as CITypeCategory[]);
-      setDocTypes(        safe(dtData) as DocumentTypeItem[]);
-      setLicenseMetricCats(safe(lmcData) as LicenseMetricCategory[]);
-      setLicenseTypeCats(  safe(ltcData) as LicenseTypeCategory[]);
-      setOperatingSystems( safe(osData)  as OsItem[]);
-      setBaseSoftwares(    safe(bswData) as BswItem[]);
+      const bswData      = await bswRes.json();
+      const dateTypeData = await dateTypeRes.json();
+      setSupportAreas(    safe(saData)       as SupportArea[]);
+      setBranches(        safe(brData)       as Branch[]);
+      setManufacturers(   safe(mfData)       as Manufacturer[]);
+      setModels(          safe(dmData)       as DeviceModel[]);
+      setProviders(       safe(pvData)       as Provider[]);
+      setCostCenters(     safe(ccData)       as CostCenter[]);
+      setCiTypeCategories(safe(ctData)       as CITypeCategory[]);
+      setDocTypes(        safe(dtData)       as DocumentTypeItem[]);
+      setLicenseMetricCats(safe(lmcData)    as LicenseMetricCategory[]);
+      setLicenseTypeCats(  safe(ltcData)    as LicenseTypeCategory[]);
+      setOperatingSystems( safe(osData)     as OsItem[]);
+      setBaseSoftwares(    safe(bswData)    as BswItem[]);
+      setDateTypes(        safe(dateTypeData) as DateTypeItem[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -225,8 +237,9 @@ export default function MastersPage() {
     { id: "doc-types",      label: t('masters.doc_types'),          icon: <FileText  className="h-4 w-4" />, count: docTypes.length },
     { id: "license-metrics",    label: t('masters.license_metrics'),    icon: <Key     className="h-4 w-4" />, count: licenseMetricCats.reduce((s, c) => s + c.metrics.length, 0) },
     { id: "license-types",      label: t('masters.license_types'),      icon: <Key     className="h-4 w-4" />, count: licenseTypeCats.reduce((s, c) => s + c.types.length, 0) },
-    { id: "operating-systems",  label: t('masters.operating_systems'),  icon: <Monitor className="h-4 w-4" />, count: operatingSystems.length },
-    { id: "base-software",      label: t('masters.base_software'),      icon: <Package className="h-4 w-4" />, count: baseSoftwares.length },
+    { id: "operating-systems",  label: t('masters.operating_systems'),  icon: <Monitor  className="h-4 w-4" />, count: operatingSystems.length },
+    { id: "base-software",      label: t('masters.base_software'),      icon: <Package  className="h-4 w-4" />, count: baseSoftwares.length },
+    { id: "date-types",         label: t('masters.date_types'),         icon: <Calendar className="h-4 w-4" />, count: dateTypes.length },
   ];
 
   return (
@@ -746,58 +759,71 @@ export default function MastersPage() {
                         </div>
                       );
                     }
+                    const dmExpanded = expandedDmId === m.id;
                     return (
-                      <div
-                        key={m.id}
-                        className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20" : "hover:bg-slate-50"}`}
-                        onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                        title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
-                            {consultModel?.id === m.id && <span className="text-[var(--accent)] text-xs">Ver</span>}
-                            {m.name}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            {m.manufacturer_name}
-                            {(m.eolDate || m.eosDate) && (
-                              <span className="ml-2 text-slate-500">
-                                {m.eolDate && <> · EOL <span className="font-mono text-slate-600">{m.eolDate}</span></>}
-                                {m.eosDate && <> · EOS <span className="font-mono text-slate-600">{m.eosDate}</span></>}
-                              </span>
-                            )}
-                          </p>
+                      <div key={m.id} className="border-b border-slate-50 last:border-0">
+                        <div
+                          className={`flex items-center justify-between px-4 py-2.5 transition-colors group cursor-pointer ${consultModel?.id === m.id ? "bg-[var(--accent)]/5 ring-1 ring-[var(--accent)]/20" : "hover:bg-slate-50"}`}
+                          onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
+                          title="Haz clic para abrir el Centro de Consulta de Ciclo de Vida"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
+                              {consultModel?.id === m.id && <span className="text-[var(--accent)] text-xs">Ver</span>}
+                              {m.name}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {m.manufacturer_name}
+                              {(m.eolDate || m.eosDate) && (
+                                <span className="ml-2 text-slate-500">
+                                  {m.eolDate && <> · EOL <span className="font-mono text-slate-600">{m.eolDate}</span></>}
+                                  {m.eosDate && <> · EOS <span className="font-mono text-slate-600">{m.eosDate}</span></>}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setExpandedDmId(dmExpanded ? null : m.id)}
+                              title={t('masters.dates_section')}
+                              className={`rounded p-1.5 transition-colors ${dmExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
+                            ><Calendar className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
+                                  const d = await res.json();
+                                  alert(d.message ?? "Sincronización completada");
+                                } catch { alert("Error al sincronizar EOL"); }
+                              }}
+                              className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Sincronizar EOL desde endoflife.date"
+                            >
+                              EOL
+                            </button>
+                            <button
+                              onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
+                              className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors opacity-0 group-hover:opacity-100"
+                              title="Abrir Centro de Consulta Multi-Fuente"
+                            >
+                              Consultar
+                            </button>
+                            <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id, eolDate: m.eolDate ?? "", eosDate: m.eosDate ?? "" })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors opacity-0 group-hover:opacity-100" title="Editar modelo">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await apiFetch(`/api/masters/device-models/${m.id}/sync-eol`, { method: "POST" });
-                                const d = await res.json();
-                                alert(d.message ?? "Sincronización completada");
-                              } catch { alert("Error al sincronizar EOL"); }
-                            }}
-                            className="flex items-center gap-1 rounded-none bg-[var(--accent)]/5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                            title="Sincronizar EOL desde endoflife.date"
-                          >
-                            EOL
-                          </button>
-                          <button
-                            onClick={() => setConsultModel(consultModel?.id === m.id ? null : m)}
-                            className="flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors"
-                            title="Abrir Centro de Consulta Multi-Fuente"
-                          >
-                            Consultar
-                          </button>
-                          <button onClick={() => setEditState({ kind: "model", id: m.id, name: m.name, manufacturerId: m.manufacturer_id, eolDate: m.eolDate ?? "", eosDate: m.eosDate ?? "" })}
-                            className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors" title="Editar modelo">
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button onClick={() => del(`/api/masters/device-models/${m.id}`, load)}
-                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors">
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        {dmExpanded && (
+                          <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
+                            <LifecycleDatesEditor entityType="device-models" entityId={m.id} categoryFilter="HARDWARE" />
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1459,35 +1485,48 @@ export default function MastersPage() {
                     </div>
                   );
                 }
+                const osExpanded = expandedOsId === os.id;
                 return (
-                  <div key={os.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">
-                        {os.name}
-                        {os.version && <span className="ml-1.5 text-xs text-slate-400">{os.version}</span>}
-                        {os.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
-                      </p>
-                      {os.manufacturer && <p className="text-xs text-slate-400">{os.manufacturer.name}</p>}
-                      <p className="text-[10px] font-mono text-slate-300">{os.code}</p>
+                  <div key={os.id} className="border-b border-slate-50 last:border-0">
+                    <div className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          {os.name}
+                          {os.version && <span className="ml-1.5 text-xs text-slate-400">{os.version}</span>}
+                          {os.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
+                        </p>
+                        {os.manufacturer && <p className="text-xs text-slate-400">{os.manufacturer.name}</p>}
+                        <p className="text-[10px] font-mono text-slate-300">{os.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedOsId(osExpanded ? null : os.id)}
+                          title={t('masters.dates_section')}
+                          className={`rounded p-1.5 transition-colors ${osExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
+                        ><Calendar className="h-4 w-4" /></button>
+                        {!os.isSystem && (
+                          <>
+                            <button
+                              onClick={() => setEditState({ kind: "os", id: os.id, name: os.name, version: os.version ?? "", manufacturerId: os.manufacturer?.id ?? "" })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar "${os.name}"?`)) return;
+                                const res = await apiFetch(`/api/catalog/operating-systems/${os.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {!os.isSystem && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button
-                          onClick={() => setEditState({ kind: "os", id: os.id, name: os.name, version: os.version ?? "", manufacturerId: os.manufacturer?.id ?? "" })}
-                          className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                        ><Pencil className="h-4 w-4" /></button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`¿Eliminar "${os.name}"?`)) return;
-                            const res = await apiFetch(`/api/catalog/operating-systems/${os.id}`, { method: "DELETE" });
-                            if (!res.ok) {
-                              const d = await res.json().catch(() => ({})) as { error?: string };
-                              alert(d.error ?? `Error ${res.status}`); return;
-                            }
-                            load();
-                          }}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                        ><Trash2 className="h-4 w-4" /></button>
+                    {osExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
+                        <LifecycleDatesEditor entityType="operating-systems" entityId={os.id} categoryFilter="OS" />
                       </div>
                     )}
                   </div>
@@ -1586,37 +1625,215 @@ export default function MastersPage() {
                     </div>
                   );
                 }
+                const bswExpanded = expandedBswId === sw.id;
                 return (
-                  <div key={sw.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">
-                        {sw.name}
-                        {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
-                        {sw.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
-                      </p>
-                      {sw.manufacturer && <p className="text-xs text-slate-400">{sw.manufacturer.name}</p>}
-                      <p className="text-[10px] font-mono text-slate-300">{sw.code}</p>
+                  <div key={sw.id} className="border-b border-slate-50 last:border-0">
+                    <div className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          {sw.name}
+                          {sw.version && <span className="ml-1.5 text-xs text-slate-400">{sw.version}</span>}
+                          {sw.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.os.system')}</span>}
+                        </p>
+                        {sw.manufacturer && <p className="text-xs text-slate-400">{sw.manufacturer.name}</p>}
+                        <p className="text-[10px] font-mono text-slate-300">{sw.code}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setExpandedBswId(bswExpanded ? null : sw.id)}
+                          title={t('masters.dates_section')}
+                          className={`rounded p-1.5 transition-colors ${bswExpanded ? "text-[var(--accent)] bg-[var(--accent)]/10" : "text-slate-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 opacity-0 group-hover:opacity-100"}`}
+                        ><Calendar className="h-4 w-4" /></button>
+                        {!sw.isSystem && (
+                          <>
+                            <button
+                              onClick={() => setEditState({ kind: "bsw", id: sw.id, name: sw.name, version: sw.version ?? "", manufacturerId: sw.manufacturer?.id ?? "" })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Pencil className="h-4 w-4" /></button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar "${sw.name}"?`)) return;
+                                const res = await apiFetch(`/api/catalog/base-software/${sw.id}`, { method: "DELETE" });
+                                if (!res.ok) { const d = await res.json().catch(() => ({})) as { error?: string }; alert(d.error ?? `Error ${res.status}`); return; }
+                                load();
+                              }}
+                              className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors opacity-0 group-hover:opacity-100"
+                            ><Trash2 className="h-4 w-4" /></button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    {!sw.isSystem && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        <button
-                          onClick={() => setEditState({ kind: "bsw", id: sw.id, name: sw.name, version: sw.version ?? "", manufacturerId: sw.manufacturer?.id ?? "" })}
-                          className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
-                        ><Pencil className="h-4 w-4" /></button>
-                        <button
-                          onClick={async () => {
-                            if (!confirm(`¿Eliminar "${sw.name}"?`)) return;
-                            const res = await apiFetch(`/api/catalog/base-software/${sw.id}`, { method: "DELETE" });
-                            if (!res.ok) {
-                              const d = await res.json().catch(() => ({})) as { error?: string };
-                              alert(d.error ?? `Error ${res.status}`); return;
-                            }
-                            load();
-                          }}
-                          className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                        ><Trash2 className="h-4 w-4" /></button>
+                    {bswExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/60 px-6 py-3">
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">{t('masters.dates_section')}</p>
+                        <LifecycleDatesEditor entityType="base-software" entityId={sw.id} categoryFilter="SOFTWARE" />
                       </div>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Date Types ── */}
+        {tab === "date-types" && (
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+
+            {/* Add form */}
+            <div className="border-b border-slate-100 px-6 py-4 bg-slate-50 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('masters.dt.new')}</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <Input
+                  placeholder={t('masters.dt.code_placeholder')}
+                  value={newDt.code}
+                  onChange={(e) => setNewDt((p) => ({ ...p, code: e.target.value }))}
+                />
+                <Input
+                  placeholder={t('masters.dt.name_placeholder')}
+                  value={newDt.name}
+                  onChange={(e) => setNewDt((p) => ({ ...p, name: e.target.value }))}
+                />
+                <Sel
+                  value={newDt.category}
+                  onChange={(e) => setNewDt((p) => ({ ...p, category: e.target.value }))}
+                >
+                  <option value="GENERAL">{t('masters.dt.category_general')}</option>
+                  <option value="HARDWARE">{t('masters.dt.category_hardware')}</option>
+                  <option value="SOFTWARE">{t('masters.dt.category_software')}</option>
+                  <option value="OS">{t('masters.dt.category_os')}</option>
+                </Sel>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder={t('masters.dt.sort_order_placeholder')}
+                  value={newDt.sortOrder}
+                  onChange={(e) => setNewDt((p) => ({ ...p, sortOrder: e.target.value }))}
+                />
+              </div>
+              <Input
+                placeholder={t('masters.dt.description_placeholder')}
+                value={newDt.description}
+                onChange={(e) => setNewDt((p) => ({ ...p, description: e.target.value }))}
+              />
+              <button
+                onClick={async () => {
+                  if (!newDt.code.trim() || !newDt.name.trim()) { alert("Código y nombre son obligatorios"); return; }
+                  try {
+                    await post("/api/catalog/date-types", {
+                      code       : newDt.code.trim(),
+                      name       : newDt.name.trim(),
+                      description: newDt.description.trim() || null,
+                      category   : newDt.category,
+                      sortOrder  : parseInt(newDt.sortOrder, 10) || 0,
+                    });
+                    setNewDt({ code: "", name: "", description: "", category: "GENERAL", sortOrder: "0" });
+                    load();
+                  } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                }}
+                className="flex items-center gap-2 rounded-none border border-[var(--accent)] bg-[var(--accent)] px-4 py-2 text-xs font-medium text-white hover:opacity-90 transition-opacity"
+              >
+                <Plus className="h-4 w-4" />{t('masters.dt.add')}
+              </button>
+            </div>
+
+            {/* List grouped by category */}
+            <div className="divide-y divide-slate-100">
+              {(["GENERAL", "HARDWARE", "SOFTWARE", "OS"] as const).map((cat) => {
+                const rows = dateTypes.filter((d) => d.category === cat);
+                const catLabel: Record<string, string> = {
+                  GENERAL: t('masters.dt.category_general'),
+                  HARDWARE: t('masters.dt.category_hardware'),
+                  SOFTWARE: t('masters.dt.category_software'),
+                  OS: t('masters.dt.category_os'),
+                };
+                return (
+                  <div key={cat}>
+                    <div className="flex items-center gap-2 bg-slate-50 px-6 py-2 border-b border-slate-100">
+                      <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">{catLabel[cat]}</span>
+                      <span className="ml-auto text-xs text-slate-400">{rows.length}</span>
+                    </div>
+                    {rows.length === 0 && (
+                      <p className="px-6 py-3 text-sm text-slate-400 italic">{t('masters.dt.empty')}</p>
+                    )}
+                    {rows.map((dt) => {
+                      const isEditing = editState !== null && editState.kind === "datetype" && editState.id === dt.id;
+                      if (isEditing && editState && editState.kind === "datetype") {
+                        return (
+                          <div key={dt.id} className="px-4 py-3 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20 space-y-2">
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <Input
+                                value={editState.name}
+                                onChange={(e) => setEditState((p) => p && p.kind === "datetype" ? { ...p, name: e.target.value } : p)}
+                                placeholder={t('masters.dt.name_placeholder')}
+                              />
+                              <Input
+                                value={editState.description}
+                                onChange={(e) => setEditState((p) => p && p.kind === "datetype" ? { ...p, description: e.target.value } : p)}
+                                placeholder={t('masters.dt.description_placeholder')}
+                              />
+                              <Input
+                                type="number"
+                                min="0"
+                                value={editState.sortOrder}
+                                onChange={(e) => setEditState((p) => p && p.kind === "datetype" ? { ...p, sortOrder: e.target.value } : p)}
+                                placeholder={t('masters.dt.sort_order_placeholder')}
+                              />
+                            </div>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={async () => {
+                                  if (!editState || editState.kind !== "datetype") return;
+                                  try {
+                                    await patch(`/api/catalog/date-types/${editState.id}`, {
+                                      name       : editState.name.trim(),
+                                      description: editState.description.trim() || null,
+                                      sortOrder  : parseInt(editState.sortOrder, 10) || 0,
+                                    });
+                                    setEditState(null); load();
+                                  } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                                }}
+                                className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                              ><Check className="h-4 w-4" /></button>
+                              <button onClick={() => setEditState(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors"><X className="h-4 w-4" /></button>
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div key={dt.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                          <div>
+                            <p className="text-sm font-medium text-slate-700">
+                              {dt.name}
+                              {dt.isSystem && <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 uppercase">{t('masters.dt.system')}</span>}
+                            </p>
+                            {dt.description && <p className="text-xs text-slate-400">{dt.description}</p>}
+                            <p className="text-[10px] font-mono text-slate-300">{dt.code}</p>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                            <button
+                              onClick={() => setEditState({ kind: "datetype", id: dt.id, code: dt.code, name: dt.name, description: dt.description ?? "", category: dt.category, sortOrder: String(dt.sortOrder) })}
+                              className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                            ><Pencil className="h-4 w-4" /></button>
+                            {!dt.isSystem && (
+                              <button
+                                onClick={async () => {
+                                  if (!confirm(`¿Eliminar "${dt.name}"?`)) return;
+                                  const res = await apiFetch(`/api/catalog/date-types/${dt.id}`, { method: "DELETE" });
+                                  if (!res.ok) {
+                                    const d = await res.json().catch(() => ({})) as { error?: string };
+                                    alert(d.error ?? `Error ${res.status}`); return;
+                                  }
+                                  load();
+                                }}
+                                className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              ><Trash2 className="h-4 w-4" /></button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}

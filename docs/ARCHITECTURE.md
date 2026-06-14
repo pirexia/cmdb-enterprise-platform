@@ -1166,3 +1166,61 @@ Sigue el patrón de módulos del repo (igual que `dcim/` y `catalog/`); **no** c
 | Migraciones vía `execFile('psql')` con rol `cmdb_plugin` | `execFile` evita inyección de shell; el rol restringido es la barrera de BD |
 | Backup JSON pre-uninstall | Reversibilidad y preservación forense (NIS2) antes de borrar tablas `plg_*` |
 | 4-eyes solo en producción | Equilibra fricción operativa (dev/test) con control en el entorno crítico |
+
+---
+
+## 15. v2.8.2 — Ciclo de vida de activos (DateType + mirror triggers)
+
+### 15.1 Patrón espejo (DateType como fuente de verdad)
+
+v2.8.2 introduce un sistema de fechas extensible que coexiste con las columnas `eol_date`/`eos_date` heredadas:
+
+```
+DateType (fuente de verdad)
+  ├── CIDate               ← fechas propias del CI
+  ├── OperatingSystemDate  ← ciclo de vida del SO
+  ├── BaseSoftwareDate     ← ciclo de vida del SW base
+  └── DeviceModelDate      ← ciclo de vida del modelo HW
+
+Columnas espejo (caché, mantenidas por triggers, NO eliminadas):
+  configuration_items.eol_date / eos_date
+  device_models.eol_date / eos_date
+```
+
+Los disparadores PostgreSQL (`trg_sync_ci_eol_eos`, `trg_sync_dm_eol_eos` y sus variantes `_del`) actualizan automáticamente las columnas espejo cuando se insertan, actualizan o eliminan filas con códigos canónicos:
+
+| Código DateType | Columna espejo actualizada |
+|---|---|
+| `end-of-life` | `configuration_items.eol_date` |
+| `end-of-support` | `configuration_items.eos_date` |
+| `hw-end-of-life` | `device_models.eol_date` |
+| `hw-end-of-support` | `device_models.eos_date` |
+
+**Por qué mantener las columnas espejo:** el código legacy de `index.ts` (EOL cron, integración endoflife.date, listados de inventario) lee directamente `eol_date`/`eos_date`; eliminarlas requeriría refactorizar ~62 referencias. El trigger asegura coherencia sin tocar ese código.
+
+### 15.2 Modelo de datos — v2.8.2
+
+**Nuevas tablas:**
+- `date_types` (id, code UNIQUE, name, description, category ENUM, sort_order, is_system)
+- `ci_dates` (id, ci_id FK, date_type_id FK RESTRICT, date_value DATE, notes — UNIQUE por ci_id+date_type_id)
+- `operating_system_dates`, `base_software_dates`, `device_model_dates` — mismo patrón
+
+**Nuevo enum PostgreSQL:** `"DateTypeCategory"` (`HARDWARE`, `SOFTWARE`, `OS`, `GENERAL`)
+
+**Nuevos endpoints en `/api/catalog`:**
+- `GET/POST/PATCH/DELETE /date-types[/:id]` — CRUD de tipos de fecha (solo ADMIN)
+- `GET/POST/PATCH/DELETE /{entity}/{id}/dates[/:dateId]` — asociaciones por entidad (CI, OS, BSW, DeviceModel)
+- `GET /cis/:ciId/lifecycle-dates` — agregador (CI + OS + DeviceModel + BSW) con campo `source`
+
+### 15.3 Componente `LifecycleDatesEditor`
+
+Componente React reutilizable en `frontend/components/LifecycleDatesEditor.tsx`:
+
+| Prop | Tipo | Descripción |
+|---|---|---|
+| `entityType` | `"cis" \| "operating-systems" \| "base-software" \| "device-models"` | Entidad destino |
+| `entityId` | `string` | UUID de la entidad |
+| `categoryFilter` | `"HARDWARE" \| "SOFTWARE" \| "OS" \| "GENERAL"` (opcional) | Filtra los DateTypes disponibles |
+| `readOnly` | `boolean` (opcional) | Oculta botones de escritura |
+
+Badges de vencimiento: rojo (fecha pasada), ámbar (< 90 días), verde (> 90 días).

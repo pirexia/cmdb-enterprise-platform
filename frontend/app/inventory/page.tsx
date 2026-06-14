@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Layers } from "lucide-react";
@@ -297,7 +298,9 @@ export default function InventoryPage() {
   const [selectedIds, setSelectedIds]               = useState<Set<string>>(new Set());
   const [selectAllFiltered, setSelectAllFiltered]   = useState(false);
   const [showSelectDropdown, setShowSelectDropdown] = useState(false);
-  const selectDropdownRef                           = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos]               = useState<{ top: number; left: number } | null>(null);
+  const selectBtnRef                                = useRef<HTMLButtonElement>(null);
+  const selectMenuRef                               = useRef<HTMLDivElement>(null);
   const [showBulkUpdate, setShowBulkUpdate]         = useState(false);
   const [showBulkDelete, setShowBulkDelete]         = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading]   = useState(false);
@@ -336,11 +339,19 @@ export default function InventoryPage() {
   useEffect(() => {
     if (!showSelectDropdown) return;
     const handler = (e: MouseEvent) => {
-      if (selectDropdownRef.current && !selectDropdownRef.current.contains(e.target as Node))
-        setShowSelectDropdown(false);
+      const t = e.target as Node;
+      if (selectBtnRef.current?.contains(t) || selectMenuRef.current?.contains(t)) return;
+      setShowSelectDropdown(false);
     };
+    const close = () => setShowSelectDropdown(false);
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
   }, [showSelectDropdown]);
 
   // Two-step delete: 1st call without force, server returns 409 + brokenRefs if
@@ -680,7 +691,7 @@ export default function InventoryPage() {
                       {/* Bulk-select checkbox column (admin only) */}
                       {isAdmin && (
                         <th className="px-3 py-3 whitespace-nowrap w-10">
-                          <div className="flex items-center gap-0.5 relative" ref={selectDropdownRef}>
+                          <div className="flex items-center gap-0.5">
                             <input
                               type="checkbox"
                               aria-label={t('inventory.bulk_update.select_all')}
@@ -704,36 +715,19 @@ export default function InventoryPage() {
                               className="h-4 w-4 cursor-pointer accent-[var(--accent)]"
                             />
                             <button
-                              onClick={() => setShowSelectDropdown((v) => !v)}
+                              ref={selectBtnRef}
+                              onClick={() => {
+                                if (!showSelectDropdown && selectBtnRef.current) {
+                                  const r = selectBtnRef.current.getBoundingClientRect();
+                                  setDropdownPos({ top: r.bottom + 4, left: r.left });
+                                }
+                                setShowSelectDropdown((v) => !v);
+                              }}
                               className="p-0.5 text-slate-400 hover:text-[var(--accent)] transition-colors"
                               aria-label={t('inventory.bulk.dropdown_label')}
                             >
                               <ChevronDown className="h-3 w-3" />
                             </button>
-                            {showSelectDropdown && (
-                              <div className="absolute top-full left-0 z-20 w-56 border border-slate-200 bg-white shadow-lg">
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
-                                  onClick={() => {
-                                    setSelectedIds(new Set(displayed.map((c) => c.id)));
-                                    setSelectAllFiltered(false);
-                                    setShowSelectDropdown(false);
-                                  }}
-                                >
-                                  {t('inventory.bulk.select_page').replace('{count}', String(displayed.length))}
-                                </button>
-                                <button
-                                  className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
-                                  onClick={() => {
-                                    setSelectedIds(new Set(filtered.map((c) => c.id)));
-                                    setSelectAllFiltered(true);
-                                    setShowSelectDropdown(false);
-                                  }}
-                                >
-                                  {t('inventory.bulk.select_all_filtered').replace('{count}', String(filtered.length))}
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </th>
                       )}
@@ -992,6 +986,37 @@ export default function InventoryPage() {
           </div>
         </div>
       </div>
+
+      {/* Bulk-select dropdown rendered in a portal to escape overflow-x-auto clipping */}
+      {showSelectDropdown && dropdownPos && createPortal(
+        <div
+          ref={selectMenuRef}
+          className="fixed z-[9999] w-56 border border-slate-200 bg-white shadow-lg rounded"
+          style={{ top: dropdownPos.top, left: dropdownPos.left }}
+        >
+          <button
+            className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
+            onClick={() => {
+              setSelectedIds(new Set(displayed.map((c) => c.id)));
+              setSelectAllFiltered(false);
+              setShowSelectDropdown(false);
+            }}
+          >
+            {t('inventory.bulk.select_page').replace('{count}', String(displayed.length))}
+          </button>
+          <button
+            className="w-full px-3 py-2.5 text-left text-xs text-slate-700 hover:bg-[var(--accent)]/5 transition-colors"
+            onClick={() => {
+              setSelectedIds(new Set(filtered.map((c) => c.id)));
+              setSelectAllFiltered(true);
+              setShowSelectDropdown(false);
+            }}
+          >
+            {t('inventory.bulk.select_all_filtered').replace('{count}', String(filtered.length))}
+          </button>
+        </div>,
+        document.body
+      )}
     </>
   );
 }

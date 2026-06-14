@@ -284,6 +284,7 @@ model DeviceModel {
 
   manufacturer   Manufacturer @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cis            CI[]
+  lifecycleDates DeviceModelDate[]
 
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
@@ -386,6 +387,7 @@ model CI {
   documents       DocumentCI[]
   licenses        License[]    @relation("LicenseToCI")
   baseSoftwares   CIBaseSoftware[]
+  lifecycleDates  CIDate[]
 
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
@@ -758,6 +760,7 @@ model OperatingSystem {
   documents        DocumentOperatingSystem[]
   licenses         LicenseOperatingSystem[]
   cis              CI[]
+  lifecycleDates   OperatingSystemDate[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -802,10 +805,11 @@ model BaseSoftware {
   manufacturerId String? @db.Uuid @map("manufacturer_id")
   isSystem       Boolean @default(false) @map("is_system")
 
-  manufacturer Manufacturer?          @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cis          CIBaseSoftware[]
-  documents    DocumentBaseSoftware[]
-  licenses     LicenseBaseSoftware[]
+  manufacturer   Manufacturer?          @relation(fields: [manufacturerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cis            CIBaseSoftware[]
+  documents      DocumentBaseSoftware[]
+  licenses       LicenseBaseSoftware[]
+  lifecycleDates BaseSoftwareDate[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1222,4 +1226,106 @@ model PluginDataStore {
   @@index([tableName, entityId])
   @@index([pluginId])
   @@map("plugin_data_store")
+}
+
+// ─── Lifecycle Date Types ─────────────────────────────────────────────────────
+
+enum DateTypeCategory {
+  HARDWARE
+  SOFTWARE
+  OS
+  GENERAL
+}
+
+model DateType {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique @db.VarChar(50)
+  name        String           @db.VarChar(255)
+  description String?
+  category    DateTypeCategory
+  sortOrder   Int              @default(0) @map("sort_order")
+  isSystem    Boolean          @default(false) @map("is_system")
+
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  // Relations populated in T5 (entity-date associations)
+  ciDates          CIDate[]
+  osDates          OperatingSystemDate[]
+  bswDates         BaseSoftwareDate[]
+  deviceModelDates DeviceModelDate[]
+
+  @@index([category])
+  @@index([sortOrder])
+  @@map("date_types")
+}
+
+// ─── Entity-Date Associations (T5) ───────────────────────────────────────────
+// Tables created in migration 20260614120000_date_associations (T5).
+model CIDate {
+  id         String   @id @default(uuid()) @db.Uuid
+  ciId       String   @db.Uuid @map("ci_id")
+  dateTypeId String   @db.Uuid @map("date_type_id")
+  dateValue  DateTime @map("date_value") @db.Date
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  ci       CI       @relation(fields: [ciId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dateType DateType @relation(fields: [dateTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([ciId, dateTypeId])
+  @@index([ciId])
+  @@map("ci_dates")
+}
+
+model OperatingSystemDate {
+  id                String   @id @default(uuid()) @db.Uuid
+  operatingSystemId String   @db.Uuid @map("operating_system_id")
+  dateTypeId        String   @db.Uuid @map("date_type_id")
+  dateValue         DateTime @map("date_value") @db.Date
+  notes             String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  operatingSystem OperatingSystem @relation(fields: [operatingSystemId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dateType        DateType        @relation(fields: [dateTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([operatingSystemId, dateTypeId])
+  @@index([operatingSystemId])
+  @@map("operating_system_dates")
+}
+
+model BaseSoftwareDate {
+  id             String   @id @default(uuid()) @db.Uuid
+  baseSoftwareId String   @db.Uuid @map("base_software_id")
+  dateTypeId     String   @db.Uuid @map("date_type_id")
+  dateValue      DateTime @map("date_value") @db.Date
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  baseSoftware BaseSoftware @relation(fields: [baseSoftwareId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dateType     DateType     @relation(fields: [dateTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([baseSoftwareId, dateTypeId])
+  @@index([baseSoftwareId])
+  @@map("base_software_dates")
+}
+
+model DeviceModelDate {
+  id            String   @id @default(uuid()) @db.Uuid
+  deviceModelId String   @db.Uuid @map("device_model_id")
+  dateTypeId    String   @db.Uuid @map("date_type_id")
+  dateValue     DateTime @map("date_value") @db.Date
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  deviceModel DeviceModel @relation(fields: [deviceModelId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  dateType    DateType    @relation(fields: [dateTypeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([deviceModelId, dateTypeId])
+  @@index([deviceModelId])
+  @@map("device_model_dates")
 }

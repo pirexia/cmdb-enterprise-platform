@@ -649,6 +649,21 @@
       "name_placeholder": "Ex: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versão (opcional, ex: 19c, 10.1)",
       "empty": "Sem software base registado."
+    },
+    "date_types": "Tipos de Datas",
+    "dt": {
+      "new": "Novo Tipo de Data",
+      "code_placeholder": "Código (ex: end-of-life)",
+      "name_placeholder": "Nome do tipo de data",
+      "description_placeholder": "Descrição (opcional)",
+      "sort_order_placeholder": "Ordem",
+      "category_general": "Geral",
+      "category_hardware": "Hardware",
+      "category_software": "Software",
+      "category_os": "Sistema Operativo",
+      "add": "Adicionar Tipo",
+      "empty": "Sem tipos de data nesta categoria.",
+      "system": "Sistema"
     }
   },
   "settings": {

@@ -695,6 +695,21 @@
       "name_placeholder": "Ej: Oracle Database, Apache Tomcat",
       "version_placeholder": "Versión (opcional, ej: 19c, 10.1)",
       "empty": "Sin software base registrado."
+    },
+    "date_types": "Tipos de Fechas",
+    "dt": {
+      "new": "Nuevo Tipo de Fecha",
+      "code_placeholder": "Código (ej: end-of-life)",
+      "name_placeholder": "Nombre del tipo de fecha",
+      "description_placeholder": "Descripción (opcional)",
+      "sort_order_placeholder": "Orden",
+      "category_general": "General",
+      "category_hardware": "Hardware",
+      "category_software": "Software",
+      "category_os": "Sistema Operativo",
+      "add": "Añadir Tipo",
+      "empty": "Sin tipos de fecha en esta categoría.",
+      "system": "Sistema"
     }
   },
   "settings": {

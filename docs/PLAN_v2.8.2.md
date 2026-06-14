@@ -65,7 +65,7 @@ Lógica de escritura:
 
 ---
 
-### T1 — Fix desplegable de selección masiva ⬜ PENDIENTE
+### T1 — Fix desplegable de selección masiva ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -90,7 +90,7 @@ docs(plan): mark T1 as completed
 
 ---
 
-### T2+T3 — Modal de CI: campos por tipo + ensanchar ⬜ PENDIENTE
+### T2+T3 — Modal de CI: campos por tipo + ensanchar ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -133,7 +133,7 @@ docs(plan): mark T2+T3 as completed
 
 ---
 
-### T4 — Maestro Tipos de Fechas (`DateType`) ⬜ PENDIENTE
+### T4 — Maestro Tipos de Fechas (`DateType`) ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -225,7 +225,7 @@ docs(plan): mark T4 as completed
 
 ---
 
-### T5 — Asociaciones de fechas + CIDate + migración + columnas espejo ⬜ PENDIENTE
+### T5 — Asociaciones de fechas + CIDate + migración + columnas espejo ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -353,7 +353,7 @@ docs(plan): mark T5 as completed
 
 ---
 
-### T6 — Modelos → Modelos de Hardware + fechas ⬜ PENDIENTE
+### T6 — Modelos → Modelos de Hardware + fechas ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -383,7 +383,7 @@ docs(manual): hardware models lifecycle dates (T6)
 
 ---
 
-### T7 — Fechas de ciclo de vida en modal de CI ⬜ PENDIENTE
+### T7 — Fechas de ciclo de vida en modal de CI ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -427,7 +427,7 @@ docs(plan): mark T7 as completed
 
 ---
 
-### T8 — Documentación catch-up + CHANGELOG + tag v2.8.2 ⬜ PENDIENTE
+### T8 — Documentación catch-up + CHANGELOG + tag v2.8.2 ✅ COMPLETADA
 
 | Campo | Valor |
 |---|---|
@@ -478,7 +478,7 @@ graph TD
 Secuencial con gate de revisión por tarea:
 
 ```
-T0 ✅ → T1 → T2+T3 → T4 → T5 → T6 → T7 → T8
+T0 ✅ → T1 ✅ → T2+T3 ✅ → T4 ✅ → T5 ✅ → T6 ✅ → T7 ✅ → T8 ✅
 ```
 
 *(T1, T2+T3 y T4 son independientes entre sí y podrían paralelizarse con subagentes, pero el gate de revisión los mantiene secuenciales.)*

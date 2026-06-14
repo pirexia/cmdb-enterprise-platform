@@ -2346,3 +2346,53 @@ Para una recuperación completa necesitas **ambos**: el dump de PostgreSQL (regi
 ### 22.5 CSP y iframe
 
 La UI de los plugins se sirve en iframes del mismo origen. La política CSP de nginx (`frame-src 'self'`) ya es compatible y **no requirió cambios**; no relajes `frame-src` a orígenes externos para plugins.
+
+---
+
+## 23. v2.8.2 — Ciclo de vida de activos (DateType + migraciones)
+
+### 23.1 Migraciones aplicadas en v2.8.2
+
+Esta versión aplica dos migraciones Prisma nuevas al arrancar el contenedor backend:
+
+| Migración | Descripción |
+|---|---|
+| `20260614100000_date_types` | Crea el enum `"DateTypeCategory"` y la tabla `date_types`; siembra 16 tipos canónicos |
+| `20260614120000_date_associations` | Crea `ci_dates`, `operating_system_dates`, `base_software_dates`, `device_model_dates`; crea 4 disparadores espejo; backfill idempotente desde columnas `eol_date`/`eos_date` existentes |
+
+Las migraciones son **idempotentes** (usan `IF NOT EXISTS` y `ON CONFLICT DO NOTHING`) y se aplican automáticamente en el arranque mediante `prisma migrate deploy`.
+
+### 23.2 Verificación post-despliegue
+
+```bash
+# Comprobar que las tablas existen
+sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c '\dt date_types ci_dates operating_system_dates base_software_dates device_model_dates'"
+
+# Comprobar que los triggers existen
+sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c \"\
+SELECT trigger_name, event_manipulation, event_object_table \
+FROM information_schema.triggers \
+WHERE trigger_name LIKE 'trg_sync_%' ORDER BY 1;\""
+
+# Comprobar seed de DateTypes
+sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c 'SELECT code, category, is_system FROM date_types ORDER BY sort_order;'"
+```
+
+### 23.3 Rollback manual (si es necesario)
+
+```sql
+-- Eliminar triggers primero
+DROP TRIGGER IF EXISTS trg_sync_ci_eol_eos ON ci_dates;
+DROP TRIGGER IF EXISTS trg_sync_ci_eol_eos_del ON ci_dates;
+DROP TRIGGER IF EXISTS trg_sync_dm_eol_eos ON device_model_dates;
+DROP TRIGGER IF EXISTS trg_sync_dm_eol_eos_del ON device_model_dates;
+
+-- Eliminar tablas de asociaciones
+DROP TABLE IF EXISTS ci_dates, operating_system_dates, base_software_dates, device_model_dates;
+
+-- Eliminar DateTypes y enum (solo si no hay dependencias)
+DROP TABLE IF EXISTS date_types;
+DROP TYPE IF EXISTS "DateTypeCategory";
+```
+
+> Las columnas espejo `eol_date`/`eos_date` en `configuration_items` y `device_models` **no se tocan** en el rollback — siguen funcionando como antes de v2.8.2.

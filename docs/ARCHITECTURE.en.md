@@ -1098,3 +1098,38 @@ Follows the repo module pattern (same as `dcim/` and `catalog/`); does **not** g
 | Migrations via `execFile('psql')` with the `cmdb_plugin` role | `execFile` avoids shell injection; the restricted role is the DB barrier |
 | JSON backup pre-uninstall | Reversibility and forensic preservation (NIS2) before dropping `plg_*` tables |
 | 4-eyes in production only | Balances operational friction (dev/test) with control in the critical environment |
+
+---
+
+## 15. v2.8.2 — Asset lifecycle dates (DateType + mirror triggers)
+
+### 15.1 Mirror pattern (DateType as source of truth)
+
+v2.8.2 introduces an extensible date system that coexists with the legacy `eol_date`/`eos_date` columns:
+
+```
+DateType (source of truth)
+  ├── CIDate               ← CI's own lifecycle dates
+  ├── OperatingSystemDate  ← OS lifecycle dates
+  ├── BaseSoftwareDate     ← base software lifecycle dates
+  └── DeviceModelDate      ← hardware model lifecycle dates
+
+Mirror columns (cache, maintained by triggers, NOT removed):
+  configuration_items.eol_date / eos_date
+  device_models.eol_date / eos_date
+```
+
+PostgreSQL triggers (`trg_sync_ci_eol_eos`, `trg_sync_dm_eol_eos` and `_del` variants) update mirror columns when rows with canonical codes are inserted, updated, or deleted.
+
+| DateType code | Mirror column updated |
+|---|---|
+| `end-of-life` | `configuration_items.eol_date` |
+| `end-of-support` | `configuration_items.eos_date` |
+| `hw-end-of-life` | `device_models.eol_date` |
+| `hw-end-of-support` | `device_models.eos_date` |
+
+### 15.2 New endpoints in `/api/catalog`
+
+- `GET/POST/PATCH/DELETE /date-types[/:id]` — DateType CRUD (ADMIN only)
+- `GET/POST/PATCH/DELETE /{entity}/{id}/dates[/:dateId]` — per-entity date associations
+- `GET /cis/:ciId/lifecycle-dates` — aggregator (CI + OS + DeviceModel + BSW) with `source` field

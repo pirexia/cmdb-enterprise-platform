@@ -7,6 +7,28 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.2] — 2026-06-14
+
+### Added
+
+- **DateType — catálogo de tipos de fecha** (`date_types`) — nuevo recurso maestro con enum de categorías (`HARDWARE`, `SOFTWARE`, `OS`, `GENERAL`), `sortOrder`, bandera `isSystem` y 16 tipos semilla (end-of-life, end-of-support, warranty-end, premier-support-end, etc.). CRUD completo en `/api/catalog/date-types` (solo ADMIN puede crear/modificar/eliminar; los tipos de sistema no se pueden borrar). UI en Admin → Datos Maestros → Tipos de Fechas.
+- **Asociaciones de fechas por entidad** — tablas `ci_dates`, `operating_system_dates`, `base_software_dates`, `device_model_dates` (UNIQUE por entidad+tipo). API REST en `/api/catalog/{entity}/{id}/dates`. Disparadores PostgreSQL que sincronizan las columnas espejo `eol_date`/`eos_date` en `configuration_items` y `device_models` cuando se insertan/actualizan/eliminan filas con códigos canónicos (`end-of-life`/`end-of-support`, `hw-end-of-life`/`hw-end-of-support`).
+- **`LifecycleDatesEditor`** — componente reutilizable (`frontend/components/LifecycleDatesEditor.tsx`) con badge de vencimiento (rojo < 0 días, ámbar < 90 días, verde resto), add/edit/delete inline y filtro por categoría de DateType. Integrado en las pestañas OS y Software Base de Admin → Datos Maestros.
+- **Ciclo de vida en Modelos de Hardware** — filas de DeviceModel en Admin → Datos Maestros → Modelos de Hardware muestran el panel `LifecycleDatesEditor` al hacer clic en el icono de Calendario (categoría `HARDWARE`).
+- **Agregador de fechas de ciclo de vida para CI** — `GET /api/catalog/cis/:ciId/lifecycle-dates` combina fechas propias del CI + fechas del OS asociado + fechas del DeviceModel (`ciModel`) + fechas de cada Software Base asociado. Campo `source` identifica la procedencia. Respuesta ordenada por `DateType.sortOrder`.
+- **Sección "Fechas de Ciclo de Vida" en CIDetailModal** — tabla de solo lectura con columnas Tipo / Fuente / Fecha / Notas; badges rojo "Vencido" y ámbar "< 90 días". Disponible en los 6 idiomas (ES/EN/DE/PT/FR/IT).
+
+### Fixed
+
+- **Dropdown de selección masiva** — el menú desplegable de bulk-select se renderizaba recortado dentro de `overflow-x-auto`. Corregido con `ReactDOM.createPortal` + `getBoundingClientRect` para anclar el panel al `document.body`.
+
+### Changed
+
+- **CIDetailModal** — ampliado a `max-w-6xl` con layout de dos columnas responsive (datos principales a la izquierda, relaciones/contratos/documentos a la derecha).
+- **Pestaña "Modelos" → "Modelos de Hardware"** — renombrada en los 6 idiomas de la UI.
+
+---
+
 ## [2.8.1] — 2026-06-13
 
 ### Fixed (security)

@@ -1278,6 +1278,7 @@
     "section_hardware": "Hardware",
     "field_manufacturer": "Fabricant",
     "field_model": "Modèle",
+    "field_hw_model": "Modèle matériel",
     "field_serial": "Nº de Série",
     "section_software": "Logiciel / Licence",
     "section_infra": "Spécifications d'infrastructure",

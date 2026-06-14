@@ -599,6 +599,7 @@ const CI_INCLUDE = {
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
   ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true } },
   operatingSystem: { select: { id: true, name: true, version: true } },
+  ciModel: { select: { id: true, name: true, manufacturer: { select: { id: true, name: true } } } },
   contracts: {
     select: {
       id:             true,

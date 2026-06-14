@@ -627,7 +627,7 @@
       "support_areas": "Áreas de Soporte",
       "branches": "Sedes",
       "manufacturers": "Fabricantes",
-      "models": "Modelos",
+      "models": "Modelos de Hardware",
       "providers": "Proveedores",
       "operating_systems": "Sistemas Operativos",
       "base_software": "Software Base"
@@ -638,7 +638,7 @@
     "operating_systems": "Sistemas Operativos",
     "base_software": "Software Base",
     "models": {
-      "new": "Nuevo Modelo",
+      "new": "Nuevo Modelo de Hardware",
       "placeholder": "Ej: PowerEdge R740",
       "manufacturer_label": "— Fabricante —",
       "type_label": "— Tipo —",

@@ -582,7 +582,7 @@
       "support_areas": "Supportbereiche",
       "branches": "Standorte",
       "manufacturers": "Hersteller",
-      "models": "Modelle",
+      "models": "Hardware-Modelle",
       "providers": "Anbieter",
       "operating_systems": "Betriebssysteme",
       "base_software": "Basissoftware"
@@ -593,7 +593,7 @@
     "operating_systems": "Betriebssysteme",
     "base_software": "Basissoftware",
     "models": {
-      "new": "Neues Modell",
+      "new": "Neues Hardware-Modell",
       "placeholder": "z.B.: PowerEdge R740",
       "manufacturer_label": "— Hersteller —",
       "type_label": "— Typ —",

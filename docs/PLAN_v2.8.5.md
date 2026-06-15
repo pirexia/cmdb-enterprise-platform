@@ -105,7 +105,7 @@ v2.8.5 entrega tres bloques independientes:
 
 **Skills:** `prisma-development`, `supabase-postgres-best-practices`
 **Commits realizados:** `f82f3e0` feat(data): seed CITypeCategory LOGICAL and CIType SISTEMA
-**PR:** pendiente apertura
+**PR:** #145
 
 ---
 

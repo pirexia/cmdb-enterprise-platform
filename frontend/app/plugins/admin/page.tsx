@@ -9,7 +9,6 @@ import {
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch } from "@/lib/apiFetch";
-import AppShell from "@/components/AppShell";
 import PluginConfigModal from "./PluginConfigModal";
 import PluginUploadModal from "./PluginUploadModal";
 
@@ -325,18 +324,18 @@ export default function PluginAdminPage() {
   // Access control
   if (user && user.role !== "ADMIN") {
     return (
-      <AppShell>
+      <>
         <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400">
           <AlertCircle className="h-10 w-10 text-red-400" />
           <p className="text-lg font-medium text-slate-300">{t("common.admin_only")}</p>
           <p className="text-sm">{t("common.admin_only")}</p>
         </div>
-      </AppShell>
+      </>
     );
   }
 
   return (
-    <AppShell>
+    <>
       <div className="p-6 max-w-7xl mx-auto space-y-8">
 
         {/* Toast */}
@@ -491,6 +490,6 @@ export default function PluginAdminPage() {
           }}
         />
       )}
-    </AppShell>
+    </>
   );
 }

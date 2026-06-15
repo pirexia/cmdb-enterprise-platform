@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import AppShell from "@/components/AppShell";
 import { Shield, Download, Upload, Loader2, CheckCircle, AlertTriangle, Info } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -116,7 +115,7 @@ export default function CertificatesPage() {
   const labelCls = "block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5";
 
   return (
-    <AppShell>
+    <>
       <div className="p-8">
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -300,6 +299,6 @@ export default function CertificatesPage() {
           </p>
         </div>
       </div>
-    </AppShell>
+    </>
   );
 }

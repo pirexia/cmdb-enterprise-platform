@@ -45,6 +45,7 @@ import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
+import { createAlertsRouter } from './modules/alerts/router';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 
@@ -263,6 +264,7 @@ app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(pris
 
 // Catalog module — master data (OS, etc.); reads open to all authenticated roles
 app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
+app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({

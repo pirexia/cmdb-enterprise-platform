@@ -1329,3 +1329,47 @@ model DeviceModelDate {
   @@index([deviceModelId])
   @@map("device_model_dates")
 }
+
+// ─── Alerts Module (v2.8.4) ───────────────────────────────────────────────────
+
+model AlertConfig {
+  id                String   @id @default("default")
+  enabled           Boolean  @default(true)
+  sendTimeHour      Int      @default(8)     @map("send_time_hour")
+  sendTimeMinute    Int      @default(30)    @map("send_time_minute")
+  timezone          String   @default("UTC") @db.VarChar(64)
+  locale            String   @default("es")  @db.VarChar(10)
+  recipients        String[]
+  sendAllClear      Boolean  @default(false) @map("send_all_clear")
+  suppressUnchanged Boolean  @default(true)  @map("suppress_unchanged")
+  updatedAt         DateTime @updatedAt      @map("updated_at")
+
+  @@map("alert_config")
+}
+
+model AlertRule {
+  id         String   @id @default(uuid()) @db.Uuid
+  category   String   @unique              @db.VarChar(50)
+  enabled    Boolean  @default(true)
+  warnDays   Int      @default(30)         @map("warn_days")
+  recipients String[]
+  updatedAt  DateTime @updatedAt           @map("updated_at")
+
+  @@map("alert_rules")
+}
+
+model AlertRun {
+  id          String    @id @default(uuid()) @db.Uuid
+  trigger     String                          @db.VarChar(20)
+  startedAt   DateTime  @default(now())      @map("started_at")
+  finishedAt  DateTime?                       @map("finished_at")
+  status      String                          @db.VarChar(20)
+  totalAlerts Int       @default(0)           @map("total_alerts")
+  breakdown   Json      @default("{}")
+  recipients  String[]
+  messageId   String?                         @db.VarChar(255) @map("message_id")
+  errorMsg    String?                         @map("error_msg")
+
+  @@index([startedAt(sort: Desc)])
+  @@map("alert_runs")
+}

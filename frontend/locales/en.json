@@ -274,7 +274,8 @@
       "refs_documents": "{count} document relation(s)",
       "has_refs_warning": "If you proceed, those associations will be silently severed (the contracts, licences and documents themselves are not deleted). The reference counts are recorded in the audit log for forensics.",
       "force_button": "Delete and sever relationships"
-    }
+    },
+    "eol_from_model": "(model)"
   },
   "vulnerabilities": {
     "title": "Vulnerabilities",

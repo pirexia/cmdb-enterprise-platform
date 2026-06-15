@@ -103,6 +103,7 @@
       "warning": "EoL en {days}d",
       "ok": "Activo"
     },
+    "eol_from_model": "(modelo)",
     "vuln_badge": {
       "no_data": "Sin datos",
       "clean": "Limpio",

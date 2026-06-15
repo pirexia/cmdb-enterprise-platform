@@ -14,7 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
 import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
-import { runAndSendAlerts } from './services/emailService';
+import { runAlertsPipeline } from './modules/alerts/pipeline';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
 import { getSystemInfo } from './services/systemInfoService';
@@ -6917,30 +6917,27 @@ app.post('/api/documents/:id/notes', authenticateToken, requireUuidParam('id'), 
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────
+// ─── Alert Engine — legacy shim (delegates to /api/alerts/run-now) ───────────
 
 /**
  * POST /api/admin/test-email
- * Manually triggers the full alert scan + email send pipeline.
- * ADMIN only. Use this to verify SMTP config without waiting for the daily cron.
+ * @deprecated — use POST /api/alerts/run-now instead.
+ * Kept for backward compatibility with existing integrations.
  */
 app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
   try {
-    const result = await runAndSendAlerts();
+    const result = await runAlertsPipeline(prisma, 'MANUAL', true);
     res.json({
-      message: result.sent
-        ? `✅ Alert report sent to ${process.env.ALERT_RECIPIENT}`
-        : '⚠️ Alert scan completed but email was NOT sent (check SMTP config or ALERT_RECIPIENT)',
-      eolAlerts:       result.eolAlerts.length,
-      contractAlerts:  result.contractAlerts.length,
-      vulnAlerts:      result.vulnAlerts.length,
-      sent:            result.sent,
-      messageId:       result.messageId,
-      scannedAt:       result.scannedAt,
+      message:    `Pipeline status: ${result.status}`,
+      totalAlerts: result.totalAlerts,
+      breakdown:   result.breakdown,
+      status:      result.status,
+      messageId:   result.messageId ?? null,
+      runId:       result.runId,
     });
   } catch (error) {
-    console.error('[POST /api/admin/test-email] Error:', error);
+    console.error('[POST /api/admin/test-email] Error:', error instanceof Error ? error.message : error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

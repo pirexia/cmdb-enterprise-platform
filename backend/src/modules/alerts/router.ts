@@ -151,7 +151,7 @@ export function createAlertsRouter(prisma: PrismaClient): Router {
   // ── GET /api/alerts/history ───────────────────────────────────────────────
   router.get('/history', async (req: Request, res: Response): Promise<void> => {
     try {
-      const limit = Math.min(parseInt((req.query['limit'] as string) ?? '50', 10), 200);
+      const limit = Math.min(parseInt((req.query['limit'] as string) ?? '50', 10) || 50, 200);
       res.json(await getHistory(prisma, limit));
     } catch {
       res.status(500).json({ error: 'Internal server error' });

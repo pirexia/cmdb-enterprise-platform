@@ -593,6 +593,7 @@ const CI_INCLUDE = {
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
+  ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true } },
   operatingSystem: { select: { id: true, name: true, version: true } },
   contracts: {
     select: {
@@ -607,13 +608,20 @@ const CI_INCLUDE = {
 // Flatten ciTypeDef relation into flat fields for backward-compatible API response
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenCI(ci: any) {
-  const { ciTypeDef, ciTypeId, ...rest } = ci;
+  const { ciTypeDef, ciTypeId, ciModel, ...rest } = ci;
+  const eolEffective = ci.eolDate ?? ciModel?.eolDate ?? null;
+  const eosEffective = ci.eosDate ?? ciModel?.eosDate ?? null;
   return {
     ...rest,
     ciTypeId:   ciTypeDef?.id           ?? null,
     ciType:     ciTypeDef?.code         ?? null,
     ciTypeName: ciTypeDef?.name         ?? null,
     ciTypeCategoryCode: ciTypeDef?.categoryCode ?? null,
+    eolEffective:  eolEffective,
+    eosEffective:  eosEffective,
+    eolSource:     ci.eolDate  ? 'ci' : (ciModel?.eolDate  ? 'model' : null),
+    eosSource:     ci.eosDate  ? 'ci' : (ciModel?.eosDate  ? 'model' : null),
+    ciModelName:   ciModel?.name ?? null,
   };
 }
 

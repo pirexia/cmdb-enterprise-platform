@@ -274,7 +274,8 @@
       "refs_documents": "{count} relation(s) avec des documents",
       "has_refs_warning": "Si vous continuez, ces associations seront supprimées silencieusement (les contrats, licences et documents eux-mêmes ne sont pas supprimés). Les compteurs sont enregistrés dans l'audit log pour la forensique.",
       "force_button": "Supprimer et rompre les relations"
-    }
+    },
+    "eol_from_model": "(modèle)"
   },
   "vulnerabilities": {
     "title": "Vulnérabilités",

@@ -65,6 +65,11 @@ interface CI {
   ciTypeName:      string | null;
   eolDate:         string | null;
   eosDate:         string | null;
+  eolEffective:    string | null;
+  eosEffective:    string | null;
+  eolSource:       'ci' | 'model' | null;
+  eosSource:       'ci' | 'model' | null;
+  ciModelName:     string | null;
   status:          string | null;
   inventoryNumber: string | null;
   businessOwnerId: string | null;
@@ -89,23 +94,43 @@ interface CI {
 
 // ─── Support status badge ─────────────────────────────────────────────────────
 
-function SupportBadge({ eolDate, eosDate }: { eolDate: string | null; eosDate: string | null }) {
+function SupportBadge({
+  eolDate, eosDate,
+  eolEffective, eosEffective,
+  eolSource, eosSource,
+}: {
+  eolDate: string | null; eosDate: string | null;
+  eolEffective?: string | null; eosEffective?: string | null;
+  eolSource?: 'ci' | 'model' | null; eosSource?: 'ci' | 'model' | null;
+}) {
   const { t } = useLanguage();
   const now = Date.now();
   const sixMonths = 180 * 86_400_000;
-  const dates = [eolDate, eosDate].filter(Boolean).map((d) => new Date(d!).getTime());
+  const effEol = eolEffective ?? eolDate;
+  const effEos = eosEffective ?? eosDate;
+  const dates = [effEol, effEos].filter(Boolean).map((d) => new Date(d!).getTime());
   if (dates.length === 0) return null;
 
-  const nearest = Math.min(...dates);
+  const nearest  = Math.min(...dates);
   const daysLeft = Math.floor((nearest - now) / 86_400_000);
+  const fromModel = (effEol && eolSource === 'model') || (effEos && eosSource === 'model');
 
-  if (nearest < now) {
-    return <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{t('inventory.support_badge.expired')}</span>;
-  }
-  if (nearest - now < sixMonths) {
-    return <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{t('inventory.support_badge.warning', { days: String(daysLeft) })}</span>;
-  }
-  return <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{t('inventory.support_badge.ok')}</span>;
+  const statusBadge = nearest < now
+    ? <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700">{t('inventory.support_badge.expired')}</span>
+    : nearest - now < sixMonths
+      ? <span className="inline-block rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">{t('inventory.support_badge.warning', { days: String(daysLeft) })}</span>
+      : <span className="inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">{t('inventory.support_badge.ok')}</span>;
+
+  return (
+    <>
+      {statusBadge}
+      {fromModel && (
+        <span className="inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500 ml-1">
+          {t('inventory.eol_from_model')}
+        </span>
+      )}
+    </>
+  );
 }
 
 // ─── CI type visual map ───────────────────────────────────────────────────────
@@ -870,7 +895,11 @@ export default function InventoryPage() {
                               >{ci.name}</button>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} />
+                                <SupportBadge
+                                  eolDate={ci.eolDate} eosDate={ci.eosDate}
+                                  eolEffective={ci.eolEffective} eosEffective={ci.eosEffective}
+                                  eolSource={ci.eolSource} eosSource={ci.eosSource}
+                                />
                                 {ci.spofRisk && (
                                   <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Punto Único de Fallo">SPOF</span>
                                 )}

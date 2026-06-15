@@ -274,7 +274,8 @@
       "refs_documents": "{count} Dokumentenbeziehung(en)",
       "has_refs_warning": "Wenn Sie fortfahren, werden diese Verknüpfungen stillschweigend getrennt (Verträge, Lizenzen und Dokumente selbst werden nicht gelöscht). Die Referenzzahlen werden für Forensik im Audit-Log erfasst.",
       "force_button": "Löschen und Beziehungen trennen"
-    }
+    },
+    "eol_from_model": "(Modell)"
   },
   "vulnerabilities": {
     "title": "Schwachstellen",

@@ -46,6 +46,7 @@ import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
 import { createAlertsRouter } from './modules/alerts/router';
+import { startAlertScheduler } from './modules/alerts/scheduler';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 
@@ -7113,18 +7114,8 @@ app.delete('/api/settings/logo', authenticateToken, requireAdmin, async (req: Re
 //   '* * * * *'   (every minute)
 // The current schedule: '30 8 * * *' = daily at 08:30
 
-const CRON_SCHEDULE = process.env.ALERT_CRON_SCHEDULE ?? '30 8 * * *';
-
-cron.schedule(CRON_SCHEDULE, () => {
-  log.info(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
-  runAndSendAlerts()
-    .then((r) => log.info(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
-    .catch((e) => log.error('[AlertCron] Error:', e));
-}, {
-  timezone: 'Europe/Madrid',
-});
-
-log.info(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
+startAlertScheduler(prisma);
+log.info('[AlertCron] Config-driven scheduler started (reads send time from alert_config table).');
 
 // ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
 // Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.

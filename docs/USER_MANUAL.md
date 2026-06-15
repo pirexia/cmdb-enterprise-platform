@@ -768,23 +768,61 @@ Para gestionar las fechas propias de un activo, abre su ficha (**Inventario → 
 
 ---
 
-## 15. Alertas Diarias Automáticas
+## 15. Alertas Email — Motor de Alertas (v2.8.4)
 
-La plataforma envía automáticamente un informe diario por email con los activos que requieren atención.
+La plataforma incluye un motor de alertas proactivo que envía automáticamente informes por email cuando los activos de tu inventario requieren atención. En **Configuración → Alertas** (solo ADMIN) puedes controlar cada aspecto del sistema.
 
-### ¿Cuándo llega el email?
+### 15.1 Categorías de alerta
 
-Por defecto, el informe se envía todos los días a las **08:30** (hora de Madrid). Tu administrador de sistemas puede cambiar este horario si es necesario.
+El motor analiza siete categorías independientes:
 
-### ¿Qué contiene el informe?
+| Categoría | Qué monitoriza | Ventana por defecto |
+|-----------|----------------|---------------------|
+| **EOL** (Fin de Vida) | CIs con fecha EOL propia o heredada del modelo | 30 días |
+| **EOS** (Fin de Soporte) | CIs con fecha EOS propia o heredada del modelo | 30 días |
+| **Garantía** | CIs con `warranty-end` próxima | 30 días |
+| **Mantenimiento** | CIs con `maintenance-end` próxima | 30 días |
+| **Contratos** | Contratos con fecha de vencimiento próxima | 30 días |
+| **Vulnerabilidades** | Activos con CVEs CRÍTICOS o ALTOS pendientes | — |
+| **Licencias** | Licencias con fecha de vencimiento próxima | 30 días |
 
-El email incluye hasta tres secciones, según lo que haya que reportar:
+Cada categoría se puede activar o desactivar de forma independiente y tiene su propia ventana de aviso (días de antelación) y lista de destinatarios adicionales.
 
-1. **Fin de Soporte / Fin de Vida** — Activos cuya fecha de EoL o EoS vence en los próximos 30 días.
-2. **Contratos próximos a vencer** — Contratos que vencen en los próximos 30 días.
-3. **Vulnerabilidades críticas y altas pendientes** — Activos con CVEs de severidad CRÍTICA o ALTA sin resolver.
+### 15.2 Configuración global
 
-### Código de colores del informe
+En **Configuración → Alertas → Configuración Global** puedes ajustar:
+
+- **Hora de envío** — la hora (HH) y minuto (MM) a la que se ejecuta el envío diario.
+- **Zona horaria** — cualquier identificador IANA (p. ej. `Europe/Madrid`, `America/New_York`).
+- **Idioma del email** — el idioma en que se redacta el cuerpo del email (ES/EN/DE/PT/FR/IT).
+- **Destinatarios globales** — lista de emails que reciben todas las categorías activas.
+- **Modo "Todo en orden"** — si está activado, se envía también una notificación cuando no hay alertas.
+- **Suprimir sin cambios** — si el conjunto de alertas es idéntico al último envío (mismo fingerprint SHA-256), no se vuelve a enviar.
+
+### 15.3 Reglas por categoría
+
+En **Configuración → Alertas → Reglas por Categoría** verás una fila por cada una de las siete categorías. Para cada una puedes:
+
+- Activar o desactivar la categoría con el interruptor.
+- Cambiar la ventana de aviso (días de antelación).
+- Añadir destinatarios adicionales (se suman a los globales).
+
+### 15.4 Fallback EOL desde el modelo
+
+Si un CI no tiene una fecha EOL o EOS propia asignada, el motor usa automáticamente la fecha del modelo de hardware que tiene asignado. En la tabla de inventario, las fechas heredadas del modelo se muestran con el chip **(modelo)** en gris junto a la fecha.
+
+### 15.5 Historial de ejecuciones
+
+La tabla **Historial** muestra las últimas ejecuciones del motor: fecha/hora, tipo de disparo (automático o manual), estado, número total de alertas y desglose por categoría.
+
+### 15.6 Acciones manuales
+
+| Acción | Descripción |
+|--------|-------------|
+| **Ejecutar ahora** | Lanza el motor inmediatamente; respeta la dedup. |
+| **Enviar email de prueba** | Fuerza un envío ignorando la dedup; útil para verificar la configuración SMTP. |
+
+### 15.7 Código de colores del informe
 
 | Color | Significado |
 |-------|-------------|
@@ -792,9 +830,9 @@ El email incluye hasta tres secciones, según lo que haya que reportar:
 | Rojo-naranja | Vence en menos de 7 días |
 | Naranja | Vence en 8 a 30 días |
 
-### No recibes el informe
+### 15.8 No recibes el informe
 
-Si no recibes el informe diario, comprueba primero la carpeta de spam. Si el problema persiste, contacta con tu administrador para que verifique la configuración del servidor de correo y envíe un correo de prueba desde **Configuración → Integraciones**.
+Si no recibes el informe diario, comprueba primero la carpeta de spam. Revisa también la tabla **Historial** en **Configuración → Alertas** para ver si la ejecución fue exitosa o tuvo error. Si el problema persiste, contacta con tu administrador para que verifique la configuración SMTP y use el botón **"Enviar email de prueba"**.
 
 ---
 

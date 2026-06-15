@@ -5,8 +5,9 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Settings, Users, Plug, RefreshCw, AlertTriangle,
   ShieldCheck, Mail, Server, CheckCircle, XCircle,
-  Shield, Download, Upload, Loader2,
+  Shield, Download, Upload, Loader2, Bell,
 } from "lucide-react";
+import AlertsSettings from "@/components/AlertsSettings";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -23,7 +24,7 @@ interface User {
   created_at:       string;
 }
 
-type TabId = "users" | "integrations" | "certificates" | "branding";
+type TabId = "users" | "integrations" | "certificates" | "branding" | "alerts";
 
 interface StackComponent {
   name:           string;
@@ -368,6 +369,7 @@ export default function SettingsPage() {
     { id: "integrations", label: t("settings.tabs.integrations"), icon: <Plug  className="h-4 w-4" /> },
     { id: "certificates", label: "SSL/TLS Certificates",         icon: <Shield className="h-4 w-4" /> },
     ...(isAdmin ? [{ id: "branding" as TabId, label: t("settings.branding.tab"), icon: <Settings className="h-4 w-4" /> }] : []),
+    ...(isAdmin ? [{ id: "alerts"   as TabId, label: t("settings.alerts.tab"),    icon: <Bell     className="h-4 w-4" /> }] : []),
   ];
 
   function SysStatusBadge({ c }: { c: StackComponent }) {
@@ -1052,6 +1054,10 @@ export default function SettingsPage() {
                   {savingBranding ? "..." : t("settings.branding.apply_btn")}
                 </button>
               </div>
+            )}
+
+            {tab === "alerts" && (
+              <AlertsSettings isAdmin={isAdmin} />
             )}
           </div>
         </main>

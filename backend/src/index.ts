@@ -14,7 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import cron from 'node-cron';
 import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
-import { runAndSendAlerts } from './services/emailService';
+import { runAlertsPipeline } from './modules/alerts/pipeline';
 import { authenticateLDAP } from './services/ldap';
 import { lookupEolWithFallbacks, fetchProductCycles } from './services/eolService';
 import { getSystemInfo } from './services/systemInfoService';
@@ -45,6 +45,8 @@ import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
 import { createCatalogRouter } from './modules/catalog/router';
+import { createAlertsRouter } from './modules/alerts/router';
+import { startAlertScheduler } from './modules/alerts/scheduler';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 
@@ -263,6 +265,7 @@ app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(pris
 
 // Catalog module — master data (OS, etc.); reads open to all authenticated roles
 app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
+app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 
 // Admin RAG ops limiter: 1 request per minute per IP (backfill is heavy)
 const ragBackfillLimiter = rateLimit({
@@ -590,6 +593,7 @@ const CI_INCLUDE = {
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
+  ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true } },
   operatingSystem: { select: { id: true, name: true, version: true } },
   contracts: {
     select: {
@@ -604,13 +608,20 @@ const CI_INCLUDE = {
 // Flatten ciTypeDef relation into flat fields for backward-compatible API response
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenCI(ci: any) {
-  const { ciTypeDef, ciTypeId, ...rest } = ci;
+  const { ciTypeDef, ciTypeId, ciModel, ...rest } = ci;
+  const eolEffective = ci.eolDate ?? ciModel?.eolDate ?? null;
+  const eosEffective = ci.eosDate ?? ciModel?.eosDate ?? null;
   return {
     ...rest,
     ciTypeId:   ciTypeDef?.id           ?? null,
     ciType:     ciTypeDef?.code         ?? null,
     ciTypeName: ciTypeDef?.name         ?? null,
     ciTypeCategoryCode: ciTypeDef?.categoryCode ?? null,
+    eolEffective:  eolEffective,
+    eosEffective:  eosEffective,
+    eolSource:     ci.eolDate  ? 'ci' : (ciModel?.eolDate  ? 'model' : null),
+    eosSource:     ci.eosDate  ? 'ci' : (ciModel?.eosDate  ? 'model' : null),
+    ciModelName:   ciModel?.name ?? null,
   };
 }
 
@@ -6906,30 +6917,27 @@ app.post('/api/documents/:id/notes', authenticateToken, requireUuidParam('id'), 
   } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
 });
 
-// ─── Alert Engine (Misión 14) ─────────────────────────────────────────────────
+// ─── Alert Engine — legacy shim (delegates to /api/alerts/run-now) ───────────
 
 /**
  * POST /api/admin/test-email
- * Manually triggers the full alert scan + email send pipeline.
- * ADMIN only. Use this to verify SMTP config without waiting for the daily cron.
+ * @deprecated — use POST /api/alerts/run-now instead.
+ * Kept for backward compatibility with existing integrations.
  */
 app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   log.info(`[POST /api/admin/test-email] Manual trigger by ${req.user?.email}`);
   try {
-    const result = await runAndSendAlerts();
+    const result = await runAlertsPipeline(prisma, 'MANUAL', true);
     res.json({
-      message: result.sent
-        ? `✅ Alert report sent to ${process.env.ALERT_RECIPIENT}`
-        : '⚠️ Alert scan completed but email was NOT sent (check SMTP config or ALERT_RECIPIENT)',
-      eolAlerts:       result.eolAlerts.length,
-      contractAlerts:  result.contractAlerts.length,
-      vulnAlerts:      result.vulnAlerts.length,
-      sent:            result.sent,
-      messageId:       result.messageId,
-      scannedAt:       result.scannedAt,
+      message:    `Pipeline status: ${result.status}`,
+      totalAlerts: result.totalAlerts,
+      breakdown:   result.breakdown,
+      status:      result.status,
+      messageId:   result.messageId ?? null,
+      runId:       result.runId,
     });
   } catch (error) {
-    console.error('[POST /api/admin/test-email] Error:', error);
+    console.error('[POST /api/admin/test-email] Error:', error instanceof Error ? error.message : error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -7111,18 +7119,8 @@ app.delete('/api/settings/logo', authenticateToken, requireAdmin, async (req: Re
 //   '* * * * *'   (every minute)
 // The current schedule: '30 8 * * *' = daily at 08:30
 
-const CRON_SCHEDULE = process.env.ALERT_CRON_SCHEDULE ?? '30 8 * * *';
-
-cron.schedule(CRON_SCHEDULE, () => {
-  log.info(`[AlertCron] Triggered at ${new Date().toISOString()} (schedule: ${CRON_SCHEDULE})`);
-  runAndSendAlerts()
-    .then((r) => log.info(`[AlertCron] Done — sent=${r.sent}, alerts=${r.eolAlerts.length + r.contractAlerts.length + r.vulnAlerts.length}`))
-    .catch((e) => log.error('[AlertCron] Error:', e));
-}, {
-  timezone: 'Europe/Madrid',
-});
-
-log.info(`[AlertCron] Scheduled — "${CRON_SCHEDULE}" (TZ: Europe/Madrid). Use POST /api/admin/test-email to trigger manually.`);
+startAlertScheduler(prisma);
+log.info('[AlertCron] Config-driven scheduler started (reads send time from alert_config table).');
 
 // ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
 // Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.

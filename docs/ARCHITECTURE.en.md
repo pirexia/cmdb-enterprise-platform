@@ -1133,3 +1133,108 @@ PostgreSQL triggers (`trg_sync_ci_eol_eos`, `trg_sync_dm_eol_eos` and `_del` var
 - `GET/POST/PATCH/DELETE /date-types[/:id]` — DateType CRUD (ADMIN only)
 - `GET/POST/PATCH/DELETE /{entity}/{id}/dates[/:dateId]` — per-entity date associations
 - `GET /cis/:ciId/lifecycle-dates` — aggregator (CI + OS + DeviceModel + BSW) with `source` field
+
+---
+
+## 16. Email Alerts Module (v2.8.4)
+
+### 16.1 Module structure
+
+```
+backend/src/modules/alerts/
+├── schemas.ts        — Zod types: AlertConfigUpdateSchema, AlertRuleUpdateSchema, AlertItem / ScanResult interfaces
+├── queries.ts        — Prisma CRUD: getConfig, getRules, upsertConfig, upsertRule, getHistory, createRun
+├── engine.ts         — scanAlerts(): scans 7 categories and computes SHA-256 fingerprint
+├── email-builder.ts  — buildAlertHtml(result, locale): inline HTML with embedded i18n ×6
+├── smtp-transport.ts — sendEmail(): reads SMTP credentials from ENV at call time
+├── audit.ts          — insertAlertAudit(): INSERT into audit_logs (no details column)
+├── pipeline.ts       — runAlertsPipeline(): orchestrates dedup → scan → email → createRun → audit
+├── scheduler.ts      — startAlertScheduler(): per-minute cron tick + timezone logic
+└── router.ts         — createAlertsRouter(prisma): 7 endpoints mounted at /api/alerts
+```
+
+The module follows the same pattern as `backend/src/modules/dcim/` (reference implementation): self-contained router, no circular dependency with `index.ts`, mounted via `app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma))`.
+
+### 16.2 Alert pipeline flow
+
+```
+startAlertScheduler()  ──tick every minute──▶  alreadyRanToday()?
+                                                    │ NO
+                                                    ▼
+POST /api/alerts/run-now ──────────────────▶  runAlertsPipeline(prisma, trigger, force?)
+                                                    │
+                                              scanAlerts()  ←── 7 SQL queries ($queryRaw)
+                                                    │            with LEFT JOIN device_models
+                                                    │            for EOL model fallback
+                                              SHA-256 fingerprint
+                                                    │
+                                              suppress_unchanged? ──YES──▶ skip (dedup)
+                                                    │ NO
+                                              buildAlertHtml(result, locale)
+                                                    │
+                                              sendEmail() ──▶ SMTP (nodemailer)
+                                                    │
+                                              createRun() ──▶ INSERT alert_runs
+                                                    │
+                                              insertAlertAudit() ──▶ INSERT audit_logs
+```
+
+### 16.3 Data model — v2.8.4
+
+```
+alert_config (singleton: id = 'default')
+├── enabled            BOOLEAN
+├── send_time_hour     INT
+├── send_time_minute   INT
+├── timezone           VARCHAR(64)   -- IANA (e.g. 'America/New_York')
+├── locale             VARCHAR(10)   -- ES/EN/DE/PT/FR/IT
+├── recipients         TEXT[]
+├── send_all_clear     BOOLEAN
+└── suppress_unchanged BOOLEAN
+
+alert_rules (7 rows, one per category)
+├── id         UUID PK
+├── category   VARCHAR(50) UNIQUE  -- eol|eos|warranty|maintenance|contract|vulnerability|license
+├── enabled    BOOLEAN
+├── warn_days  INT
+└── recipients TEXT[]
+
+alert_runs (history, insert-only)
+├── id           UUID PK
+├── trigger      VARCHAR(20)   -- 'scheduled'|'manual'|'test'
+├── started_at   TIMESTAMP (DESC index)
+├── finished_at  TIMESTAMP
+├── status       VARCHAR(20)   -- 'ok'|'error'|'skipped'
+├── total_alerts INT
+├── breakdown    JSONB         -- { eol: N, eos: N, ... }
+├── recipients   TEXT[]
+├── message_id   VARCHAR(255)
+└── error_msg    TEXT
+```
+
+### 16.4 EOL fallback from device model
+
+The EOL/EOS scanner uses a `LEFT JOIN` on `hardware_cis` → `device_models` to inherit dates when a CI has no date of its own:
+
+```sql
+SELECT ci.id, ci.name,
+       COALESCE(ci.eol_date, dm.eol_date) AS effective_eol,
+       CASE WHEN ci.eol_date IS NOT NULL THEN 'ci' ELSE 'model' END AS eol_source
+FROM configuration_items ci
+LEFT JOIN hardware_cis  hci ON hci.ci_id = ci.id
+LEFT JOIN device_models dm  ON dm.id = hci.device_model_id
+WHERE (ci.eol_date <= :warnDate)
+   OR (ci.eol_date IS NULL AND dm.eol_date <= :warnDate)
+```
+
+The `eol_source` field propagates to the frontend via `flattenCI()` in `index.ts` (`eolSource: 'ci' | 'model'`). The inventory badge shows a grey **(model)** chip when the source is `'model'`.
+
+### 16.5 Implementation decisions (2026-06-15)
+
+| Decision | Discarded alternative | Reason |
+|----------|-----------------------|--------|
+| 1-minute tick with DB check | Recalculate cron expression | Allows changing hour/timezone live from UI without restart |
+| `Intl.DateTimeFormat` for timezone | `moment-timezone` library | No external dependency; available in Node 18+ |
+| Translations embedded in email-builder.ts | JSON files on disk | No disk I/O at send time; bundle independent of frontend |
+| SHA-256 dedup fingerprint | Unordered ID hash | Stable sort (`.sort()`) guarantees idempotence across reorderings |
+| `emailService.ts` kept as empty shim | Deleting the file | Prevents breaking imports on branches pending merge |

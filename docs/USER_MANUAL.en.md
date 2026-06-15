@@ -768,23 +768,61 @@ To manage an asset's own dates, open its detail (**Inventory → click the CI**)
 
 ---
 
-## 15. Automated Daily Alerts
+## 15. Email Alerts — Professional Alert Engine (v2.8.4)
 
-The platform automatically sends a daily email report listing assets that need attention.
+The platform includes a proactive alert engine that automatically sends email reports when assets in your inventory require attention. Go to **Settings → Alerts** (ADMIN only) to control every aspect of the system.
 
-### When does the email arrive?
+### 15.1 Alert categories
 
-By default, the report is sent every day at **08:30** (Madrid time). Your systems administrator can change this schedule if needed.
+The engine monitors seven independent categories:
 
-### What does the report contain?
+| Category | What it monitors | Default window |
+|----------|-----------------|----------------|
+| **EOL** (End of Life) | CIs with own EOL date or inherited from device model | 30 days |
+| **EOS** (End of Support) | CIs with own EOS date or inherited from device model | 30 days |
+| **Warranty** | CIs with an upcoming `warranty-end` date | 30 days |
+| **Maintenance** | CIs with an upcoming `maintenance-end` date | 30 days |
+| **Contracts** | Contracts with an upcoming expiry date | 30 days |
+| **Vulnerabilities** | Assets with unresolved CRITICAL or HIGH CVEs | — |
+| **Licenses** | Licenses with an upcoming expiry date | 30 days |
 
-The email includes up to three sections, depending on what needs to be reported:
+Each category can be individually enabled or disabled and has its own advance warning window (in days) and an additional recipient list.
 
-1. **End of Support / End of Life** — Assets whose EoL or EoS date expires within the next 30 days.
-2. **Contracts expiring soon** — Contracts that expire within the next 30 days.
-3. **Pending critical and high vulnerabilities** — Assets with unresolved CRITICAL or HIGH CVEs.
+### 15.2 Global configuration
 
-### Colour codes in the report
+Under **Settings → Alerts → Global Configuration** you can set:
+
+- **Send time** — the hour (HH) and minute (MM) at which the daily send runs.
+- **Time zone** — any IANA identifier (e.g. `Europe/Madrid`, `America/New_York`).
+- **Email language** — the language used in the email body (ES/EN/DE/PT/FR/IT).
+- **Global recipients** — email addresses that receive all active categories.
+- **"All clear" mode** — when enabled, sends a notification even when there are no alerts.
+- **Suppress unchanged** — if the alert set matches the last run (same SHA-256 fingerprint), no email is sent.
+
+### 15.3 Per-category rules
+
+Under **Settings → Alerts → Rules by Category** you will find one row for each of the seven categories. For each you can:
+
+- Enable or disable the category with the toggle.
+- Change the advance warning window (days).
+- Add category-specific recipients (added on top of global recipients).
+
+### 15.4 EOL fallback from device model
+
+If a CI does not have its own EOL or EOS date, the engine automatically uses the date from the assigned hardware model. In the inventory table, dates inherited from the model are shown with a grey **(model)** chip next to the date.
+
+### 15.5 Run history
+
+The **History** table shows the most recent engine runs: date/time, trigger type (automatic or manual), status, total alerts sent, and a per-category breakdown.
+
+### 15.6 Manual actions
+
+| Action | Description |
+|--------|-------------|
+| **Run now** | Triggers the engine immediately; respects deduplication. |
+| **Send test email** | Forces a send regardless of deduplication; useful for verifying SMTP settings. |
+
+### 15.7 Colour codes in the report
 
 | Colour | Meaning |
 |--------|---------|
@@ -792,9 +830,9 @@ The email includes up to three sections, depending on what needs to be reported:
 | Red-orange | Expires in fewer than 7 days |
 | Orange | Expires in 8 to 30 days |
 
-### Not receiving the report
+### 15.8 Not receiving the report
 
-If you are not receiving the daily report, check your spam folder first. If the problem persists, contact your administrator to verify the email server configuration and send a test email from **Settings → Integrations**.
+Check your spam folder first. Also review the **History** table in **Settings → Alerts** to see whether the run succeeded or reported an error. If the problem persists, ask your administrator to verify the SMTP configuration and use the **"Send test email"** button.
 
 ---
 

@@ -7,6 +7,28 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.4] — 2026-06-15
+
+### Added
+
+- **Módulo de Alertas Email** — motor config-driven con 7 categorías: EOL (fin de vida), EOS (fin de soporte), garantía (`warranty-end`), mantenimiento (`maintenance-end`), contratos, vulnerabilidades y licencias. Cada categoría es configurable independientemente (activar/desactivar, ventana de aviso en días, destinatarios propios). Módulo en `backend/src/modules/alerts/`.
+- **Configuración de alertas desde la UI** — nueva pestaña **"Alertas"** en **Configuración** (solo ADMIN): configuración global (hora de envío, zona horaria, idioma del email, destinatarios globales, modo "todo en orden", supresión de duplicados), reglas por categoría y tabla de historial de ejecuciones.
+- **Historial de ejecuciones** (`alert_runs`) — cada ejecución persiste en base de datos con estado, número de alertas enviadas, desglose por categoría, ID de mensaje y posibles errores.
+- **Scheduler inteligente** — cron de un tick por minuto que lee la configuración desde la BD (caché de 5 min), ejecuta solo una vez al día en la hora/minuto/zona horaria configurados, con dedup por fingerprint SHA-256.
+- **Email i18n ×6** — cuerpo del email generado en el idioma configurado (ES/EN/DE/PT/FR/IT) con traducciones embebidas en el módulo.
+- **Fallback EOL desde el modelo** — si un CI no tiene `eol_date`/`eos_date` propios, el motor de alertas y la columna de inventario usan las fechas del modelo de hardware asignado. En la tabla aparece el chip **(modelo)** en gris cuando la fecha proviene del modelo.
+- **Endpoint de prueba y ejecución manual** — `POST /api/alerts/test` (forzado, ignora dedup) y `POST /api/alerts/run-now`.
+
+### Changed
+
+- **Scheduler de alertas** — el bloque `CRON_SCHEDULE` hardcodeado en `index.ts` se sustituye por `startAlertScheduler(prisma)`, que lee hora/zona horaria de `alert_config` en la BD.
+
+### Removed
+
+- **`emailService.ts`** — el servicio de alertas heredado ha sido retirado; toda la lógica reside ahora en `backend/src/modules/alerts/`. El fichero se conserva como shim vacío (`export {}`) para no romper imports residuales.
+
+---
+
 ## [2.8.3] — 2026-06-14
 
 ### Added

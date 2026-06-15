@@ -2325,3 +2325,127 @@ For a full recovery you need **both**: the PostgreSQL dump (plugin registry + `p
 ### 22.5 CSP and iframe
 
 Plugin UIs are served in same-origin iframes. The nginx CSP policy (`frame-src 'self'`) is already compatible and **required no changes**; do not relax `frame-src` to external origins for plugins.
+
+---
+
+## 23. Email Alerts Module (v2.8.4)
+
+### 23.1 SMTP environment variables
+
+The SMTP variables are the same as in previous versions; the alerts module reads them at call time (not at application start-up), so updating `.env` and restarting the container is sufficient:
+
+```env
+# ── SMTP / Alerts ─────────────────────────────────────────────────────────────
+SMTP_HOST=smtp.yourdomain.com
+SMTP_PORT=587
+SMTP_SECURE=false          # true for port 465 (direct TLS)
+SMTP_USER=cmdb-alerts@yourdomain.com
+SMTP_PASS=<smtp-password>
+SMTP_FROM=CMDB Alerts <cmdb-alerts@yourdomain.com>
+```
+
+`CRON_SCHEDULE` is no longer required — the send time is configured from the UI (**Settings → Alerts**) and persisted in the `alert_config` table.
+
+### 23.2 Database tables
+
+Migration `20260615120000_alert_module` creates three new tables:
+
+| Table | Description |
+|-------|-------------|
+| `alert_config` | Singleton (id = `"default"`) holding the global engine configuration |
+| `alert_rules` | One row per category (7 categories); contains `enabled`, `warn_days`, `recipients` |
+| `alert_runs` | Run history; insert-only; indexed by `started_at DESC` |
+
+#### Key columns in `alert_config`
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | boolean | `true` | Master on/off switch |
+| `send_time_hour` | int | `8` | Send hour (0–23) |
+| `send_time_minute` | int | `30` | Send minute (0–59) |
+| `timezone` | varchar(64) | `UTC` | IANA timezone identifier |
+| `locale` | varchar(10) | `es` | Email language |
+| `recipients` | text[] | `{}` | Global recipient list |
+| `send_all_clear` | boolean | `false` | Notify when no alerts exist |
+| `suppress_unchanged` | boolean | `true` | SHA-256 fingerprint dedup |
+
+#### Categories in `alert_rules`
+
+`eol`, `eos`, `warranty`, `maintenance`, `contract`, `vulnerability`, `license`
+
+### 23.3 Scheduler
+
+The scheduler starts with the application (`startAlertScheduler(prisma)` called from `index.ts`) and uses `node-cron` with a one-minute tick (`* * * * *`). On each tick it:
+
+1. Reads `alert_config` from the DB (5-minute cache).
+2. Gets the current hour and minute in the configured timezone using `Intl.DateTimeFormat`.
+3. If it matches `send_time_hour:send_time_minute`, checks whether a successful run already occurred today (idempotent guard).
+4. If not, launches the full pipeline.
+
+The pipeline (`runAlertsPipeline`) scans all 7 categories, computes the SHA-256 fingerprint, applies dedup if `suppress_unchanged = true`, builds the HTML email in the configured language, sends it, and records the result in `alert_runs`.
+
+### 23.4 Post-deployment verification
+
+```bash
+# Verify tables exist
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c '\dt alert_config alert_rules alert_runs'"
+
+# Check seeded configuration
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  'SELECT id, enabled, send_time_hour, send_time_minute, timezone, locale FROM alert_config;'"
+
+# Verify the 7 rules
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  'SELECT category, enabled, warn_days FROM alert_rules ORDER BY category;'"
+
+# View run history
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  'SELECT trigger, status, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 10;'"
+
+# Force a test send via API
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@cmdb.local","password":"<admin-password>"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+curl -sk -X POST https://localhost/api/alerts/test \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+```
+
+### 23.5 Troubleshooting
+
+**Alerts are not being sent:**
+
+```bash
+# Check scheduler logs
+sg docker -c "docker logs cmdb-backend-prod 2>&1 | grep -i 'alert\|smtp\|scheduler' | tail -30"
+
+# Check the last run outcome
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  \"SELECT status, error_msg, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 5;\""
+```
+
+**Emails arrive at the wrong time:**
+
+Verify the timezone in `alert_config`. The application uses `Intl.DateTimeFormat` with the IANA identifier — it does not depend on the container's TZ environment variable:
+
+```bash
+sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  \"UPDATE alert_config SET timezone = 'Europe/London' WHERE id = 'default';\""
+```
+
+(Or use the UI: **Settings → Alerts → Global Configuration**.)
+
+**Duplicate emails being sent:**
+
+Verify that `suppress_unchanged = true` in `alert_config`. Setting it to `false` forces a send on every scheduled run regardless of changes.
+
+### 23.6 Manual rollback
+
+```sql
+-- Remove alerts module tables
+DROP TABLE IF EXISTS alert_runs;
+DROP TABLE IF EXISTS alert_rules;
+DROP TABLE IF EXISTS alert_config;
+```
+
+After removing the tables, restore the legacy scheduler block in `index.ts` if needed. The `configuration_items`, `contracts`, `licenses`, and `vulnerabilities` tables are not affected.

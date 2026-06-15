@@ -421,33 +421,33 @@ Rules:
 
 ## Plan Activo
 
-**Plan en ejecución:** `docs/PLAN_v2.8.2.md`
-**Versión objetivo:** v2.8.2
-**Estado general:** ✅ COMPLETADO — pendiente merge PRs #124→#127 + tag v2.8.2
-**Tarea actual:** —
-**Última acción:** T8 completada — CHANGELOG + ARCHITECTURE + SYSADMIN_MANUAL actualizados; PRs #124 (T4), #125 (T5), #126 (T6), #127 (T7) abiertos contra develop
-**Última actualización:** 2026-06-14
-**Rama activa:** `docs/v2.8.2` (T8)
-**PRs abiertos:** #124 (T4), #125 (T5), #126 (T6), #127 (T7), T8 pendiente push/PR
+**Plan en ejecución:** `docs/PLAN_v2.8.4.md`
+**Versión objetivo:** v2.8.4
+**Estado general:** 🟡 EN PROGRESO — T0 completada (plan escrito + CLAUDE.md actualizado)
+**Tarea actual:** T1 — Schema Prisma + migración SQL
+**Última acción:** T0 completada — plan v2.8.4 escrito, CLAUDE.md + memoria actualizados
+**Última actualización:** 2026-06-15
+**Rama activa:** `feature/alerts-module-v2.8.4` (por crear en T0 ejecución)
+**PRs abiertos:** —
 
 ### Progreso por fase
-- T0 Pre-flight: ✅ COMPLETADA
-- T1 Fix dropdown: ✅ COMPLETADA (PR mergeado en develop)
-- T2+T3 Modal CI: ✅ COMPLETADA (PR mergeado en develop)
-- T4 Maestro DateType: ✅ COMPLETADA (PR #124)
-- T5 Asociaciones + espejo: ✅ COMPLETADA (PR #125)
-- T6 Modelos Hardware: ✅ COMPLETADA (PR #126)
-- T7 Fechas en modal CI: ✅ COMPLETADA (PR #127)
-- T8 Docs + release: ✅ COMPLETADA
+- T0 Pre-flight: ✅ COMPLETADA (plan + CLAUDE.md + memoria)
+- T1 Schema + migración: ⬜ PENDIENTE
+- T2 Módulo alerts/: ⬜ PENDIENTE
+- T3 Scheduler config-driven: ⬜ PENDIENTE
+- T4 Fallback EOL modelo inventario: ⬜ PENDIENTE
+- T5 Frontend Settings → Alertas: ⬜ PENDIENTE
+- T6 Retirar emailService.ts legacy: ⬜ PENDIENTE
+- T7 Docs: ⬜ PENDIENTE
+- T8 vibesec + verificación + PRs: ⬜ PENDIENTE
 
-### Próximos pasos para cerrar v2.8.2
-1. Revisar y mergear PRs #124, #125, #126, #127 en `develop`
-2. Mergear PR de T8 (`docs/v2.8.2`) en `develop`
-3. Mergear `develop` → `main`
-4. Tag `v2.8.2` en `main`
+### Resumen v2.8.4
+Módulo de alertas email profesional: motor config-driven (7 categorías: EOL/EOS/warranty/maintenance/contract/vulnerability/license), scheduler inteligente con dedup, UI Settings → Alertas, historial persistido, i18n email ×6. Más: fallback EOL del modelo en inventario + badge "(modelo)".
 
 ### Instrucción de reanudación tras corte de sesión
-Si esta sesión se reinicia con v2.8.2 pendiente de cierre:
-1. Verificar `git log --oneline -10` y PRs abiertos en GitHub.
-2. Si los PRs siguen abiertos, continuar desde el punto "Próximos pasos" arriba.
-3. Si ya están mergeados, proceder con el tag `v2.8.2`.
+Si esta sesión se reinicia con v2.8.4 en progreso:
+1. Verificar `git log --oneline -10` + `git status` para confirmar estado real.
+2. Leer `docs/PLAN_v2.8.4.md` — localizar primera tarea ⬜ PENDIENTE o 🟡 EN PROGRESO.
+3. Rama: `feature/alerts-module-v2.8.4`.
+4. Credenciales test: `claude@cmdb.local` / `Claude@Test24!` (AUDITOR — nunca admin).
+5. NO asumir nada sin confirmar el estado del repo.

@@ -421,11 +421,12 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v2.8.4 — ✅ LIBERADA (tag `v2.8.4`, merge develop→main #142, 2026-06-15)
+**Versión actual en producción:** v2.8.5 — ✅ LIBERADA (tag `v2.8.5`, merge develop→main, 2026-06-15)
 **Próxima versión:** no planificada — pendiente definición de roadmap
 **PRs abiertos:** —
 
 ### Releases recientes
+- **v2.8.5** ✅ LIBERADA (2026-06-15): Fix sidebar duplicado (T1), Marketplace plugins hardening + one-click install + UI (T2), CIType SISTEMA (T3), Módulo Decomisionado (T4). PRs #144–#147.
 - **v2.8.4** ✅ LIBERADA (2026-06-15): Módulo alertas email (7 categorías, config UI, scheduler, historial, i18n ×6, EOL modelo). PRs #133–#142.
 - **v2.8.3** ✅ LIBERADA (2026-06-14): Fechas propias del CI + edición modelos por modal.
 - **v2.8.2** ✅ LIBERADA (2026-06-14): DateType lifecycle dates + mirror triggers.
@@ -435,3 +436,6 @@ Rules:
 1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
 2. Actualizar esta sección con la nueva versión y estado.
 3. Rama: `feature/...` cortada de `develop`.
+
+### Resumen v2.8.5
+Fix sidebar duplicado (/plugins/admin, /admin/certificates). Marketplace de plugins hardening completo (SSRF allowlist, Zod upstream, cache 5 min, `POST /marketplace/install` one-click). CIType "Sistema" + categoría LOGICAL. Módulo Decomisionado (CTE recursiva, Gantt SVG, CRUD docs/contratos/licencias, coherencia fechas, impresión). i18n ×6 en todas las claves nuevas.

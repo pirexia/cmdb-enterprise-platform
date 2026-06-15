@@ -7,6 +7,23 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.5] — 2026-06-15
+
+### Added
+
+- **Módulo Decomisionado** — nuevo módulo core (`backend/src/modules/decommission/` + `frontend/app/decommission/`) para gestionar planes de desconexión de sistemas. Incluye: inventario recursivo via CTE PostgreSQL (hasta 8 niveles, anti-ciclos), Gantt SVG sin nuevas dependencias, CRUD de documentos/contratos/licencias vinculados (fuente AUTO/MANUAL), validación de coherencia de fechas padre-hijo, impresión selectiva, sidebar entry. La fecha de baja usa el `DateType` existente `decommission-date` vía `CIDate`.
+- **CIType "Sistema"** — nueva categoría `LOGICAL` y tipo `SISTEMA` (migración idempotente `ON CONFLICT DO NOTHING`), base para planes de decomisionado.
+- **Marketplace de plugins — flujo de instalación** — `POST /api/plugins/marketplace/install` descarga el ZIP server-side (nunca acepta URL del cliente), valida magic bytes + manifiesto Zod + checksum SHA-256, registra y ejecuta el pipeline validate+install en una sola request.
+- **Marketplace de plugins — hardening** — SSRF allowlist (`assertSafeUrl`): solo HTTPS, sin IPs privadas/loopback (A10). Validación Zod del JSON upstream (`MarketplaceResponseSchema`), `downloadUrl` nunca reenviado al browser. Cache server-side de 5 min (Map + TTL). Rate-limiting heredado de `pluginRateLimiter`.
+- **Marketplace UI** — buscador por nombre/descripción/autor, filtro de categoría, badge `Requiere v{version}+`, botón Instalar real con spinner/badge "Instalado", botón refresh de listado. i18n ×6 (6 claves nuevas en los 6 archivos de locale).
+- **`docs/PLUGIN_MARKETPLACE.md`** — documentación del protocolo del servidor de marketplace, variables de entorno, controles de seguridad y flujo de instalación completo.
+
+### Fixed
+
+- **Sidebar duplicado** en `/plugins/admin` y `/admin/certificates` — ambas páginas envolvían el contenido en `<AppShell>` cuando `app/layout.tsx` ya aplica el wrapper global; sustituido por React fragment `<>…</>`.
+
+---
+
 ## [2.8.4] — 2026-06-15
 
 ### Added

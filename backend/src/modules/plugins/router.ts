@@ -220,6 +220,90 @@ async function tryExtractFileFromZip(zipPath: string, filename: string): Promise
   }
 }
 
+// ── Marketplace: Zod schema for upstream JSON ────────────────────────────────
+
+const MarketplacePluginSchema = z.object({
+  id:                  z.string().min(1).max(128),
+  name:                z.string().min(1).max(128),
+  version:             z.string().min(1).max(32),
+  description:         z.string().max(512).optional().default(''),
+  author:              z.string().max(128).optional().default(''),
+  downloadUrl:         z.string().url().max(2048),
+  iconUrl:             z.string().url().max(2048).optional(),
+  minPlatformVersion:  z.string().max(32).optional(),
+  permissions:         z.array(z.string().max(64)).optional().default([]),
+  category:            z.string().max(64).optional().default(''),
+});
+
+const MarketplaceResponseSchema = z.object({
+  plugins: z.array(MarketplacePluginSchema).max(200),
+});
+
+type MarketplacePlugin = z.infer<typeof MarketplacePluginSchema>;
+
+const MarketplaceInstallBodySchema = z.object({
+  pluginId: z.string().min(1).max(128),
+});
+
+// ── Marketplace: SSRF allowlist ───────────────────────────────────────────────
+// Allows only HTTPS, non-private, non-loopback hosts (A10).
+
+function assertSafeUrl(rawUrl: string, context: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`${context}: invalid URL`);
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`${context}: only HTTPS URLs are allowed`);
+  }
+  const h = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const blocked = [
+    /^localhost$/,
+    /^127\.\d+\.\d+\.\d+$/,
+    /^10\.\d+\.\d+\.\d+$/,
+    /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/,
+    /^192\.168\.\d+\.\d+$/,
+    /^169\.254\.\d+\.\d+$/,
+    /^::1$/,
+    /^fc[\da-f]{2}:/i,
+    /^fd[\da-f]{2}:/i,
+  ];
+  if (blocked.some((re) => re.test(h))) {
+    throw new Error(`${context}: private/loopback addresses are not allowed`);
+  }
+  return parsed;
+}
+
+// ── Marketplace: 5-minute server-side cache ───────────────────────────────────
+
+interface MarketplaceCache { plugins: MarketplacePlugin[]; expiresAt: number }
+let _marketplaceCache: MarketplaceCache | null = null;
+const MARKETPLACE_TTL_MS = 5 * 60 * 1_000;
+
+async function fetchMarketplacePlugins(): Promise<MarketplacePlugin[]> {
+  if (_marketplaceCache && Date.now() < _marketplaceCache.expiresAt) {
+    return _marketplaceCache.plugins;
+  }
+  const marketplaceUrl = process.env.PLUGIN_MARKETPLACE_URL ?? '';
+  assertSafeUrl(marketplaceUrl, 'PLUGIN_MARKETPLACE_URL');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  // Use .finally() to clear timer — avoids a `let upstream: Response` that
+  // TypeScript would resolve to Express.Response due to the import shadow.
+  const upstream = await fetch(`${marketplaceUrl}/api/plugins`, {
+    signal: controller.signal,
+    headers: { Accept: 'application/json' },
+  }).finally(() => clearTimeout(timer));
+  if (!upstream.ok) throw new Error(`Marketplace returned HTTP ${upstream.status}`);
+  const raw = await upstream.json();
+  const parsed = MarketplaceResponseSchema.safeParse(raw);
+  if (!parsed.success) throw new Error('Marketplace response failed validation');
+  _marketplaceCache = { plugins: parsed.data.plugins, expiresAt: Date.now() + MARKETPLACE_TTL_MS };
+  return parsed.data.plugins;
+}
+
 // ── Router factory ────────────────────────────────────────────────────────────
 
 export function createPluginRouter(prisma: PrismaClient): Router {
@@ -261,35 +345,180 @@ export function createPluginRouter(prisma: PrismaClient): Router {
   });
 
   // ── GET /api/plugins/marketplace ──────────────────────────────────────────
-  // Proxy to configured marketplace URL. Never accepts URL from caller (SSRF A10).
+  // Proxy to configured marketplace. SSRF-safe (allowlist + Zod). 5-min cache.
+  // downloadUrl is stripped from the response — only the server uses it (A10).
 
   router.get('/marketplace', async (_req: Request, res: Response) => {
-    const enabled = process.env.PLUGIN_ENABLE_MARKETPLACE === 'true';
-    const marketplaceUrl = process.env.PLUGIN_MARKETPLACE_URL;
-
-    if (!enabled || !marketplaceUrl) {
+    if (process.env.PLUGIN_ENABLE_MARKETPLACE !== 'true' || !process.env.PLUGIN_MARKETPLACE_URL) {
       res.json({ plugins: [], available: false });
       return;
     }
-
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      const upstream = await fetch(`${marketplaceUrl}/api/plugins`, {
-        signal: controller.signal,
-        headers: { 'Accept': 'application/json' },
-      });
-      clearTimeout(timer);
-
-      if (!upstream.ok) {
-        res.json({ plugins: [], available: false });
-        return;
-      }
-      const data = await upstream.json() as { plugins?: unknown[] };
-      res.json({ plugins: data.plugins ?? [], available: true });
+      const plugins = await fetchMarketplacePlugins();
+      // Strip downloadUrl before returning to the browser (SSRF A10)
+      const safe = plugins.map(({ downloadUrl: _dl, ...rest }) => rest);
+      res.json({ plugins: safe, available: true });
     } catch (err) {
       console.error('[plugins-api] marketplace fetch error:', err);
       res.json({ plugins: [], available: false });
+    }
+  });
+
+  // ── POST /api/plugins/marketplace/install ─────────────────────────────────
+  // One-click install from marketplace. Downloads ZIP server-side (no caller URL),
+  // validates magic bytes + manifest, registers, validates, and installs in one step.
+
+  router.post('/marketplace/install', async (req: Request, res: Response) => {
+    if (process.env.PLUGIN_ENABLE_MARKETPLACE !== 'true' || !process.env.PLUGIN_MARKETPLACE_URL) {
+      res.status(503).json({ error: 'Marketplace is not enabled' });
+      return;
+    }
+
+    const parsed = MarketplaceInstallBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'pluginId is required', details: parsed.error.flatten() });
+      return;
+    }
+    const { pluginId } = parsed.data;
+    const userEmail: string = (req as any).user!.email;
+
+    let marketplacePlugins: MarketplacePlugin[];
+    try {
+      marketplacePlugins = await fetchMarketplacePlugins();
+    } catch (err) {
+      console.error('[plugins-api] marketplace/install fetch error:', err);
+      res.status(502).json({ error: 'Could not reach marketplace' });
+      return;
+    }
+
+    const mp = marketplacePlugins.find((p) => p.id === pluginId);
+    if (!mp) {
+      res.status(404).json({ error: `Plugin '${pluginId}' not found in marketplace` });
+      return;
+    }
+
+    // SSRF-check the downloadUrl from marketplace (A10)
+    let downloadUrl: URL;
+    try {
+      downloadUrl = assertSafeUrl(mp.downloadUrl, 'downloadUrl');
+    } catch (ssrfErr) {
+      console.error('[plugins-api] marketplace/install SSRF block:', ssrfErr);
+      res.status(502).json({ error: 'Marketplace provided an unsafe download URL' });
+      return;
+    }
+
+    // Download ZIP to staging with UUID filename
+    const stagingDir = path.join(PLUGIN_STORAGE_PATH, 'staging');
+    await fs.promises.mkdir(stagingDir, { recursive: true });
+    const zipFilename = `${crypto.randomUUID()}.zip`;
+    const zipPath = path.join(stagingDir, zipFilename);
+
+    try {
+      const dlController = new AbortController();
+      const dlTimer = setTimeout(() => dlController.abort(), 60_000);
+      const dlResponse = await fetch(downloadUrl.toString(), {
+        signal: dlController.signal,
+        headers: { Accept: 'application/zip, application/octet-stream' },
+      }).finally(() => clearTimeout(dlTimer));
+      if (!dlResponse.ok) {
+        res.status(502).json({ error: `Download failed: HTTP ${dlResponse.status}` });
+        return;
+      }
+      const maxBytes = PLUGIN_MAX_SIZE_MB * 1024 * 1024;
+      const arrayBuf = await dlResponse.arrayBuffer();
+      if (arrayBuf.byteLength > maxBytes) {
+        res.status(413).json({ error: `Plugin exceeds maximum size of ${PLUGIN_MAX_SIZE_MB} MB` });
+        return;
+      }
+      await fs.promises.writeFile(zipPath, Buffer.from(arrayBuf));
+
+      // Magic bytes (ZIP: 50 4B 03 04)
+      PluginValidator.validateUploadedFile(zipPath, 'marketplace.zip');
+
+      // Checksum
+      const zipBuffer = await fs.promises.readFile(zipPath);
+      const checksum = crypto.createHash('sha256').update(zipBuffer).digest('hex');
+
+      // Extract and validate manifest
+      let rawManifest: unknown;
+      try {
+        rawManifest = await extractManifestFromZip(zipPath);
+      } catch {
+        res.status(422).json({ error: 'Could not extract manifest.json from downloaded zip' });
+        return;
+      }
+      let manifest: z.infer<typeof PluginManifestSchema>;
+      try {
+        manifest = PluginManifestSchema.parse(rawManifest);
+      } catch (zodErr: any) {
+        res.status(422).json({ error: 'Invalid manifest.json', details: zodErr.flatten?.() });
+        return;
+      }
+
+      // Duplicate check
+      const existing = await prisma.pluginRegistry.findUnique({ where: { pluginId: manifest.id } });
+      if (existing) {
+        res.status(409).json({ error: `Plugin '${manifest.id}' is already registered (status: ${existing.status})` });
+        return;
+      }
+
+      // Register as UPLOADED
+      const plugin = await prisma.pluginRegistry.create({
+        data: {
+          pluginId:    manifest.id,
+          name:        manifest.name,
+          version:     manifest.version,
+          author:      manifest.author,
+          license:     manifest.license,
+          status:      'UPLOADED',
+          manifest:    manifest as any,
+          permissions: manifest.permissions,
+          checksum,
+        },
+      });
+
+      await pluginAudit(prisma, 'PLUGIN_MARKETPLACE_INSTALL_STARTED', plugin.id, userEmail, {
+        marketplacePluginId: pluginId,
+        version: manifest.version,
+        checksum,
+      });
+
+      // Inline validate (manifest already parsed, checksum already computed)
+      await lifecycleManager.updateStatus(prisma, plugin.id, 'VALIDATED');
+      await pluginAudit(prisma, 'PLUGIN_VALIDATED', plugin.id, userEmail);
+
+      // Inline install: extract to installed/, run migrations, parse artifacts
+      const installDir = path.join(PLUGIN_STORAGE_PATH, 'installed', plugin.id);
+      const migrationSql = await tryExtractFileFromZip(zipPath, 'migration.sql');
+      if (migrationSql) {
+        const migRunner = createMigrationRunner(PLUGIN_STORAGE_PATH);
+        await migRunner.runUp(plugin.pluginId, migrationSql);
+      }
+      await extractZipTo(zipPath, installDir);
+      const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest as Parameters<typeof parseBundleArtifacts>[3]);
+
+      await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
+      await pluginAudit(prisma, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
+        installDir,
+        hasMigration: migrationSql !== null,
+        source: 'marketplace',
+        ...counts,
+      });
+
+      // Clean up staging zip
+      fs.unlink(zipPath, () => {});
+
+      res.status(201).json({
+        id:       plugin.id,
+        pluginId: plugin.pluginId,
+        name:     plugin.name,
+        version:  plugin.version,
+        status:   'INSTALLED',
+      });
+    } catch (err) {
+      console.error('[plugins-api] marketplace/install error:', err);
+      fs.unlink(zipPath, () => {});
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 

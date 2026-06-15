@@ -1373,3 +1373,81 @@ model AlertRun {
   @@index([startedAt(sort: Desc)])
   @@map("alert_runs")
 }
+
+// ─── Decommission Plan Module (v2.8.5) ───────────────────────────────────────
+
+model DecommissionPlan {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  systemCiId  String    @map("system_ci_id") @db.Uuid
+  status      String    @default("DRAFT")
+  createdBy   String    @map("created_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  completedAt DateTime? @map("completed_at")
+
+  cis       DecommissionPlanCi[]
+  documents DecommissionPlanDocument[]
+  contracts DecommissionPlanContract[]
+  licenses  DecommissionPlanLicense[]
+
+  @@index([systemCiId])
+  @@map("decommission_plan")
+}
+
+model DecommissionPlanCi {
+  id            String    @id @default(uuid()) @db.Uuid
+  planId        String    @map("plan_id") @db.Uuid
+  ciId          String    @map("ci_id") @db.Uuid
+  parentCiId    String?   @map("parent_ci_id") @db.Uuid
+  depth         Int       @default(0)
+  isShared      Boolean   @default(false) @map("is_shared")
+  scheduledDate DateTime? @map("scheduled_date")
+  notes         String?
+  sortOrder     Int       @default(0) @map("sort_order")
+
+  plan DecommissionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, ciId])
+  @@index([planId])
+  @@map("decommission_plan_ci")
+}
+
+model DecommissionPlanDocument {
+  id         String @id @default(uuid()) @db.Uuid
+  planId     String @map("plan_id") @db.Uuid
+  documentId String @map("document_id") @db.Uuid
+  source     String @default("AUTO")
+
+  plan DecommissionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, documentId])
+  @@index([planId])
+  @@map("decommission_plan_document")
+}
+
+model DecommissionPlanContract {
+  id         String @id @default(uuid()) @db.Uuid
+  planId     String @map("plan_id") @db.Uuid
+  contractId String @map("contract_id") @db.Uuid
+  source     String @default("AUTO")
+
+  plan DecommissionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, contractId])
+  @@index([planId])
+  @@map("decommission_plan_contract")
+}
+
+model DecommissionPlanLicense {
+  id        String @id @default(uuid()) @db.Uuid
+  planId    String @map("plan_id") @db.Uuid
+  licenseId String @map("license_id") @db.Uuid
+  source    String @default("AUTO")
+
+  plan DecommissionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, licenseId])
+  @@index([planId])
+  @@map("decommission_plan_license")
+}

@@ -43,6 +43,10 @@ interface MarketplacePlugin {
   description: string;
   version: string;
   author: string;
+  category?: string;
+  minPlatformVersion?: string;
+  permissions?: string[];
+  iconUrl?: string;
 }
 
 interface MarketplaceResponse {
@@ -263,6 +267,10 @@ export default function PluginAdminPage() {
   const [configPlugin, setConfigPlugin] = useState<Plugin | null>(null);
   const [showUpload, setShowUpload] = useState(false);
 
+  const [marketplaceSearch, setMarketplaceSearch] = useState("");
+  const [marketplaceCategory, setMarketplaceCategory] = useState("all");
+  const [installingId, setInstallingId] = useState<string | null>(null);
+
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
@@ -319,6 +327,24 @@ export default function PluginAdminPage() {
       await fetchPlugins();
     } catch (e) {
       showToast(e instanceof Error ? e.message : String(e), "err");
+    }
+  };
+
+  const handleMarketplaceInstall = async (pluginId: string) => {
+    setInstallingId(pluginId);
+    try {
+      const res = await apiFetch("/api/plugins/marketplace/install", {
+        method: "POST",
+        body: JSON.stringify({ pluginId }),
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string; name?: string };
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      showToast(`${body.name ?? pluginId} ${t("pluginMarketplaceInstalled")}`, "ok");
+      await fetchPlugins();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e), "err");
+    } finally {
+      setInstallingId(null);
     }
   };
 
@@ -430,9 +456,19 @@ export default function PluginAdminPage() {
 
         {/* Marketplace */}
         <section>
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">
-            {t("pluginMarketplace")}
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+              {t("pluginMarketplace")}
+            </h2>
+            {marketplace?.available && (
+              <button
+                onClick={fetchMarketplace}
+                className="flex items-center gap-1 px-2 py-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
+            )}
+          </div>
 
           {marketplaceLoading ? (
             <div className="flex items-center gap-2 text-slate-500 py-4">
@@ -445,32 +481,104 @@ export default function PluginAdminPage() {
               <p className="text-sm">{t("pluginMarketplaceNotConfigured")}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {(marketplace.plugins ?? []).map((mp) => (
-                <div
-                  key={mp.id}
-                  className="rounded-lg border border-white/8 bg-slate-800/30 p-4 flex flex-col gap-2"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-slate-200 text-sm">{mp.name}</p>
-                      <p className="text-xs text-slate-500">{mp.author} · v{mp.version}</p>
+            <>
+              {/* Filters */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <input
+                  type="text"
+                  placeholder={t("pluginMarketplaceSearch")}
+                  value={marketplaceSearch}
+                  onChange={(e) => setMarketplaceSearch(e.target.value)}
+                  className="flex-1 min-w-[180px] px-3 py-1.5 text-sm bg-slate-800/60 border border-white/10 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-[var(--accent)]/50 rounded"
+                />
+                {(() => {
+                  const cats = Array.from(new Set((marketplace.plugins ?? []).map((p) => p.category).filter(Boolean))) as string[];
+                  return cats.length > 0 ? (
+                    <select
+                      value={marketplaceCategory}
+                      onChange={(e) => setMarketplaceCategory(e.target.value)}
+                      className="px-3 py-1.5 text-sm bg-slate-800/60 border border-white/10 text-slate-300 focus:outline-none focus:border-[var(--accent)]/50 rounded"
+                    >
+                      <option value="all">{t("pluginMarketplaceAllCategories")}</option>
+                      {cats.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  ) : null;
+                })()}
+              </div>
+
+              {/* Grid */}
+              {(() => {
+                const filtered = (marketplace.plugins ?? []).filter((mp) => {
+                  const q = marketplaceSearch.toLowerCase();
+                  const matchText = !q || mp.name.toLowerCase().includes(q) || mp.description?.toLowerCase().includes(q) || mp.author?.toLowerCase().includes(q);
+                  const matchCat = marketplaceCategory === "all" || mp.category === marketplaceCategory;
+                  return matchText && matchCat;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-slate-500">
+                      <Package className="h-6 w-6 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">{t("common.no_data")}</p>
                     </div>
-                    <Package className="h-5 w-5 text-slate-500 flex-shrink-0 mt-0.5" />
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filtered.map((mp) => {
+                      const alreadyInstalled = plugins.some((p) => p.name === mp.name);
+                      const isInstalling = installingId === mp.id;
+                      return (
+                        <div
+                          key={mp.id}
+                          className="rounded-lg border border-white/8 bg-slate-800/30 p-4 flex flex-col gap-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-200 text-sm truncate">{mp.name}</p>
+                              <p className="text-xs text-slate-500">{mp.author} · v{mp.version}</p>
+                            </div>
+                            {mp.category && (
+                              <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400">
+                                {mp.category}
+                              </span>
+                            )}
+                          </div>
+                          {mp.description && (
+                            <p className="text-xs text-slate-400 line-clamp-2">{mp.description}</p>
+                          )}
+                          {mp.minPlatformVersion && (
+                            <p className="text-[10px] text-slate-600">
+                              {t("pluginMarketplaceCompatible", { version: mp.minPlatformVersion })}
+                            </p>
+                          )}
+                          <button
+                            onClick={() => !alreadyInstalled && !isInstalling && handleMarketplaceInstall(mp.id)}
+                            disabled={alreadyInstalled || isInstalling}
+                            className={`mt-auto flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded transition-colors
+                              ${alreadyInstalled
+                                ? "bg-green-900/30 text-green-400 cursor-default"
+                                : isInstalling
+                                ? "bg-slate-700/50 text-slate-400 cursor-not-allowed"
+                                : "bg-[var(--accent)]/15 text-[var(--accent)] hover:bg-[var(--accent)]/25"
+                              }`}
+                          >
+                            {alreadyInstalled ? (
+                              <><CheckCircle className="h-3.5 w-3.5" />{t("pluginMarketplaceInstalled")}</>
+                            ) : isInstalling ? (
+                              <><RefreshCw className="h-3.5 w-3.5 animate-spin" />{t("pluginMarketplaceInstalling")}</>
+                            ) : (
+                              <><Download className="h-3.5 w-3.5" />{t("pluginMarketplaceInstall")}</>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {mp.description && (
-                    <p className="text-xs text-slate-400 line-clamp-2">{mp.description}</p>
-                  )}
-                  <button
-                    onClick={() => showToast(t("common.coming_soon"), "ok")}
-                    className="mt-auto flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-700/50 text-slate-300 rounded hover:bg-slate-700 transition-colors"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    {t("actions.add")}
-                  </button>
-                </div>
-              ))}
-            </div>
+                );
+              })()}
+            </>
           )}
         </section>
       </div>

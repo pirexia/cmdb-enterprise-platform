@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-2.0.1-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.0.1)
+[![Version](https://img.shields.io/badge/version-2.8.5-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.8.5)
 
 ---
 
@@ -59,7 +59,9 @@
 | 💾 **Capacity Planning** | Documentación LVM dedicado para /home (Podman rootless), tablas de dimensionamiento por volumen de CIs (1K, 5K, 20K+). |
 | 🏗️ **ISO 27001 Ready** | Usuario de servicio dedicado, permisos restrictivos (750/600), cgroupfs configuration para estabilidad RHEL/Podman. |
 | 🌐 **Dynamic Branding** | White-label: nombre de empresa, logo y colores corporativos configurables vía variables de entorno. |
-| 🧩 **Plugin Engine** (v2.8.0) | Motor de extensiones para ADMIN: instalar/activar/desinstalar plugins de terceros con sandbox `vm.Script`, gate de admisión (firma Ed25519 + checksum SHA-256 + aprobación 4-eyes en prod), 12 endpoints REST, hooks del ciclo de vida del core, migraciones DDL aisladas (rol DB restringido + prefijo `plg_`), UI por iframe en 7 slots, marketplace y panel `/plugins/admin`. Ver [docs/PLUGIN_ENGINE.md](docs/PLUGIN_ENGINE.md). |
+| 🧩 **Plugin Engine** (v2.8.0+) | Motor de extensiones para ADMIN: instalar/activar/desinstalar plugins de terceros con sandbox `vm.Script`, gate de admisión (firma Ed25519 + checksum SHA-256 + aprobación 4-eyes en prod), 12 endpoints REST, hooks del ciclo de vida del core, migraciones DDL aisladas (rol DB restringido + prefijo `plg_`), UI por iframe en 7 slots, marketplace y panel `/plugins/admin`. Ver [docs/PLUGIN_ENGINE.md](docs/PLUGIN_ENGINE.md). |
+| 🛒 **Marketplace de Plugins** (v2.8.5) | Instalación one-click desde un servidor de marketplace configurado: descarga ZIP server-side (SSRF allowlist HTTPS-only, sin IPs privadas), validación magic bytes + manifiesto Zod + checksum SHA-256, pipeline validate+install en una sola request. UI con buscador, filtro de categoría y badge de versión mínima. Ver [docs/PLUGIN_MARKETPLACE.md](docs/PLUGIN_MARKETPLACE.md). |
+| ⚡ **Módulo Decomisionado** (v2.8.5) | Gestión de planes de desconexión de sistemas: inventario recursivo via CTE PostgreSQL (hasta 8 niveles, anti-ciclos), Gantt SVG sin dependencias adicionales, CRUD de documentos/contratos/licencias vinculados (AUTO/MANUAL), validación de coherencia de fechas, impresión. Requiere CIType "Sistema" y la fecha `decommission-date` asignada al CI via `CIDate`. |
 
 ---
 

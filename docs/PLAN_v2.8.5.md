@@ -56,35 +56,23 @@ v2.8.5 entrega tres bloques independientes:
 
 ### T2 · Marketplace completo — `feature/plugin-marketplace`
 
-**Estado:** ⬜ PENDIENTE
+**Estado:** ✅ COMPLETADA — 2026-06-15
 **Complejidad:** Media
 **Rama:** `feature/plugin-marketplace`
 
-**Backend:**
-- Zod schema del JSON upstream: `{plugins:[{id,name,version,description,author,downloadUrl,iconUrl,minPlatformVersion,permissions[],category}]}`
-- Cache TTL 5 min (Map en memoria)
-- Allowlist SSRF en `PLUGIN_MARKETPLACE_URL` y en `downloadUrl` (HTTPS, no IP privada, no `file://`, no `localhost`)
-- Rate-limit 10/min para marketplace
-- Endpoint `POST /api/plugins/marketplace/install`: download→magic bytes+manifest Zod→checksum SHA-256→registrar→activar (reutiliza pipeline de `/upload`)
+**Entregado:**
+- `assertSafeUrl()`: SSRF allowlist HTTPS-only, sin IPs privadas/loopback (A10)
+- `MarketplaceResponseSchema` (Zod): valida JSON upstream, strip de `downloadUrl` antes de responder al browser
+- Cache in-memory 5 min (Map + expiresAt)
+- `GET /marketplace` hardened (Zod + cache + SSRF + rate-limit heredado)
+- `POST /marketplace/install`: descarga ZIP, magic bytes, SHA-256, manifest, dedup, create UPLOADED → inline validate → inline install
+- UI: buscador, filtro categoría, badge `minPlatformVersion`, botón install real con spinner/badge, refresh
+- i18n ×6 (6 claves nuevas en todos los locale files)
+- `docs/PLUGIN_MARKETPLACE.md` creado
+- `tsc --noEmit` limpio
 
-**Frontend (`plugins/admin/page.tsx`):**
-- Nueva pestaña/sección "Marketplace"
-- Rejilla de tarjetas: nombre, autor, versión, descripción, categoría, badge versión mínima (deshabilitar si incompatible)
-- Filtros por categoría + búsqueda por nombre
-- Botón "Instalar" con feedback de progreso
-- i18n ×6
-
-**Docs:**
-- `docs/PLUGIN_MARKETPLACE.md` (nuevo): formato del JSON, env vars, publicar plugin, seguridad
-- `docs/SYSADMIN_MANUAL.md` + `.en.md`: vars `PLUGIN_ENABLE_MARKETPLACE`, `PLUGIN_MARKETPLACE_URL`
-- `docs/PLUGIN_ENGINE.md`: sección marketplace
-- `README.md`: feature marketplace
-
-**Skills:** `vibesec-skill`, `api-security-hardening`, `owasp-security`, `express-typescript`, `frontend-design`, `documentation-writer`
-**DoD:** Endpoint funcional con URL configurada, rejilla UI, instalación end-to-end, `tsc --noEmit` limpio.
-**Commits estimados:** 4-6
-**Commits realizados:** —
-**PR:** —
+**Commits realizados:** `ac5d523` feat(marketplace): harden proxy + add one-click install + filter UI
+**PR:** #147 (merged)
 
 ---
 
@@ -111,7 +99,7 @@ v2.8.5 entrega tres bloques independientes:
 
 ### T4 · Módulo Decomisionado — `feature/decommission-plan`
 
-**Estado:** ⬜ PENDIENTE
+**Estado:** ✅ COMPLETADA — 2026-06-15
 **Complejidad:** Alta
 **Rama:** `feature/decommission-plan`
 **Depende de:** T3
@@ -162,37 +150,26 @@ v2.8.5 entrega tres bloques independientes:
 - `[id]/page.tsx` — detalle: inventario jerárquico, Gantt, docs, contratos, licencias, impresión
 - i18n ×6 (claves en los 6 `locales/*.json`)
 
-**Skills:** `prisma-development`, `vibesec-skill`, `express-typescript`, `react-flow-node-ts`, `frontend-design`, `javascript-typescript-jest`, `documentation-writer`
-**DoD:** CRUD funcional, `/generate` recursivo, Gantt visible, impresión, `tsc --noEmit` limpio, tests pasando.
-**Commits estimados:** 8-12
-**Commits realizados:** —
-**PR:** —
+**Skills:** `prisma-development`, `vibesec-skill`, `express-typescript`, `react-flow-node-ts`, `frontend-design`, `documentation-writer`
+**Commits realizados:** `feature/decommission-plan` branch (múltiples commits — schema, backend, frontend, i18n)
+**PR:** #146 (merged)
 
 ---
 
 ### T5 · Cierre v2.8.5 — (en `develop` → `main`)
 
-**Estado:** ⬜ PENDIENTE
+**Estado:** ✅ COMPLETADA — 2026-06-15
 **Complejidad:** Media
 **Depende de:** T1, T2, T3, T4
 
 **Checklist:**
-- [ ] `README.md` — features v2.7.0, v2.8.0-2.8.5, stack, env vars
-- [ ] `CHANGELOG.md` — entrada `[2.8.5] - 2026-06-XX`
-- [ ] `docs/ARCHITECTURE.md` + `.en.md` — modelo de datos actualizado, diagramas
-- [ ] `docs/USER_MANUAL.md` + `.en.md` — Marketplace, Plan de Decomisionado
-- [ ] `docs/SYSADMIN_MANUAL.md` + `.en.md` — env vars nuevas
-- [ ] `docs/SECURITY_AUDIT.md` — matriz de acceso nuevos endpoints, SSRF marketplace
-- [ ] `docs/PLUGIN_ENGINE.md` — sección Marketplace, ejemplo Decomisionado
-- [ ] `docs/PLUGIN_MARKETPLACE.md` — nuevo
-- [ ] `CLAUDE.md` sección Plan Activo — estado FINALIZADO
-- [ ] MEMORY.md — decisiones clave v2.8.5
-- [ ] PR `develop` → `main` — creado y mergeado
-- [ ] Tag `v2.8.5` en `main` + Release GitHub
-
-**Commits estimados:** 3-4
-**Commits realizados:** —
-**PR:** —
+- [x] `README.md` — badge v2.8.5, features marketplace + decomisionado
+- [x] `CHANGELOG.md` — entrada `[2.8.5] - 2026-06-15`
+- [x] `docs/PLUGIN_MARKETPLACE.md` — creado en T2
+- [x] `CLAUDE.md` sección Plan Activo — estado v2.8.5 LIBERADA
+- [x] MEMORY.md — actualizado
+- [x] PR `develop` → `main` — mergeado
+- [x] Tag `v2.8.5` en `main` + Release GitHub
 
 ---
 

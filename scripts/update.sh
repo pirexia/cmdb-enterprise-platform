@@ -55,6 +55,8 @@ FORCE=false
 DRY_RUN=false
 REINDEX_FLAG=false
 RAG_PRESENT=false
+PLUGIN_DB_PASSWORD=""
+PLUGIN_ROLE_NEEDS_BOOTSTRAP=false
 
 # ── ERR trap — catches unexpected failures not handled by explicit rollback ───
 trap 'err_handler $LINENO' ERR
@@ -505,6 +507,91 @@ check_new_env_vars() {
   warn "See Section 15 of the Sysadmin Manual for Azure Portal configuration steps."
 }
 
+# ── Step 7c: Ensure compose-REQUIRED env vars exist BEFORE build/deploy ───────
+# docker-compose.prod.yml hard-fails on missing ${VAR:?} vars. The Plugin Engine
+# (v2.8.0) added a REQUIRED PLUGIN_DATABASE_URL; installs predating it have no
+# such line and would break at `compose up`. We append a generated value here,
+# before build_images/deploy, and create the matching DB role after deploy
+# (ensure_plugin_db_role). check_new_env_vars handles the optional vars later.
+ensure_required_env_vars() {
+  step "Ensuring compose-required env vars are present"
+
+  local env_file="${INSTALL_DIR}/.env"
+  if [ ! -f "${env_file}" ]; then
+    warn ".env not found at ${env_file} — skipping required-var check."
+    return 0
+  fi
+
+  if grep -q '^PLUGIN_DATABASE_URL=' "${env_file}"; then
+    success "PLUGIN_DATABASE_URL already present."
+    return 0
+  fi
+
+  warn "PLUGIN_DATABASE_URL missing (required by docker-compose.prod.yml since v2.8.0)."
+
+  if [ "${DRY_RUN}" = "true" ]; then
+    info "[DRY RUN] Would generate a cmdb_plugin password, append PLUGIN_* to ${env_file},"
+    info "[DRY RUN] and create the restricted cmdb_plugin DB role after deploy."
+    return 0
+  fi
+
+  PLUGIN_DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
+  local db_name="${POSTGRES_DB:-cmdb_db}"
+
+  {
+    echo ""
+    echo "# ── Added by update.sh ($(date '+%Y-%m-%d')) — Plugin Engine (v2.8.0) ──────────"
+    echo "PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:${PLUGIN_DB_PASSWORD}@postgres:5432/${db_name}"
+    grep -q '^PLUGIN_STORAGE_PATH='          "${env_file}" || echo "PLUGIN_STORAGE_PATH=/var/lib/cmdb/plugins"
+    grep -q '^PLUGIN_MAX_SIZE_MB='           "${env_file}" || echo "PLUGIN_MAX_SIZE_MB=50"
+    grep -q '^PLUGIN_REQUIRE_APPROVAL_PROD=' "${env_file}" || echo "PLUGIN_REQUIRE_APPROVAL_PROD=true"
+    grep -q '^PLUGIN_ENABLE_MARKETPLACE='    "${env_file}" || echo "PLUGIN_ENABLE_MARKETPLACE=false"
+    grep -q '^PLUGIN_MARKETPLACE_URL='       "${env_file}" || echo "PLUGIN_MARKETPLACE_URL="
+    grep -q '^PLUGIN_SIGNING_PUBLIC_KEY='    "${env_file}" || echo "PLUGIN_SIGNING_PUBLIC_KEY="
+  } >> "${env_file}"
+
+  PLUGIN_ROLE_NEEDS_BOOTSTRAP=true
+  success "PLUGIN_* variables appended to ${env_file} (DB role created after deploy)."
+}
+
+# ── Step 6b: Bootstrap the restricted cmdb_plugin DB role (post-deploy) ───────
+# Runs only when ensure_required_env_vars just added PLUGIN_DATABASE_URL. Needs
+# Postgres up (guaranteed — deploy() passed its health check). Fully guarded so
+# a failure here never triggers the ERR-trap rollback.
+ensure_plugin_db_role() {
+  [ "${PLUGIN_ROLE_NEEDS_BOOTSTRAP}" = "true" ] || return 0
+  [ "${DRY_RUN}" = "true" ] && return 0
+
+  step "Bootstrapping restricted plugin DB role (cmdb_plugin)"
+
+  local db_user="${POSTGRES_USER:-admin}"
+  local db_name="${POSTGRES_DB:-cmdb_db}"
+  local role_sql="${INSTALL_DIR}/scripts/create-plugin-db-role.sql"
+
+  if ${RUNTIME} exec -i cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" >/dev/null 2>&1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cmdb_plugin') THEN
+    CREATE ROLE cmdb_plugin LOGIN PASSWORD '${PLUGIN_DB_PASSWORD}';
+  ELSE
+    ALTER ROLE cmdb_plugin LOGIN PASSWORD '${PLUGIN_DB_PASSWORD}';
+  END IF;
+END\$\$;
+SQL
+  then
+    # Apply the canonical grants (role exists now, so its CREATE is skipped).
+    if [ -f "${role_sql}" ]; then
+      ${RUNTIME} exec -i cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" < "${role_sql}" >/dev/null 2>&1 || true
+    fi
+    success "Plugin DB role 'cmdb_plugin' ready."
+  else
+    warn "Could not bootstrap the cmdb_plugin role automatically."
+    warn "Run manually as DB superuser:"
+    warn "  sed 's/CHANGE_ME_IN_PRODUCTION/<password-from-.env>/' scripts/create-plugin-db-role.sql | \\"
+    warn "    ${RUNTIME} exec -i cmdb-postgres-prod psql -U ${db_user} -d ${db_name}"
+  fi
+}
+
 # ── Step 9: Ensure Ollama models are present (RAG only) ──────────────────────
 ensure_ollama_models() {
   if [[ "${RAG_PRESENT}" != "true" ]]; then
@@ -531,7 +618,7 @@ ensure_ollama_models() {
   # Wait for ollama container to become healthy (max 60s)
   info "Waiting for Ollama (max 60s)..."
   local elapsed=0
-  until ${RUNTIME} exec cmdb-ollama curl -fs http://localhost:11434/api/version &>/dev/null; do
+  until ${RUNTIME} exec cmdb-ollama-prod curl -fs http://localhost:11434/api/version &>/dev/null; do
     sleep 3; elapsed=$((elapsed + 3))
     if [[ ${elapsed} -ge 60 ]]; then
       warn "Ollama did not become healthy after 60s — skipping model check"
@@ -541,18 +628,18 @@ ensure_ollama_models() {
 
   # Check which models are currently installed
   local installed_models
-  installed_models=$(${RUNTIME} exec cmdb-ollama ollama list 2>/dev/null | awk 'NR>1 {print $1}' || true)
+  installed_models=$(${RUNTIME} exec cmdb-ollama-prod ollama list 2>/dev/null | awk 'NR>1 {print $1}' || true)
 
   if ! echo "${installed_models}" | grep -qF "${embed_model}"; then
     info "Pulling embedding model: ${embed_model}"
-    ${RUNTIME} exec cmdb-ollama ollama pull "${embed_model}"
+    ${RUNTIME} exec cmdb-ollama-prod ollama pull "${embed_model}"
   else
     success "Embedding model already present: ${embed_model}"
   fi
 
   if ! echo "${installed_models}" | grep -qF "${chat_model}"; then
     info "Pulling chat model: ${chat_model}"
-    ${RUNTIME} exec cmdb-ollama ollama pull "${chat_model}"
+    ${RUNTIME} exec cmdb-ollama-prod ollama pull "${chat_model}"
   else
     success "Chat model already present: ${chat_model}"
   fi
@@ -577,11 +664,11 @@ reindex_documents() {
   local db_name="${POSTGRES_DB:-cmdb_db}"
 
   # Mark existing index entries as PENDING so the cron worker re-processes them
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "UPDATE rag_document_index SET status='PENDING', updated_at=now();"
 
   # Insert PENDING entries for latest document versions not yet indexed
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "INSERT INTO rag_document_index(id, document_id, version_number, status)
        SELECT gen_random_uuid(), d.id, d.version_number, 'PENDING'
        FROM documents d
@@ -616,11 +703,11 @@ reindex_entities() {
   local db_name="${POSTGRES_DB:-cmdb_db}"
 
   # Mark every existing entity_index row as PENDING (skipping any actively INDEXING).
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "UPDATE rag_entity_index SET status='PENDING', updated_at=now() WHERE status != 'INDEXING';"
 
   # Enqueue every CI that has no entity_index row yet.
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
        SELECT gen_random_uuid(), 'ci', c.id, 'PENDING', now(), now()
        FROM configuration_items c
@@ -629,7 +716,7 @@ reindex_entities() {
      ON CONFLICT (entity_type, entity_id) DO NOTHING;"
 
   # Enqueue every contract ROOT (parent_contract_id IS NULL) that has no row yet.
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
        SELECT gen_random_uuid(), 'contract', c.id, 'PENDING', now(), now()
        FROM contracts c
@@ -638,7 +725,7 @@ reindex_entities() {
      ON CONFLICT (entity_type, entity_id) DO NOTHING;"
 
   # Same for license roots.
-  ${RUNTIME} exec cmdb-postgres psql -U "${db_user}" -d "${db_name}" -c \
+  ${RUNTIME} exec cmdb-postgres-prod psql -U "${db_user}" -d "${db_name}" -c \
     "INSERT INTO rag_entity_index(id, entity_type, entity_id, status, created_at, updated_at)
        SELECT gen_random_uuid(), 'license', l.id, 'PENDING', now(), now()
        FROM licenses l
@@ -739,8 +826,10 @@ main() {
 
   migrate_certs
   pull_and_detect
+  ensure_required_env_vars   # add compose-REQUIRED vars (PLUGIN_DATABASE_URL) before up
   build_images          || rollback "Image build failed"
   deploy                || rollback "Health check failed after deploy"
+  ensure_plugin_db_role      # create cmdb_plugin role now that Postgres is up
   ensure_ollama_models
 
   if [ "${DRY_RUN}" = "true" ]; then

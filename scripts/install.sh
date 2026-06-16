@@ -717,6 +717,12 @@ fi
 JWT_SECRET="$(openssl rand -base64 48)"
 success "JWT secret auto-generated."
 
+# ── Plugin DB role password (always auto-generated) ──────────────────────────
+# Used for the restricted cmdb_plugin role (PLUGIN_DATABASE_URL). Char set is
+# kept alphanumeric + Aa1! so it is safe inside a URL, an SQL literal and .env.
+PLUGIN_DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
+success "Plugin DB role password auto-generated."
+
 # ── TLS certificate setup ─────────────────────────────────────────────────────
 echo ""
 info "TLS certificate — nginx requires server.crt and server.key in ./certs/"
@@ -1082,6 +1088,18 @@ BULK_ANALYZE_BUDGET=2
 BULK_MAX_OPEN_BATCHES=5
 BULK_MAX_USER_STAGING_MB=500
 BULK_REAPED_RETENTION_DAYS=7
+
+# ── Plugin Engine (v2.8.0+) ───────────────────────────────────────────────────
+# PLUGIN_DATABASE_URL is REQUIRED by docker-compose.prod.yml — it points to the
+# restricted cmdb_plugin role used only for plugin DDL migrations (never the
+# core superuser). The role itself is created after Postgres starts (Phase 10c).
+PLUGIN_STORAGE_PATH=/var/lib/cmdb/plugins
+PLUGIN_MAX_SIZE_MB=50
+PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:${PLUGIN_DB_PASSWORD}@postgres:5432/cmdb_db
+PLUGIN_REQUIRE_APPROVAL_PROD=true
+PLUGIN_ENABLE_MARKETPLACE=false
+PLUGIN_MARKETPLACE_URL=
+PLUGIN_SIGNING_PUBLIC_KEY=
 ENVEOF
 )
 
@@ -1232,6 +1250,36 @@ if [ "$PLATFORM" = "compose" ]; then
     warn "Check logs: $COMPOSE_CMD -f docker-compose.prod.yml logs nginx"
   fi
 
+  # ── Phase 10c — Bootstrap restricted plugin DB role (cmdb_plugin) ───────────
+  # The Plugin Engine runs plugin DDL under a restricted role, never the core
+  # superuser. We create it now (Postgres is up because the backend is healthy)
+  # with the password baked into PLUGIN_DATABASE_URL above. Guarded so a failure
+  # never aborts the whole install (the platform works without plugins).
+  step "Phase 10c: Bootstrapping plugin DB role"
+  PLUGIN_ROLE_SQL="$INSTALL_DIR/scripts/create-plugin-db-role.sql"
+  if $RUNTIME exec -i cmdb-postgres-prod psql -U admin -d cmdb_db >/dev/null 2>&1 <<SQL
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cmdb_plugin') THEN
+    CREATE ROLE cmdb_plugin LOGIN PASSWORD '${PLUGIN_DB_PASSWORD}';
+  ELSE
+    ALTER ROLE cmdb_plugin LOGIN PASSWORD '${PLUGIN_DB_PASSWORD}';
+  END IF;
+END\$\$;
+SQL
+  then
+    # Apply the canonical grants (role already exists, so its CREATE is skipped).
+    if [ -f "$PLUGIN_ROLE_SQL" ]; then
+      $RUNTIME exec -i cmdb-postgres-prod psql -U admin -d cmdb_db < "$PLUGIN_ROLE_SQL" >/dev/null 2>&1 || true
+    fi
+    success "Plugin DB role 'cmdb_plugin' created and privileges applied."
+  else
+    warn "Could not bootstrap the cmdb_plugin role automatically."
+    warn "Plugins with DB migrations will fail until you run, as DB superuser:"
+    warn "  sed 's/CHANGE_ME_IN_PRODUCTION/<password>/' scripts/create-plugin-db-role.sql | \\"
+    warn "    $RUNTIME exec -i cmdb-postgres-prod psql -U admin -d cmdb_db"
+  fi
+
 elif [ "$PLATFORM" = "openshift" ]; then
   step "Phase 9: OpenShift deployment"
   warn "Container build and deployment skipped for OpenShift."
@@ -1260,7 +1308,7 @@ if [[ "${RAG_ENABLED:-false}" == "true" ]] && [[ "$PLATFORM" == "compose" ]]; th
 
   # ── Wait for Ollama to become healthy (max 90 s) ───────────────────────────
   info "Waiting for Ollama service to become healthy (max 90s)..."
-  _ollama_container="cmdb-ollama"
+  _ollama_container="cmdb-ollama-prod"
   _elapsed=0
   until $RUNTIME exec "$_ollama_container" curl -fs http://localhost:11434/api/version &>/dev/null; do
     sleep 3
@@ -1281,7 +1329,7 @@ if [[ "${RAG_ENABLED:-false}" == "true" ]] && [[ "$PLATFORM" == "compose" ]]; th
 
   # ── Apply RAG database migrations ─────────────────────────────────────────
   info "Applying RAG database migrations..."
-  $RUNTIME exec cmdb-backend npx prisma migrate deploy
+  $RUNTIME exec cmdb-backend-prod npx prisma migrate deploy
   success "RAG migrations applied"
 
   # ── Embedding smoke test ───────────────────────────────────────────────────

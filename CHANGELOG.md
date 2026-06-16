@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.6] — 2026-06-16
+
+### Fixed
+
+- **Modal "Nuevo Plan" (Decomisionado)** — tres bugs corregidos: (1) la etiqueta del campo Sistema mostraba **"SISTEMA (SISTEMA)"** por un sufijo hardcodeado; (2) el botón de envío mostraba la clave literal **`actions.create`** (clave i18n ausente en los 6 idiomas — añadidas `actions.create` y `actions.view`); (3) el campo de Sistema **no devolvía CIs** porque llamaba a `GET /api/cis`, que ignora `search`/`ciType` y devuelve `data` (no `cis`).
+- **Búsqueda de sistemas** — nuevo endpoint `GET /api/decommission/systems` (solo ADMIN, `$queryRaw` parametrizado con escaping LIKE + `ESCAPE`, filtro `ci_types.code='SISTEMA'`, `limit` acotado 1..50) y combobox con debounce de 300 ms, carga al foco y estado vacío. No se modifica `index.ts`.
+- **i18n página de detalle** — sustituidas cadenas hardcodeadas (leyenda Gantt, sección de impresión, locale de fechas) por claves traducidas en los 6 idiomas (`gantt_no_dates`, `legend_ci`).
+
+---
+
 ## [2.8.5] — 2026-06-15
 
 ### Added

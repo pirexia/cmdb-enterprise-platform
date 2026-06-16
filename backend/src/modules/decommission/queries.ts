@@ -32,6 +32,8 @@ export interface LicenseRow {
   license_name: string;
 }
 
+export interface SystemCiRow { id: string; name: string; }
+
 // ── List & CRUD ────────────────────────────────────────────────────────────────
 
 export async function listPlans(prisma: PrismaClient): Promise<PlanRow[]> {
@@ -40,6 +42,27 @@ export async function listPlans(prisma: PrismaClient): Promise<PlanRow[]> {
     FROM   "decommission_plan" p
     JOIN   "configuration_items" ci ON ci.id = p.system_ci_id
     ORDER  BY p.created_at DESC
+  `;
+}
+
+// Search CIs of type SISTEMA for the plan-creation combobox. Empty search
+// returns the first `limit` systems (focus-load). LIKE wildcards in the user
+// term are escaped so they are matched literally (A03 — injection-safe).
+export async function searchSystemCis(
+  prisma: PrismaClient,
+  search: string,
+  limit : number,
+): Promise<SystemCiRow[]> {
+  const escaped = search.replace(/[\\%_]/g, (c) => `\\${c}`);
+  const pattern = `%${escaped}%`;
+  return prisma.$queryRaw<SystemCiRow[]>`
+    SELECT ci.id, ci.name
+    FROM   "configuration_items" ci
+    JOIN   "ci_types" t ON t.id = ci.ci_type_id
+    WHERE  t.code = 'SISTEMA'
+      AND  ci.name ILIKE ${pattern} ESCAPE '\\'
+    ORDER  BY ci.name ASC
+    LIMIT  ${limit}
   `;
 }
 

@@ -196,3 +196,25 @@ graph LR
 | R2 | Ciclos en CIRelation | CTE con set visitados + tope profundidad (patrón del mapa) |
 | R3 | SSRF en downloadUrl marketplace | Allowlist HTTPS, no IPs privadas, no file://, checksum |
 | R4 | Base develop desactualizada | `git checkout develop && git pull` al inicio |
+
+---
+
+## 7. Post-release Fixes — Modal "Nuevo Plan" (Decomisionado)
+
+**Rama:** `fix/decommission-modal-bugs` (desde `develop`) · **Fecha:** 2026-06-16 · **Estado:** ✅ COMPLETADA
+
+Bugs detectados en el modal de creación de plan (módulo **core**, no plugin):
+
+| Bug | Causa raíz verificada | Fix |
+|-----|----------------------|-----|
+| 1 — Label "SISTEMA (SISTEMA)" | Literal hardcodeado ` (SISTEMA)` en `page.tsx` (la clase CSS `uppercase` lo muestra en mayúsculas) | Eliminado; solo `t("decommission.col_system")` |
+| 2 — Botón "actions.create" literal | Clave `actions.create` ausente en los 6 locales → `t()` devuelve la clave | Añadidas `actions.create` + `actions.view` (×6) |
+| 2b — "actions.view" literal (no reportado) | Misma causa en la columna acciones de la tabla | Incluido en el mismo lote |
+| 3 — El campo no busca CIs | `GET /api/cis` (en `index.ts`) ignora `search`/`ciType` y devuelve `data` (el modal leía `cis`) | Endpoint dedicado `GET /api/decommission/systems` + combobox con debounce 300 ms, focus-load y estado vacío |
+| Extra — i18n página detalle | Cadenas hardcodeadas en `[id]/page.tsx` (leyenda Gantt, impresión, locale `es-ES`) | Sustituidas por `t()`; claves nuevas `gantt_no_dates`, `legend_ci` (×6) |
+
+**Backend (en el módulo, sin tocar `index.ts`):** `searchSystemCis()` en `queries.ts` (`$queryRaw` parametrizado, LIKE escapado `% _ \` + `ESCAPE '\'`, filtro `ci_types.code='SISTEMA'`); ruta `GET /systems` con `requireAdminRole`, `limit` acotado 1..50 y `search` ≤100 chars.
+
+**OWASP / Compliance del cambio:** A01 ✅ (`requireAdminRole` + `authenticateToken`, mínimo privilegio) · A03 ✅ (consulta parametrizada + escaping LIKE) · A09 ✅ (solo lectura → sin audit necesario; errores genéricos sin fugas) · NIS2 ✅ (límites acotados, sin consumo no acotado) · GDPR ✅ (nombres de CI = activos, sin nuevo PII). **0 hallazgos a remediar.**
+
+**Verificación:** `tsc --noEmit` backend limpio; frontend type-correct contra `LanguageContextType`; los 6 locales JSON válidos con las claves nuevas.

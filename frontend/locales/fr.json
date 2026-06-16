@@ -29,6 +29,8 @@
     "decommission": "Décommissionnement"
   },
   "actions": {
+    "create": "Créer",
+    "view": "Voir",
     "logout": "Se déconnecter",
     "refresh": "Actualiser",
     "add": "Ajouter",
@@ -1657,6 +1659,9 @@
     "status_cancelled": "Annulé",
     "plan_name_placeholder": "Ex: Plan de mise hors service SAP ERP",
     "search_system": "Rechercher un CI de type Système...",
+    "no_systems": "Aucun système configuré. Créez d'abord un CI de type Système.",
+    "gantt_no_dates": "Aucune date configurée pour le moment.",
+    "legend_ci": "CI",
     "confirm_delete": "Voulez-vous vraiment supprimer ce plan?",
     "plan_not_found": "Plan introuvable",
     "back_to_plans": "Retour aux plans",

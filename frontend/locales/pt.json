@@ -29,6 +29,8 @@
     "decommission": "Desativação"
   },
   "actions": {
+    "create": "Criar",
+    "view": "Ver",
     "logout": "Sair",
     "refresh": "Atualizar",
     "add": "Adicionar",
@@ -1657,6 +1659,9 @@
     "status_cancelled": "Cancelado",
     "plan_name_placeholder": "Ex: Plano de desativação SAP ERP",
     "search_system": "Procurar CI do tipo Sistema...",
+    "no_systems": "Não há sistemas configurados. Crie primeiro um CI do tipo Sistema.",
+    "gantt_no_dates": "Ainda não há datas configuradas.",
+    "legend_ci": "CI",
     "confirm_delete": "Tem a certeza de que quer eliminar este plano?",
     "plan_not_found": "Plano não encontrado",
     "back_to_plans": "Voltar aos planos",

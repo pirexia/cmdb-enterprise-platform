@@ -423,7 +423,8 @@ Rules:
 
 **Versión actual en producción:** v2.8.5 — ✅ LIBERADA (tag `v2.8.5`, merge develop→main, 2026-06-15)
 **Próxima versión:** no planificada — pendiente definición de roadmap
-**PRs abiertos:** —
+**En curso (post-release fixes):** rama `fix/decommission-modal-bugs` → PR a `develop` (modal Nuevo Plan Decomisionado: label, i18n, endpoint búsqueda de sistemas). Ver `docs/PLAN_v2.8.5.md` §7.
+**PRs abiertos:** PR `fix/decommission-modal-bugs` → develop
 
 ### Releases recientes
 - **v2.8.5** ✅ LIBERADA (2026-06-15): Fix sidebar duplicado (T1), Marketplace plugins hardening + one-click install + UI (T2), CIType SISTEMA (T3), Módulo Decomisionado (T4). PRs #144–#147.

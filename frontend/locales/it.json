@@ -29,6 +29,8 @@
     "decommission": "Dismissione"
   },
   "actions": {
+    "create": "Crea",
+    "view": "Visualizza",
     "logout": "Esci",
     "refresh": "Aggiorna",
     "add": "Aggiungi",
@@ -1657,6 +1659,9 @@
     "status_cancelled": "Annullato",
     "plan_name_placeholder": "Es: Piano dismissione SAP ERP",
     "search_system": "Cerca CI di tipo Sistema...",
+    "no_systems": "Nessun sistema configurato. Crea prima un CI di tipo Sistema.",
+    "gantt_no_dates": "Nessuna data configurata ancora.",
+    "legend_ci": "CI",
     "confirm_delete": "Sei sicuro di voler eliminare questo piano?",
     "plan_not_found": "Piano non trovato",
     "back_to_plans": "Torna ai piani",

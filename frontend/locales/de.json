@@ -29,6 +29,8 @@
     "decommission": "Außerbetriebnahme"
   },
   "actions": {
+    "create": "Erstellen",
+    "view": "Anzeigen",
     "logout": "Abmelden",
     "refresh": "Aktualisieren",
     "add": "Hinzufügen",
@@ -1657,6 +1659,9 @@
     "status_cancelled": "Abgebrochen",
     "plan_name_placeholder": "z. B. SAP ERP Außerbetriebnahme",
     "search_system": "CI vom Typ System suchen...",
+    "no_systems": "Keine Systeme konfiguriert. Erstellen Sie zuerst ein CI vom Typ System.",
+    "gantt_no_dates": "Noch keine Termine konfiguriert.",
+    "legend_ci": "CI",
     "confirm_delete": "Möchten Sie diesen Plan wirklich löschen?",
     "plan_not_found": "Plan nicht gefunden",
     "back_to_plans": "Zurück zur Liste",

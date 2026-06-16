@@ -14,7 +14,7 @@ import {
   listPlanDocuments, addPlanDocument, removePlanDocument,
   listPlanContracts, addPlanContract, removePlanContract,
   listPlanLicenses, addPlanLicense, removePlanLicense,
-  getGanttData,
+  getGanttData, searchSystemCis,
 } from './queries.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -30,6 +30,23 @@ export function createDecommissionRouter(prisma: PrismaClient): Router {
       res.json({ plans });
     } catch (err) {
       console.error('[decommission] list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ── GET /api/decommission/systems ─────────────────────────────────────────
+  // Searchable list of CIs of type SISTEMA for the plan-creation combobox.
+  // ADMIN only (plan creation is ADMIN-only). Read-only → no audit log.
+  router.get('/systems', requireAdminRole, async (req: Request, res: Response) => {
+    try {
+      const rawSearch = typeof req.query.search === 'string' ? req.query.search : '';
+      const search    = rawSearch.trim().slice(0, 100);           // bound input length
+      const rawLimit  = parseInt(String(req.query.limit ?? '50'), 10);
+      const limit     = Math.min(Math.max(Number.isNaN(rawLimit) ? 50 : rawLimit, 1), 50);
+      const systems   = await searchSystemCis(prisma, search, limit);
+      res.json({ systems });
+    } catch (err) {
+      console.error('[decommission] systems search error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

@@ -38,9 +38,11 @@ interface GanttTask {
 // ─── Gantt (SVG custom — no npm dependency) ───────────────────────────────────
 
 function GanttChart({ tasks }: { tasks: GanttTask[] }) {
+  // i18n alias `tr` avoids shadowing the GanttTask map param named `t` below.
+  const { t: tr, locale } = useLanguage();
   const dated = tasks.filter(t => t.scheduled_date);
   if (dated.length === 0) return (
-    <div className="text-center py-8 text-slate-500 text-sm">No hay fechas configuradas aún.</div>
+    <div className="text-center py-8 text-slate-500 text-sm">{tr("decommission.gantt_no_dates")}</div>
   );
 
   const dates   = dated.map(t => new Date(t.scheduled_date!).getTime());
@@ -63,7 +65,7 @@ function GanttChart({ tasks }: { tasks: GanttTask[] }) {
             <g key={pct}>
               <line x1={x} y1={0} x2={x} y2={totalH - 20} stroke="#334155" strokeWidth={1} strokeDasharray="4 4" />
               <text x={x} y={totalH - 5} textAnchor="middle" fill="#64748b" fontSize={10}>
-                {d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                {d.toLocaleDateString(locale, { day: "2-digit", month: "short" })}
               </text>
             </g>
           );
@@ -94,9 +96,9 @@ function GanttChart({ tasks }: { tasks: GanttTask[] }) {
         })}
       </svg>
       <div className="flex gap-4 mt-2 text-xs text-slate-500">
-        <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle" />Sistema</span>
-        <span><span className="inline-block w-3 h-3 rounded-sm bg-blue-500 mr-1 align-middle" />CI</span>
-        <span><span className="inline-block w-3 h-3 rounded-sm bg-amber-500 mr-1 align-middle" />Compartido</span>
+        <span><span className="inline-block w-3 h-3 rounded-sm bg-red-500 mr-1 align-middle" />{tr("decommission.col_system")}</span>
+        <span><span className="inline-block w-3 h-3 rounded-sm bg-blue-500 mr-1 align-middle" />{tr("decommission.legend_ci")}</span>
+        <span><span className="inline-block w-3 h-3 rounded-sm bg-amber-500 mr-1 align-middle" />{tr("decommission.shared")}</span>
       </div>
     </div>
   );
@@ -460,33 +462,33 @@ export default function DecommissionDetailPage() {
 
       {/* Print-only: full plan */}
       <div className="hidden print:block space-y-6">
-        <h2 className="text-lg font-bold">Inventario de CIs</h2>
+        <h2 className="text-lg font-bold">{t("decommission.tab_inventory")}</h2>
         <table className="w-full text-xs border-collapse border border-slate-300">
           <thead><tr className="bg-slate-100">
-            <th className="border border-slate-300 px-2 py-1 text-left">CI</th>
-            <th className="border border-slate-300 px-2 py-1 text-left">Tipo</th>
-            <th className="border border-slate-300 px-2 py-1 text-left">Fecha baja</th>
-            <th className="border border-slate-300 px-2 py-1 text-left">Compartido</th>
+            <th className="border border-slate-300 px-2 py-1 text-left">{t("decommission.ci_name")}</th>
+            <th className="border border-slate-300 px-2 py-1 text-left">{t("decommission.ci_type")}</th>
+            <th className="border border-slate-300 px-2 py-1 text-left">{t("decommission.scheduled_date")}</th>
+            <th className="border border-slate-300 px-2 py-1 text-left">{t("decommission.ci_shared")}</th>
           </tr></thead>
           <tbody>{cis.map(ci => (
             <tr key={ci.ci_id}>
               <td className="border border-slate-300 px-2 py-1" style={{ paddingLeft: `${8 + ci.depth * 12}px` }}>{ci.ci_name}</td>
               <td className="border border-slate-300 px-2 py-1">{ci.ci_type_name ?? "—"}</td>
               <td className="border border-slate-300 px-2 py-1">{ci.scheduled_date ? new Date(ci.scheduled_date).toLocaleDateString() : "—"}</td>
-              <td className="border border-slate-300 px-2 py-1">{ci.is_shared ? "Sí" : "No"}</td>
+              <td className="border border-slate-300 px-2 py-1">{ci.is_shared ? t("common.yes") : t("common.no")}</td>
             </tr>
           ))}</tbody>
         </table>
         {docs.length > 0 && <>
-          <h2 className="text-lg font-bold mt-6">Documentos</h2>
+          <h2 className="text-lg font-bold mt-6">{t("decommission.tab_documents")}</h2>
           <ul className="text-xs list-disc list-inside">{docs.map(d => <li key={d.document_id}>{d.doc_name}</li>)}</ul>
         </>}
         {contracts.length > 0 && <>
-          <h2 className="text-lg font-bold mt-6">Contratos</h2>
+          <h2 className="text-lg font-bold mt-6">{t("decommission.tab_contracts")}</h2>
           <ul className="text-xs list-disc list-inside">{contracts.map(c => <li key={c.contract_id}>{c.contract_name}</li>)}</ul>
         </>}
         {licenses.length > 0 && <>
-          <h2 className="text-lg font-bold mt-6">Licencias</h2>
+          <h2 className="text-lg font-bold mt-6">{t("decommission.tab_licenses")}</h2>
           <ul className="text-xs list-disc list-inside">{licenses.map(l => <li key={l.license_id}>{l.license_name}</li>)}</ul>
         </>}
       </div>

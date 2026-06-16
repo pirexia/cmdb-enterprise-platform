@@ -29,6 +29,8 @@
     "decommission": "Decomisionado"
   },
   "actions": {
+    "create": "Crear",
+    "view": "Ver",
     "logout": "Cerrar sesión",
     "refresh": "Actualizar",
     "add": "Añadir",
@@ -1776,6 +1778,9 @@
     "status_cancelled": "Cancelado",
     "plan_name_placeholder": "Ej: Plan de baja SAP ERP",
     "search_system": "Buscar CI de tipo Sistema...",
+    "no_systems": "No hay sistemas configurados. Crea un CI de tipo Sistema primero.",
+    "gantt_no_dates": "No hay fechas configuradas aún.",
+    "legend_ci": "CI",
     "confirm_delete": "¿Seguro que deseas eliminar este plan?",
     "plan_not_found": "Plan no encontrado",
     "back_to_plans": "Volver a planes",

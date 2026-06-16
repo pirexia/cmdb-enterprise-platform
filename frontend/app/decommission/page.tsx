@@ -36,6 +36,8 @@ export default function DecommissionPage() {
   const [newCiId, setNewCiId] = useState("");
   const [newCiSearch, setNewCiSearch] = useState("");
   const [ciOptions, setCiOptions] = useState<{id: string; name: string}[]>([]);
+  const [systemsOpen, setSystemsOpen] = useState(false);
+  const [systemsLoading, setSystemsLoading] = useState(false);
   const [creating, setCreating] = useState(false);
 
   const isAdmin = user?.role === "ADMIN";
@@ -56,16 +58,21 @@ export default function DecommissionPage() {
 
   useEffect(() => { fetchPlans(); }, []);
 
-  // Search SISTEMA CIs
+  // Search SISTEMA CIs — debounced (300ms). Empty term on focus loads the first
+  // systems; typing filters by substring. Dedicated module endpoint (RBAC + filter).
   useEffect(() => {
-    if (newCiSearch.length < 2) { setCiOptions([]); return; }
+    if (!systemsOpen) return;
     const controller = new AbortController();
-    apiFetch(`/api/cis?search=${encodeURIComponent(newCiSearch)}&ciType=SISTEMA&limit=10`, { signal: controller.signal })
-      .then(r => r.json())
-      .then(d => setCiOptions(d.cis ?? []))
-      .catch(() => {});
-    return () => controller.abort();
-  }, [newCiSearch]);
+    const handle = setTimeout(() => {
+      setSystemsLoading(true);
+      apiFetch(`/api/decommission/systems?search=${encodeURIComponent(newCiSearch.trim())}&limit=50`, { signal: controller.signal })
+        .then(r => (r.ok ? r.json() : { systems: [] }))
+        .then(d => setCiOptions(d.systems ?? []))
+        .catch(() => {})
+        .finally(() => setSystemsLoading(false));
+    }, 300);
+    return () => { clearTimeout(handle); controller.abort(); };
+  }, [newCiSearch, systemsOpen]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +86,7 @@ export default function DecommissionPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Error creating plan");
       setShowCreate(false);
-      setNewName(""); setNewCiId(""); setNewCiSearch("");
+      setNewName(""); setNewCiId(""); setNewCiSearch(""); setSystemsOpen(false); setCiOptions([]);
       router.push(`/decommission/${data.plan.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
@@ -202,24 +209,34 @@ export default function DecommissionPage() {
                   placeholder={t("decommission.plan_name_placeholder")} />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">{t("decommission.col_system")} (SISTEMA)</label>
-                <input type="text" value={newCiSearch} onChange={e => setNewCiSearch(e.target.value)}
+                <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">{t("decommission.col_system")}</label>
+                <input type="text" value={newCiSearch}
+                  onFocus={() => setSystemsOpen(true)}
+                  onChange={e => { setNewCiSearch(e.target.value); setNewCiId(""); }}
                   className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-red-500"
                   placeholder={t("decommission.search_system")} />
-                {ciOptions.length > 0 && (
+                {systemsOpen && (
                   <div className="mt-1 rounded-lg border border-white/10 bg-slate-800 divide-y divide-white/5 max-h-40 overflow-y-auto">
-                    {ciOptions.map(ci => (
-                      <button key={ci.id} type="button"
-                        onClick={() => { setNewCiId(ci.id); setNewCiSearch(ci.name); setCiOptions([]); }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors ${newCiId === ci.id ? "text-red-400 font-medium" : "text-slate-300"}`}>
-                        {ci.name}
-                      </button>
-                    ))}
+                    {systemsLoading ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-500">
+                        <RefreshCw className="h-3 w-3 animate-spin" /> {t("common.loading")}
+                      </div>
+                    ) : ciOptions.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-slate-500">{t("decommission.no_systems")}</div>
+                    ) : (
+                      ciOptions.map(ci => (
+                        <button key={ci.id} type="button"
+                          onClick={() => { setNewCiId(ci.id); setNewCiSearch(ci.name); setSystemsOpen(false); setCiOptions([]); }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors ${newCiId === ci.id ? "text-red-400 font-medium" : "text-slate-300"}`}>
+                          {ci.name}
+                        </button>
+                      ))
+                    )}
                   </div>
                 )}
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => { setShowCreate(false); setNewName(""); setNewCiId(""); setNewCiSearch(""); }}
+                <button type="button" onClick={() => { setShowCreate(false); setNewName(""); setNewCiId(""); setNewCiSearch(""); setSystemsOpen(false); setCiOptions([]); }}
                   className="flex-1 px-4 py-2 text-sm bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition-colors">
                   {t("actions.cancel")}
                 </button>

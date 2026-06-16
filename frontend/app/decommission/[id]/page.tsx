@@ -384,7 +384,7 @@ export default function DecommissionDetailPage() {
                             <span className={`text-xs ${ci.dateWarning ? "text-red-400 font-medium" : "text-slate-400"}`}>
                               {ci.scheduled_date ? new Date(ci.scheduled_date).toLocaleDateString() : "—"}
                             </span>
-                            {ci.dateWarning && <AlertTriangle className="h-3.5 w-3.5 text-red-400" title={t("decommission.date_incoherent")} />}
+                            {ci.dateWarning && <span title={t("decommission.date_incoherent")}><AlertTriangle className="h-3.5 w-3.5 text-red-400" /></span>}
                           </div>
                         )}
                       </td>

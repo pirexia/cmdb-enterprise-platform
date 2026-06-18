@@ -31,6 +31,55 @@ curl -sk -H "Authorization: Bearer $TOKEN" https://localhost/api/health
 
 The `requireAction: "MFA_SETUP_SUGGESTED"` in the login response is a suggestion only — the token is fully valid.
 
+### Testing ADMIN-only flows — temporary MFA-enabled admin
+
+The AUDITOR account above cannot exercise `requireAdmin` / `requireAdminRole` routes or ADMIN-only UI. **Do NOT add an MFA bypass to the code** (that is a backdoor — violates A07 / ISO 27001 and is dangerous if it reaches prod). Instead, seed a **temporary ADMIN whose MFA is genuinely enabled with a TOTP secret you generate**: it is fully MFA-compliant, but you can compute its login codes with `otplib` (the same library the server validates with — `index.ts` → `authenticator.check`), so codes always match. No interactive enrollment, no code changes.
+
+**1. Seed the test admin** (run inside the backend container — it has `otplib` + `bcrypt` + Prisma; prod container is `cmdb-backend-prod`, dev is `cmdb-backend`):
+
+```bash
+cat > /tmp/seed_admin.js <<'EOF'
+const { authenticator } = require('otplib');
+const bcrypt = require('bcrypt');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+(async () => {
+  const email  = 'claude-admin@cmdb.local';
+  const secret = authenticator.generateSecret();           // base32, otplib-native
+  const hash   = await bcrypt.hash('ClaudeAdmin#Test2026!', 12);
+  await prisma.user.upsert({
+    where:  { email },
+    update: { password: hash, role: 'ADMIN', active: true, mfaEnabled: true, mfaSecret: secret, mfaPendingSecret: null },
+    create: { username: 'claude-admin', email, password: hash, role: 'ADMIN', active: true, mfaEnabled: true, mfaSecret: secret },
+  });
+  console.log('SECRET=' + secret);                          // SAVE THIS — needed to compute login codes
+  await prisma.$disconnect();
+})().catch(e => { console.error(e); process.exit(1); });
+EOF
+podman cp /tmp/seed_admin.js cmdb-backend-prod:/app/seed_admin.js \
+  && podman exec -w /app cmdb-backend-prod node seed_admin.js \
+  && podman exec cmdb-backend-prod rm /app/seed_admin.js && rm -f /tmp/seed_admin.js
+```
+
+**2. Log in** — compute the current TOTP with `otplib` in the container, then POST it as `mfaCode`:
+
+```bash
+SECRET=<value printed in step 1>
+CODE=$(podman exec cmdb-backend-prod node -e "console.log(require('otplib').authenticator.generate('$SECRET'))")
+TOKEN=$(curl -sk -X POST https://localhost/api/auth/login -H 'Content-Type: application/json' \
+  -d "{\"email\":\"claude-admin@cmdb.local\",\"password\":\"ClaudeAdmin#Test2026!\",\"mfaCode\":\"$CODE\"}" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+curl -sk -H "Authorization: Bearer $TOKEN" https://localhost/api/health
+```
+
+Login MFA path (`index.ts`): when `user.mfa_enabled && user.mfa_secret`, login returns `401 {"error":"MFA_REQUIRED"}` without a code and validates `mfaCode` via `authenticator.check`. For browser/Playwright e2e, the login UI shows an `inputmode=numeric` code field — fill it with a freshly computed code (the code rotates every 30 s, so generate it right before use).
+
+**3. Delete it when done.** This is a standing ADMIN whose password + TOTP secret end up in your logs — remove the account (and any test data you created) after testing:
+
+```bash
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c "DELETE FROM users WHERE email='claude-admin@cmdb.local';"
+```
+
 ---
 
 ## Work Methodology — Follow This Before Every Task

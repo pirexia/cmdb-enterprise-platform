@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Technical Architecture
 
-**Version:** 1.7.1
-**Date:** 2026-04-14
+**Version:** 2.0.0
+**Date:** 2026-06-20
 **Status:** Production
 
 ---
@@ -951,13 +951,80 @@ The practical limit without a GPU is 2–3 simultaneous requests with acceptable
 
 > **Scaling note:** Switching to the `qwen2.5:3b-instruct` model approximately doubles effective concurrency and halves mean latency, at the cost of lower accuracy on complex technical questions.
 
-> **Architecture note:** If `backend/src/index.ts` exceeds ~5,500 lines after adding the RAG subsystem, plan the migration to `backend/src/modules/` as the next architecture refactor.
+> **Architecture note:** The migration to `backend/src/modules/` was completed in v2.9.0 — see § v2.9.0 Backend Modularization below. `index.ts` now acts as a pure orchestrator (~4 900 lines, down from ~8 200).
 
 ### 12.10 v2 — Structured entity indexing
 
 Starting with v2.3 the RAG subsystem indexes four structured entity types in addition to the document corpus: **CIs**, **contracts** (root only — addenda are serialised inside the root's text), **licenses** (same root/addenda pattern) and **vulnerabilities** (identified by a synthetic UUID v5 derived from `(ciId, cve)`). The `rag_chunks` table is extended with `entity_type` and `entity_id` columns, and a separate state table `rag_entity_index` is added — kept apart from `rag_document_index` because entities are mutable and not versioned through the pipeline.
 
 Access control in the search path uses a single `WHERE` clause with a conditional `LEFT JOIN`: document chunks still flow through the existing per-role ACL; entity chunks are visible to every authenticated user. Worker priorities (vulnerability > contract/license > CI, 3 slots per tick) and the complete ACL SQL are documented in `docs/RAG_ENTITIES_INDEXING_PLAN.md` §7 and §10. The DPIA updated with the eight additional STRIDE risks lives in `docs/security/rag-dpia.md` (AMENDMENT v1.1).
+
+---
+
+## v2.9.0 — Backend Modularization (Strangler Fig)
+
+Extracts **~108 routes** (~3 300 lines) from `index.ts` into `backend/src/modules/` via the Strangler Fig pattern. `index.ts` drops from ~8 200 to ~4 900 lines and becomes a pure orchestrator.
+
+### Extracted modules (T0–T7, PRs #154–#161)
+
+| Task | Module | Routes | PR |
+|------|--------|--------|----|
+| T0 | `shared/` (middleware + utils) | — (infrastructure) | #154 |
+| T1 | `settings` | 5 | #155 |
+| T2 | `vendors` | 4 | #156 |
+| T3 | `integrations` | 2 | #157 |
+| T4 | `licenses` | 14 | #158 |
+| T5 | `contracts` | 9 | #159 |
+| T6 | `masters` | 43 | #160 |
+| T7 | `documents` | 31 | #161 |
+
+### Module pattern conventions
+
+```typescript
+// Each module exports a DI factory:
+export function createXxxRouter(
+  prisma: PrismaClient,
+  queueForIndexing?: (type: string, id: string) => void | Promise<void>,
+): Router
+
+// Mounted in index.ts:
+app.use('/api/xxx', createXxxRouter(prisma, (t, id) => queueEntityForIndexing(t as RagEntityType, id)));
+```
+
+- **`shared/middleware/`**: `createAuthenticateToken(prisma)`, `requireAdmin`, `requireAudit`, `requireUuidParam` — imported by all modules.
+- **`shared/utils/`**: `insertAuditLog`, `escapeLike`, `parsePagination`, `docVisibilitySqlCol` — stateless utilities.
+- **No `index.ts` barrel**: modules are imported directly from `./modules/<name>/router`.
+- **Per-module tests**: jest + supertest, ~40–46 tests per module (401 gate, 403 RBAC, happy-path, audit-log assertions).
+- **Out of scope for v2.9.0 (future phase)**: `cis` + `relations`, critical core (`auth`/SSO/MFA, `users`, `audit-logs`, `chat`/RAG, `admin`, `cron`).
+
+### Full backend/src/ tree after v2.9.0
+
+```
+backend/src/
+  index.ts                     — Express orchestrator: router mounts, cron, startup. ~4 900 lines.
+  shared/
+    middleware/
+      authenticate.ts          — createAuthenticateToken(prisma)
+      requireAdmin.ts / requireAudit.ts / requireUuidParam.ts
+    utils/
+      auditLog.ts / likeEscape.ts / pagination.ts / docVisibility.ts
+    types.ts / schemas/common.ts
+  modules/
+    dcim/                      — Physical DCIM (buildings/floors/rooms/aisles/footprints/racks/heatmap)
+    plugins/                   — Plugin Engine: registry, hooks, marketplace, cron
+    alerts/                    — Email alerts (EOL/EOS/contracts/vulns, scheduler, history)
+    decommission/              — Decommission plans (recursive CTE, SVG Gantt, CRUD docs/contracts)
+    catalog/                   — OS and BaseSoftware
+    settings/                  — App config (theme, logo, SMTP, RAG, LDAP, SSO)  [v2.9.0]
+    vendors/                   — Vendors CRUD  [v2.9.0]
+    integrations/              — Greenbone + CrowdStrike (SSRF-allowlisted)  [v2.9.0]
+    licenses/                  — Licenses CRUD + M2M CIs/documents/users  [v2.9.0]
+    contracts/                 — Contracts CRUD + addenda + M2M CIs/documents  [v2.9.0]
+    masters/                   — Master data (~43 routes): manufacturers, CI types, models, branches, …  [v2.9.0]
+    documents/                 — Document repository + AI bulk import (~31 routes)  [v2.9.0]
+  services/
+    ldap.ts / microsoftSso.ts / emailService.ts / eolService.ts / ragService.ts / …
+```
 
 ---
 

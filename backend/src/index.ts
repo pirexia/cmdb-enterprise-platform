@@ -50,6 +50,13 @@ import { createAlertsRouter } from './modules/alerts/router';
 import { startAlertScheduler } from './modules/alerts/scheduler';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
+import { UserRole, JwtPayload }  from './shared/types';
+import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authenticate';
+import { requireAdmin }     from './shared/middleware/requireAdmin';
+import { requireAudit }     from './shared/middleware/requireAudit';
+import { requireUuidParam } from './shared/middleware/requireUuidParam';
+import { escapeLike }       from './shared/utils/likeEscape';
+import { buildAuditDetails } from './shared/utils/audit';
 
 // ─── App setup ────────────────────────────────────────────────────────────────
 
@@ -90,45 +97,11 @@ const PASSWORD_HISTORY_COUNT     = parseInt(process.env.PASSWORD_HISTORY_COUNT  
 // bcrypt work factor — NIST SP 800-63B / OWASP recommends ≥12 (≥2^12 iterations)
 const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS ?? '12', 10);
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// UserRole, JwtPayload, req.user augmentation → shared/types.ts
+// escapeLike, buildAuditDetails                → shared/utils/
 
-type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
-
-interface JwtPayload {
-  id:               string;
-  username:         string;
-  email:            string;
-  role:             UserRole;
-  mfaSetupRequired?: boolean; // true = limited token, only /api/auth/mfa/* allowed
-}
-
-// Extend Express Request to carry the decoded JWT payload
-declare global {
-  namespace Express {
-    interface Request {
-      user?: JwtPayload;
-    }
-  }
-}
-
-// ─── Shared helpers ───────────────────────────────────────────────────────────
-
-/** Escapes %, _ and \ for use in a LIKE/ILIKE pattern (A03 — SQL Injection). */
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, '\\$&');
-}
-
-/**
- * Builds a structured JSON payload for AuditLog.details.
- * description — human-readable summary (no PII).
- * changes    — list of {field, old, new} for UPDATE events (use IDs not emails).
- */
-function buildAuditDetails(
-  description: string,
-  changes?: Array<{ field: string; old: unknown; new: unknown }>,
-): object {
-  return { description, ...(changes?.length ? { changes } : {}) };
-}
+// Used in legacy CI handlers (outside v2.9.0 scope) for inline UUID validation.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 
@@ -177,7 +150,7 @@ app.use(cors({
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
-const COOKIE_NAME = 'cmdb_token';
+// COOKIE_NAME imported from shared/middleware/authenticate
 const COOKIE_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours — matches JWT expiry
 
 function setAuthCookie(res: Response, token: string): void {
@@ -260,6 +233,9 @@ const apiLimiter = rateLimit({
 });
 
 app.use('/api/', apiLimiter);
+
+// Instantiate after prisma is created; const cannot be hoisted like function declarations.
+const authenticateToken = createAuthenticateToken(prisma);
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
@@ -383,90 +359,6 @@ const ChatAskSchema = z.object({
   // UI locale — forces the model to reply in that language regardless of context language.
   lang: z.enum(['es', 'en', 'de', 'pt', 'fr', 'it']).optional(),
 });
-
-// ── Auth middleware ────────────────────────────────────────────────────────────
-
-async function authenticateToken(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
-  const authHeader  = req.headers['authorization'];
-  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
-  const token       = cookieToken ?? bearerToken ?? null;
-
-  if (!token) {
-    res.status(401).json({ error: 'Authentication required. Please login.' });
-    return;
-  }
-
-  let payload: JwtPayload;
-  try {
-    payload = jwt.verify(token, JWT_SECRET_VALUE, { algorithms: ['HS256'] }) as JwtPayload;
-  } catch {
-    res.status(403).json({ error: 'Invalid or expired token. Please login again.' });
-    return;
-  }
-
-  // Limited token (admin awaiting mandatory MFA setup) may only call MFA endpoints
-  if (payload.mfaSetupRequired) {
-    const allowedPaths = ['/api/auth/mfa/setup', '/api/auth/mfa/enable'];
-    if (!allowedPaths.includes(req.path)) {
-      res.status(403).json({ error: 'MFA_SETUP_REQUIRED', message: 'Configure MFA to access this resource.' });
-      return;
-    }
-  }
-
-  // Verify the user is still active in the database — a deactivated user's
-  // existing JWT must be rejected immediately without waiting for expiry.
-  try {
-    const rows = await prisma.$queryRaw<{ active: boolean }[]>`
-      SELECT COALESCE(active, true) AS active FROM "users" WHERE id = ${payload.id}::uuid LIMIT 1
-    `;
-    if (!rows.length || !rows[0].active) {
-      res.status(403).json({ error: 'Account deactivated. Please contact an administrator.' });
-      return;
-    }
-    req.user = payload;
-    next();
-  } catch {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-}
-
-function requireAdmin(req: Request, res: Response, next: NextFunction): void {
-  if (!req.user || req.user.role !== 'ADMIN') {
-    res.status(403).json({ error: 'Admin role required for this operation.' });
-    return;
-  }
-  next();
-}
-
-/** Allows ADMIN and AUDITOR roles (read-only audit access). */
-function requireAudit(req: Request, res: Response, next: NextFunction): void {
-  if (!req.user || !(['ADMIN', 'AUDITOR'] as UserRole[]).includes(req.user.role)) {
-    res.status(403).json({ error: 'Audit access requires ADMIN or AUDITOR role.' });
-    return;
-  }
-  next();
-}
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Defensive guard for `:id`-style path params. Express matches routes in
- * declaration order, so if a literal route (e.g. /api/cis/bulk-update) is
- * declared AFTER a `:id` route, the literal request gets captured by `:id`
- * and Prisma crashes with P2023 when trying to parse the literal as a UUID.
- * Apply this middleware to every `:id` handler whose param is fed into Prisma.
- */
-function requireUuidParam(paramName: string) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const value = req.params[paramName];
-    if (typeof value !== 'string' || !UUID_RE.test(value)) {
-      res.status(400).json({ error: `Invalid ${paramName} parameter (expected UUID).` });
-      return;
-    }
-    next();
-  };
-}
 
 // ─── Password Policy ──────────────────────────────────────────────────────────
 

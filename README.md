@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-2.8.6-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.8.6)
+[![Version](https://img.shields.io/badge/version-2.8.7-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.8.7)
 
 ---
 

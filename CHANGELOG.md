@@ -7,6 +7,20 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.8.7] — 2026-06-19
+
+### Added
+
+- **Bulk import — 24 campos de infraestructura/GRC** (`GET /api/cis/bulk/template.xlsx` + `POST /api/cis/bulk/decide`) — el template Excel incluye ahora columnas para: `cpuModel`, `vCpus`, `ram`, `disk`, `adminIp`, `mgmtIp`, `hostName`, `clusterName`, `firmwareVersion`, `dns`, `vlan`, `floor`, `room`, `rack`, `rackUnit` (infraestructura HW), `rto`, `rpo`, `recoveryPriority`, `spofRisk`, `containsPii` (GRC/BCP), y las FK `location` (nombre), `businessOwner` / `technicalLead` (email) y `userDni`. Columnas añadidas al final (cols 25–48) para preservar los índices de validación de datos existentes.
+
+### Fixed
+
+- **Tema claro — `/decommission/*` y `/plugins/admin`** — ambas páginas mostraban clases dark-mode (`bg-slate-800/900`, `text-slate-100/200`, `border-white/x`). Unificadas al tema claro estándar (`bg-white`/`bg-slate-50`, `text-slate-800`, `border-slate-200`), incluyendo badges de estado, modal de creación y dropdown de sistemas.
+- **Dropdown CI en modal de nuevo plan** — los items usaban `text-slate-300`/`hover:bg-white/5` (invisibles sobre fondo blanco); corregidos a `text-slate-700`/`hover:bg-slate-50`.
+- **i18n ES — "Decomisado"** — las cadenas visibles `sidebar.decommission`, `decommission.title` y `decommission.no_plans` usaban la forma "Decomisionado"; corregidas a "Decomisado" (claves de API, tablas y otros idiomas sin cambio).
+
+---
+
 ## [2.8.6] — 2026-06-16
 
 ### Fixed

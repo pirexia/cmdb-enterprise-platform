@@ -470,11 +470,12 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v2.8.6 — ✅ LIBERADA (tag `v2.8.6`, merge develop→main, 2026-06-16)
+**Versión actual en producción:** v2.8.7 — ✅ LIBERADA (tag `v2.8.7`, merge develop→main, 2026-06-19)
 **Próxima versión:** no planificada — pendiente definición de roadmap
 **PRs abiertos:** —
 
 ### Releases recientes
+- **v2.8.7** ✅ LIBERADA (2026-06-19): Bulk import +24 campos infra/GRC (cols 25–48); tema claro en `/decommission/*` + `/plugins/admin`; fix dropdown sistemas invisible; i18n ES "Decomisado". `docs/PLAN_v2.8.7.md`.
 - **v2.8.6** ✅ LIBERADA (2026-06-16): Fixes modal Decomisionado (label "(SISTEMA)", i18n `actions.create`/`view`, endpoint `GET /api/decommission/systems` + combobox debounce) + limpieza i18n página detalle. PR #149.
 - **v2.8.5** ✅ LIBERADA (2026-06-15): Fix sidebar duplicado (T1), Marketplace plugins hardening + one-click install + UI (T2), CIType SISTEMA (T3), Módulo Decomisionado (T4). PRs #144–#147.
 - **v2.8.4** ✅ LIBERADA (2026-06-15): Módulo alertas email (7 categorías, config UI, scheduler, historial, i18n ×6, EOL modelo). PRs #133–#142.

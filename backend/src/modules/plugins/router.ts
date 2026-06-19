@@ -220,6 +220,56 @@ async function tryExtractFileFromZip(zipPath: string, filename: string): Promise
   }
 }
 
+// ── Resolve the staging ZIP for a plugin (L-08) ───────────────────────────────
+// Prefers the recorded staging_zip filename (O(1)); falls back to an O(n) manifest
+// scan for legacy rows uploaded before staging_zip was tracked. path.basename on
+// the stored value defends against any tampering that could escape the dir.
+
+async function resolveStagingZip(
+  plugin: { pluginId: string; stagingZip?: string | null },
+): Promise<string | null> {
+  const stagingDir = path.join(PLUGIN_STORAGE_PATH, 'staging');
+  if (plugin.stagingZip) {
+    const direct = path.join(stagingDir, path.basename(plugin.stagingZip));
+    if (fs.existsSync(direct)) return direct;
+  }
+  if (!fs.existsSync(stagingDir)) return null;
+  const files = fs.readdirSync(stagingDir).filter((f) => f.endsWith('.zip'));
+  for (const f of files) {
+    try {
+      const raw = await extractManifestFromZip(path.join(stagingDir, f));
+      const m = PluginManifestSchema.safeParse(raw);
+      if (m.success && m.data.id === plugin.pluginId) return path.join(stagingDir, f);
+    } catch {
+      // not the right zip, skip
+    }
+  }
+  return null;
+}
+
+// ── 4-eyes approval token replay protection (L-09) ────────────────────────────
+// Approval tokens are short-lived (5 min) and single-use. Consumed token ids are
+// held in-memory until they would have expired anyway, so a token cannot be
+// replayed within its TTL even against a different activation of the same plugin.
+
+const consumedApprovalJtis = new Map<string, number>();
+
+function purgeExpiredApprovalJtis(): void {
+  const now = Date.now();
+  for (const [jti, exp] of consumedApprovalJtis) {
+    if (exp <= now) consumedApprovalJtis.delete(jti);
+  }
+}
+
+// Returns false if the jti was already consumed (replay); otherwise marks it
+// consumed until expMs and returns true.
+function consumeApprovalJti(jti: string, expMs: number): boolean {
+  purgeExpiredApprovalJtis();
+  if (consumedApprovalJtis.has(jti)) return false;
+  consumedApprovalJtis.set(jti, expMs);
+  return true;
+}
+
 // ── Marketplace: Zod schema for upstream JSON ────────────────────────────────
 
 const MarketplacePluginSchema = z.object({
@@ -487,14 +537,21 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       await lifecycleManager.updateStatus(prisma, plugin.id, 'VALIDATED');
       await pluginAudit(prisma, 'PLUGIN_VALIDATED', plugin.id, userEmail);
 
-      // Inline install: extract to installed/, run migrations, parse artifacts
+      // Inline install: extract to installed/, run migrations, parse artifacts.
+      // L-03: extract FIRST, then migrate; roll back the extracted dir if the
+      // migration fails so we never leave a migration applied without files.
       const installDir = path.join(PLUGIN_STORAGE_PATH, 'installed', plugin.id);
+      await extractZipTo(zipPath, installDir);
       const migrationSql = await tryExtractFileFromZip(zipPath, 'migration.sql');
       if (migrationSql) {
         const migRunner = createMigrationRunner(PLUGIN_STORAGE_PATH);
-        await migRunner.runUp(plugin.pluginId, migrationSql);
+        try {
+          await migRunner.runUp(plugin.pluginId, migrationSql);
+        } catch (migErr) {
+          await fs.promises.rm(installDir, { recursive: true, force: true }).catch(() => {});
+          throw migErr;
+        }
       }
-      await extractZipTo(zipPath, installDir);
       const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest as Parameters<typeof parseBundleArtifacts>[3]);
 
       await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
@@ -592,6 +649,7 @@ export function createPluginRouter(prisma: PrismaClient): Router {
             manifest:    manifest as any,
             permissions: manifest.permissions,
             checksum,
+            stagingZip:  stagingName, // L-08: record the staging zip for O(1) lookup
           },
         });
 
@@ -632,26 +690,8 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       try {
         const manifest = plugin.manifest as any;
 
-        // Find the staging ZIP (named <uuid>.zip in staging/)
-        const stagingDir = path.join(PLUGIN_STORAGE_PATH, 'staging');
-        // The zip could be named by pluginDbId UUID or earlier upload UUID.
-        // We search staging for a zip whose embedded manifest.id matches.
-        let zipPath: string | null = null;
-        if (fs.existsSync(stagingDir)) {
-          const files = fs.readdirSync(stagingDir).filter((f) => f.endsWith('.zip'));
-          for (const f of files) {
-            try {
-              const raw = await extractManifestFromZip(path.join(stagingDir, f));
-              const m = PluginManifestSchema.safeParse(raw);
-              if (m.success && m.data.id === plugin.pluginId) {
-                zipPath = path.join(stagingDir, f);
-                break;
-              }
-            } catch {
-              // not the right zip, skip
-            }
-          }
-        }
+        // Locate the staging ZIP via the recorded filename (L-08), legacy scan fallback.
+        const zipPath = await resolveStagingZip(plugin);
 
         // Verify checksum if we found the zip
         if (zipPath) {
@@ -743,25 +783,8 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
-        // Find the staging zip
-        const stagingDir = path.join(PLUGIN_STORAGE_PATH, 'staging');
-        let zipPath: string | null = null;
-        if (fs.existsSync(stagingDir)) {
-          const files = fs.readdirSync(stagingDir).filter((f) => f.endsWith('.zip'));
-          for (const f of files) {
-            try {
-              const raw = await extractManifestFromZip(path.join(stagingDir, f));
-              const m = PluginManifestSchema.safeParse(raw);
-              if (m.success && m.data.id === plugin.pluginId) {
-                zipPath = path.join(stagingDir, f);
-                break;
-              }
-            } catch {
-              // skip
-            }
-          }
-        }
-
+        // Locate the staging ZIP via the recorded filename (L-08), legacy scan fallback.
+        const zipPath = await resolveStagingZip(plugin);
         if (!zipPath) {
           res.status(422).json({ error: 'Staging zip not found — re-upload the plugin' });
           return;
@@ -769,15 +792,20 @@ export function createPluginRouter(prisma: PrismaClient): Router {
 
         const installDir = path.join(PLUGIN_STORAGE_PATH, 'installed', plugin.id);
 
-        // Run up-migration if migration.sql exists in the zip
+        // L-03: extract FIRST, then migrate. An extract failure must not leave a
+        // migration applied; a migration failure rolls back the extracted dir.
+        await extractZipTo(zipPath, installDir);
+
         const migrationSql = await tryExtractFileFromZip(zipPath, 'migration.sql');
         if (migrationSql) {
           const migRunner = createMigrationRunner(PLUGIN_STORAGE_PATH);
-          await migRunner.runUp(plugin.pluginId, migrationSql);
+          try {
+            await migRunner.runUp(plugin.pluginId, migrationSql);
+          } catch (migErr) {
+            await fs.promises.rm(installDir, { recursive: true, force: true }).catch(() => {});
+            throw migErr;
+          }
         }
-
-        // Extract zip contents to installed/<db-uuid>/
-        await extractZipTo(zipPath, installDir);
 
         // Parse the bundle's hooks/cron/routes into DB rows (fails if a declared
         // hook/cron/route has no handler file in the bundle).
@@ -785,6 +813,14 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest);
 
         await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
+
+        // L-08: the staging zip is consumed once installed — GC it and clear the ref.
+        await fs.promises.unlink(zipPath).catch(() => {});
+        await prisma.pluginRegistry.update({
+          where: { id: plugin.id },
+          data: { stagingZip: null },
+        }).catch(() => {});
+
         await pluginAudit(prisma, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
           installDir,
           hasMigration: migrationSql !== null,
@@ -797,6 +833,43 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', (err as Error).message).catch(() => {});
         res.status(500).json({ error: 'Internal server error' });
       }
+    },
+  );
+
+  // ── POST /api/plugins/:id/approve ─────────────────────────────────────────
+  // 4-eyes (L-09): a second ADMIN mints a short-lived, single-use approval token
+  // bound to {pluginId, action}. The requester then passes it to /activate.
+  // Unlike the previous design (a reused 8h session JWT), this token is scoped to
+  // one plugin + action, expires in 5 min, and is rejected on replay.
+
+  router.post(
+    '/:id/approve',
+    requireUuidParam('id'),
+    requirePluginExists(prisma),
+    async (req: Request, res: Response) => {
+      const plugin = (req as any).plugin as any;
+      const approverEmail: string = (req as any).user!.email;
+      const approverId: string    = (req as any).user!.id;
+
+      // The approver is guaranteed ADMIN by router.use(requireAdmin) above.
+      const approvalToken = jwt.sign(
+        {
+          purpose:  'plugin-approval',
+          pluginId: plugin.id, // bound to this specific plugin (db uuid)
+          action:   'activate',
+          approverId,
+          approverEmail,
+          jti:      crypto.randomUUID(),
+        },
+        JWT_SECRET,
+        { algorithm: 'HS256', expiresIn: '5m' },
+      );
+
+      await pluginAudit(prisma, 'PLUGIN_APPROVAL_ISSUED', plugin.id, approverEmail, {
+        action: 'activate',
+      });
+
+      res.json({ approvalToken, expiresInSeconds: 300 });
     },
   );
 
@@ -817,29 +890,45 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         return;
       }
 
-      // 4-eyes approval gate in production
+      // 4-eyes approval gate in production (L-09: scoped, single-use token)
       if (process.env.NODE_ENV === 'production' && process.env.PLUGIN_REQUIRE_APPROVAL_PROD === 'true') {
         const parsed = PluginActivateSchema.safeParse(req.body);
         if (!parsed.success || !parsed.data.approvalToken) {
-          res.status(403).json({ error: '4-eyes approval required: provide approvalToken signed by a different ADMIN' });
+          res.status(403).json({ error: '4-eyes approval required: a second ADMIN must issue an approvalToken via POST /api/plugins/:id/approve' });
           return;
         }
 
         let approvalPayload: any;
         try {
-          approvalPayload = jwt.verify(parsed.data.approvalToken, JWT_SECRET);
+          approvalPayload = jwt.verify(parsed.data.approvalToken, JWT_SECRET, { algorithms: ['HS256'] });
         } catch {
           res.status(403).json({ error: 'approvalToken is invalid or expired' });
           return;
         }
 
-        // The approving admin must be a different user from the requester
-        if (approvalPayload.role !== 'ADMIN') {
-          res.status(403).json({ error: 'approvalToken must be issued by an ADMIN user' });
+        // Must be a purpose-built approval token scoped to THIS plugin + action
+        if (
+          approvalPayload.purpose !== 'plugin-approval' ||
+          approvalPayload.pluginId !== plugin.id ||
+          approvalPayload.action !== 'activate' ||
+          typeof approvalPayload.jti !== 'string'
+        ) {
+          res.status(403).json({ error: 'approvalToken scope does not match this activation' });
           return;
         }
-        if (approvalPayload.id === userId || approvalPayload.email === userEmail) {
+
+        // The approver must be a different user from the requester
+        if (approvalPayload.approverId === userId || approvalPayload.approverEmail === userEmail) {
           res.status(403).json({ error: '4-eyes violation: approver must be a different ADMIN than the requester' });
+          return;
+        }
+
+        // Single-use: reject replay within the token's TTL
+        const expMs = typeof approvalPayload.exp === 'number'
+          ? approvalPayload.exp * 1000
+          : Date.now() + 300_000;
+        if (!consumeApprovalJti(approvalPayload.jti, expMs)) {
+          res.status(403).json({ error: 'approvalToken has already been used' });
           return;
         }
       }
@@ -962,22 +1051,12 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           await fs.promises.rm(installDir, { recursive: true, force: true });
         }
 
-        // Delete staging zip
-        const stagingDir = path.join(PLUGIN_STORAGE_PATH, 'staging');
-        if (fs.existsSync(stagingDir)) {
-          const files = fs.readdirSync(stagingDir).filter((f) => f.endsWith('.zip'));
-          for (const f of files) {
-            try {
-              const raw = await extractManifestFromZip(path.join(stagingDir, f));
-              const m = PluginManifestSchema.safeParse(raw);
-              if (m.success && m.data.id === plugin.pluginId) {
-                await fs.promises.unlink(path.join(stagingDir, f));
-                break;
-              }
-            } catch {
-              // skip
-            }
-          }
+        // Delete staging zip if one is still around (L-08: O(1) via recorded name,
+        // legacy scan fallback). Installed plugins already GC theirs, so this is a
+        // no-op unless the plugin was uninstalled straight from VALIDATED/ERROR.
+        const stagingZip = await resolveStagingZip(plugin);
+        if (stagingZip) {
+          await fs.promises.unlink(stagingZip).catch(() => {});
         }
 
         // Audit before deleting the record (so the plugin id is still meaningful)

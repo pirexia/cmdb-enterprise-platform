@@ -471,8 +471,16 @@ Rules:
 ## Plan Activo
 
 **Versión actual en producción:** v2.8.7 — ✅ LIBERADA (tag `v2.8.7`, merge develop→main, 2026-06-19)
-**Próxima versión:** no planificada — pendiente definición de roadmap
+**Próxima versión:** **v2.9.0 — Modularización del backend (Strangler)** — ⏳ EN PROGRESO
 **PRs abiertos:** —
+
+### 🚧 v2.9.0 EN CURSO — leer antes de continuar
+- **Plan vivo:** `docs/PLAN_v2.9.0.md` (contiene el **PROTOCOLO DE REANUDACIÓN** — leerlo primero tras cualquier `/clear`).
+- **Análisis/alcance:** `docs/REFACTOR_ANALYSIS_v2.9.0.md`.
+- **Qué es:** extraer 7 dominios CRUD de `index.ts` (8.237 líneas) a `backend/src/modules/` siguiendo el patrón DCIM, con `backend/src/shared/` nuevo. Orden: T0 shared → settings → vendors → integrations → licenses → contracts → masters → documents.
+- **Reglas:** cero cambio de comportamiento · tests-primero por módulo (jest+supertest) · **una rama `refactor/<dominio>-module` + PR a develop por módulo, PARAR tras cada uno** · develop-first (NO main sin orden) · actualizar PLAN + memoria + docs por tarea.
+- **Fuera de alcance v2.9.0 (fase futura):** `cis`+`relations` y núcleo crítico (`auth`/SSO/MFA, `users`, `audit-logs`, `chat`/RAG, `admin`, `cron`). Tech-debt: #152 otplib, #153 exceljs→uuid (no tocar).
+- **Reanudar:** `git log --oneline -15` + tabla de Progreso en `docs/PLAN_v2.9.0.md` → continuar por la siguiente tarea ⬜.
 
 ### Releases recientes
 - **v2.8.7** ✅ LIBERADA (2026-06-19): Bulk import +24 campos infra/GRC (cols 25–48); tema claro en `/decommission/*` + `/plugins/admin`; fix dropdown sistemas invisible; i18n ES "Decomisado". `docs/PLAN_v2.8.7.md`.

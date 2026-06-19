@@ -125,7 +125,7 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 |---|---|---|---|---|---|
 | T0 | shared/ | `refactor/shared-foundation` | #154 | ✅ | 77d05c9 |
 | T1 | settings | `refactor/settings-module` | #155 | ✅ | 26d37ea |
-| T2 | vendors | `refactor/vendors-module` | — | ⬜ | — |
+| T2 | vendors | `refactor/vendors-module` | #156 | ✅ | 52ffc3d |
 | T3 | integrations | `refactor/integrations-module` | — | ⬜ | — |
 | T4 | licenses | `refactor/licenses-module` | — | ⬜ | — |
 | T5 | contracts | `refactor/contracts-module` | — | ⬜ | — |
@@ -133,5 +133,5 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 | T7 | documents | `refactor/documents-module` | — | ⬜ | — |
 | T8 | cierre | — | — | ⬜ | — |
 
-**Última acción:** T1 completado — PR #155 abierto (`refactor/settings-module`). Pendiente merge + redeploy prod, luego T2 vendors.
+**Última acción:** T2 completado — PR #156 abierto (`refactor/vendors-module`). Pendiente merge, luego T3 integrations.
 **Última actualización:** 2026-06-19.

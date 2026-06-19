@@ -51,7 +51,8 @@ import { startAlertScheduler } from './modules/alerts/scheduler';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 import { createSettingsRouter } from './modules/settings/router';
-import { createVendorsRouter }  from './modules/vendors/router';
+import { createVendorsRouter }        from './modules/vendors/router';
+import { createIntegrationsRouter }   from './modules/integrations/router';
 import { UserRole, JwtPayload }  from './shared/types';
 import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authenticate';
 import { requireAdmin }     from './shared/middleware/requireAdmin';
@@ -244,6 +245,12 @@ app.use('/api/settings', createSettingsRouter(prisma));
 
 // Vendors module — all authenticated; writes require ADMIN (enforced in router)
 app.use('/api/vendors', createVendorsRouter(prisma));
+
+// Integrations module — Greenbone + CrowdStrike; all routes require ADMIN (enforced in router)
+app.use('/api/integrations', createIntegrationsRouter(
+  prisma,
+  (t, id) => queueEntityForIndexing(t as RagEntityType, id),
+));
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
@@ -3835,213 +3842,6 @@ app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuid
     res.json({ id, parentRackCiId, uPosition, orientation, sizeU, powerW });
   } catch (error) {
     console.error('[PATCH /api/cis/:id/placement] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── Integration Connectors ───────────────────────────────────────────────────
-
-/**
- * POST /api/integrations/greenbone
- *
- * Ingests a Greenbone OpenVAS JSON report.
- * Matches each result to a CI by hostname/name and updates its vulnerabilities.
- *
- * Body structure (see docs/mocks/greenbone_sample.json):
- * {
- *   scanner: string,
- *   scan_date: string,
- *   results: Array<{
- *     host: { hostname: string, ip?: string },
- *     vulnerabilities: Array<{ cve: string, severity: string, name: string, cvss_score: number, description: string }>
- *   }>
- * }
- */
-app.post('/api/integrations/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  log.info('[POST /api/integrations/greenbone] Processing report…');
-  try {
-    type GBVuln = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
-    type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
-    const { results = [] } = req.body as { results: GBResult[] };
-
-    const processed: { ci: string; matched: boolean; vulnCount: number }[] = [];
-
-    for (const result of results) {
-      const hostname = result.host?.hostname ?? '';
-      if (!hostname) continue;
-
-      // Find CI by case-insensitive name match
-      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
-      const escapedHostnameGB = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-      type CIRow = { id: string; name: string };
-      const rows = await prisma.$queryRaw<CIRow[]>`
-        SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameGB + '%'}) ESCAPE '\\'
-        ORDER BY LENGTH(name) ASC
-        LIMIT 1
-      `;
-
-      if (rows.length === 0) {
-        processed.push({ ci: hostname, matched: false, vulnCount: 0 });
-        continue;
-      }
-
-      const ci = rows[0];
-
-      // Read existing vulnerabilities so we can MERGE instead of replace.
-      // This preserves lifecycle status (RESUELTO, EN_PROGRESO, etc.) set by analysts
-      // and retains vulns from other sources (CrowdStrike) that Greenbone doesn't report.
-      type ExistingVulnRow = { vulnerabilities: unknown };
-      const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
-        SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
-      `;
-      const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
-      // Index existing vulns by CVE for O(1) lookup
-      const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
-
-      // Normalise incoming vulnerabilities to our standard format
-      const importedAt = new Date().toISOString();
-      const incoming = (result.vulnerabilities ?? []).map((v) => ({
-        cve:         v.cve,
-        severity:    v.severity?.toUpperCase() as VulnSeverity,
-        description: v.description ?? v.name ?? '',
-        source:      'greenbone' as const,
-        cvss_score:  v.cvss_score ?? null,
-        status:      'NUEVO' as VulnStatus,
-        importedAt,
-      }));
-
-      // Merge: update existing entries (preserve status), add new ones
-      const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
-      const merged: Vulnerability[] = [
-        // Existing vulns: refresh fields from Greenbone if re-reported; keep status
-        ...existingVulns.map((existing) => {
-          const fresh = incomingByCve.get(existing.cve);
-          if (!fresh) return existing; // not in this report — keep as-is
-          return { ...fresh, status: existing.status }; // update metadata, preserve status
-        }),
-        // New vulns not previously known
-        ...incoming.filter((v) => !existingByCve.has(v.cve)),
-      ];
-
-      await prisma.$executeRaw`
-        UPDATE "configuration_items"
-        SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
-        WHERE "id" = ${ci.id}::uuid
-      `;
-
-      const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
-      processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
-      log.info(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
-
-      // Queue every (ci, cve) pair for re-index, plus the parent CI once
-      for (const v of merged) {
-        void queueEntityForIndexing('vulnerability', vulnUuid(ci.id, v.cve));
-      }
-      void queueEntityForIndexing('ci', ci.id);
-    }
-
-    const totalMatched = processed.filter((p) => p.matched).length;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
-    res.json({
-      message: 'Greenbone report processed',
-      processed,
-      totalMatched,
-      totalUnmatched: processed.filter((p) => !p.matched).length,
-    });
-  } catch (error) {
-    console.error('[POST /api/integrations/greenbone] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/integrations/crowdstrike
- *
- * Ingests a CrowdStrike Falcon agent status export.
- * Matches each device to a CI by hostname and updates its agentStatus field.
- *
- * Body structure (see docs/mocks/crowdstrike_sample.json):
- * {
- *   platform: string,
- *   export_date: string,
- *   devices: Array<{
- *     hostname: string, agent_id: string, agent_version: string,
- *     status: string, prevention_policy: string, last_seen: string,
- *     detections: Array<any>
- *   }>
- * }
- */
-app.post('/api/integrations/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  log.info('[POST /api/integrations/crowdstrike] Processing report…');
-  try {
-    type CSDevice = {
-      hostname: string; agent_id: string; agent_version: string;
-      status: string; prevention_policy: string; last_seen: string;
-      detections: unknown[];
-    };
-    const { devices = [] } = req.body as { devices: CSDevice[] };
-
-    const processed: { ci: string; matched: boolean; status: string }[] = [];
-
-    for (const device of devices) {
-      const hostname = device.hostname ?? '';
-      if (!hostname) continue;
-
-      // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
-      const escapedHostnameCS = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-      type CIRow = { id: string; name: string };
-      const rows = await prisma.$queryRaw<CIRow[]>`
-        SELECT id, name FROM "configuration_items"
-        WHERE LOWER(name) LIKE LOWER(${'%' + escapedHostnameCS + '%'}) ESCAPE '\\'
-        ORDER BY LENGTH(name) ASC
-        LIMIT 1
-      `;
-
-      if (rows.length === 0) {
-        processed.push({ ci: hostname, matched: false, status: 'unmatched' });
-        continue;
-      }
-
-      const ci = rows[0];
-
-      const agentData = {
-        agentId:          device.agent_id,
-        agentVersion:     device.agent_version,
-        status:           device.status,
-        preventionPolicy: device.prevention_policy,
-        lastSeen:         device.last_seen,
-        detections:       device.detections ?? [],
-        source:           'crowdstrike',
-        updatedAt:        new Date().toISOString(),
-      };
-
-      await prisma.$executeRaw`
-        UPDATE "configuration_items"
-        SET "agent_status" = ${JSON.stringify(agentData)}::jsonb
-        WHERE "id" = ${ci.id}::uuid
-      `;
-
-      processed.push({ ci: ci.name, matched: true, status: device.status });
-      log.info(`  ✓ ${ci.name} → agent ${device.status}, ${device.detections?.length ?? 0} detection(s)`);
-    }
-
-    const totalMatched = processed.filter((p) => p.matched).length;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'INTEGRATION_CROWDSTRIKE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-             ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
-    res.json({
-      message: 'CrowdStrike report processed',
-      processed,
-      totalMatched,
-      totalUnmatched: processed.filter((p) => !p.matched).length,
-    });
-  } catch (error) {
-    console.error('[POST /api/integrations/crowdstrike] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

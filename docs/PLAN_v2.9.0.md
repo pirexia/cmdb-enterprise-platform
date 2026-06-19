@@ -129,9 +129,9 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 | T3 | integrations | `refactor/integrations-module` | #157 | ✅ | 6eb6aa8 |
 | T4 | licenses | `refactor/licenses-module` | #158 | ✅ | 56fa11c |
 | T5 | contracts | `refactor/contracts-module` | #159 | ✅ | 944c652 |
-| T6 | masters | `refactor/masters-module` | — | ⬜ | — |
+| T6 | masters | `refactor/masters-module` | #160 | ✅ | 4098734 |
 | T7 | documents | `refactor/documents-module` | — | ⬜ | — |
 | T8 | cierre | — | — | ⬜ | — |
 
-**Última acción:** T5 completado — PR #159 abierto (`refactor/contracts-module`). Pendiente merge, luego T6 masters.
+**Última acción:** T6 completado — PR #160 abierto (`refactor/masters-module`). Pendiente merge, luego T7 documents.
 **Última actualización:** 2026-06-19.

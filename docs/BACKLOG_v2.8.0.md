@@ -8,6 +8,8 @@
 > **v2.8.1 progress (2026-06-13):** ✅ **RESOLVED** — H-03 (#111), M-01 (#113), M-02 (#114), M-03 (#115) — merged in PR #118. Also enabled the real sandbox isolation test suite and blocked `eval`/`Function` in the vm context.
 > ⬜ **REMAINING** — H-01 (#109), H-02 (#110), H-04 (#112) runtime wiring; Low batch (#116).
 > *(GitHub issue auto-close is blocked by PAT permissions; #111/#114/#115 may still show OPEN despite being fixed — close manually.)*
+>
+> **v2.8.7 progress (2026-06-19):** ✅ **RESOLVED** — the remaining runtime-wiring High/Medium were verified done in later releases: H-01 (hooks/cron/routes now created in `router.ts`), H-02 (scoped Prisma proxy wired, no `{}`), H-04 (public `/ui` static route exists), M-03 (`ipKeyGenerator` applied). ✅ **Low batch (#116) closed in this PR:** L-01 (rollback descoped in docs — honest `501`), L-03 (install now extracts before migrating, rolls back the extracted dir on migration failure), L-04 (`updateStatus` enforces `canTransition`, exempting `→ERROR`), L-08 (`staging_zip` recorded on the registry row → O(1) lookup + GC on install/uninstall), L-09 (4-eyes approval token is now a short-lived, single-use, `{pluginId, action}`-scoped token via `POST /:id/approve`, no longer a replayable session JWT). L-02/L-05/L-07 were already resolved earlier.
 
 ## Context
 

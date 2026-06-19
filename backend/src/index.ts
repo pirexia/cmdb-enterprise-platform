@@ -597,9 +597,8 @@ const CI_INCLUDE = {
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
   childCIs:  { select: { id: true, name: true, apiSlug: true } },
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
-  ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true } },
+  ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true, manufacturer: { select: { id: true, name: true } } } },
   operatingSystem: { select: { id: true, name: true, version: true } },
-  ciModel: { select: { id: true, name: true, manufacturer: { select: { id: true, name: true } } } },
   contracts: {
     select: {
       id:             true,

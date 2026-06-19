@@ -433,6 +433,24 @@ export class PluginLifecycleManager {
     status: PluginStatus,
     lastError?: string,
   ): Promise<void> {
+    // Enforce the state machine (L-04). A transition to ERROR is always permitted
+    // (a failure must be recordable from any state) and a no-op (from === to) is
+    // allowed; any other illegal transition is rejected to keep the lifecycle sound.
+    const current = await prisma.pluginRegistry.findUnique({
+      where: { id: pluginDbId },
+      select: { status: true },
+    });
+    if (
+      current &&
+      status !== 'ERROR' &&
+      current.status !== status &&
+      !this.canTransition(current.status as PluginStatus, status)
+    ) {
+      throw new Error(
+        `Invalid plugin status transition: ${current.status} → ${status}`,
+      );
+    }
+
     await prisma.pluginRegistry.update({
       where: { id: pluginDbId },
       data: {

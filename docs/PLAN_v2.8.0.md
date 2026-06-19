@@ -31,7 +31,7 @@ v2.8.0 implementa un **Motor de Plugins** completo que permite a usuarios con ro
 | D1 | Sandbox | `vm.Script` pure-trust + gate de admisión (firma Ed25519, 4-eyes, checklist) |
 | D2 | Datos de plugin | Migraciones DDL con rol DB restringido (`cmdb_plugin`) + prefijo `plg_<id>_` |
 | D3 | UI de plugin | iframe aislado `<iframe sandbox>` + puente `postMessage` |
-| D4 | Alcance v2.8.0 | Completo (10 tareas): incluye marketplace, firma, rollback, 3 guías de doc |
+| D4 | Alcance v2.8.0 | Completo (10 tareas): incluye marketplace, firma, 3 guías de doc. El rollback de versión queda como placeholder `501` (operación multi-paso no construida; ver `docs/PLUGIN_ENGINE.md` §endpoints) |
 
 ---
 

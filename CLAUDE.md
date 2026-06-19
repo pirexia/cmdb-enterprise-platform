@@ -471,10 +471,21 @@ Rules:
 ## Plan Activo
 
 **Versión actual en producción:** v2.8.7 — ✅ LIBERADA (tag `v2.8.7`, merge develop→main, 2026-06-19)
-**Próxima versión:** no planificada — pendiente definición de roadmap
+**Próxima versión:** **v2.9.0 — Modularización del backend (Strangler)** — ✅ COMPLETADA en develop (pendiente merge a main y tag)
 **PRs abiertos:** —
 
+### ✅ v2.9.0 COMPLETADA — pendiente de liberar a main
+- **Plan:** `docs/PLAN_v2.9.0.md` — T0–T8 completados, PRs #154–#161 mergeados.
+- **Qué se hizo:** extracción de 7 dominios CRUD de `index.ts` (~8 200 → ~4 900 líneas) a `backend/src/modules/` con `backend/src/shared/` nuevo. Tests jest+supertest por módulo (~40–46 tests cada uno, todos verdes).
+- **Para liberar:** merge develop → main, tag `v2.9.0`, actualizar esta sección a LIBERADA.
+
+### Para iniciar la próxima versión
+1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
+2. Actualizar esta sección con la nueva versión y estado.
+3. Rama: `feature/...` cortada de `develop`.
+
 ### Releases recientes
+- **v2.9.0** ✅ COMPLETADA en develop (2026-06-20): Modularización backend Strangler Fig — 7 dominios extraídos de `index.ts` a `modules/` (settings, vendors, integrations, licenses, contracts, masters, documents) + `shared/` middleware/utils. PRs #154–#161. `docs/PLAN_v2.9.0.md`.
 - **v2.8.7** ✅ LIBERADA (2026-06-19): Bulk import +24 campos infra/GRC (cols 25–48); tema claro en `/decommission/*` + `/plugins/admin`; fix dropdown sistemas invisible; i18n ES "Decomisado". `docs/PLAN_v2.8.7.md`.
 - **v2.8.6** ✅ LIBERADA (2026-06-16): Fixes modal Decomisionado (label "(SISTEMA)", i18n `actions.create`/`view`, endpoint `GET /api/decommission/systems` + combobox debounce) + limpieza i18n página detalle. PR #149.
 - **v2.8.5** ✅ LIBERADA (2026-06-15): Fix sidebar duplicado (T1), Marketplace plugins hardening + one-click install + UI (T2), CIType SISTEMA (T3), Módulo Decomisionado (T4). PRs #144–#147.

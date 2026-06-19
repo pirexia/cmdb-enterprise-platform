@@ -1143,6 +1143,7 @@ model PluginRegistry {
   approvedBy   String?   @map("approved_by")
   approvedAt   DateTime? @map("approved_at")
   dataRetention String   @default("HARD") @map("data_retention")
+  stagingZip   String?   @map("staging_zip")
 
   hooks        PluginHook[]
   cronJobs     PluginCronJob[]

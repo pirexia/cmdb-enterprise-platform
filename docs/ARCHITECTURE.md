@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Arquitectura Técnica
 
-**Versión:** 1.6.0
-**Fecha:** 2026-04-02
+**Versión:** 2.0.0
+**Fecha:** 2026-06-20
 **Estado:** Producción
 
 ---
@@ -966,26 +966,55 @@ El control de acceso en el worker de búsqueda usa una sola cláusula `WHERE` co
 
 ### Backend module pattern
 
-v2.6.0 introduces the first dedicated backend module, breaking the "all code in `index.ts`" pattern:
+v2.6.0 introduce el primer módulo de backend dedicado. La modularización completa de los 7 dominios CRUD se completa en v2.9.0 (ver § v2.9.0 más adelante). Estructura actual de `backend/src/`:
 
 ```
 backend/src/
-  index.ts              — Express app, existing routes, mounts dcimRouter
+  index.ts                     — Orquestador Express: montaje de routers, cron, arranque. ~4 900 líneas (era ~8 200).
+  shared/
+    middleware/
+      authenticate.ts          — createAuthenticateToken(prisma) — factory que produce el middleware JWT+DB
+      requireAdmin.ts          — requireAdmin middleware (rol ADMIN)
+      requireAudit.ts          — requireAudit middleware (rol ADMIN o AUDITOR)
+      requireUuidParam.ts      — requireUuidParam(param) — UUID validation gate
+    utils/
+      auditLog.ts              — insertAuditLog() helper (insert-only ISO 27001 A.8.15)
+      likeEscape.ts            — escapeLike() — escapa %, _, \ antes de LIKE
+      pagination.ts            — parsePagination(), buildPaginationMeta()
+      docVisibility.ts         — docVisibilitySqlCol() — selector SQL de ACL por rol
+    types.ts                   — JwtPayload, tipos compartidos
+    schemas/
+      common.ts                — UuidParamSchema, PaginationSchema
   modules/
-    dcim/
-      router.ts         — 25 endpoints (buildings/floors/rooms/aisles/footprints/elevation/heatmap)
-      schemas.ts        — Zod schemas for all create/update bodies
-      audit.ts          — dcimAudit() helper (insert-only ISO 27001 A.8.15)
-      middleware.ts     — requireUuidParam, requireDcimAccess, requireAdmin (module-local)
-      queries.ts        — Prisma + $queryRaw (dashboard KPIs, LATERAL JOIN alerts/heatmap)
+    dcim/                      — DCIM físico (edificios/pisos/salas/pasillos/footprints/racks/heatmap)
+      router.ts / schemas.ts / audit.ts / middleware.ts / queries.ts
+    plugins/                   — Plugin Engine: registro, hooks, marketplace, cron
+      index.ts / router.ts / engine.ts / scheduler.ts
+    alerts/                    — Alertas email (EOL/EOS/contratos/vulnerabilidades, scheduler, historial)
+      router.ts / scheduler.ts / emailTemplates.ts
+    decommission/              — Planes de decomisionado (CTE recursiva, Gantt SVG, CRUD docs/contratos)
+      router.ts / schemas.ts
+    catalog/                   — SO y BaseSoftware
+      router.ts / schemas.ts / queries.ts / audit.ts
+    settings/                  — Configuración de app (tema, logo, SMTP, RAG, LDAP, SSO)  [v2.9.0]
+      router.ts / schemas.ts
+    vendors/                   — Proveedores CRUD  [v2.9.0]
+      router.ts / schemas.ts
+    integrations/              — Greenbone + CrowdStrike (SSRF-allowlisted)  [v2.9.0]
+      router.ts / schemas.ts
+    licenses/                  — Licencias CRUD + M2M CIs/documentos/usuarios  [v2.9.0]
+      router.ts / schemas.ts
+    contracts/                 — Contratos CRUD + adendas + M2M CIs/documentos  [v2.9.0]
+      router.ts / schemas.ts
+    masters/                   — Datos maestros (~43 rutas): fabricantes, tipos CI, modelos, ramas, …  [v2.9.0]
+      router.ts / schemas.ts
+    documents/                 — Repositorio documental + bulk import AI (~31 rutas)  [v2.9.0]
+      router.ts / schemas.ts
+  services/
+    ldap.ts / microsoftSso.ts / emailService.ts / eolService.ts / ragService.ts / …
 ```
 
-Mounted in `index.ts`:
-```typescript
-app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
-```
-
-This pattern (`backend/src/modules/<name>/`) is the mandated approach for all new large features from v2.7.x onward. Do not add new large feature code directly to `index.ts`.
+Este patrón (`backend/src/modules/<nombre>/`) es el enfoque **obligatorio** para todas las nuevas funcionalidades grandes. No añadir código de nuevas features directamente a `index.ts`.
 
 ### Data model additions
 
@@ -1025,6 +1054,44 @@ frontend/
 | `PlaceCIModal` dedicated | `EditCIModal` already saturated (C74 in graphify); separation of concerns |
 | ReactFlow for `RoomPlan2D` | Already installed (used in `/map`); pan/zoom + click handlers built-in |
 | LATERAL JOIN for alerts/heatmap | Avoids N+1 queries; single SQL round-trip per endpoint |
+
+---
+
+## v2.9.0 — Modularización del backend (Strangler Fig)
+
+Extrae **~108 rutas** (~3 300 líneas) de `index.ts` a `backend/src/modules/` mediante el patrón Strangler Fig. El `index.ts` pasa de ~8 200 a ~4 900 líneas y queda como orquestador puro.
+
+### Módulos extraídos (T0–T7, PRs #154–#161)
+
+| Tarea | Módulo | Rutas | PR |
+|-------|--------|-------|----|
+| T0 | `shared/` (middleware + utils) | — (infraestructura) | #154 |
+| T1 | `settings` | 5 | #155 |
+| T2 | `vendors` | 4 | #156 |
+| T3 | `integrations` | 2 | #157 |
+| T4 | `licenses` | 14 | #158 |
+| T5 | `contracts` | 9 | #159 |
+| T6 | `masters` | 43 | #160 |
+| T7 | `documents` | 31 | #161 |
+
+### Convenciones del patrón de módulo
+
+```typescript
+// Cada módulo exporta una factory con inyección de dependencias:
+export function createXxxRouter(
+  prisma: PrismaClient,
+  queueForIndexing?: (type: string, id: string) => void | Promise<void>,
+): Router
+
+// Montaje en index.ts:
+app.use('/api/xxx', createXxxRouter(prisma, (t, id) => queueEntityForIndexing(t as RagEntityType, id)));
+```
+
+- **`shared/middleware/`**: `createAuthenticateToken(prisma)`, `requireAdmin`, `requireAudit`, `requireUuidParam` — importados por todos los módulos.
+- **`shared/utils/`**: `insertAuditLog`, `escapeLike`, `parsePagination`, `docVisibilitySqlCol` — utilidades sin estado.
+- **Sin `index.ts` barrel**: los módulos se importan directamente desde `./modules/<nombre>/router`.
+- **Tests por módulo**: jest + supertest, ~40–46 tests por módulo (401 gate, 403 RBAC, happy-path, audit-log assertions).
+- **Fuera de alcance v2.9.0 (fase futura)**: `cis` + `relations`, núcleo crítico (`auth`/SSO/MFA, `users`, `audit-logs`, `chat`/RAG, `admin`, `cron`).
 
 ---
 

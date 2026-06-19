@@ -7,6 +7,28 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [2.9.0] — 2026-06-20
+
+### Changed
+
+- **Modularización del backend (Strangler Fig)** — `backend/src/index.ts` pasa de ~8 200 a ~4 900 líneas. Se extraen 7 dominios CRUD (~108 rutas, ~3 300 líneas) a `backend/src/modules/` siguiendo el patrón de módulos establecido en v2.6.0 (DCIM). Cero cambio de comportamiento: mismos paths, payloads, códigos HTTP y registros de auditoría.
+
+  | Módulo | Rutas | PR |
+  |--------|-------|----|
+  | `shared/` (middleware + utils compartidos) | — | #154 |
+  | `settings` | 5 | #155 |
+  | `vendors` | 4 | #156 |
+  | `integrations` | 2 | #157 |
+  | `licenses` | 14 | #158 |
+  | `contracts` | 9 | #159 |
+  | `masters` | 43 | #160 |
+  | `documents` | 31 | #161 |
+
+- **`backend/src/shared/`** — nueva capa de infraestructura compartida: `middleware/` (`createAuthenticateToken`, `requireAdmin`, `requireAudit`, `requireUuidParam`) y `utils/` (`insertAuditLog`, `escapeLike`, `parsePagination`, `docVisibilitySqlCol`). Todos los módulos importan desde `shared/` en lugar de duplicar helpers.
+- **Tests por módulo** — cada módulo incluye suite jest + supertest propia (~40–46 tests): 401 gate, 403 RBAC, happy-paths, validación Zod, audit-log assertions.
+
+---
+
 ## [2.8.7] — 2026-06-19
 
 ### Added

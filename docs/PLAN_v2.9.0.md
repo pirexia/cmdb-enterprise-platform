@@ -130,8 +130,8 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 | T4 | licenses | `refactor/licenses-module` | #158 | ✅ | 56fa11c |
 | T5 | contracts | `refactor/contracts-module` | #159 | ✅ | 944c652 |
 | T6 | masters | `refactor/masters-module` | #160 | ✅ | 4098734 |
-| T7 | documents | `refactor/documents-module` | — | ⬜ | — |
-| T8 | cierre | — | — | ⬜ | — |
+| T7 | documents | `refactor/documents-module` | #161 | ✅ | 78ced88 |
+| T8 | cierre | `refactor/v290-cierre` | — | ✅ | — |
 
-**Última acción:** T6 completado — PR #160 abierto (`refactor/masters-module`). Pendiente merge, luego T7 documents.
-**Última actualización:** 2026-06-19.
+**Última acción:** T8 completado — ARCHITECTURE.md/.en, CHANGELOG.md [2.9.0], CLAUDE.md Plan Activo actualizados. v2.9.0 lista para liberar a main.
+**Última actualización:** 2026-06-20.

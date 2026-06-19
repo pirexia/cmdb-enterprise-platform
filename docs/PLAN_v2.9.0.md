@@ -19,7 +19,7 @@
 - **CERO cambio de comportamiento.** Mismos paths, payloads, códigos HTTP, mensajes y auditoría. Solo se mueve/extrae código.
 - **develop-first.** Todo va a `develop` en **ramas diferenciadas** (`refactor/<dominio>-module`) vía PR. **NO tocar `main`** hasta orden explícita del usuario ([[workflow-develop-first]]).
 - **Tests-primero por módulo** (jest + supertest). Patrón de referencia: `backend/src/modules/plugins/__tests__/`.
-- **Módulo = referencia DCIM** (`backend/src/modules/dcim/`): `router.ts`, `schemas.ts`, `middleware.ts` (si aplica), `queries.ts`, `audit.ts`, `index.ts` (`create<Dominio>Router(prisma)`).
+- **Módulo = referencia DCIM** (`backend/src/modules/dcim/`): `router.ts` (exporta `create<Dominio>Router(prisma)`), `schemas.ts`, `queries.ts`, `audit.ts`, `middleware.ts` (solo si aplica). **Sin `index.ts` barrel** — convención real del repo: se importa `from './modules/<dominio>/router'` (solo `plugins` usa `index.ts`). Ficheros extra (`engine.ts`, `scheduler.ts`, `__tests__/`) según necesidad.
 - **Documentación** se actualiza en cada tarea (ver §Documentación).
 - **Auditoría:** toda escritura inserta en `audit_logs` (insert-only) — mantener idéntico.
 - **Seguridad:** `$queryRaw` con tagged templates; LIKE escapa `%_\` con `ESCAPE '\'`; respuestas sin stack/errores Prisma crudos.
@@ -42,7 +42,7 @@
 1. git checkout develop && git pull origin develop
 2. git checkout -b refactor/<dominio>-module
 3. Escribir tests supertest del dominio (endpoints ACTUALES) → correr contra legacy → VERDE
-4. Crear backend/src/modules/<dominio>/ (router, schemas, queries, audit, [middleware], index)
+4. Crear backend/src/modules/<dominio>/ (router [exporta createRouter], schemas, queries, audit, [middleware])
 5. Mover código de index.ts al módulo; montar router en index.ts; BORRAR rutas legacy (mismo PR)
 6. Re-correr tests → siguen VERDES. tsc --noEmit limpio.
 7. Rebuild contenedor backend + health OK + smoke como admin de endpoints clave

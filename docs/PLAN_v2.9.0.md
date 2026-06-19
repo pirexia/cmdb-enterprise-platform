@@ -128,10 +128,10 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 | T2 | vendors | `refactor/vendors-module` | #156 | ✅ | 52ffc3d |
 | T3 | integrations | `refactor/integrations-module` | #157 | ✅ | 6eb6aa8 |
 | T4 | licenses | `refactor/licenses-module` | #158 | ✅ | 56fa11c |
-| T5 | contracts | `refactor/contracts-module` | — | ⬜ | — |
+| T5 | contracts | `refactor/contracts-module` | #159 | ✅ | 944c652 |
 | T6 | masters | `refactor/masters-module` | — | ⬜ | — |
 | T7 | documents | `refactor/documents-module` | — | ⬜ | — |
 | T8 | cierre | — | — | ⬜ | — |
 
-**Última acción:** T4 completado — PR #158 abierto (`refactor/licenses-module`). Pendiente merge, luego T5 contracts.
+**Última acción:** T5 completado — PR #159 abierto (`refactor/contracts-module`). Pendiente merge, luego T6 masters.
 **Última actualización:** 2026-06-19.

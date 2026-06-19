@@ -51,6 +51,7 @@ import { startAlertScheduler } from './modules/alerts/scheduler';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 import { createSettingsRouter } from './modules/settings/router';
+import { createVendorsRouter }  from './modules/vendors/router';
 import { UserRole, JwtPayload }  from './shared/types';
 import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authenticate';
 import { requireAdmin }     from './shared/middleware/requireAdmin';
@@ -240,6 +241,9 @@ const authenticateToken = createAuthenticateToken(prisma);
 
 // Settings module — GET /theme and GET /logo are public; writes require ADMIN (enforced in router)
 app.use('/api/settings', createSettingsRouter(prisma));
+
+// Vendors module — all authenticated; writes require ADMIN (enforced in router)
+app.use('/api/vendors', createVendorsRouter(prisma));
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
@@ -1272,60 +1276,6 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: 
 });
 
 // ── Vendors ──────────────────────────────────────────────────────────────────
-
-app.get('/api/vendors', authenticateToken, async (_req: Request, res: Response) => {
-  try {
-    const vendors = await prisma.vendor.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    res.json(vendors);
-  } catch (error) {
-    console.error('[GET /api/vendors] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-app.post('/api/vendors', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { name } = req.body as { name?: string };
-  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
-  try {
-    const rows = await prisma.$queryRaw<{ id: string; name: string }[]>`
-      INSERT INTO "vendors"(id,name,created_at,updated_at)
-      VALUES(gen_random_uuid(),${name.trim()},now(),now())
-      RETURNING id::text AS id, name`;
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Vendor',${rows[0].id}::uuid,${req.user!.email},now())`;
-    res.status(201).json(rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-app.patch('/api/vendors/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  const { name } = req.body as { name?: string };
-  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
-  try {
-    const rows = await prisma.$queryRaw<{ id: string; name: string }[]>`
-      UPDATE "vendors" SET name=${name.trim()}, updated_at=now()
-      WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
-    if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Vendor',${rows[0].id}::uuid,${req.user!.email},now())`;
-    res.json(rows[0]);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
-});
-
-app.delete('/api/vendors/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-  try {
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Vendor',${req.params.id}::uuid,${req.user!.email},now())`;
-    await prisma.$executeRaw`DELETE FROM "vendors" WHERE id=${req.params.id}::uuid`;
-    res.json({ ok: true });
-  } catch (e: unknown) {
-    if (typeof e === 'object' && e !== null && 'code' in e && (e as { code: string }).code === 'P2003') {
-      res.status(409).json({ error: 'Cannot delete vendor with associated contracts or licenses' });
-      return;
-    }
-    console.error(e);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // ── Configuration Items ───────────────────────────────────────────────────────
 

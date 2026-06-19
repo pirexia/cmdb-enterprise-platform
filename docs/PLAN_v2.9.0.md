@@ -127,11 +127,11 @@ Ver `docs/REFACTOR_ANALYSIS_v2.9.0.md` §7:
 | T1 | settings | `refactor/settings-module` | #155 | ✅ | 26d37ea |
 | T2 | vendors | `refactor/vendors-module` | #156 | ✅ | 52ffc3d |
 | T3 | integrations | `refactor/integrations-module` | #157 | ✅ | 6eb6aa8 |
-| T4 | licenses | `refactor/licenses-module` | — | ⬜ | — |
+| T4 | licenses | `refactor/licenses-module` | #158 | ✅ | 56fa11c |
 | T5 | contracts | `refactor/contracts-module` | — | ⬜ | — |
 | T6 | masters | `refactor/masters-module` | — | ⬜ | — |
 | T7 | documents | `refactor/documents-module` | — | ⬜ | — |
 | T8 | cierre | — | — | ⬜ | — |
 
-**Última acción:** T3 completado — PR #157 abierto (`refactor/integrations-module`). Pendiente merge, luego T4 licenses.
+**Última acción:** T4 completado — PR #158 abierto (`refactor/licenses-module`). Pendiente merge, luego T5 contracts.
 **Última actualización:** 2026-06-19.

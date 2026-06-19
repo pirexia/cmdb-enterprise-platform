@@ -31,6 +31,8 @@
 
 ## Alcance v2.9.0
 
+**Principio de granularidad:** **un módulo por prefijo de path de primer nivel** (`app.use('/api/<X>', …)`). Impuesto por la regla cero-cambio-de-URLs: el código no se reagrupa por afinidad de dominio si eso obligaría a mover una URL. Por eso `masters` se queda como un único módulo aunque contenga master-data de otros dominios.
+
 **Entran (perímetro CRUD, ~108 rutas):** `settings`, `vendors`, `integrations`, `licenses`, `contracts`, `masters`, `documents`.
 **Fuera (fase futura):** `cis`+`relations`, núcleo crítico (`auth`/SSO/MFA, `users`, `audit-logs`, `chat`/RAG, `admin`, `cron`, misc). Ver §Roadmap restante.
 
@@ -70,7 +72,7 @@ Rama `refactor/vendors-module`.
 **Estado:** ⬜ pendiente
 
 ### T3 — `integrations` (2 rutas) — SSRF-sensible (Greenbone/CrowdStrike)
-Rama `refactor/integrations-module`. Mantener allowlist/validación de URLs salientes idéntica.
+Rama `refactor/integrations-module`. **Borderline por tamaño** (solo 2 rutas): se extrae igualmente porque (a) es superficie SSRF que conviene aislar y (b) es área que crecerá con más integraciones. Si al llegar resulta trivial/acoplada al núcleo, alternativa válida: dejarla en `index.ts`. Mantener allowlist/validación de URLs salientes idéntica.
 **Estado:** ⬜ pendiente
 
 ### T4 — `licenses` (14 rutas) — CRUD + M2M (`_LicenseToCI`, `LicenseUser`)
@@ -82,7 +84,7 @@ Rama `refactor/contracts-module`.
 **Estado:** ⬜ pendiente
 
 ### T6 — `masters` (43 rutas) — el mayor; datos maestros
-Rama `refactor/masters-module`. Posible submódulo o agrupación por subdominio (tipos CI, fabricantes, ubicaciones, centros de coste, sucursales…). Evaluar al llegar.
+Rama `refactor/masters-module`. **Un solo módulo** montado en `/api/masters` (impuesto por la regla cero-cambio-de-URLs: aunque `license-types`/`document-types`/`device-models` sean master-data de otros dominios, viven bajo `/api/masters/*` y no se pueden mover). Sub-entidades (~12): `manufacturers`, `ci-types`(+categories), `device-models`(+sync-eol), `cost-centers`, `branches`, `support-areas`, `document-types`, `license-types`(+categories), `license-metrics`(+categories), `sync-catalog`. **Organizar internamente por entidad** (secciones/sub-routers en `router.ts`; `queries.ts`/`schemas.ts` por entidad), NO fragmentar en 12 módulos. Ojo `sync-catalog`/`device-models/:id/sync-eol` tocan EOL/catalog → mantener comportamiento idéntico.
 **Estado:** ⬜ pendiente
 
 ### T7 — `documents` (31 rutas) — CRUD + upload + versiones + bulk

@@ -26,7 +26,7 @@
     "assistant": "Asistente IA",
     "dcim": "Salas técnicas y CPD",
     "plugins": "Plugins",
-    "decommission": "Decomisionado"
+    "decommission": "Decomisado"
   },
   "actions": {
     "create": "Crear",
@@ -1764,10 +1764,10 @@
     "all_types_set": "Todos los tipos configurados."
   },
   "decommission": {
-    "title": "Plan de Decomisionado",
+    "title": "Plan de Decomisado",
     "subtitle": "Gestión de planes de desconexión de sistemas",
     "new_plan": "Nuevo Plan",
-    "no_plans": "No hay planes de decomisionado",
+    "no_plans": "No hay planes de decomisado",
     "col_name": "Nombre",
     "col_system": "Sistema",
     "col_status": "Estado",

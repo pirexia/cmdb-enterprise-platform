@@ -249,7 +249,7 @@ export default function DecommissionDetailPage() {
       <div className="flex items-start justify-between gap-4 print:hidden">
         <div className="flex items-center gap-3">
           <button onClick={() => router.push("/decommission")}
-            className="flex items-center gap-1 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+            className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
             <ChevronLeft className="h-4 w-4" />
             {t("decommission.back_to_plans")}
           </button>
@@ -264,13 +264,13 @@ export default function DecommissionDetailPage() {
           )}
           {isAdmin && cis.length > 0 && (
             <button onClick={handleGenerate} disabled={generating}
-              className="flex items-center gap-2 px-3 py-2 text-xs bg-slate-700/50 text-slate-400 rounded hover:bg-slate-700 transition-colors">
+              className="flex items-center gap-2 px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors">
               <RefreshCw className="h-3.5 w-3.5" />
               {t("decommission.regenerate")}
             </button>
           )}
           <button onClick={handlePrint}
-            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-700/50 text-slate-300 rounded hover:bg-slate-700 transition-colors">
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-100 text-slate-600 rounded hover:bg-slate-200 transition-colors">
             <Printer className="h-4 w-4" />
             {t("actions.print")}
           </button>
@@ -278,32 +278,32 @@ export default function DecommissionDetailPage() {
       </div>
 
       {/* Plan header */}
-      <div className="rounded-xl border border-white/8 bg-slate-800/40 p-5">
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-3 mb-1">
-          <PowerOff className="h-5 w-5 text-red-400" />
-          <h1 className="text-xl font-bold text-slate-100">{plan.name}</h1>
+          <PowerOff className="h-5 w-5 text-red-500" />
+          <h1 className="text-xl font-bold text-slate-800">{plan.name}</h1>
           <span className={`px-2 py-0.5 text-[11px] font-semibold rounded ${
-            plan.status === "ACTIVE"    ? "bg-blue-900/70 text-blue-300" :
-            plan.status === "COMPLETED" ? "bg-green-900/70 text-green-300" :
-            plan.status === "CANCELLED" ? "bg-red-900/70 text-red-300" :
-            "bg-slate-700 text-slate-300"
+            plan.status === "ACTIVE"    ? "bg-blue-100 text-blue-700" :
+            plan.status === "COMPLETED" ? "bg-green-100 text-green-700" :
+            plan.status === "CANCELLED" ? "bg-red-100 text-red-700" :
+            "bg-slate-100 text-slate-600"
           }`}>
             {t(`decommission.status_${plan.status.toLowerCase()}`)}
           </span>
         </div>
-        <p className="text-sm text-slate-400">{t("decommission.col_system")}: <span className="text-slate-300">{plan.system_ci_name}</span></p>
+        <p className="text-sm text-slate-500">{t("decommission.col_system")}: <span className="text-slate-700">{plan.system_ci_name}</span></p>
       </div>
 
       {/* Errors / warnings */}
       {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-900/20 px-4 py-3 text-sm text-red-400">
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
           <AlertCircle className="h-4 w-4 flex-shrink-0" />
           {error}
           <button onClick={() => setError(null)} className="ml-auto text-xs underline">{t("actions.close")}</button>
         </div>
       )}
       {warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-900/20 px-4 py-3 text-sm text-amber-300">
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle className="h-4 w-4" />
             <span className="font-medium">{t("decommission.date_warnings")}</span>
@@ -315,21 +315,21 @@ export default function DecommissionDetailPage() {
       )}
 
       {/* Tabs */}
-      <div className="border-b border-white/8 print:hidden">
+      <div className="border-b border-slate-200 print:hidden">
         <div className="flex gap-1">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setActiveTab(key as typeof activeTab)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === key
-                  ? "border-red-500 text-red-400"
-                  : "border-transparent text-slate-400 hover:text-slate-300"
+                  ? "border-red-500 text-red-500"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
               }`}>
               <Icon className="h-4 w-4" />
               {label}
-              {key === "inventory"  && cis.length > 0       && <span className="ml-1 text-xs bg-slate-700 px-1.5 py-0.5 rounded-full">{cis.length}</span>}
-              {key === "documents"  && docs.length > 0       && <span className="ml-1 text-xs bg-slate-700 px-1.5 py-0.5 rounded-full">{docs.length}</span>}
-              {key === "contracts"  && contracts.length > 0  && <span className="ml-1 text-xs bg-slate-700 px-1.5 py-0.5 rounded-full">{contracts.length}</span>}
-              {key === "licenses"   && licenses.length > 0   && <span className="ml-1 text-xs bg-slate-700 px-1.5 py-0.5 rounded-full">{licenses.length}</span>}
+              {key === "inventory"  && cis.length > 0       && <span className="ml-1 text-xs bg-slate-200 px-1.5 py-0.5 rounded-full">{cis.length}</span>}
+              {key === "documents"  && docs.length > 0       && <span className="ml-1 text-xs bg-slate-200 px-1.5 py-0.5 rounded-full">{docs.length}</span>}
+              {key === "contracts"  && contracts.length > 0  && <span className="ml-1 text-xs bg-slate-200 px-1.5 py-0.5 rounded-full">{contracts.length}</span>}
+              {key === "licenses"   && licenses.length > 0   && <span className="ml-1 text-xs bg-slate-200 px-1.5 py-0.5 rounded-full">{licenses.length}</span>}
             </button>
           ))}
         </div>
@@ -345,29 +345,29 @@ export default function DecommissionDetailPage() {
               {isAdmin && <p className="text-xs mt-1 text-slate-600">{t("decommission.generate_hint")}</p>}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-white/8">
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="w-full text-sm">
-                <thead className="bg-slate-800/60">
+                <thead className="bg-slate-100">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.ci_name")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.ci_type")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.scheduled_date")}</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.ci_shared")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.ci_name")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.ci_type")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.scheduled_date")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.ci_shared")}</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
                 <tbody>
                   {cis.map(ci => (
                     <tr key={ci.ci_id}
-                      className={`border-b border-white/5 transition-colors ${
-                        ci.dateWarning ? "bg-red-900/10" :
-                        ci.is_shared   ? "bg-amber-900/10" :
-                        "hover:bg-white/3"
+                      className={`border-b border-slate-100 transition-colors ${
+                        ci.dateWarning ? "bg-red-50" :
+                        ci.is_shared   ? "bg-amber-50" :
+                        "hover:bg-slate-50"
                       }`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1" style={{ paddingLeft: `${ci.depth * 16}px` }}>
-                          {ci.depth > 0 && <ChevronRight className="h-3 w-3 text-slate-600 flex-shrink-0" />}
-                          <span className={`font-medium ${ci.depth === 0 ? "text-red-400" : "text-slate-200"}`}>{ci.ci_name}</span>
+                          {ci.depth > 0 && <ChevronRight className="h-3 w-3 text-slate-400 flex-shrink-0" />}
+                          <span className={`font-medium ${ci.depth === 0 ? "text-red-500" : "text-slate-700"}`}>{ci.ci_name}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">{ci.ci_type_name ?? "—"}</td>
@@ -375,9 +375,9 @@ export default function DecommissionDetailPage() {
                         {editingCi === ci.ci_id ? (
                           <div className="flex items-center gap-2">
                             <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
-                              className="rounded border border-white/10 bg-slate-800 px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-red-500" />
+                              className="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:outline-none focus:border-[var(--accent)]" />
                             <button onClick={saveCiEdit} disabled={savingCi}
-                              className="p-1 text-green-400 hover:bg-green-900/30 rounded">
+                              className="p-1 text-green-600 hover:bg-green-50 rounded">
                               <Check className="h-4 w-4" />
                             </button>
                           </div>
@@ -392,7 +392,7 @@ export default function DecommissionDetailPage() {
                       </td>
                       <td className="px-4 py-3">
                         {ci.is_shared && (
-                          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded bg-amber-900/60 text-amber-300">
+                          <span className="inline-block px-2 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-700">
                             {t("decommission.shared")}
                           </span>
                         )}
@@ -400,7 +400,7 @@ export default function DecommissionDetailPage() {
                       <td className="px-4 py-3">
                         {isAdmin && editingCi !== ci.ci_id && (
                           <button onClick={() => openEditCi(ci)}
-                            className="text-xs text-slate-500 hover:text-slate-300 px-2 py-1 rounded hover:bg-white/5 transition-colors">
+                            className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 rounded hover:bg-slate-100 transition-colors">
                             {t("actions.edit")}
                           </button>
                         )}
@@ -416,7 +416,7 @@ export default function DecommissionDetailPage() {
 
       {/* ── Gantt tab ── */}
       {activeTab === "gantt" && (
-        <div className="rounded-xl border border-white/8 bg-slate-800/30 p-5">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
           <GanttChart tasks={gantt} />
         </div>
       )}
@@ -513,30 +513,30 @@ function LinkedItems<T>({
     <div className="text-center py-10 text-slate-500 text-sm">{t(emptyKey)}</div>
   );
   return (
-    <div className="overflow-x-auto rounded-lg border border-white/8">
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
       <table className="w-full text-sm">
-        <thead className="bg-slate-800/60">
+        <thead className="bg-slate-100">
           <tr>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.col_name")}</th>
-            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wider">{t("decommission.source")}</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.col_name")}</th>
+            <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{t("decommission.source")}</th>
             {onRemove && <th className="px-4 py-3" />}
           </tr>
         </thead>
         <tbody>
           {items.map(item => (
-            <tr key={getId(item)} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-              <td className="px-4 py-3 text-slate-200">{getName(item)}</td>
+            <tr key={getId(item)} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+              <td className="px-4 py-3 text-slate-700">{getName(item)}</td>
               <td className="px-4 py-3">
                 <span className={`inline-block px-2 py-0.5 text-[10px] font-semibold rounded ${
                   getSource(item) === "AUTO"
-                    ? "bg-slate-700 text-slate-400"
-                    : "bg-blue-900/60 text-blue-300"
+                    ? "bg-slate-100 text-slate-600"
+                    : "bg-blue-100 text-blue-700"
                 }`}>{getSource(item)}</span>
               </td>
               {onRemove && (
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => onRemove(item)}
-                    className="p-1.5 text-red-500 hover:bg-red-900/30 rounded transition-colors">
+                    className="p-1.5 text-red-500 hover:bg-red-50 rounded transition-colors">
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </td>

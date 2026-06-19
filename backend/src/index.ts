@@ -2279,22 +2279,25 @@ app.post('/api/masters/sync-catalog', authenticateToken, requireAdmin, async (re
  */
 app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [ciTypes, branches, costCenters, manufacturers] = await Promise.all([
+    const [ciTypes, branches, costCenters, manufacturers, locations] = await Promise.all([
       prisma.$queryRaw<{ code: string; name: string }[]>`SELECT code, name FROM "ci_types" ORDER BY name`,
       prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "branches" ORDER BY name`,
       prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "cost_centers" ORDER BY name`,
       prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "manufacturers" ORDER BY name`,
+      prisma.$queryRaw<{ name: string }[]>`SELECT name FROM "locations" ORDER BY name`,
     ]);
 
     const ciTypeCodes  = ciTypes.map((t) => t.code);
     const branchNames  = branches.map((b) => b.name);
     const ccNames      = costCenters.map((c) => c.name);
     const mfgNames     = manufacturers.map((m) => m.name);
+    const locationNames = locations.map((l) => l.name);
     const criticalities = ['LOW', 'MEDIUM', 'HIGH', 'MISSION_CRITICAL'];
     const environments  = ['DEVELOPMENT', 'TESTING', 'STAGING', 'PRODUCTION'];
     const statuses      = ['ACTIVO', 'INACTIVO', 'RETIRADO'];
     const businessImpacts = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
     const dataClassifications = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'];
+    const yesNo = ['YES', 'NO'];
 
     const wb = new ExcelJS.Workbook();
     wb.creator = 'CMDB Enterprise Platform';
@@ -2330,6 +2333,31 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
       { key: 'osVersion',           header: 'osVersion',            width: 16 },
       { key: 'baseSoftwareName',    header: 'baseSoftwareName',     width: 26 },
       { key: 'baseSoftwareVersion', header: 'baseSoftwareVersion',  width: 18 },
+      // v2.8.7: infrastructure + GRC fields (cols 25-48, appended to keep existing validations stable)
+      { key: 'userDni',            header: 'userDni',               width: 18 },
+      { key: 'adminIp',            header: 'adminIp',               width: 18 },
+      { key: 'mgmtIp',             header: 'mgmtIp',                width: 18 },
+      { key: 'vlan',               header: 'vlan',                  width: 14 },
+      { key: 'cpuModel',           header: 'cpuModel',              width: 24 },
+      { key: 'vCpus',              header: 'vCpus',                 width: 10 },
+      { key: 'ram',                header: 'ram',                   width: 14 },
+      { key: 'disk',               header: 'disk',                  width: 14 },
+      { key: 'hostName',           header: 'hostName',              width: 24 },
+      { key: 'clusterName',        header: 'clusterName',           width: 24 },
+      { key: 'firmwareVersion',    header: 'firmwareVersion',       width: 20 },
+      { key: 'dns',                header: 'dns',                   width: 24 },
+      { key: 'floor',              header: 'floor',                 width: 14 },
+      { key: 'room',               header: 'room',                  width: 18 },
+      { key: 'rack',               header: 'rack',                  width: 14 },
+      { key: 'rackUnit',           header: 'rackUnit',              width: 12 },
+      { key: 'location',           header: 'location',              width: 22 },
+      { key: 'businessOwner',      header: 'businessOwner (email)', width: 28 },
+      { key: 'technicalLead',      header: 'technicalLead (email)', width: 28 },
+      { key: 'rto',                header: 'rto (min)',             width: 12 },
+      { key: 'rpo',                header: 'rpo (min)',             width: 12 },
+      { key: 'recoveryPriority',   header: 'recoveryPriority (1-5)', width: 20 },
+      { key: 'spofRisk',           header: 'spofRisk (YES/NO)',     width: 18 },
+      { key: 'containsPii',        header: 'containsPii (YES/NO)',  width: 18 },
     ];
 
     ws.columns = COLS;
@@ -2344,8 +2372,8 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
     });
 
     // Two example rows
-    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '', osName: 'Windows Server', osVersion: '2022', baseSoftwareName: 'Oracle Database', baseSoftwareVersion: '19c' });
-    ws.addRow({ name: 'Office 365 E3', ciType: 'LICENSE', criticality: 'MEDIUM', environment: 'PRODUCTION', status: 'ACTIVO', version: '365', licenseType: 'subscription', eolDate: '2026-12-31' });
+    ws.addRow({ name: 'PROD-SRV-01', ciType: 'PHYSICAL_SERVER', criticality: 'HIGH', environment: 'PRODUCTION', status: 'ACTIVO', manufacturer: mfgNames[0] ?? 'Dell', serialNumber: 'SN-001', model: 'PowerEdge R740', branch: branchNames[0] ?? '', osName: 'Windows Server', osVersion: '2022', baseSoftwareName: 'Oracle Database', baseSoftwareVersion: '19c', cpuModel: 'Intel Xeon Gold 6230', vCpus: 20, ram: '128GB', disk: '2TB SSD', adminIp: '10.1.1.10', mgmtIp: '10.1.2.10', hostName: 'prod-srv-01.local', clusterName: 'cluster-01', firmwareVersion: '2.9.4', dns: '8.8.8.8,8.8.4.4', vlan: '100', floor: 'B1', room: 'CPD-01', rack: 'RACK-A1', rackUnit: '12', location: locationNames[0] ?? '', rto: 60, rpo: 30, recoveryPriority: 1, spofRisk: 'NO', containsPii: 'NO' });
+    ws.addRow({ name: 'Office 365 E3', ciType: 'LICENSE', criticality: 'MEDIUM', environment: 'PRODUCTION', status: 'ACTIVO', version: '365', licenseType: 'subscription', eolDate: '2026-12-31', containsPii: 'YES' });
 
     // Data validations (dropdown lists)
     const listVal = (formulae: string) => ({ type: 'list' as const, allowBlank: true, showDropDown: true, formulae: [formulae] });
@@ -2359,6 +2387,11 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
       ws.getCell(r, 11).dataValidation = ccNames.length     ? listVal(`"${ccNames.slice(0, 40).join(',')}"`)     : undefined!;
       ws.getCell(r, 16).dataValidation = listVal(`"${businessImpacts.join(',')}"`);
       ws.getCell(r, 17).dataValidation = listVal(`"${dataClassifications.join(',')}"`);
+      // v2.8.7: new field dropdowns (cols 41, 46-48)
+      if (locationNames.length) ws.getCell(r, 41).dataValidation = listVal(`"${locationNames.slice(0, 40).join(',')}"`);
+      ws.getCell(r, 46).dataValidation = listVal(`"1,2,3,4,5"`);
+      ws.getCell(r, 47).dataValidation = listVal(`"${yesNo.join(',')}"`);
+      ws.getCell(r, 48).dataValidation = listVal(`"${yesNo.join(',')}"`);
     }
 
     // ── Sheet 2: Instrucciones ───────────────────────────────────────────────
@@ -2383,8 +2416,42 @@ app.get('/api/cis/bulk/template.xlsx', authenticateToken, requireAdmin, async (_
       ['businessImpact',      `Impacto de negocio (NIS2). Valores: ${businessImpacts.join(', ')}`],
       ['dataClassification',  `Clasificación de datos (GDPR). Valores: ${dataClassifications.join(', ')}`],
       ['assignedUser',        'Nombre del usuario asignado al activo (si aplica).'],
-      ['ipAddress',           'Dirección IP de consola de gestión (opcional).'],
+      ['ipAddress',           'Dirección IP de consola de gestión (opcional). Alias de consoleIp.'],
       ['description',         'Descripción libre del CI.'],
+      ['osName',              'Nombre del sistema operativo. Se crea el maestro si no existe.'],
+      ['osVersion',           'Versión del sistema operativo.'],
+      ['baseSoftwareName',    'Nombre del software base (solo PHYSICAL_SERVER, VIRTUAL_SERVER, CLOUD_INSTANCE).'],
+      ['baseSoftwareVersion', 'Versión del software base.'],
+      ['', ''],
+      ['── INFRAESTRUCTURA ──', ''],
+      ['userDni',             'DNI / documento de identidad del usuario asignado.'],
+      ['adminIp',             'IP de administración fuera de banda.'],
+      ['mgmtIp',              'IP de interfaz de gestión (iDRAC, iLO, IPMI, etc.).'],
+      ['vlan',                'ID o nombre de VLAN.'],
+      ['cpuModel',            'Modelo de procesador (ej: Intel Xeon Gold 6230).'],
+      ['vCpus',               'Número de vCPUs (número entero).'],
+      ['ram',                 'Memoria RAM (ej: 128GB).'],
+      ['disk',                'Almacenamiento total (ej: 2TB SSD).'],
+      ['hostName',            'Nombre FQDN del host (ej: srv-01.dominio.local).'],
+      ['clusterName',         'Nombre del clúster al que pertenece el CI.'],
+      ['firmwareVersion',     'Versión de firmware (BIOS, UEFI, etc.).'],
+      ['dns',                 'Servidores DNS (separados por coma).'],
+      ['', ''],
+      ['── UBICACIÓN FÍSICA ──', ''],
+      ['floor',               'Planta o nivel del edificio (ej: B1, P2).'],
+      ['room',                'Sala o sala de servidores (ej: CPD-01).'],
+      ['rack',                'Identificador del rack (ej: RACK-A1).'],
+      ['rackUnit',            'Unidad de rack (ej: 12).'],
+      ['location',            `Localización física maestro. Valores: ${locationNames.slice(0, 20).join(', ')}`],
+      ['businessOwner',       'Email del propietario de negocio del CI (debe existir en el sistema).'],
+      ['technicalLead',       'Email del responsable técnico del CI (debe existir en el sistema).'],
+      ['', ''],
+      ['── GRC / CONTINUIDAD ──', ''],
+      ['rto',                 'Recovery Time Objective en minutos (número entero).'],
+      ['rpo',                 'Recovery Point Objective en minutos (número entero).'],
+      ['recoveryPriority',    'Prioridad de recuperación 1 (máxima) a 5 (mínima).'],
+      ['spofRisk',            'Riesgo de punto único de fallo. Valores: YES, NO.'],
+      ['containsPii',         'Contiene datos personales (GDPR). Valores: YES, NO.'],
       ['', ''],
       ['NOTAS:', ''],
       ['* Obligatorio',       'Los campos marcados con * son requeridos por el sistema.'],
@@ -5057,6 +5124,31 @@ const CIBulkDecisionSchema = z.object({
   osVersion:           z.string().max(100).nullable().optional(),
   baseSoftwareName:    z.string().max(255).nullable().optional(),
   baseSoftwareVersion: z.string().max(100).nullable().optional(),
+  // v2.8.7: infrastructure + GRC fields
+  userDni:             z.string().max(20).nullable().optional(),
+  adminIp:             z.string().max(45).nullable().optional(),
+  mgmtIp:              z.string().max(45).nullable().optional(),
+  vlan:                z.string().max(20).nullable().optional(),
+  cpuModel:            z.string().max(255).nullable().optional(),
+  vCpus:               z.union([z.number().int(), z.string().regex(/^\d+$/).transform(Number)]).nullable().optional(),
+  ram:                 z.string().max(100).nullable().optional(),
+  disk:                z.string().max(100).nullable().optional(),
+  hostName:            z.string().max(255).nullable().optional(),
+  clusterName:         z.string().max(255).nullable().optional(),
+  firmwareVersion:     z.string().max(100).nullable().optional(),
+  dns:                 z.string().max(255).nullable().optional(),
+  floor:               z.string().max(50).nullable().optional(),
+  room:                z.string().max(100).nullable().optional(),
+  rack:                z.string().max(50).nullable().optional(),
+  rackUnit:            z.string().max(20).nullable().optional(),
+  location:            z.string().max(255).nullable().optional(),
+  businessOwner:       z.string().email().max(255).nullable().optional(),
+  technicalLead:       z.string().email().max(255).nullable().optional(),
+  rto:                 z.union([z.number().int(), z.string().regex(/^\d+$/).transform(Number)]).nullable().optional(),
+  rpo:                 z.union([z.number().int(), z.string().regex(/^\d+$/).transform(Number)]).nullable().optional(),
+  recoveryPriority:    z.union([z.number().int().min(1).max(5), z.string().regex(/^[1-5]$/).transform(Number)]).nullable().optional(),
+  spofRisk:            z.union([z.boolean(), z.string().transform((s) => s.toUpperCase() === 'YES' || s === 'true' || s === '1')]).nullable().optional(),
+  containsPii:         z.union([z.boolean(), z.string().transform((s) => s.toUpperCase() === 'YES' || s === 'true' || s === '1')]).nullable().optional(),
   forceCreate:        z.boolean().optional(),
 });
 type CIBulkDecision = z.infer<typeof CIBulkDecisionSchema>;
@@ -5243,6 +5335,25 @@ async function materializeCIBulkItem(
       SELECT id::text AS id FROM "cost_centers" WHERE LOWER(name) = LOWER(${decision.costCenter}) LIMIT 1`;
     costCenterId = c[0]?.id ?? null;
   }
+  // v2.8.7: resolve FK lookups for location, businessOwner, technicalLead
+  let locationId: string | null = null;
+  if (decision.location?.trim()) {
+    const l = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "locations" WHERE LOWER(name) = LOWER(${decision.location.trim()}) LIMIT 1`;
+    locationId = l[0]?.id ?? null;
+  }
+  let businessOwnerId: string | null = null;
+  if (decision.businessOwner?.trim()) {
+    const u = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "users" WHERE LOWER(email) = LOWER(${decision.businessOwner.trim()}) AND active = true LIMIT 1`;
+    businessOwnerId = u[0]?.id ?? null;
+  }
+  let technicalLeadId: string | null = null;
+  if (decision.technicalLead?.trim()) {
+    const u = await prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text AS id FROM "users" WHERE LOWER(email) = LOWER(${decision.technicalLead.trim()}) AND active = true LIMIT 1`;
+    technicalLeadId = u[0]?.id ?? null;
+  }
 
   const hwTypes = [
     'PHYSICAL_SERVER','VIRTUAL_SERVER','NETWORK','NETWORK_EQUIPMENT','STORAGE','BACKUP',
@@ -5374,6 +5485,31 @@ async function materializeCIBulkItem(
         // ipAddress lives on CI.consoleIp in the schema (HardwareCI has no ipAddress field)
         consoleIp:          decision.ipAddress         || null,
         operatingSystemId, // T7: cascade-created/reused OS master (null if not provided)
+        // v2.8.7: infrastructure + GRC fields
+        userDni:            decision.userDni            || null,
+        adminIp:            decision.adminIp            || null,
+        mgmtIp:             decision.mgmtIp             || null,
+        vlan:               decision.vlan               || null,
+        cpuModel:           decision.cpuModel           || null,
+        vCpus:              (typeof decision.vCpus === 'number' ? decision.vCpus : null),
+        ram:                decision.ram                || null,
+        disk:               decision.disk               || null,
+        hostName:           decision.hostName           || null,
+        clusterName:        decision.clusterName        || null,
+        firmwareVersion:    decision.firmwareVersion    || null,
+        dns:                decision.dns                || null,
+        floor:              decision.floor              || null,
+        room:               decision.room               || null,
+        rack:               decision.rack               || null,
+        rackUnit:           decision.rackUnit           || null,
+        locationId,
+        businessOwnerId,
+        technicalLeadId,
+        rto:                (typeof decision.rto === 'number' ? decision.rto : null),
+        rpo:                (typeof decision.rpo === 'number' ? decision.rpo : null),
+        recoveryPriority:   (typeof decision.recoveryPriority === 'number' ? decision.recoveryPriority : null),
+        spofRisk:           decision.spofRisk === true || (decision.spofRisk as unknown) === 'YES',
+        containsPii:        decision.containsPii === true || (decision.containsPii as unknown) === 'YES',
         ...(needsHw && {
           hardware: {
             create: {

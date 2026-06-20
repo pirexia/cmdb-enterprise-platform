@@ -471,13 +471,40 @@ Rules:
 ## Plan Activo
 
 **Versión actual en producción:** v2.9.0 — ✅ LIBERADA (tag `v2.9.0`, merge develop→main, 2026-06-20)
-**Próxima versión:** —
+**Próxima versión:** v2.9.1 — 🔄 EN PROGRESO
+**Rama activa:** `feature/v2.9.1-ui-unify` (cortada de `develop`)
 **PRs abiertos:** —
 
-### Para iniciar la próxima versión
-1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
-2. Actualizar esta sección con la nueva versión y estado.
-3. Rama: `feature/...` cortada de `develop`.
+### v2.9.1 — Unificación estética DCIM + Decommission
+
+| Tarea | Estado | Commit |
+|-------|--------|--------|
+| T1 — graphify update (AST incremental) | ✅ | — |
+| T2 — DCIM: restyle al patrón canónico de la casa | ✅ | `940b1e8` |
+| T3 — Decommission: restyle al patrón canónico de la casa | ✅ | `11c78a3` |
+| PR + merge develop | ⏳ | — |
+
+**Patrón canónico de la casa** (vistas de nivel superior — Dashboard, Inventory, Vulnerabilities, Reports, DCIM, Decommission):
+```
+<div className="min-h-screen bg-slate-50">
+  <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
+    <div className="flex items-center justify-between">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">{título}</h1>
+        <p className="text-sm text-slate-500 mt-0.5">{subtítulo}</p>
+      </div>
+      {/* botones */}
+    </div>
+  </header>
+  <div className="px-8 py-8 space-y-8 w-full">
+    {/* contenido — paneles con ring-1 ring-slate-200 bg-white shadow-sm */}
+  </div>
+</div>
+```
+- Botón primario: `rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 shadow-sm`
+- Botón secundario/refresh: `rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50`
+- Panel/card: `bg-white shadow-sm ring-1 ring-slate-200` (ring, NO border)
+- Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
 - **v2.9.0** ✅ LIBERADA (2026-06-20): Modularización backend Strangler Fig — `index.ts` ~8 200→~4 900 líneas; 7 dominios extraídos a `modules/` (settings, vendors, integrations, licenses, contracts, masters, documents) + `shared/` middleware/utils. Tests jest+supertest por módulo (todos verdes). PRs #154–#162. `docs/PLAN_v2.9.0.md`.

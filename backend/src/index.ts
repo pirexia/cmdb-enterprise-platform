@@ -272,7 +272,9 @@ app.use('/api/licenses', createLicensesRouter(
 ));
 
 // Masters module — all master data CRUD (/api/masters/*); writes require ADMIN (enforced in router)
-app.use('/api/masters', createMastersRouter(prisma));
+app.use('/api/masters', createMastersRouter(prisma, {
+  queueEntity: (t, id) => queueEntityForIndexing(t as RagEntityType, id),
+}));
 
 // Documents module — CRUD + upload + versioning + bulk import; writes require ADMIN (enforced in router)
 app.use('/api/documents', createDocumentsRouter(

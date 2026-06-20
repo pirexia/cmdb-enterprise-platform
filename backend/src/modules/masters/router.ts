@@ -16,9 +16,36 @@ const POPULAR_MANUFACTURERS = [
   'Samsung','Sophos','Check Point','F5 Networks','Broadcom',
 ];
 
-export function createMastersRouter(prisma: PrismaClient): Router {
+type RagOps = {
+  queueEntity: (type: string, id: string) => Promise<void>;
+};
+
+export function createMastersRouter(prisma: PrismaClient, rag?: RagOps): Router {
   const router = Router();
   const authenticateToken = createAuthenticateToken(prisma);
+
+  /** Fire-and-forget: re-queue all CIs that reference a given master row by FK. */
+  const reindexCIsByFK = (fk: 'branch_id' | 'cost_center_id' | 'ci_type_id', masterId: string) => {
+    if (!rag) return;
+    void (async () => {
+      try {
+        let cis: { id: string }[] = [];
+        if (fk === 'branch_id') {
+          cis = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id::text AS id FROM "configuration_items" WHERE branch_id = ${masterId}::uuid`;
+        } else if (fk === 'cost_center_id') {
+          cis = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id::text AS id FROM "configuration_items" WHERE cost_center_id = ${masterId}::uuid`;
+        } else if (fk === 'ci_type_id') {
+          cis = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id::text AS id FROM "configuration_items" WHERE ci_type_id = ${masterId}::uuid`;
+        }
+        for (const ci of cis) void rag!.queueEntity('ci', ci.id);
+      } catch (e) {
+        console.error('[RAG] reindexCIsByFK error:', e);
+      }
+    })();
+  };
 
   // ── Sync Catalog ──────────────────────────────────────────────────────────────
 
@@ -202,6 +229,7 @@ export function createMastersRouter(prisma: PrismaClient): Router {
         WHERE id=${req.params.id}::uuid RETURNING id::text AS id, name`;
       if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
       await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Branch',${rows[0].id}::uuid,${req.user!.email},now())`;
+      reindexCIsByFK('branch_id', rows[0].id);
       res.json(rows[0]);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
   });
@@ -369,6 +397,7 @@ export function createMastersRouter(prisma: PrismaClient): Router {
         WHERE id=${req.params.id}::uuid RETURNING id::text AS id, code, name`;
       if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
       await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','CostCenter',${rows[0].id}::uuid,${req.user!.email},now())`;
+      reindexCIsByFK('cost_center_id', rows[0].id);
       res.json(rows[0]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -460,6 +489,7 @@ export function createMastersRouter(prisma: PrismaClient): Router {
         select: { id: true, code: true, name: true, categoryCode: true, sortOrder: true, isSystem: true },
       });
       await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','CIType',${row.id}::uuid,${req.user!.email},now())`;
+      reindexCIsByFK('ci_type_id', row.id);
       res.json(row);
     } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
   });

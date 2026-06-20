@@ -69,7 +69,11 @@ export interface RagChunkResult {
 // The value comes from environment, never from user input.
 const OLLAMA_BASE_URL    = process.env.OLLAMA_BASE_URL       ?? 'http://ollama:11434';
 const RAG_EMBED_MODEL    = process.env.RAG_EMBED_MODEL       ?? 'bge-m3';
-const RAG_CHAT_MODEL     = process.env.RAG_CHAT_MODEL        ?? 'qwen2.5:7b-instruct-q4_K_M';
+const RAG_CHAT_MODEL     = process.env.RAG_CHAT_MODEL        ?? 'qwen3:latest';
+// qwen3 supports a thinking mode (enabled by default). Disable it for CMDB Q&A:
+// factual retrieval has no benefit from chain-of-thought and the extra tokens add latency.
+// Set RAG_CHAT_THINK=true in env to re-enable (e.g. for experimentation).
+const RAG_CHAT_THINK     = process.env.RAG_CHAT_THINK === 'true' ? true : false;
 const RAG_TEMPERATURE    = parseFloat(process.env.RAG_CHAT_TEMPERATURE ?? '0.1');
 // Cap generated tokens — avoids runaway CPU time on long outputs (default 768).
 // Set RAG_NUM_PREDICT=0 to disable the cap (Ollama default: unlimited).
@@ -95,6 +99,14 @@ function validateOllamaUrl(url: string): void {
 validateOllamaUrl(OLLAMA_BASE_URL);
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Removes <think>...</think> blocks that some models (qwen3) emit in thinking mode.
+ * Safety net: with think:false these blocks should not appear, but we strip them defensively.
+ */
+function stripThinkingBlocks(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
 
 /**
  * Creates an AbortController that fires after `ms` milliseconds.
@@ -210,6 +222,7 @@ export async function chatWithContext(
         model,
         messages,
         stream: false,
+        think: RAG_CHAT_THINK,
         options: {
           temperature,
           ...(RAG_NUM_PREDICT > 0 ? { num_predict: RAG_NUM_PREDICT } : {}),
@@ -245,7 +258,7 @@ export async function chatWithContext(
         : undefined;
 
     return {
-      content,
+      content: stripThinkingBlocks(content),
       model: data.model ?? model,
       tokensUsed,
     };
@@ -282,6 +295,7 @@ export async function streamChatWithContext(
         model,
         messages,
         stream: true,
+        think: RAG_CHAT_THINK,
         options: {
           temperature,
           ...(RAG_NUM_PREDICT > 0 ? { num_predict: RAG_NUM_PREDICT } : {}),

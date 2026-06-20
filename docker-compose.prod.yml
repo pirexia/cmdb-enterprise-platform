@@ -90,7 +90,7 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       RAG_ENABLED:     ${RAG_ENABLED:-true}
       RAG_EMBED_MODEL: ${RAG_EMBED_MODEL:-bge-m3}
-      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen2.5:7b-instruct-q4_K_M}
+      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen3:latest}
       RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
       RAG_TOP_K:       ${RAG_TOP_K:-6}
       RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}

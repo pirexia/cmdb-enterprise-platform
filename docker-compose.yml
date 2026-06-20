@@ -195,6 +195,119 @@ services:
       retries: 5
       start_period: 60s
 
+  # ── Redis — BullMQ queue para n8n Queue Mode ─────────────────────────────────
+  redis:
+    image: docker.io/library/redis:7-alpine
+    container_name: cmdb-redis
+    restart: always
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:-redis_dev_password}
+      --save ""
+      --appendonly no
+    volumes:
+      - redis-data:/data:Z
+    # Redis not exposed to host in dev — only reachable from other containers
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_dev_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── n8n Main — UI + API + Webhook triggers ───────────────────────────────────
+  n8n-main:
+    image: docker.io/n8nio/n8n:1
+    container_name: cmdb-n8n-main
+    restart: always
+    environment:
+      EXECUTIONS_MODE: queue
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-cmdb_db}
+      DB_POSTGRESDB_USER:     ${POSTGRES_USER:-admin}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_SCHEMA: n8n_data
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev-n8n-encryption-key-change-in-prod}
+      N8N_PATH: /n8n/
+      WEBHOOK_URL: ${WEBHOOK_URL:-https://localhost/n8n/}
+      N8N_PROXY_HOPS: 1
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-false}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-n8n-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-n8n_dev_pass}
+      CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
+      GENERIC_TIMEZONE: Europe/Madrid
+      TZ: Europe/Madrid
+    volumes:
+      - n8n-data:/home/node/.n8n:Z
+    ports:
+      - "5678:5678"   # Dev only: direct access without nginx for workflow debugging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── n8n Worker 1 ─────────────────────────────────────────────────────────────
+  n8n-worker-1:
+    image: docker.io/n8nio/n8n:1
+    container_name: cmdb-n8n-worker-1
+    restart: always
+    command: worker
+    environment:
+      EXECUTIONS_MODE: queue
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-cmdb_db}
+      DB_POSTGRESDB_USER:     ${POSTGRES_USER:-admin}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_SCHEMA: n8n_data
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev-n8n-encryption-key-change-in-prod}
+      CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
+      GENERIC_TIMEZONE: Europe/Madrid
+      TZ: Europe/Madrid
+    volumes:
+      - n8n-data:/home/node/.n8n:ro,Z
+    depends_on:
+      - n8n-main
+      - redis
+
+  # ── n8n Worker 2 ─────────────────────────────────────────────────────────────
+  n8n-worker-2:
+    image: docker.io/n8nio/n8n:1
+    container_name: cmdb-n8n-worker-2
+    restart: always
+    command: worker
+    environment:
+      EXECUTIONS_MODE: queue
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-cmdb_db}
+      DB_POSTGRESDB_USER:     ${POSTGRES_USER:-admin}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_POSTGRESDB_SCHEMA: n8n_data
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_PORT: 6379
+      QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_password}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-dev-n8n-encryption-key-change-in-prod}
+      CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
+      GENERIC_TIMEZONE: Europe/Madrid
+      TZ: Europe/Madrid
+    volumes:
+      - n8n-data:/home/node/.n8n:ro,Z
+    depends_on:
+      - n8n-main
+      - redis
+
 # ── Volumes ───────────────────────────────────────────────────────────────────
 volumes:
   postgres-data:
@@ -202,6 +315,10 @@ volumes:
   ollama-models:
   cmdb-plugins:
     name: cmdb-plugins
+  n8n-data:
+    name: cmdb-n8n-data
+  redis-data:
+    name: cmdb-redis-data
 
 # ── Networks ──────────────────────────────────────────────────────────────────
 networks:

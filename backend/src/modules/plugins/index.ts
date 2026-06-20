@@ -1,4 +1,4 @@
-import type { Application } from 'express';
+import type { Application, RequestHandler } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { pluginRuntime, RuntimePlugin } from './engine.js';
 import { pluginAudit } from './audit.js';
@@ -16,18 +16,21 @@ export { createPluginRouter };
 export async function initializePluginEngine(
   app: Application,
   prisma: PrismaClient,
+  authenticateToken: RequestHandler,
 ): Promise<void> {
   pluginRuntime.init(app, prisma);
 
   // 1. Public UI assets (GET /api/plugins/:id/ui[/*]) — NOT behind requireAdmin.
-  //    Unmatched paths fall through to the admin router mounted next.
-  app.use('/api/plugins', createPluginPublicRouter(prisma));
+  //    authenticateToken required so req.user is available to the renderer.
+  app.use('/api/plugins', authenticateToken, createPluginPublicRouter(prisma));
 
-  // 2. Admin management API (requireAdmin on every route).
-  app.use('/api/plugins', createPluginRouter(prisma));
+  // 2. Admin management API — authenticateToken sets req.user; internal
+  //    requireAdmin checks role. Without authenticateToken req.user is undefined
+  //    and requireAdmin always returns 403, even for genuine ADMIN sessions.
+  app.use('/api/plugins', authenticateToken, createPluginRouter(prisma));
 
   // 3. Dynamic plugin routes dispatcher (/api/ext/:pluginId/*).
-  app.use('/api/ext', createPluginExtRouter(prisma));
+  app.use('/api/ext', authenticateToken, createPluginExtRouter(prisma));
 
   // Re-activate plugins that were ACTIVE before restart
   let active: Awaited<ReturnType<typeof getActivePlugins>>;

@@ -1,7 +1,7 @@
 # 🏗️ CMDB Enterprise Platform — Arquitectura Técnica
 
-**Versión:** 2.0.0
-**Fecha:** 2026-06-20
+**Versión:** 3.0.0
+**Fecha:** 2026-06-21
 **Estado:** Producción
 
 ---
@@ -56,9 +56,9 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 ### Backend
 | Componente | Tecnología | Versión |
 |------------|-----------|---------|
-| Runtime    | Node.js    | 20.x (Alpine) |
+| Runtime    | Node.js    | 22.x (Alpine LTS) |
 | Framework  | Express.js | 5.x     |
-| ORM        | Prisma     | 5.x     |
+| ORM        | Prisma     | 6.x     |
 | Lenguaje   | TypeScript | 5.x     |
 | Autenticación | JWT (jsonwebtoken) + bcrypt | 9.x / 6.x |
 | MFA        | otplib (TOTP RFC 6238) | 12.x |
@@ -66,22 +66,32 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 | LDAP       | ldap-authentication | 4.x |
 | Seguridad HTTP | Helmet | 8.x   |
 | Alertas Email | nodemailer | 8.x  |
-| Scheduler  | node-cron  | 4.x     |
+| Scheduler (Plugin Engine) | node-cron | 4.x |
 | Proxy TLS  | nginx 1.30 | — |
-| Upload de ficheros | multer | 1.x |
+| Upload de ficheros | multer | 2.x |
 
 ### Base de Datos
 | Componente | Tecnología | Versión |
 |------------|-----------|---------|
-| Motor      | PostgreSQL | 16 (Alpine) |
+| Motor      | PostgreSQL | 16 (pgvector/pgvector:pg16) |
+| Extensión vectorial | pgvector | 0.7+ |
+| Schema principal | `public` | CMDB data + RAG chunks |
+| Schema n8n | `n8n_data` | Workflows, ejecuciones, credenciales n8n |
 | UI Admin   | Adminer    | latest (dev only) |
+
+### Orquestación e IA
+| Componente | Tecnología | Versión | Rol |
+|------------|-----------|---------|-----|
+| Workflow automation | n8n | 1.x (pin) | Scheduling, alertas, RAG queue, backup, LDAP sync, notificaciones |
+| Cola de trabajos | Redis | 7-alpine | BullMQ queue para n8n Queue Mode; sin egress externo |
+| LLM / Embeddings | Ollama | latest | Chat (qwen3:latest) + embeddings (bge-m3); solo red interna |
 
 ### Infraestructura
 | Componente | Tecnología |
 |------------|-----------|
-| Contenedores | Docker Engine 24+ / Podman 4+ |
-| Orquestación | Docker Compose v2 |
-| SO Objetivo  | RHEL 8/9, CentOS Stream 9 |
+| Contenedores | Podman 4+ (Rootless) |
+| Orquestación | Docker Compose v2 (via `podman compose`) |
+| SO Objetivo  | RHEL 9, CentOS Stream 9 |
 | SSL/TLS      | OpenSSL (certificados autofirmados o CA corporativa) |
 
 ---
@@ -89,52 +99,85 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 ## 3. Topología de Contenedores
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        HOST: cmdb-server                             │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                     cmdb-public network                      │  │
-│  │                                                              │  │
-│  │   ┌────────────────────────────────────────────────────┐    │  │
-│  │   │  cmdb-nginx    (nginx 1.30-alpine)                  │    │  │
-│  │   │  Puertos host: :443 (HTTPS)  :80 (→ redirect 301)  │    │  │
-│  │   │  /         → frontend:3001                          │    │  │
-│  │   │  /api/*    → backend:3000                           │    │  │
-│  │   │  certs: tls-certs (ro)                             │    │  │
-│  │   └──────────────┬──────────────┬─────────────────────┘    │  │
-│  │                  │              │                            │  │
-│  │                  ▼              ▼                            │  │
-│  │   ┌─────────────────┐  ┌───────────────────────────────┐   │  │
-│  │   │  cmdb-frontend   │  │       cmdb-backend            │   │  │
-│  │   │  Next.js :3001   │  │  Express + Prisma :3000       │   │  │
-│  │   │  (HTTP interno)  │  │  (HTTP interno)               │   │  │
-│  │   └─────────────────┘  └────────────┬──────────────────┘   │  │
-│  │          (NO expuesto al host)       │  certs: tls-certs(rw)│  │
-│  └──────────────────────────────────────┼──────────────────────┘  │
-│                                         │                          │
-│                                   ┌─────▼──────────────────┐      │
-│                                   │   cmdb-internal network │      │
-│                                   │                         │      │
-│                                   │   cmdb-postgres-prod        │      │
-│                                   │   PostgreSQL 16 :5432       │      │
-│                                   │   (NO expuesto al host)     │      │
-│                                   └─────────────────────────────┘      │
-│                                                                         │
-│   Puertos expuestos al host:  :443 (HTTPS)   :80 (HTTP → redirect)     │
-│   Frontend y backend: SOLO red interna Docker, sin binding al host      │
-└─────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                               HOST: cmdb-server (RHEL)                           │
+│                                                                                  │
+│  ┌───────────────────────────── cmdb-public network ───────────────────────────┐ │
+│  │  (bridge, con egress a internet para SMTP/Teams/Slack/LDAP externo)         │ │
+│  │                                                                              │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  cmdb-nginx  (nginx:1.30-alpine)                                     │   │ │
+│  │  │  Puertos host: :443 (HTTPS)  :80 (→ redirect 301)                   │   │ │
+│  │  │  /          → frontend:3001  (Next.js)                               │   │ │
+│  │  │  /api/*     → backend:3000   (Express)                               │   │ │
+│  │  │  /n8n/      → n8n-main:5678  (IP allowlist + auth_request ADMIN)    │   │ │
+│  │  │  /api/internal/* → deny 404  (nunca expuesto a internet)             │   │ │
+│  │  │  certs: tls-certs (ro)                                               │   │ │
+│  │  └──────┬────────────────┬──────────────────┬───────────────────────────┘   │ │
+│  │         │                │                  │                                │ │
+│  │         ▼                ▼                  ▼                                │ │
+│  │  ┌────────────┐  ┌──────────────┐  ┌──────────────────────────────────┐     │ │
+│  │  │cmdb-frontend│  │cmdb-backend  │  │  n8n-main  (n8nio/n8n:1.x)      │     │ │
+│  │  │Next.js:3001 │  │Express:3000  │  │  :5678 (interno, sin host port)  │     │ │
+│  │  │(HTTP intern)│  │Prisma ORM    │  │  Workflows, triggers, webhooks   │     │ │
+│  │  └────────────┘  │certs:rw      │  └──────────────────────────────────┘     │ │
+│  │                  └──────┬───────┘                                            │ │
+│  │                         │ /api/internal/* (X-CMDB-Service-Token)             │ │
+│  │                         │◄──── n8n-worker-1, n8n-worker-2                   │ │
+│  │  ┌──────────────────────────────────────────────────────────────────────┐   │ │
+│  │  │  n8n-worker-1  (n8nio/n8n:1.x, command: worker)  sin puertos host   │   │ │
+│  │  │  n8n-worker-2  (n8nio/n8n:1.x, command: worker)  sin puertos host   │   │ │
+│  │  └──────────────────────────────────────────────────────────────────────┘   │ │
+│  └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│  ┌───────────────────── cmdb-internal network (internal: true) ────────────────┐ │
+│  │  (sin egress: postgres/ollama/redis NO pueden salir a internet)              │ │
+│  │                                                                              │ │
+│  │   cmdb-postgres-prod   pgvector/pgvector:pg16  :5432  (NO host)             │ │
+│  │     schema public  → CMDB data (CIs, docs, contratos, RAG chunks…)          │ │
+│  │     schema n8n_data → workflows, credenciales, ejecuciones n8n              │ │
+│  │                                                                              │ │
+│  │   cmdb-ollama-prod     ollama/ollama:latest    :11434 (NO host)             │ │
+│  │     Embeddings: bge-m3  |  Chat: qwen3:latest                               │ │
+│  │     Modelos: bind mount ${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models} │ │
+│  │     Llamado directamente por n8n-workers (D2) y por backend                 │ │
+│  │                                                                              │ │
+│  │   cmdb-redis           redis:7-alpine          :6379  (NO host)             │ │
+│  │     requirepass → solo accesible via REDIS_PASSWORD                         │ │
+│  │     BullMQ queue para n8n Queue Mode                                        │ │
+│  └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│   Puertos expuestos al host: :443 (HTTPS)  :80 (HTTP→redirect)                  │
+│   Todos los demás contenedores: SOLO redes internas, sin binding al host         │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Contenedores en producción (v3.0.0):**
+
+| Contenedor | Imagen | Redes | Puertos internos | Volúmenes |
+|-----------|--------|-------|-----------------|-----------|
+| `cmdb-nginx-prod` | nginx:1.30-alpine | public | host:443, host:80 | tls-certs (ro) |
+| `cmdb-frontend-prod` | cmdb-frontend:latest | public | :3001 | — |
+| `cmdb-backend-prod` | cmdb-backend:latest | public + internal | :3000 | tls-certs (rw), documents, plugins |
+| `cmdb-n8n-main` | n8nio/n8n:1.x | public + internal | :5678 | cmdb-n8n-data |
+| `cmdb-n8n-worker-1` | n8nio/n8n:1.x | public + internal | — | cmdb-n8n-data (ro) |
+| `cmdb-n8n-worker-2` | n8nio/n8n:1.x | public + internal | — | cmdb-n8n-data (ro) |
+| `cmdb-postgres-prod` | pgvector/pgvector:pg16 | internal | :5432 | postgres-data |
+| `cmdb-ollama-prod` | ollama/ollama:latest | internal | :11434 | bind:/opt/cmdb-data/ollama-models |
+| `cmdb-redis` | redis:7-alpine | internal | :6379 | cmdb-redis-data |
 
 ---
 
 ## 4. Redes y Puertos
 
-### Redes Docker
+### Redes Docker/Podman
 
-| Red | Tipo | Descripción |
-|-----|------|-------------|
-| `cmdb-public` | Bridge | Frontend ↔ Backend ↔ Host |
-| `cmdb-internal` | Bridge (internal: true) | Backend ↔ PostgreSQL solo — **sin acceso externo** |
+| Red | Tipo | Miembros | Descripción |
+|-----|------|---------|-------------|
+| `cmdb-public` | Bridge (con egress) | nginx, frontend, backend, n8n-main, n8n-worker-1/2 | Tráfico de usuario + n8n (SMTP, Teams, Slack, LDAP externo) |
+| `cmdb-internal` | Bridge (`internal: true`) | backend, postgres, ollama, redis | Sin egress; aislamiento completo de internet |
+
+> **n8n en ambas redes:** n8n-main y los workers están en `cmdb-public` (para egress SMTP/Teams/LDAP) **y** en `cmdb-internal` (para acceder a postgres, ollama y redis). Igual que el backend.
 
 ### Puertos y Protocolos
 
@@ -142,23 +185,37 @@ La plataforma se despliega como un conjunto de contenedores Docker orquestados c
 |---------|---------------|-------------|-----------|-------------|
 | nginx (gateway TLS) | 443 / 80 | **443 / 80** | HTTPS / HTTP→HTTPS | Único punto de entrada; termina TLS |
 | Frontend (Next.js) | 3001 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/` |
-| Backend (Express) | 3000 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/api/*` |
+| Backend (Express) | 3000 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/api/*` y `/api/internal/*` |
+| n8n-main (UI/API) | 5678 | **NO EXPUESTO** | HTTP (interno) | Servido por nginx en `/n8n/` (IP allowlist + gate ADMIN) |
+| n8n-worker-1/2 | — | **NO EXPUESTO** | — | Solo consumen cola BullMQ de Redis |
 | PostgreSQL | 5432 | **NO EXPUESTO** | TCP | Solo accesible desde cmdb-internal |
+| Ollama | 11434 | **NO EXPUESTO** | HTTP (interno) | Solo accesible desde cmdb-internal |
+| Redis | 6379 | **NO EXPUESTO** | TCP (requirepass) | Solo accesible desde cmdb-internal |
 | Adminer (dev) | 8080 | 8080 | HTTP | UI de administración DB (development only) |
+
+### Rutas nginx (v3.0.0)
+
+| Ruta nginx | Destino interno | Notas de seguridad |
+|-----------|----------------|-------------------|
+| `/` | `frontend:3001` | — |
+| `/api/chat/` | `backend:3000` | SSE, buffering off, timeout 300s |
+| `/api/` | `backend:3000` | `client_max_body_size 50m` |
+| `/n8n/` | `n8n-main:5678` | IP allowlist + `auth_request /api/internal/n8n-gate` (ADMIN JWT) |
+| `/api/internal/` | `deny 404` | Nunca proxyado: solo accesible vía red interna Podman |
 
 ### Puertos de Integraciones Externas (salientes)
 
-| Destino | Puerto | Protocolo | Descripción |
-|---------|--------|-----------|-------------|
-| Active Directory / LDAP | 389 | TCP/LDAP | Autenticación LDAP sin TLS |
-| Active Directory / LDAPS | 636 | TCP/LDAPS | Autenticación LDAP con TLS |
-| SMTP (Gmail, O365) | 587 | TCP/STARTTLS | Envío de alertas email |
-| SMTP SSL | 465 | TCP/TLS | Envío de alertas email (modo seguro) |
-| endoflife.date API | 443 | HTTPS | Consulta EOL/EOS de productos |
-| Park Place Technologies | 443 | HTTPS | EOSL hardware enterprise (browser) |
-| Cloud-Shelf | 443 | HTTPS | Búsqueda hardware (browser) |
-| Greenbone (upload) | — | — | JSON report upload (sin conexión directa) |
-| CrowdStrike (upload) | — | — | JSON report upload (sin conexión directa) |
+| Origen | Destino | Puerto | Protocolo | Descripción |
+|--------|---------|--------|-----------|-------------|
+| backend | AD/LDAP | 389/636 | TCP/LDAP(S) | Autenticación LDAP en tiempo real |
+| n8n-worker | AD/LDAP | 389/636 | TCP/LDAP(S) | Sync LDAP/AD periódico (Tarea 6) |
+| backend | SMTP | 587/465 | STARTTLS/TLS | Fallback email desde backend (run-now manual) |
+| n8n-worker | SMTP | 587/465 | STARTTLS/TLS | Alertas email automatizadas vía n8n |
+| n8n-worker | Microsoft Teams | 443 | HTTPS | Notificaciones webhook (opcional) |
+| n8n-worker | Slack | 443 | HTTPS | Notificaciones Slack (opcional) |
+| backend | endoflife.date API | 443 | HTTPS | Consulta EOL/EOS de productos |
+| browser | Park Place Tech | 443 | HTTPS | EOSL hardware enterprise (browser) |
+| browser | Cloud-Shelf | 443 | HTTPS | Búsqueda hardware (browser) |
 
 ---
 
@@ -273,37 +330,65 @@ graph TB
         UI[Next.js SPA]
     end
 
-    subgraph Host["cmdb-server (RHEL)"]
-        subgraph PublicNet["cmdb-public (bridge)"]
-            NG["nginx :443/:80\nGateway TLS\n/ → frontend\n/api/* → backend"]
+    subgraph Host["cmdb-server (RHEL 9, Podman Rootless)"]
+        subgraph PublicNet["cmdb-public (bridge, con egress)"]
+            NG["nginx :443/:80\nGateway TLS\n/ → frontend\n/api/* → backend\n/n8n/ → n8n-main (IP+auth)\n/api/internal/ → deny 404"]
             FE["Frontend\nNext.js :3001\n(HTTP interno)"]
             BE["Backend\nExpress+Prisma :3000\n(HTTP interno)"]
+            N8N["n8n-main :5678\n(HTTP interno)\nUI + API + Webhooks"]
+            WK1["n8n-worker-1\n(sin puertos)"]
+            WK2["n8n-worker-2\n(sin puertos)"]
         end
 
-        subgraph InternalNet["cmdb-internal (isolated)"]
-            DB["PostgreSQL 16\n:5432\nNo expuesto"]
+        subgraph InternalNet["cmdb-internal (internal: true, sin egress)"]
+            DB["PostgreSQL 16\n:5432\nschema public + n8n_data"]
+            OL["Ollama\n:11434\nbge-m3 + qwen3:latest"]
+            RD["Redis 7\n:6379\nBullMQ queue (requirepass)"]
         end
 
-        VOL1[("postgres-data\n(named volume)")]
-        VOL2[("tls-certs\n(named volume)\n./certs/ en host")]
+        VOL1[("postgres-data")]
+        VOL2[("tls-certs")]
+        VOL3[("cmdb-n8n-data")]
+        VOL4[("ollama-models\nbind mount host")]
+        VOL5[("cmdb-redis-data")]
     end
 
     subgraph External["Servicios Externos"]
         LDAP["AD/LDAP\n:389/:636"]
         SMTP["SMTP Server\n:587/:465"]
+        TEAMS["Microsoft Teams\n:443 webhook"]
+        SLACK["Slack\n:443 API"]
         EOL["endoflife.date API\n:443 HTTPS"]
     end
 
     UI -->|"HTTPS :443"| NG
     NG -->|"/ HTTP"| FE
     NG -->|"/api/* HTTP"| BE
-    BE -->|"Prisma ORM\nTCP :5432"| DB
-    BE -->|"LDAP auth\nTCP :389"| LDAP
-    BE -->|"Alert emails\nSTARTTLS :587"| SMTP
-    BE -->|"EOL lookup\nHTTPS :443"| EOL
+    NG -->|"/n8n/ HTTP + auth"| N8N
+    BE -->|"Prisma ORM :5432"| DB
+    BE -->|"Ollama embed/chat"| OL
+    BE -->|"LDAP auth :389"| LDAP
+    BE -->|"Alert fallback :587"| SMTP
+    BE -->|"EOL lookup :443"| EOL
+    N8N -->|"jobs BullMQ"| RD
+    WK1 -->|"jobs BullMQ"| RD
+    WK2 -->|"jobs BullMQ"| RD
+    WK1 -->|"/api/internal/* X-Token"| BE
+    WK2 -->|"/api/internal/* X-Token"| BE
+    WK1 -->|"embed directo :11434"| OL
+    WK2 -->|"embed directo :11434"| OL
+    WK1 -->|"metadata n8n :5432"| DB
+    WK2 -->|"metadata n8n :5432"| DB
+    WK1 -->|"alertas SMTP"| SMTP
+    WK1 -->|"notif Teams"| TEAMS
+    WK1 -->|"notif Slack"| SLACK
+    WK1 -->|"LDAP sync"| LDAP
     DB --- VOL1
     NG --- VOL2
     BE --- VOL2
+    N8N --- VOL3
+    OL --- VOL4
+    RD --- VOL5
 
     style PublicNet fill:#e0f2fe,stroke:#0284c7
     style InternalNet fill:#fef3c7,stroke:#d97706
@@ -617,7 +702,9 @@ Se optó por columnas planas en `configuration_items` porque:
 | Prisma ORM | TypeORM, Sequelize, SQL puro | Type-safety, migrations automáticas, soporte JSONB |
 | JWT en HttpOnly cookie | localStorage, Session | XSS-safe; misma cookie enviada automáticamente; logout vía POST endpoint |
 | JSONB para vulns/agents | Tablas relacionales separadas | Flexibilidad de esquema, datos heterogéneos por fuente |
-| node-cron | Bull, Agenda | Sin dependencia de Redis; simplicidad para alertas diarias |
+| node-cron (solo Plugin Engine) | Eliminar por completo | node-cron se conserva únicamente para los cron-jobs de plugins de usuario (v2.8.x). Todos los crons de sistema (alertas, RAG, mantenimiento BD, DCIM, bulk-cleanup) se migraron a **n8n workflows** en v3.0.0, que aporta scheduling visual, reintentos con backoff, observabilidad de ejecuciones, y desacoplamiento del proceso Node.js. |
+| n8n Queue Mode (2 workers) vs n8n Single Mode | n8n serverless / otras alternativas | Queue Mode con Redis BullMQ: workers aislados (si uno falla, el main sigue); paralelismo real (2 workers concurrentes); el modo "single" mezcla UI y ejecución en el mismo proceso. Los 2 workers no son HA de infraestructura (no hay load balancer externo), pero sí resiliencia de proceso. |
+| Schema `n8n_data` en PostgreSQL existente | PostgreSQL dedicado para n8n | Simplifica operaciones (backup conjunto, menos contenedores, menos RAM). El schema está aislado del schema `public`. Riesgo: contención de conexiones si n8n escala mucho (mitigación: pool size limitado). |
 | Travesía de grafo con CTE recursiva (PostgreSQL) | N peticiones HTTP desde el frontend (BFS cliente) | Una sola query; el motor PostgreSQL gestiona la travesía y la prevención de ciclos con arrays de camino |
 | ExcelJS para export | jsPDF, backend CSV | Export de Excel 100% cliente, sin petición adicional al servidor, sin CVEs activos (xlsx tenía Prototype Pollution sin fix) |
 | i18n custom context | next-intl, react-i18next | Sin App Router complication, bundle mínimo, control total |
@@ -665,21 +752,30 @@ La siguiente tabla proporciona guías de dimensionamiento basadas en el volumen 
 
 | Volumen de CIs | vCPU | RAM | Espacio LVM en /home | Crecimiento BD (Postgres) | Casos de Uso |
 |----------------|------|-----|----------------------|---------------------------|--------------|
-| **Hasta 1.000** | 2 | 4 GB | 15 GB | ~500 MB | Pymes, entorno de pruebas, despliegues piloto |
-| **1.000 a 5.000** | 4 | 8 GB | 30 GB | ~2 GB | Empresas medianas, integraciones básicas (Greenbone, CrowdStrike) |
-| **5.000 a 20.000+** | 8+ | 16 GB+ | 60 GB+ | ~10 GB+ | Enterprise, escaneos masivos de vulnerabilidades, alto volumen de auditoría |
+| **Hasta 1.000** | 4 | 8 GB | 30 GB | ~500 MB | Pymes, entorno de pruebas, despliegues piloto |
+| **1.000 a 5.000** | 6 | 16 GB | 60 GB | ~2 GB | Empresas medianas, integraciones básicas (Greenbone, CrowdStrike) |
+| **5.000 a 20.000+** | 10+ | 24 GB+ | 100 GB+ | ~10 GB+ | Enterprise, escaneos masivos de vulnerabilidades, alto volumen de auditoría |
+
+> **Nota v3.0.0:** El stack incluye ahora n8n (main + 2 workers) y Redis. Se han incrementado los requisitos mínimos respecto a v2.x. Con RAG habilitado (Ollama), se añaden ~2-4 GB RAM adicionales para mantener modelos en memoria.
 
 #### Notas sobre el dimensionamiento:
 
 **vCPU:**
 - El backend Node.js es mono-hilo por request (Event Loop)
+- n8n-main: ~0.5 vCPU en idle, picos en ejecución de workflows
+- n8n-worker (×2): ~0.5–1 vCPU cada uno bajo carga (RAG, backup, LDAP sync)
+- Redis: ~0.1 vCPU (muy ligero)
 - Podman ejecuta múltiples contenedores: PostgreSQL (intensivo en CPU durante queries complejos), backend, frontend
-- Se recomienda al menos 1 vCPU dedicado por servicio (3 mínimo)
+- Se recomienda al menos 1 vCPU dedicado por servicio (6 servicios principales)
 
 **RAM:**
 - PostgreSQL requiere buffer pool (~25% de la RAM total recomendada)
 - Node.js backend: ~512 MB en idle, hasta 1.5 GB bajo carga con 1000 CIs activos
 - Frontend Next.js standalone: ~300 MB
+- **n8n-main:** ~256–512 MB en idle, hasta 1 GB bajo carga
+- **n8n-worker-1/2:** ~256 MB cada uno en idle, hasta 512 MB bajo carga (RAG/backup)
+- **Redis:** ~64–128 MB (cola BullMQ; sin persistencia si solo se usa como queue)
+- **Ollama (con RAG):** ~2–4 GB para mantener bge-m3 + qwen3:latest en memoria (`OLLAMA_KEEP_ALIVE=-1`)
 - Se debe reservar RAM para el sistema operativo RHEL (~1 GB)
 
 **Espacio LVM en /home:**
@@ -701,22 +797,26 @@ La siguiente tabla proporciona guías de dimensionamiento basadas en el volumen 
 ```
 Cálculo de espacio en /home:
 ─────────────────────────────────────────────────
-Imágenes de contenedores:          4 GB
+Imágenes de contenedores:          6 GB   (+n8n ×3, Redis; ~1.5 GB más que v2.x)
 Base de datos PostgreSQL:          1.5 GB  (3000 CIs × 500 KB)
 Vulnerabilidades JSONB:            4.5 GB  (3000 CIs × 1.5 MB avg)
+Modelos Ollama (bind mount host):  8 GB   (bge-m3 ~0.5 GB + qwen3:latest ~7.5 GB)
+Datos n8n (workflows, logs):       1 GB   (estimado con historial 30 días)
 Logs de contenedores:              1 GB    (3 meses con logrotate)
-Backups diarios (30 días):         18 GB   (600 MB × 30 días)
+Backups diarios (30 días):         30 GB   (1 GB × 30 días incluyendo n8n data)
 ─────────────────────────────────────────────────
-Total:                             29 GB
-Margen de seguridad (40%):         +11.6 GB
+Total:                             52 GB
+Margen de seguridad (40%):         +20.8 GB
 ─────────────────────────────────────────────────
-Espacio LVM recomendado:           40-50 GB
+Espacio LVM recomendado:           75-80 GB
 ```
 
+> **Nota:** Los modelos Ollama se almacenan en `${OLLAMA_MODELS_PATH:-/opt/cmdb-data/ollama-models}` en el host (bind mount), fuera de `/home`. Si se mantiene en `/opt`, provisionar ese filesystem también.
+
 **Hardware recomendado:**
-- vCPU: 4
-- RAM: 8 GB
-- LVM en /home: 50 GB
+- vCPU: 6
+- RAM: 16 GB
+- LVM en /home: 80 GB (o 50 GB si modelos Ollama están en `/opt`)
 - Filesystem: XFS (mejor rendimiento para bases de datos que ext4)
 
 ### 11.4 Monitorización de espacio en disco (Obligatorio)
@@ -793,11 +893,12 @@ El asistente inteligente de CMDB utiliza RAG (Retrieval-Augmented Generation) pa
 
 | Componente | Tecnología | Versión | Rol |
 |------------|-----------|---------|-----|
-| LLM local | Ollama | latest | Embeddings (bge-m3) y chat (qwen2.5:7b-instruct) |
+| LLM local | Ollama | latest | Embeddings (bge-m3) y chat (**qwen3:latest**, think:false) |
 | BD vectorial | pgvector | 0.7+ | Vector store dentro del PostgreSQL existente |
 | Parsing docs | pdf-parse, mammoth, exceljs, officeparser | varias | Extracción de texto de PDF/DOCX/XLSX/PPTX/ODT |
-| OCR (fallback) | tesseract-ocr, poppler-utils, node-tesseract-ocr | 5.5.1 / 2.2.1 | OCR de PDFs escaneados sin texto embebido (fallback automático de docParser) |
+| OCR (fallback) | tesseract-ocr, poppler-utils, node-tesseract-ocr | 5.5.1 / 2.2.1 | OCR de PDFs escaneados sin texto embebido (fallback automático si densidad < 100 chars/página) |
 | Chat API | Express SSE | — | Streaming de respuestas via text/event-stream |
+| Indexing queue | n8n workflow (Schedule) | 1.x | Despacha `POST /api/internal/rag/process-batch` cada 30 s (desde v3.0.0) |
 
 ### 12.3 Flujo de datos (Ingesta)
 
@@ -807,7 +908,7 @@ sequenceDiagram
     participant API as POST /api/documents
     participant BE as Backend
     participant IDX as rag_document_index
-    participant CRON as Cron 30s
+    participant CRON as n8n workflow (30s)
     participant P as docParser
     participant C as Chunker
     participant RS as ragService.embed()
@@ -841,7 +942,7 @@ sequenceDiagram
     participant PG as kNN HNSW pgvector
     participant RE as Reranking MMR
     participant PR as Prompt Builder
-    participant OL as Ollama (qwen2.5:7b)
+    participant OL as Ollama (qwen3:latest)
     participant FE as Frontend
     participant AL as AuditLog
 
@@ -860,9 +961,13 @@ sequenceDiagram
     BE->>AL: INSERT AuditLog (ASK_RAG, hash query)
 ```
 
-### 12.5 Topología de contenedores (actualizada)
+### 12.5 Topología de contenedores
 
-Se añade el servicio `cmdb-ollama` a la red interna `cmdb-net`. Este contenedor nunca se expone al host. El backend accede a Ollama exclusivamente en `http://ollama:11434`. Nginx sigue siendo la única puerta de entrada para el tráfico externo; Ollama es completamente opaco desde el exterior.
+> Ver **§3 Topología de Contenedores** para el diagrama completo. Resumen relevante para RAG:
+
+- `cmdb-ollama-prod` está en `cmdb-internal` (sin egress). Solo accesible por backend y n8n-workers.
+- El backend llama a Ollama en `http://ollama:11434` para embeddings en tiempo real (query) y directamente para chat streaming.
+- Desde v3.0.0, la **indexing queue** (ingesta de documentos y entidades) la despacha un workflow n8n (`POST /api/internal/rag/process-batch`) en lugar del cron interno del backend. Los workers de n8n llaman al backend via `/api/internal/*`; el backend llama a Ollama para generar embeddings. Los n8n workers también pueden llamar a Ollama directamente para tareas futuras de análisis (D2).
 
 ```
 Browser ──HTTPS:443──▶ nginx ──/──▶ frontend (Next.js :3001)

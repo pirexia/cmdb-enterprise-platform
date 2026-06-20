@@ -42,14 +42,19 @@ const CSV_CHUNK_LINES     = 100;        // lines per chunk for CSV
 // OCR constants — scanned PDF fallback
 const MAX_OCR_TIME_MS     = Number(process.env.OCR_TIMEOUT_MS ?? 180_000); // per-subprocess cap (pdftoppm or single tesseract page)
 // Total timeout for a full OCR run (pdftoppm + all tesseract pages). Must be >> MAX_OCR_TIME_MS * typical pages.
-// At 150 DPI a 16-page PDF takes ~14s (pdftoppm) + ~10s×16 (tesseract) ≈ 174s; 600s gives comfortable headroom.
+// At 300 DPI a 16-page PDF takes ~28s (pdftoppm) + ~20s×16 (tesseract) ≈ 348s; 600s gives comfortable headroom.
 const MAX_OCR_DOC_TIME_MS = Math.max(60_000, Number(process.env.OCR_DOC_TIMEOUT_MS ?? 600_000) || 600_000);
 // Validate OCR_LANGUAGES: must match <lang>(+<lang>)* — rejects shell-unsafe chars (OCR-A03-2).
 const _rawLangs = process.env.OCR_LANGUAGES ?? 'spa+eng';
 const OCR_LANGUAGES = /^[a-z]{2,4}(\+[a-z]{2,4})*$/i.test(_rawLangs) ? _rawLangs : 'spa+eng';
 // Validate OCR_DPI: integer in [72, 600] — rejects non-numeric / out-of-range values (OCR-A03-2).
-const _rawDpi = parseInt(process.env.OCR_DPI ?? '150', 10);
-const OCR_DPI = (!isNaN(_rawDpi) && _rawDpi >= 72 && _rawDpi <= 600) ? String(_rawDpi) : '150';
+// Default raised to 300 for legible fine print; set OCR_DPI=150 to restore previous speed.
+const _rawDpi = parseInt(process.env.OCR_DPI ?? '300', 10);
+const OCR_DPI = (!isNaN(_rawDpi) && _rawDpi >= 72 && _rawDpi <= 600) ? String(_rawDpi) : '300';
+// Minimum embedded-text characters per page below which OCR is triggered even when pdf-parse
+// extracts some text (watermarks, headers only). Set OCR_MIN_CHARS_PER_PAGE=0 to disable.
+const _rawMinChars = parseInt(process.env.OCR_MIN_CHARS_PER_PAGE ?? '100', 10);
+const OCR_MIN_CHARS_PER_PAGE = (!isNaN(_rawMinChars) && _rawMinChars >= 0) ? _rawMinChars : 100;
 const OCR_ENABLED         = process.env.OCR_ENABLED !== 'false'; // true unless explicitly disabled
 // Hard cap on pages rasterised/OCR'd per document — bounds CPU/disk for huge scans (DoS guard).
 const OCR_MAX_PAGES       = Number(process.env.OCR_MAX_PAGES ?? 50);
@@ -174,16 +179,32 @@ async function parsePdfWithOcr(filePath: string): Promise<DocumentSection[]> {
 async function parsePdf(filePath: string): Promise<{ sections: DocumentSection[]; ocrUsed: boolean }> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const pdfParse = require('pdf-parse') as (buf: Buffer, opts?: Record<string, unknown>) => Promise<{ text: string; numpages: number }>;
+  const label = path.basename(filePath);
   const dataBuffer = fs.readFileSync(filePath);
   const data = await pdfParse(dataBuffer);
   const text = data.text.slice(0, MAX_CONTENT_CHARS);
 
-  if (!text.trim()) {
-    // No embedded text — scanned PDF. Fall back to Tesseract OCR if enabled.
+  const isEmpty = !text.trim();
+  // Density check: PDFs with embedded text from watermarks/headers only have very few
+  // chars per page — OCR produces far better content for these "pseudo-text" scans.
+  const numPages = Math.max(data.numpages ?? 1, 1);
+  const charsPerPage = isEmpty ? 0 : text.trim().length / numPages;
+  const isLowDensity = !isEmpty && OCR_MIN_CHARS_PER_PAGE > 0 && charsPerPage < OCR_MIN_CHARS_PER_PAGE;
+
+  if (isEmpty || isLowDensity) {
     if (OCR_ENABLED) {
+      if (isLowDensity) {
+        console.log(
+          `[docParser][OCR] Low text density "${label}": ` +
+          `${charsPerPage.toFixed(1)} chars/page < ${OCR_MIN_CHARS_PER_PAGE} threshold — triggering OCR`,
+        );
+      }
       return { sections: await parsePdfWithOcr(filePath), ocrUsed: true };
     }
-    return { sections: [], ocrUsed: false };
+    // OCR disabled: empty PDFs yield nothing; low-density PDFs fall through to sparse text
+    if (isEmpty) {
+      return { sections: [], ocrUsed: false };
+    }
   }
 
   return {

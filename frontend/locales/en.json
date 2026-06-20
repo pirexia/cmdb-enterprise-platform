@@ -1566,7 +1566,8 @@
       "licenses": "Licenses",
       "vulnerabilities": "Vulnerabilities",
       "all": "All",
-      "clear": "Clear"
+      "clear": "Clear",
+      "decommission": "Decommission"
     }
   },
   "document": {

@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ChatEntityType = 'document' | 'ci' | 'contract' | 'license' | 'vulnerability';
+export type ChatEntityType = 'document' | 'ci' | 'contract' | 'license' | 'vulnerability' | 'decommission';
 
 export interface ChatCitation {
   entityType: ChatEntityType;
@@ -188,7 +188,7 @@ export function useChatStream(): UseChatStreamResult {
                 const citations: ChatCitation[] = (payload as unknown[]).map((item) => {
                   const c = item as Record<string, unknown>;
                   const entityType = (typeof c.entityType === "string" &&
-                    ['document','ci','contract','license','vulnerability'].includes(c.entityType))
+                    ['document','ci','contract','license','vulnerability','decommission'].includes(c.entityType))
                     ? (c.entityType as ChatEntityType) : 'document';
                   return {
                     entityType,

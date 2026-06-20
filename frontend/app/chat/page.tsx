@@ -20,6 +20,7 @@ import {
   FileSignature,
   Key,
   ShieldAlert,
+  Boxes,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -65,7 +66,8 @@ function citationHref(c: ChatCitation): string {
     case 'ci':            return `/inventory?focus=${c.entityId}`;
     case 'contract':      return `/contracts?focus=${c.entityId}`;
     case 'license':       return `/licenses?focus=${c.entityId}`;
-    case 'vulnerability': return `/vulnerabilities?cve=${encodeURIComponent(c.documentTitle)}`;
+    case 'vulnerability':  return `/vulnerabilities?cve=${encodeURIComponent(c.documentTitle)}`;
+    case 'decommission':   return `/decommission/${c.entityId}`;
   }
 }
 
@@ -181,6 +183,7 @@ export default function ChatPage() {
     { key: 'contract',      i18n: 'chat.filter.contracts',       icon: FileSignature },
     { key: 'license',       i18n: 'chat.filter.licenses',        icon: Key           },
     { key: 'vulnerability', i18n: 'chat.filter.vulnerabilities', icon: ShieldAlert   },
+    { key: 'decommission',  i18n: 'chat.filter.decommission',    icon: Boxes         },
   ];
 
   const [selectedEntityTypes, setSelectedEntityTypes] = useState<ChatEntityType[]>(() => {
@@ -190,7 +193,7 @@ export default function ChatPage() {
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      const allowed: ChatEntityType[] = ['document', 'ci', 'contract', 'license', 'vulnerability'];
+      const allowed: ChatEntityType[] = ['document', 'ci', 'contract', 'license', 'vulnerability', 'decommission'];
       return parsed.filter((x): x is ChatEntityType => typeof x === 'string' && (allowed as string[]).includes(x));
     } catch {
       return [];

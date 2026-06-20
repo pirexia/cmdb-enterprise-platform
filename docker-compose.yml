@@ -92,7 +92,7 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       RAG_ENABLED:     ${RAG_ENABLED:-true}
       RAG_EMBED_MODEL: ${RAG_EMBED_MODEL:-bge-m3}
-      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen2.5:7b-instruct-q4_K_M}
+      RAG_CHAT_MODEL:  ${RAG_CHAT_MODEL:-qwen3:latest}
       RAG_CHAT_TEMPERATURE: ${RAG_CHAT_TEMPERATURE:-0.1}
       RAG_TOP_K:       ${RAG_TOP_K:-6}
       RAG_RATE_LIMIT_PER_MIN: ${RAG_RATE_LIMIT_PER_MIN:-10}
@@ -101,7 +101,7 @@ services:
       # ── OCR — Tesseract fallback for scanned PDFs ─────────────────────────────
       OCR_ENABLED:      ${OCR_ENABLED:-true}
       OCR_LANGUAGES:    ${OCR_LANGUAGES:-spa+eng}
-      OCR_DPI:          ${OCR_DPI:-150}
+      OCR_DPI:          ${OCR_DPI:-300}
       OCR_TIMEOUT_MS:   ${OCR_TIMEOUT_MS:-180000}
       OCR_DOC_TIMEOUT_MS: ${OCR_DOC_TIMEOUT_MS:-600000}
       OCR_MAX_PAGES:    ${OCR_MAX_PAGES:-50}

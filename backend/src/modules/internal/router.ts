@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateService } from '../../shared/middleware/serviceAuth.js';
-import { createInternalAlertsRouter } from './alerts.js';
+import { createInternalAlertsRouter }      from './alerts.js';
+import { createInternalMaintenanceRouter } from './maintenance.js';
 
 /**
  * Router para /api/internal/*
@@ -78,6 +79,9 @@ export function createInternalRouter(prisma: PrismaClient): Router {
 
   // Alertas — scan + record (T3)
   router.use('/alerts', authenticateService, createInternalAlertsRouter(prisma));
+
+  // Mantenimiento del sistema — purge audit, trusted devices, DCIM power, bulk staging (T3.5)
+  router.use('/maintenance', authenticateService, createInternalMaintenanceRouter(prisma));
 
   return router;
 }

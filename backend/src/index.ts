@@ -3902,144 +3902,20 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
 
 // ─── App Settings — Theme & Branding ─────────────────────────────────────────
 
-// ─── Daily Alert Cron (08:30 AM every day) ───────────────────────────────────
-// To test immediately without waiting, temporarily change the schedule to:
-//   '* * * * *'   (every minute)
-// The current schedule: '30 8 * * *' = daily at 08:30
+// ─── v3.0.0 — Crons de sistema migrados a workflows n8n ──────────────────────
+// Los siguientes crons se han migrado a /api/internal/maintenance/* (T3 / T3.5):
+//
+//   startAlertScheduler     → workflow n8n "Alertas CMDB"
+//                             (GET /api/internal/alerts/scan + POST /alerts/record)
+//   AuditPurgeCron 03:00    → n8n Schedule + POST /api/internal/maintenance/purge-audit-logs
+//   TrustedDeviceCron 02:00 → n8n Schedule + POST /api/internal/maintenance/cleanup-trusted-devices
+//   DcimPowerCron 04:00     → n8n Schedule + POST /api/internal/maintenance/dcim-power-scan
+//   BulkCleanupCron hourly  → n8n Schedule + POST /api/internal/maintenance/cleanup-bulk-staging
+//
+// node-cron se conserva en el Plugin Engine para los cron-jobs de plugins de usuario.
 
-startAlertScheduler(prisma);
-log.info('[AlertCron] Config-driven scheduler started (reads send time from alert_config table).');
-
-// ─── Audit Log Purge Cron (03:00 AM every day) ───────────────────────────────
-// Deletes audit log records older than AUDIT_RETENTION_DAYS to prevent table bloat.
-// Default retention: 365 days (1 year). Set AUDIT_RETENTION_DAYS=0 to disable.
-
-const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS ?? '365', 10);
-
-if (AUDIT_RETENTION_DAYS > 0) {
-  cron.schedule('0 3 * * *', async () => {
-    try {
-      log.info(`[AuditPurgeCron] Triggered at ${new Date().toISOString()}`);
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - AUDIT_RETENTION_DAYS);
-
-      const result = await prisma.$executeRaw`
-        DELETE FROM "audit_logs"
-        WHERE created_at < ${cutoffDate}
-      `;
-
-      const deleted = Number(result);
-      log.info(`[AuditPurgeCron] [INFO] Deleted ${deleted} audit log record(s) older than ${AUDIT_RETENTION_DAYS} days (cutoff: ${cutoffDate.toISOString()})`);
-    } catch (error) {
-      log.error('[AuditPurgeCron] Error during purge:', error);
-    }
-  }, {
-    timezone: 'Europe/Madrid',
-  });
-
-  log.info(`[AuditPurgeCron] Scheduled daily at 03:00 AM (TZ: Europe/Madrid) — Retention: ${AUDIT_RETENTION_DAYS} days`);
-} else {
-  log.info('[AuditPurgeCron] Disabled (AUDIT_RETENTION_DAYS=0)');
-}
-
-// ── Trusted device cleanup (daily at 02:00 AM) ────────────────────────────────
-cron.schedule('0 2 * * *', async () => {
-  try {
-    const result = await prisma.$executeRaw`DELETE FROM "trusted_devices" WHERE expires_at < now()`;
-    log.info(`[TrustedDeviceCron] Cleaned up ${Number(result)} expired trusted device(s)`);
-  } catch (e) {
-    log.error('[TrustedDeviceCron] Cleanup error:', e);
-  }
-}, { timezone: 'Europe/Madrid' });
-
-// ── DCIM power alert scan (daily at 04:00 AM) ────────────────────────────────
-// Detects racks where sum(power_w of occupants) > rack_power_max_w and emits
-// an audit log DCIM_POWER_ALERT per rack (NIS2 Art.23 — incident traceability).
-cron.schedule('0 4 * * *', async () => {
-  try {
-    const { getOverpowerAlerts } = await import('./modules/dcim/queries.js');
-    const alerts = await getOverpowerAlerts(prisma);
-    if (alerts.length === 0) { log.info('[DcimPowerCron] No overpower racks'); return; }
-    for (const alert of alerts) {
-      await prisma.$executeRaw`
-        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-        VALUES (
-          gen_random_uuid(),
-          'DCIM_POWER_ALERT',
-          'CI',
-          ${alert.rackCiId}::uuid,
-          'system@cmdb.local',
-          now()
-        )
-      `;
-    }
-    log.info(`[DcimPowerCron] Logged ${alerts.length} overpower rack alert(s)`);
-  } catch (e) {
-    log.error('[DcimPowerCron] Error:', e);
-  }
-}, { timezone: 'Europe/Madrid' });
-
-// ── Bulk import staging cleanup (hourly) ──────────────────────────────────────
-// Discards abandoned batches older than BULK_BATCH_TTL_HOURS and removes their
-// staged files, so the staging area can never grow unbounded (ISO 22301 / NIS2).
-cron.schedule('0 * * * *', async () => {
-  try {
-    // Only reap batches that are not already REAPED/DISCARDED/COMMITTED (terminal states).
-    const stale = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id::text AS id FROM "bulk_import_batch"
-      WHERE created_at < now() - make_interval(hours => ${BULK_BATCH_TTL_HOURS}::int)
-        AND status NOT IN ('REAPED','COMMITTED','DISCARDED')`;
-    let cleaned = 0;
-    for (const b of stale) {
-      // Look up the batch owner + counts BEFORE reaping so the audit row is attributable.
-      const meta = await prisma.$queryRaw<{ created_by: string; file_count: number; committed: bigint; non_committed: bigint }[]>`
-        SELECT b.created_by, b.file_count,
-               COUNT(i.id) FILTER (WHERE i.status = 'COMMITTED')  AS committed,
-               COUNT(i.id) FILTER (WHERE i.status <> 'COMMITTED') AS non_committed
-        FROM "bulk_import_batch" b LEFT JOIN "bulk_import_item" i ON i.batch_id = b.id
-        WHERE b.id = ${b.id}::uuid GROUP BY b.id`;
-      // Delete only staged files (not committed documents, which already moved to DOCUMENTS_DIR).
-      const items = await prisma.$queryRaw<{ stagedFileName: string }[]>`
-        SELECT staged_file_name AS "stagedFileName" FROM "bulk_import_item"
-        WHERE batch_id = ${b.id}::uuid AND status != 'COMMITTED'`;
-      for (const it of items) {
-        try { fs.unlinkSync(path.join(STAGING_DIR, path.basename(it.stagedFileName))); } catch {}
-      }
-      // Mark REAPED instead of DELETE: preserves the batch row for the list view (Task C)
-      // so the user can see their expired batches and understand what happened to them.
-      await prisma.$executeRaw`UPDATE "bulk_import_batch" SET status='REAPED', updated_at=now() WHERE id = ${b.id}::uuid`;
-      const m = meta[0];
-      if (m) {
-        try {
-          await prisma.$executeRaw`
-            INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-            VALUES(gen_random_uuid(),'BULK_REAP_BATCH','BulkImportBatch',${b.id}::uuid, ${m.created_by},
-                   ${JSON.stringify({
-                     ttlHours: BULK_BATCH_TTL_HOURS,
-                     fileCount: m.file_count,
-                     committed: Number(m.committed),
-                     nonCommittedReaped: Number(m.non_committed),
-                   })}::jsonb, now())`;
-        } catch (e2) { log.error('[BulkCleanupCron] Audit write failed:', e2); }
-      }
-      cleaned++;
-    }
-    if (cleaned > 0) log.info(`[BulkCleanupCron] Reaped ${cleaned} stale bulk import batch(es)`);
-
-    // Second pass: permanently DELETE REAPED rows older than BULK_REAPED_RETENTION_DAYS.
-    // This prevents indefinite table bloat while giving users time to see expired batches.
-    const oldReaped = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id::text AS id FROM "bulk_import_batch"
-      WHERE status = 'REAPED'
-        AND updated_at < now() - make_interval(days => ${BULK_REAPED_RETENTION_DAYS}::int)`;
-    for (const r of oldReaped) {
-      await prisma.$executeRaw`DELETE FROM "bulk_import_batch" WHERE id = ${r.id}::uuid`;
-    }
-    if (oldReaped.length > 0) log.info(`[BulkCleanupCron] Deleted ${oldReaped.length} expired REAPED batch(es)`);
-  } catch (e) {
-    log.error('[BulkCleanupCron] Cleanup error:', e);
-  }
-}, { timezone: 'Europe/Madrid' });
+startAlertScheduler(prisma); // no-op desde v3.0.0; log de delegación a n8n
+log.info('[v3.0.0] Crons de sistema delegados a n8n workflows. Ver /api/internal/maintenance/*');
 
 // ─── RAG Document Indexing Queue (every 30 s) ────────────────────────────────
 const processBulkImportQueue = createBulkQueueProcessor(prisma);

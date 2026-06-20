@@ -1,8 +1,8 @@
 # Plan v3.0.0 — Estado de Ejecución
 
 ## Última actualización: 2026-06-21 (UTC)
-## Modelo en ejecución: Sonnet 4.6
-## Commit actual: (inicio — sin commit aún)
+## Modelo en ejecución: Sonnet 4.6 / Opus 4.8
+## Commit actual: 0f630b2 (T4 RAG queue → n8n)
 
 ## Decisiones aprobadas por el usuario
 - **D-A:** Migrar alerts + RAG a n8n **Y también** los 4 crons de mantenimiento de `index.ts` (T3.5)
@@ -19,40 +19,37 @@ T1 → T0 → T2 → T2.5 → T3 → T3.5 → T4 → T5 → T6 → T7 → T8 →
 ## Tareas
 
 ### Tarea 1: Actualizar ARCHITECTURE.md y ARCHITECTURE.en.md
-- [ ] 🔄 En progreso — Iniciada: 2026-06-21
-- Archivos a modificar: `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE.en.md`
-- Cambios: §2 Stack (Node 22, Prisma 6, +n8n/Redis/Ollama), §3 Topología (+6 contenedores), §4 Redes (+puertos), §6 Mermaid (diagrama actualizado), §11 Capacity (+n8n/redis), §12 RAG (modelo actualizado, referenciar §3)
-- Bloqueos: Ninguno
+- [x] ✅ COMPLETADA — Commit: 1f33b68
+- §2 Stack, §3 Topología (9 contenedores), §4 Redes, §6 Mermaid, §10 Decisiones, §11 Capacity, §12 RAG — todo actualizado
 
 ### Tarea 0: Auth M2M — service token + /api/internal/*
-- [ ] Pendiente
-- Archivos: `backend/src/shared/serviceAuth.ts` (nuevo), `backend/src/modules/internal/router.ts` (nuevo), `nginx/conf.d/frontend.conf`, `.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`
+- [x] ✅ COMPLETADA — Commit: 751ac65
+- `backend/src/shared/middleware/serviceAuth.ts`, `backend/src/modules/internal/router.ts`, `nginx/conf.d/frontend.conf`, `.env.example`, `docker-compose.yml`, `docker-compose.prod.yml`
 
 ### Tarea 2: Desplegar n8n en Queue Mode
-- [ ] Pendiente
-- Archivos: `docker-compose.yml`, `docker-compose.prod.yml`, `nginx/conf.d/frontend.conf`, `.env.example`
+- [x] ✅ COMPLETADA — Commit: 4de1eb5
+- redis + n8n-main + n8n-worker-1 + n8n-worker-2 en ambos compose; nginx `/n8n/` con auth_request
 
 ### Tarea 2.5: Auditoría volumen Ollama (solo informe)
-- [ ] Pendiente
-- Entregable: `docs/OLLAMA_VOLUME_AUDIT.md`
+- [x] ✅ COMPLETADA — Commit: 0459d7c
+- Entregable: `docs/OLLAMA_VOLUME_AUDIT.md` — bind mount confirmado, riesgo LOW
 
 ### Tarea 3: Migrar alertas de node-cron a n8n
-- [ ] Pendiente
-- Archivos: `backend/src/modules/alerts/scheduler.ts` (eliminar cron), `backend/src/modules/internal/alerts.ts` (nuevos endpoints)
-- Nota: `pipeline.ts`/`engine.ts`/`email-builder.ts` se conservan
+- [x] ✅ COMPLETADA — Commit: 76f87f0
+- `backend/src/modules/alerts/scheduler.ts` → no-op; `backend/src/modules/internal/alerts.ts` (GET /scan, POST /record)
 
 ### Tarea 3.5: Migrar los 4 crons de mantenimiento de index.ts a n8n
-- [ ] Pendiente
-- Crons a migrar: AuditPurgeCron (03:00), TrustedDeviceCron (02:00), DcimPowerCron (04:00), BulkCleanupCron (cada hora)
-- Archivos: `backend/src/index.ts` (eliminar crons), `backend/src/modules/internal/` (endpoints batch)
+- [x] ✅ COMPLETADA — Commit: 05b544b
+- Eliminados 4 crons de `index.ts`; `backend/src/modules/internal/maintenance.ts` (4 endpoints POST)
 
 ### Tarea 4: Migrar queue de RAG a n8n (enfoque híbrido)
-- [ ] Pendiente
-- Archivos: `backend/src/index.ts` (eliminar cron */30s), `backend/src/modules/internal/rag.ts` (nuevo endpoint process-batch)
+- [x] ✅ COMPLETADA — Commit: 0f630b2
+- `backend/src/modules/internal/rag.ts` (POST /process-batch, DI pattern); cron */30s eliminado de `index.ts`
 
 ### Tarea 5: Importaciones masivas vía n8n
-- [ ] Pendiente
+- [ ] 🔄 En progreso — Iniciada: 2026-06-21
 - Workflow n8n alimenta `POST /api/cis/bulk/batches` (pipeline existente)
+- Nuevo endpoint: `POST /api/internal/bulk/submit` (service auth → delegate to existing pipeline)
 
 ### Tarea 6: Sincronización LDAP/AD vía n8n
 - [ ] Pendiente
@@ -83,5 +80,6 @@ T1 → T0 → T2 → T2.5 → T3 → T3.5 → T4 → T5 → T6 → T7 → T8 →
 - (vacío)
 
 ## Próxima acción al reanudar
-1. Continuar con Tarea 1: actualizar ARCHITECTURE.md
-2. Luego commit y pasar a Tarea 0
+1. T5: `POST /api/internal/bulk/submit` + `docs/n8n/WORKFLOWS.md` (sección Bulk Import)
+2. T6: LDAP sync endpoints + workflow
+3. T7: backup workflow + BACKUP_RESTORE_GUIDE.md

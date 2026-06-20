@@ -95,6 +95,21 @@ export function PluginProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    // /api/plugins requires ADMIN — skip the call for other roles to avoid
+    // a 403 on every page load. Role is read from localStorage (same source
+    // as AuthContext and apiFetch) so no provider dependency is needed.
+    try {
+      const stored = typeof window !== "undefined" ? localStorage.getItem("cmdb_user") : null;
+      const parsed = stored ? (JSON.parse(stored) as { role?: string }) : null;
+      if (parsed?.role !== "ADMIN") {
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await apiFetch("/api/plugins");

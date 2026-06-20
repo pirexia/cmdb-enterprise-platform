@@ -101,7 +101,7 @@ services:
       # ── OCR — Tesseract fallback for scanned PDFs ─────────────────────────────
       OCR_ENABLED:      ${OCR_ENABLED:-true}
       OCR_LANGUAGES:    ${OCR_LANGUAGES:-spa+eng}
-      OCR_DPI:          ${OCR_DPI:-150}
+      OCR_DPI:          ${OCR_DPI:-300}
       OCR_TIMEOUT_MS:   ${OCR_TIMEOUT_MS:-180000}
       OCR_DOC_TIMEOUT_MS: ${OCR_DOC_TIMEOUT_MS:-600000}
       OCR_MAX_PAGES:    ${OCR_MAX_PAGES:-50}

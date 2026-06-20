@@ -3540,7 +3540,7 @@ async function processRagQueue(): Promise<void> {
     try {
       await prisma.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-        VALUES(gen_random_uuid(), 'INDEX_BATCH', 'RagEntityIndex', NULL, 'system',
+        VALUES(gen_random_uuid(), 'INDEX_BATCH', 'RagEntityIndex', 'system', 'system',
           ${JSON.stringify({
             cycle_at: new Date().toISOString(),
             docs: { processed: docsProcessed, errors: docsErrors },
@@ -4340,6 +4340,45 @@ function ciXlsxUploadMiddleware(req: Request, res: Response, next: NextFunction)
 }
 
 
+// GET /api/admin/rag/status — indexing health summary + ERROR rows (ADMIN only)
+app.get('/api/admin/rag/status', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  if (process.env.RAG_ENABLED !== 'true') { res.status(503).json({ error: 'RAG subsystem is disabled' }); return; }
+  try {
+    type StatusRow  = { status: string; n: number };
+    type EntityRow  = { entity_type: string; status: string; n: number };
+    type DocErrRow  = { document_id: string; version: number; error: string | null; updated_at: Date };
+    type EntErrRow  = { entity_type: string; entity_id: string; error: string | null; updated_at: Date };
+
+    const [docByStatus, entityByStatus, docErrors, entityErrors] = await Promise.all([
+      prisma.$queryRaw<StatusRow[]>`
+        SELECT status, COUNT(*)::int AS n FROM rag_document_index GROUP BY status ORDER BY status`,
+      prisma.$queryRaw<EntityRow[]>`
+        SELECT entity_type, status, COUNT(*)::int AS n
+        FROM rag_entity_index GROUP BY entity_type, status ORDER BY entity_type, status`,
+      prisma.$queryRaw<DocErrRow[]>`
+        SELECT rdi.document_id::text, rdi.version_number AS version,
+               rdi.error_message AS error, rdi.updated_at,
+               d.title
+        FROM rag_document_index rdi
+        LEFT JOIN documents d ON d.id = rdi.document_id
+        WHERE rdi.status = 'ERROR'
+        ORDER BY rdi.updated_at DESC LIMIT 50`,
+      prisma.$queryRaw<EntErrRow[]>`
+        SELECT entity_type, entity_id::text, error_message AS error, updated_at
+        FROM rag_entity_index WHERE status = 'ERROR'
+        ORDER BY updated_at DESC LIMIT 50`,
+    ]);
+
+    res.json({
+      documents: { byStatus: docByStatus, errors: docErrors },
+      entities:  { byStatus: entityByStatus, errors: entityErrors },
+    });
+  } catch (e) {
+    console.error('[GET /api/admin/rag/status]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/admin/rag/backfill — re-queue un-indexed documents and/or entities (ADMIN only)
 // Plan §11: optional body `{ entityTypes?: ('document'|'ci'|'contract'|'license'|'vulnerability')[] }`
 // Empty array or omitted → process ALL types.
@@ -4462,7 +4501,7 @@ app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfill
 
     await prisma.$executeRaw`
       INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'RAG_BACKFILL_ENTITIES', 'System', NULL, ${req.user!.email},
+      VALUES(gen_random_uuid(), 'RAG_BACKFILL_ENTITIES', 'System', 'system', ${req.user!.email},
         ${JSON.stringify({ queued_per_type: queued })}::jsonb, now())`;
 
     res.json({ ok: true, queued });

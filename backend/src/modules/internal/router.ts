@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateService } from '../../shared/middleware/serviceAuth.js';
+import { createInternalAlertsRouter } from './alerts.js';
 
 /**
  * Router para /api/internal/*
@@ -68,18 +69,15 @@ export function createInternalRouter(prisma: PrismaClient): Router {
   });
 
   // ── Service-authenticated endpoints ──────────────────────────────────────────
-  // Todos los endpoints de dominio usan authenticateService.
-  // Se añaden en Tareas 3-8:
-  //   router.use('/alerts',  authenticateService, alertsInternalRouter)
-  //   router.use('/rag',     authenticateService, ragInternalRouter)
-  //   router.use('/users',   authenticateService, usersInternalRouter)
-  //   router.use('/notify',  authenticateService, notifyInternalRouter)
-  //   router.use('/maintenance', authenticateService, maintenanceInternalRouter)
+  // Todos los endpoints de dominio requieren authenticateService.
 
-  // Endpoint de ejemplo/ping para verificar el token desde n8n
+  // Ping — para tests de conectividad desde n8n
   router.get('/ping', authenticateService, (_req: Request, res: Response): void => {
     res.json({ pong: true, ts: new Date().toISOString() });
   });
+
+  // Alertas — scan + record (T3)
+  router.use('/alerts', authenticateService, createInternalAlertsRouter(prisma));
 
   return router;
 }

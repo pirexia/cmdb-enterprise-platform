@@ -4084,6 +4084,75 @@ async function materializeCIBulkItem(
   return { ciId: ci.id };
 }
 
+// ── CMDB stats cache (60 s TTL) — injected into every RAG prompt so the LLM
+// can answer counting/inventory questions correctly regardless of topK. ────────
+let _statsCache: { text: string; expiresAt: number } | null = null;
+
+async function getCmdbStats(): Promise<string> {
+  const now = Date.now();
+  if (_statsCache && _statsCache.expiresAt > now) return _statsCache.text;
+
+  try {
+    type TypeRow     = { tipo: string; estado: string; n: number };
+    type TotalRow    = { total: number; activos: number };
+    type CountRow    = { n: number };
+
+    const [byType, totals, contratosR, licenciasR, docsR, vulnsR] = await Promise.all([
+      prisma.$queryRaw<TypeRow[]>`
+        SELECT ct.name AS tipo, ci.status AS estado, COUNT(*)::int AS n
+        FROM configuration_items ci
+        LEFT JOIN ci_types ct ON ci.ci_type_id = ct.id
+        GROUP BY ct.name, ci.status
+        ORDER BY COUNT(*) DESC`,
+      prisma.$queryRaw<TotalRow[]>`
+        SELECT COUNT(*)::int AS total,
+               SUM(CASE WHEN status = 'ACTIVO' THEN 1 ELSE 0 END)::int AS activos
+        FROM configuration_items`,
+      prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::int AS n FROM contracts`,
+      prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::int AS n FROM licenses`,
+      prisma.$queryRaw<CountRow[]>`SELECT COUNT(*)::int AS n FROM documents WHERE root_id IS NULL`,
+      prisma.$queryRaw<CountRow[]>`
+        SELECT COUNT(DISTINCT entity_id)::int AS n
+        FROM rag_entity_index WHERE entity_type = 'vulnerability' AND status = 'READY'`,
+    ]);
+
+    const total   = Number(totals[0]?.total   ?? 0);
+    const activos = Number(totals[0]?.activos  ?? 0);
+
+    // Aggregate counts per type (sum ACTIVO + INACTIVO + RETIRADO)
+    const typeMap: Record<string, { activo: number; otro: number }> = {};
+    for (const row of byType) {
+      const t = row.tipo ?? 'Sin tipo';
+      if (!typeMap[t]) typeMap[t] = { activo: 0, otro: 0 };
+      if (row.estado === 'ACTIVO') typeMap[t].activo += Number(row.n);
+      else typeMap[t].otro += Number(row.n);
+    }
+    const tipoLines = Object.entries(typeMap)
+      .sort((a, b) => (b[1].activo + b[1].otro) - (a[1].activo + a[1].otro))
+      .map(([t, { activo, otro }]) =>
+        otro > 0
+          ? `  - ${t}: ${activo + otro} (${activo} activos, ${otro} inactivos/retirados)`
+          : `  - ${t}: ${activo}`)
+      .join('\n');
+
+    const text = [
+      `CIs (Elementos de Configuración): ${total} total (${activos} activos, ${total - activos} inactivos/retirados)`,
+      `Por tipo de CI:`,
+      tipoLines,
+      `Contratos: ${Number(contratosR[0]?.n ?? 0)}`,
+      `Licencias: ${Number(licenciasR[0]?.n ?? 0)}`,
+      `Documentos: ${Number(docsR[0]?.n ?? 0)}`,
+      `Vulnerabilidades indexadas: ${Number(vulnsR[0]?.n ?? 0)}`,
+    ].join('\n');
+
+    _statsCache = { text, expiresAt: now + 60_000 };
+    return text;
+  } catch (err) {
+    console.error('[getCmdbStats] error:', err);
+    return ''; // graceful degradation — stats failure must not break chat
+  }
+}
+
 /**
  * Retrieves the top-K most similar chunks for a query, filtered by the user's role ACL.
  *
@@ -4795,11 +4864,14 @@ app.post('/api/chat/ask', authenticateToken, chatAskLimiter, async (req: Request
       if (!owner.length) { res.status(404).json({ error: 'Session not found' }); return; }
     }
 
-    // 2. Retrieve chunks (ACL pre-filter + kNN)
-    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
+    // 2. Retrieve chunks (ACL pre-filter + kNN) + CMDB stats (parallel)
+    const [chunks, cmdbStats] = await Promise.all([
+      ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes),
+      getCmdbStats(),
+    ]);
 
     // 3. Build prompt + call LLM
-    const messages = buildRagPrompt(question, chunks, lang);
+    const messages = buildRagPrompt(question, chunks, lang, cmdbStats);
     const start = Date.now();
     const result = await chatWithContext(messages);
     const latencyMs = Date.now() - start;
@@ -4875,8 +4947,11 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
 
     send('session', { sessionId });
 
-    // 2. Retrieve chunks
-    const chunks = await ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes);
+    // 2. Retrieve chunks + CMDB stats (parallel)
+    const [chunks, cmdbStats] = await Promise.all([
+      ragSearchChunks(question, req.user!.role, topK ?? 6, entityTypes),
+      getCmdbStats(),
+    ]);
 
     const citations: Citation[] = chunks.map(c => ({
       entityType:    c.entityType,
@@ -4897,7 +4972,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
       VALUES(gen_random_uuid(), ${sessionId}::uuid, 'user', ${question}, '[]'::jsonb, ${queryHash}, now())`;
 
     // 4. Stream LLM tokens
-    const messages = buildRagPrompt(question, chunks, lang);
+    const messages = buildRagPrompt(question, chunks, lang, cmdbStats);
     const start = Date.now();
     let assistantText = '';
     const { model, tokensUsed } = await streamChatWithContext(messages, (token) => {

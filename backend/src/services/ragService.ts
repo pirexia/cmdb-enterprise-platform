@@ -423,6 +423,7 @@ export function buildRagPrompt(
   question: string,
   chunks: RagChunkResult[],
   lang?: string,
+  cmdbStats?: string,
 ): ChatMessage[] {
   // Rule 3: explicit language instruction when the UI locale is known.
   // This overrides the model's tendency to follow the context language.
@@ -455,7 +456,12 @@ export function buildRagPrompt(
     'general del modelo. Limítate a los valores literales presentes en el contexto.\n' +
     '7. PRECISIÓN NUMÉRICA: Cuando uses fechas, versiones, identificadores, IPs, CVE, CVSS, ' +
     'precios, cantidades u otros valores numéricos/estructurados, transcríbelos textualmente ' +
-    'del contexto sin redondear, normalizar ni reformatear.';
+    'del contexto sin redondear, normalizar ni reformatear.\n' +
+    '8. ESTADÍSTICAS CMDB: Si el contexto incluye un bloque "ESTADÍSTICAS CMDB", úsalo como ' +
+    'fuente autoritativa para preguntas de conteo o inventario global (ej. "¿cuántos servidores ' +
+    'hay?", "¿cuántos CIs existen?"). Los fragmentos [N] son una muestra — NO los cuentes para ' +
+    'responder preguntas de cantidad total. Las estadísticas CMDB son datos en tiempo real de la ' +
+    'base de datos; no requieren citación [N] — basta con indicar "Según las estadísticas del CMDB".';
 
   // Build numbered context block from chunks.
   // Entity chunks already contain <ENTITY_DATA>...</ENTITY_DATA> framing in `content`
@@ -468,16 +474,27 @@ export function buildRagPrompt(
     return `${label}\n${chunk.content}`;
   });
 
-  const contextBlock =
+  const statsBlock = cmdbStats
+    ? `ESTADÍSTICAS CMDB (datos en tiempo real — fuente autoritativa para preguntas de conteo):\n${cmdbStats}\n\n`
+    : '';
+
+  const contextBlock = statsBlock + (
     chunks.length > 0
       ? `CONTEXTO (fragmentos de documentos y entidades del CMDB):\n\n${contextLines.join('\n\n---\n\n')}`
-      : 'CONTEXTO: No se han encontrado fragmentos relevantes.';
+      : 'CONTEXTO: No se han encontrado fragmentos relevantes.'
+  );
 
   const sanitizedQuestion = sanitizeQuery(question);
 
+  // Reinforce the stats reminder immediately before the question so the model
+  // doesn't drift toward counting the [N] fragments after reading long ENTITY_DATA blocks.
+  const statsReminder = cmdbStats
+    ? '\n⚠ RECORDATORIO: para responder preguntas de cantidad o inventario, usa EXCLUSIVAMENTE las ESTADÍSTICAS CMDB indicadas al inicio. Los fragmentos [N] son una muestra, no el total.\n'
+    : '';
+
   return [
     { role: 'system',    content: SYSTEM_PROMPT },
-    { role: 'user',      content: `${contextBlock}\n\nPREGUNTA: ${sanitizedQuestion}` },
+    { role: 'user',      content: `${contextBlock}${statsReminder}\nPREGUNTA: ${sanitizedQuestion}` },
   ];
 }
 

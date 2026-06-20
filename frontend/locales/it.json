@@ -1447,7 +1447,8 @@
       "licenses": "Licenze",
       "vulnerabilities": "Vulnerabilità",
       "all": "Tutte",
-      "clear": "Cancella"
+      "clear": "Cancella",
+      "decommission": "Dismissione"
     }
   },
   "document": {

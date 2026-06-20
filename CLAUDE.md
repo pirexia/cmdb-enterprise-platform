@@ -470,19 +470,10 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v2.9.0 — ✅ LIBERADA (tag `v2.9.0`, merge develop→main, 2026-06-20)
-**Próxima versión:** v2.9.1 — 🔄 EN PROGRESO
-**Rama activa:** `feature/v2.9.1-ui-unify` (cortada de `develop`)
+**Versión actual en producción:** v2.9.1 — ✅ LIBERADA (tag `v2.9.1`, merge develop→main, 2026-06-20)
+**Próxima versión:** —
+**Rama activa:** `develop`
 **PRs abiertos:** —
-
-### v2.9.1 — Unificación estética DCIM + Decommission
-
-| Tarea | Estado | Commit |
-|-------|--------|--------|
-| T1 — graphify update (AST incremental) | ✅ | — |
-| T2 — DCIM: restyle al patrón canónico de la casa | ✅ | `940b1e8` |
-| T3 — Decommission: restyle al patrón canónico de la casa | ✅ | `11c78a3` |
-| PR + merge develop | ⏳ | — |
 
 **Patrón canónico de la casa** (vistas de nivel superior — Dashboard, Inventory, Vulnerabilities, Reports, DCIM, Decommission):
 ```
@@ -507,6 +498,7 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+- **v2.9.1** ✅ LIBERADA (2026-06-20): Unificación estética DCIM + Decommission al patrón canónico de la casa. Fix `/api/plugins` 403 (faltaba `authenticateToken` en mounts del plugin engine). PR #163.
 - **v2.9.0** ✅ LIBERADA (2026-06-20): Modularización backend Strangler Fig — `index.ts` ~8 200→~4 900 líneas; 7 dominios extraídos a `modules/` (settings, vendors, integrations, licenses, contracts, masters, documents) + `shared/` middleware/utils. Tests jest+supertest por módulo (todos verdes). PRs #154–#162. `docs/PLAN_v2.9.0.md`.
 - **v2.8.7** ✅ LIBERADA (2026-06-19): Bulk import +24 campos infra/GRC (cols 25–48); tema claro en `/decommission/*` + `/plugins/admin`; fix dropdown sistemas invisible; i18n ES "Decomisado". `docs/PLAN_v2.8.7.md`.
 - **v2.8.6** ✅ LIBERADA (2026-06-16): Fixes modal Decomisionado (label "(SISTEMA)", i18n `actions.create`/`view`, endpoint `GET /api/decommission/systems` + combobox debounce) + limpieza i18n página detalle. PR #149.

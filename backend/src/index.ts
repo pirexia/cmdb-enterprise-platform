@@ -4931,7 +4931,7 @@ app.post('/api/chat/ask/stream', authenticateToken, chatAskLimiter, async (req: 
 
 (async () => {
   // Mount plugin router and re-activate ACTIVE plugins before accepting traffic.
-  await initializePluginEngine(app, prisma);
+  await initializePluginEngine(app, prisma, authenticateToken);
 
   app.listen(PORT, () => {
     console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);

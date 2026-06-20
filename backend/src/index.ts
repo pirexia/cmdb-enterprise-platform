@@ -57,6 +57,7 @@ import { createLicensesRouter }       from './modules/licenses/router';
 import { createContractsRouter }      from './modules/contracts/router';
 import { createMastersRouter }        from './modules/masters/router';
 import { createDocumentsRouter, createBulkQueueProcessor } from './modules/documents/router';
+import { createInternalRouter }       from './modules/internal/router';
 import { docVisibilitySqlCol }        from './shared/utils/docVisibility';
 import { UserRole, JwtPayload }  from './shared/types';
 import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authenticate';
@@ -297,6 +298,12 @@ app.use('/api/decommission', authenticateToken, createDecommissionRouter(prisma,
 // Catalog module — master data (OS, etc.); reads open to all authenticated roles
 app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
 app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
+
+// ── Internal M2M router — /api/internal/* ────────────────────────────────────
+// Accessible ONLY from the internal Podman network (n8n-workers → backend).
+// nginx blocks this path externally (deny all → 404) as defense-in-depth.
+// Endpoints authenticate via X-CMDB-Service-Token (timingSafeEqual comparison).
+app.use('/api/internal', createInternalRouter(prisma));
 
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 

@@ -49,7 +49,7 @@ function KpiCard({
   icon: React.ElementType; label: string; value: number; accent: string;
 }) {
   return (
-    <div className="flex items-center gap-4 rounded-none border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex items-center gap-4 rounded-none ring-1 ring-slate-200 bg-white p-5 shadow-sm">
       <div className={`flex h-12 w-12 items-center justify-center rounded-none ${accent}`}>
         <Icon className="h-6 w-6" />
       </div>
@@ -116,7 +116,7 @@ export default function DcimPage() {
 
   if (loading) {
     return (
-      <div className="flex h-64 items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center text-slate-400">
         <RefreshCw className="mr-2 h-5 w-5 animate-spin" />
         {t("dcim.loading")}
       </div>
@@ -125,7 +125,7 @@ export default function DcimPage() {
 
   if (error) {
     return (
-      <div className="flex h-64 flex-col items-center justify-center gap-2 text-red-500">
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-2 text-red-500">
         <AlertTriangle className="h-8 w-8" />
         <p>{error}</p>
         <button onClick={load} className="mt-2 rounded-none border border-red-300 px-4 py-2 text-sm hover:bg-red-50">
@@ -136,29 +136,30 @@ export default function DcimPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">{t("dcim.dashboard.title")}</h1>
-          <p className="text-sm text-slate-500">{t("dcim.dashboard.subtitle")}</p>
+    <div className="min-h-screen bg-slate-50">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900">{t("dcim.dashboard.title")}</h1>
+            <p className="text-sm text-slate-500 mt-0.5">{t("dcim.dashboard.subtitle")}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={load} className="flex items-center gap-2 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+              <RefreshCw className="h-3.5 w-3.5" /> {t("actions.refresh") ?? "Actualizar"}
+            </button>
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/dcim/admin"
+                className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors shadow-sm"
+              >
+                <Settings className="h-4 w-4" /> {t("dcim.dashboard.manage")}
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button onClick={load} className="flex items-center gap-1 rounded-none border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">
-            <RefreshCw className="h-4 w-4" /> {t("actions.refresh") ?? "Actualizar"}
-          </button>
-          {user?.role === "ADMIN" && (
-            <Link
-              href="/dcim/admin"
-              className="flex items-center gap-1 rounded-none bg-[var(--accent)] px-3 py-2 text-sm text-white hover:opacity-90"
-            >
-              <Settings className="h-4 w-4" /> {t("dcim.dashboard.manage")}
-            </Link>
-          )}
-        </div>
-      </div>
+      </header>
 
+      <div className="px-8 py-8 space-y-8 w-full">
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard icon={Building2}    label={t("dcim.dashboard.buildings")} value={kpis?.buildings ?? 0} accent="bg-blue-100 text-blue-600" />
@@ -171,7 +172,7 @@ export default function DcimPage() {
 
         {/* Room list */}
         <div className="lg:col-span-2">
-          <div className="rounded-none border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-none ring-1 ring-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 py-3">
               <h2 className="font-semibold text-slate-700">{t("dcim.room.title")}</h2>
             </div>
@@ -218,7 +219,7 @@ export default function DcimPage() {
 
         {/* Power alerts */}
         <div>
-          <div className="rounded-none border border-slate-200 bg-white shadow-sm">
+          <div className="rounded-none ring-1 ring-slate-200 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
               <h2 className="font-semibold text-slate-700">{t("dcim.alert.title")}</h2>
               {alerts.length > 0 && (
@@ -243,6 +244,8 @@ export default function DcimPage() {
             </div>
           </div>
         </div>
+
+      </div>
 
       </div>
     </div>

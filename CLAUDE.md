@@ -470,7 +470,7 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v2.9.1 — ✅ LIBERADA (tag `v2.9.1`, merge develop→main, 2026-06-20)
+**Versión actual en producción:** v2.9.2 — ✅ LIBERADA (tag `v2.9.2`, merge develop→main, 2026-06-20)
 **Próxima versión:** —
 **Rama activa:** `develop`
 **PRs abiertos:** —
@@ -498,6 +498,7 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+- **v2.9.2** ✅ LIBERADA (2026-06-20): AI/RAG improvements — qwen3:latest + think:false; stats CMDB en prompt (fix conteo); OCR density trigger + DPI 300; DecommissionPlan indexado en RAG (chip Decomisión en chat); cascada re-index CIs cuando maestro renombrado; `modules/ai/` extraído de `index.ts` (−640 líneas). `docs/PLAN_v2.9.2.md`.
 - **v2.9.1** ✅ LIBERADA (2026-06-20): Unificación estética DCIM + Decommission al patrón canónico de la casa. Fix `/api/plugins` 403 (faltaba `authenticateToken` en mounts del plugin engine). PR #163.
 - **v2.9.0** ✅ LIBERADA (2026-06-20): Modularización backend Strangler Fig — `index.ts` ~8 200→~4 900 líneas; 7 dominios extraídos a `modules/` (settings, vendors, integrations, licenses, contracts, masters, documents) + `shared/` middleware/utils. Tests jest+supertest por módulo (todos verdes). PRs #154–#162. `docs/PLAN_v2.9.0.md`.
 - **v2.8.7** ✅ LIBERADA (2026-06-19): Bulk import +24 campos infra/GRC (cols 25–48); tema claro en `/decommission/*` + `/plugins/admin`; fix dropdown sistemas invisible; i18n ES "Decomisado". `docs/PLAN_v2.8.7.md`.
@@ -512,6 +513,9 @@ Rules:
 1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
 2. Actualizar esta sección con la nueva versión y estado.
 3. Rama: `feature/...` cortada de `develop`.
+
+### Resumen v2.9.2
+AI/RAG: modelo qwen3:latest (think:false); inyección stats CMDB en prompt (60s cache, fix conteo); OCR density trigger (< 100 chars/página) + DPI 300; DecommissionPlan serializado e indexado en RAG (chip Decomisión + i18n ×6 + cita → /decommission/:id); cascada re-index CIs al renombrar branches/cost-centers/ci-types (dependency injection en masters router); extracción `modules/ai/` (queue.ts + router.ts, ~640 líneas fuera de index.ts); fix ALLOWED_ENTITY_TYPES incluye 'decommission'. `docs/PLAN_v2.9.2.md`.
 
 ### Resumen v2.8.5
 Fix sidebar duplicado (/plugins/admin, /admin/certificates). Marketplace de plugins hardening completo (SSRF allowlist, Zod upstream, cache 5 min, `POST /marketplace/install` one-click). CIType "Sistema" + categoría LOGICAL. Módulo Decomisionado (CTE recursiva, Gantt SVG, CRUD docs/contratos/licencias, coherencia fechas, impresión). i18n ×6 en todas las claves nuevas.

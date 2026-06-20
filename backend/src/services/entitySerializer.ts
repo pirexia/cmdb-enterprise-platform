@@ -689,3 +689,107 @@ export async function serializeVulnerability(ciId: string, cve: string): Promise
     throw err;
   }
 }
+
+// ─── DecommissionPlan serializer ─────────────────────────────────────────────
+
+interface DecommPlanRow {
+  id: string;
+  name: string;
+  status: string;
+  created_at: Date;
+  completed_at: Date | null;
+  system_ci_name: string | null;
+}
+
+export async function serializeDecommissionPlan(planId: string): Promise<EntityParseResult> {
+  try {
+    const planRows = await prisma.$queryRaw<DecommPlanRow[]>`
+      SELECT
+        p.id::text            AS id,
+        p.name                AS name,
+        p.status              AS status,
+        p.created_at          AS created_at,
+        p.completed_at        AS completed_at,
+        ci.name               AS system_ci_name
+      FROM "decommission_plan" p
+      LEFT JOIN "configuration_items" ci ON ci.id = p.system_ci_id
+      WHERE p.id = ${planId}::uuid
+      LIMIT 1
+    `;
+    if (planRows.length === 0) {
+      throw new Error(`DecommissionPlan not found: ${planId}`);
+    }
+    const plan = planRows[0];
+
+    // Count associated CIs
+    const ciCountRows = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "decommission_plan_ci" WHERE plan_id = ${planId}::uuid
+    `;
+    const ciCount = Number(ciCountRows[0]?.count ?? 0);
+
+    // Sample CI names (up to 5 for context/searchability)
+    const ciSampleRows = await prisma.$queryRaw<{ ci_name: string }[]>`
+      SELECT ci.name AS ci_name
+      FROM "decommission_plan_ci" dpc
+      JOIN "configuration_items" ci ON ci.id = dpc.ci_id
+      WHERE dpc.plan_id = ${planId}::uuid
+      ORDER BY ci.name
+      LIMIT 5
+    `;
+
+    const contractCountRows = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "decommission_plan_contract" WHERE plan_id = ${planId}::uuid
+    `;
+    const contractCount = Number(contractCountRows[0]?.count ?? 0);
+
+    const licenseCountRows = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "decommission_plan_license" WHERE plan_id = ${planId}::uuid
+    `;
+    const licenseCount = Number(licenseCountRows[0]?.count ?? 0);
+
+    const docCountRows = await prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT COUNT(*)::bigint AS count FROM "decommission_plan_document" WHERE plan_id = ${planId}::uuid
+    `;
+    const docCount = Number(docCountRows[0]?.count ?? 0);
+
+    const planName = sanitizeFreeText(plan.name);
+
+    const lines: string[] = [];
+    lines.push(`<ENTITY_DATA type="decommission" id="${plan.id}">`);
+    lines.push('');
+    lines.push(`Plan de decomisión: ${planName.clean || plan.name}`);
+    lines.push(`Estado: ${plan.status}`);
+    if (plan.system_ci_name) lines.push(`Sistema: ${plan.system_ci_name}`);
+    lines.push(`Fecha creación: ${fmtDate(plan.created_at)}`);
+    if (plan.completed_at) lines.push(`Fecha finalización: ${fmtDate(plan.completed_at)}`);
+    lines.push('');
+    lines.push(`CIs incluidos: ${ciCount}`);
+    if (ciSampleRows.length > 0) {
+      for (const r of ciSampleRows) {
+        lines.push(`  - ${r.ci_name}`);
+      }
+      if (ciCount > ciSampleRows.length) {
+        lines.push(`  ... y ${ciCount - ciSampleRows.length} más`);
+      }
+    }
+    lines.push(`Contratos asociados: ${contractCount}`);
+    lines.push(`Licencias asociadas: ${licenseCount}`);
+    lines.push(`Documentos asociados: ${docCount}`);
+    lines.push('');
+    lines.push('</ENTITY_DATA>');
+
+    const body = stripInjectionTokens(lines.join('\n'));
+
+    return {
+      title: plan.name,
+      metadata: {
+        entityType: 'decommission',
+        entityId: plan.id,
+      },
+      sections: [{ sectionPath: `Plan de decomisión: ${plan.name}`, text: body }],
+    };
+  } catch (err) {
+    console.error('[RAG entitySerializer] serializeDecommissionPlan failed', { planId, message: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
+}

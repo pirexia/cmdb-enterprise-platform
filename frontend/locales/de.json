@@ -1447,7 +1447,8 @@
       "licenses": "Lizenzen",
       "vulnerabilities": "Schwachstellen",
       "all": "Alle",
-      "clear": "Zurücksetzen"
+      "clear": "Zurücksetzen",
+      "decommission": "Außerbetriebnahme"
     }
   },
   "document": {

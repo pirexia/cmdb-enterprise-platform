@@ -39,7 +39,8 @@ import {
 } from './services/ragService';
 import {
   vulnUuid, getContractRoot, getLicenseRoot,
-  serializeCI, serializeContract, serializeLicense, serializeVulnerability, type EntityParseResult,
+  serializeCI, serializeContract, serializeLicense, serializeVulnerability,
+  serializeDecommissionPlan, type EntityParseResult,
 } from './services/entitySerializer';
 import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
@@ -283,7 +284,10 @@ app.use('/api/documents', createDocumentsRouter(
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
 
 // Decommission module — VIEWER role gets read-only; writes require ADMIN (enforced in router)
-app.use('/api/decommission', authenticateToken, createDecommissionRouter(prisma));
+app.use('/api/decommission', authenticateToken, createDecommissionRouter(prisma, {
+  queueEntity: (type, id) => queueEntityForIndexing(type as RagEntityType, id),
+  purgeEntity: (type, id) => purgeEntityFromRag(type as RagEntityType, id),
+}));
 
 // Catalog module — master data (OS, etc.); reads open to all authenticated roles
 app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
@@ -387,7 +391,7 @@ const ChatAskSchema = z.object({
   // Optional allowlist of entity types to restrict retrieval to (v2 RAG-entities).
   // Unknown values are rejected by the enum; an empty/omitted array means "no filter".
   entityTypes: z
-    .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability']))
+    .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability', 'decommission']))
     .optional(),
   // UI locale — forces the model to reply in that language regardless of context language.
   lang: z.enum(['es', 'en', 'de', 'pt', 'fr', 'it']).optional(),
@@ -3220,7 +3224,7 @@ const BULK_BATCH_TTL_HOURS    = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24
 const BULK_REAPED_RETENTION_DAYS = parseInt(process.env.BULK_REAPED_RETENTION_DAYS ?? '7', 10);
 const BULK_MAX_OPEN_BATCHES   = parseInt(process.env.BULK_MAX_OPEN_BATCHES ?? '5', 10);
 
-type RagEntityType = 'ci' | 'contract' | 'license' | 'vulnerability';
+type RagEntityType = 'ci' | 'contract' | 'license' | 'vulnerability' | 'decommission';
 
 /**
  * Enqueues a non-document entity for asynchronous RAG indexing.
@@ -3271,6 +3275,7 @@ async function processRagQueue(): Promise<void> {
   let contractProcessed = 0, contractErrors = 0;
   let licenseProcessed = 0, licenseErrors = 0;
   let vulnProcessed = 0, vulnErrors = 0;
+  let decommissionProcessed = 0, decommissionErrors = 0;
 
   const pending = await prisma.$queryRaw<{ id: string; document_id: string; version_number: number }[]>`
     SELECT id::text AS id, document_id::text AS document_id, version_number
@@ -3411,7 +3416,7 @@ async function processRagQueue(): Promise<void> {
     ? await prisma.$queryRaw<EntityRow[]>`
         SELECT id::text AS id, entity_type, entity_id::text AS entity_id
         FROM "rag_entity_index"
-        WHERE status = 'PENDING' AND entity_type IN ('contract','license')
+        WHERE status = 'PENDING' AND entity_type IN ('contract','license','decommission')
         ORDER BY created_at
         LIMIT ${clLimit}`
     : [];
@@ -3450,6 +3455,8 @@ async function processRagQueue(): Promise<void> {
           if (vulnTuple) {
             parseResult = await serializeVulnerability(vulnTuple.ciId, vulnTuple.cve);
           }
+        } else if (row.entity_type === 'decommission') {
+          parseResult = await serializeDecommissionPlan(row.entity_id);
         }
       } catch (serErr) {
         // Serializer threw (e.g. entity not found) — treat as missing content.
@@ -3467,6 +3474,7 @@ async function processRagQueue(): Promise<void> {
         else if (row.entity_type === 'contract') contractErrors++;
         else if (row.entity_type === 'license') licenseErrors++;
         else if (row.entity_type === 'vulnerability') vulnErrors++;
+        else if (row.entity_type === 'decommission') decommissionErrors++;
         continue;
       }
 
@@ -3510,6 +3518,7 @@ async function processRagQueue(): Promise<void> {
       else if (row.entity_type === 'contract') contractProcessed++;
       else if (row.entity_type === 'license') licenseProcessed++;
       else if (row.entity_type === 'vulnerability') vulnProcessed++;
+      else if (row.entity_type === 'decommission') decommissionProcessed++;
     } catch (e) {
       console.error('[RAG] processRagQueue entity error:', e);
       const errMsg = String(e).slice(0, 500);
@@ -3524,6 +3533,7 @@ async function processRagQueue(): Promise<void> {
       else if (row.entity_type === 'contract') contractErrors++;
       else if (row.entity_type === 'license') licenseErrors++;
       else if (row.entity_type === 'vulnerability') vulnErrors++;
+      else if (row.entity_type === 'decommission') decommissionErrors++;
     }
   }
 
@@ -3548,6 +3558,7 @@ async function processRagQueue(): Promise<void> {
             contract: { processed: contractProcessed, errors: contractErrors },
             license: { processed: licenseProcessed, errors: licenseErrors },
             vulnerability: { processed: vulnProcessed, errors: vulnErrors },
+            decommission: { processed: decommissionProcessed, errors: decommissionErrors },
           })}::jsonb, now())`;
     } catch (e) {
       console.error('[RAG] processRagQueue audit batch error:', e);
@@ -4227,8 +4238,8 @@ async function ragSearchChunks(
     LEFT JOIN "documents" root
       ON c.entity_type = 'document' AND root.id = COALESCE(d.root_id, d.id)
     WHERE (
-        -- Direct entity chunks (ci / contract / license / vulnerability)
-        (c.entity_type IN ('ci','contract','license','vulnerability'))
+        -- Direct entity chunks (ci / contract / license / vulnerability / decommission)
+        (c.entity_type IN ('ci','contract','license','vulnerability','decommission'))
         OR
         -- Document chunks: standard ACL filter
         (c.entity_type = 'document' AND root.${visCol} = true AND d.is_latest = true)
@@ -4384,7 +4395,7 @@ app.get('/api/admin/rag/status', authenticateToken, requireAdmin, async (req: Re
 // Empty array or omitted → process ALL types.
 const BackfillSchema = z.object({
   entityTypes: z
-    .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability']))
+    .array(z.enum(['document', 'ci', 'contract', 'license', 'vulnerability', 'decommission']))
     .optional(),
 });
 
@@ -4400,12 +4411,12 @@ app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfill
       return;
     }
     const requested = parsed.data.entityTypes ?? [];
-    const ALL = ['document', 'ci', 'contract', 'license', 'vulnerability'] as const;
+    const ALL = ['document', 'ci', 'contract', 'license', 'vulnerability', 'decommission'] as const;
     const targets: ReadonlyArray<(typeof ALL)[number]> = requested.length === 0 ? ALL : requested;
     const wants = (t: (typeof ALL)[number]) => targets.includes(t);
 
     const queued: Record<(typeof ALL)[number], number> = {
-      document: 0, ci: 0, contract: 0, license: 0, vulnerability: 0,
+      document: 0, ci: 0, contract: 0, license: 0, vulnerability: 0, decommission: 0,
     };
 
     // ── Documents ────────────────────────────────────────────────────────────
@@ -4497,6 +4508,21 @@ app.post('/api/admin/rag/backfill', authenticateToken, requireAdmin, ragBackfill
         }
       }
       queued.vulnerability = vulnCount;
+    }
+
+    // ── Decommission plans ─────────────────────────────────────────────────────
+    if (wants('decommission')) {
+      const plans = await prisma.$queryRaw<{ id: string }[]>`
+        SELECT id::text AS id FROM "decommission_plan"`;
+      for (const p of plans) {
+        await prisma.$executeRaw`
+          INSERT INTO "rag_entity_index"(id, entity_type, entity_id, status, created_at, updated_at)
+          VALUES(gen_random_uuid(), 'decommission', ${p.id}::uuid, 'PENDING', now(), now())
+          ON CONFLICT (entity_type, entity_id) DO UPDATE
+            SET status='PENDING', updated_at=now()
+            WHERE "rag_entity_index".status != 'INDEXING'`;
+      }
+      queued.decommission = plans.length;
     }
 
     await prisma.$executeRaw`

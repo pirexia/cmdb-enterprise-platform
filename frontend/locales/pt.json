@@ -1447,7 +1447,8 @@
       "licenses": "Licenças",
       "vulnerabilities": "Vulnerabilidades",
       "all": "Todas",
-      "clear": "Limpar"
+      "clear": "Limpar",
+      "decommission": "Desativação"
     }
   },
   "document": {

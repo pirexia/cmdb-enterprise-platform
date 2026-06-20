@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticateService } from '../../shared/middleware/serviceAuth.js';
 import { createInternalAlertsRouter }      from './alerts.js';
 import { createInternalMaintenanceRouter } from './maintenance.js';
+import { createInternalRagRouter, type RagQueueFunctions } from './rag.js';
 
 /**
  * Router para /api/internal/*
@@ -18,7 +19,7 @@ import { createInternalMaintenanceRouter } from './maintenance.js';
  * Los endpoints de dominio (alerts, rag, users, notify, backup) se añaden
  * en Tareas 3-8 como sub-routers montados aquí.
  */
-export function createInternalRouter(prisma: PrismaClient): Router {
+export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunctions): Router {
   const router = Router();
 
   // ── GET /api/internal/health — sin auth, para healthchecks internos ──────────
@@ -82,6 +83,11 @@ export function createInternalRouter(prisma: PrismaClient): Router {
 
   // Mantenimiento del sistema — purge audit, trusted devices, DCIM power, bulk staging (T3.5)
   router.use('/maintenance', authenticateService, createInternalMaintenanceRouter(prisma));
+
+  // RAG indexing queue — process-batch híbrido (T4)
+  if (ragFns) {
+    router.use('/rag', authenticateService, createInternalRagRouter(ragFns));
+  }
 
   return router;
 }

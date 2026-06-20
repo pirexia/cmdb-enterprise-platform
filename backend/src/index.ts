@@ -303,7 +303,13 @@ app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 // Accessible ONLY from the internal Podman network (n8n-workers → backend).
 // nginx blocks this path externally (deny all → 404) as defense-in-depth.
 // Endpoints authenticate via X-CMDB-Service-Token (timingSafeEqual comparison).
-app.use('/api/internal', createInternalRouter(prisma));
+// RAG queue functions injected here so the internal router can dispatch them
+// without moving their complex closures out of index.ts.
+app.use('/api/internal', createInternalRouter(prisma, {
+  processRagQueue,
+  processBulkImportQueue: createBulkQueueProcessor(prisma),
+  processCIBulkImportQueue,
+}));
 
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 
@@ -3917,18 +3923,13 @@ app.post('/api/admin/test-email', authenticateToken, requireAdmin, async (req: R
 startAlertScheduler(prisma); // no-op desde v3.0.0; log de delegación a n8n
 log.info('[v3.0.0] Crons de sistema delegados a n8n workflows. Ver /api/internal/maintenance/*');
 
-// ─── RAG Document Indexing Queue (every 30 s) ────────────────────────────────
-const processBulkImportQueue = createBulkQueueProcessor(prisma);
+// ─── RAG Document Indexing Queue (v3.0.0 — delegado a n8n) ──────────────────
+// El cron */30s se eliminó en T4. El workflow n8n "RAG Indexing" despacha
+// POST /api/internal/rag/process-batch cada 30 s.
+// createBulkQueueProcessor(prisma) se instancia inline al montar el router
+// interno (ver app.use('/api/internal') más arriba).
 if (process.env.RAG_ENABLED === 'true') {
-  cron.schedule('*/30 * * * * *', () => {
-    processRagQueue()
-      .catch((e) => console.error('[RAG] processRagQueue error:', e))
-      .finally(() => {
-        processBulkImportQueue().catch((e) => console.error('[RAG] processBulkImportQueue error:', e));
-        processCIBulkImportQueue().catch((e) => console.error('[CI-Bulk] processCIBulkImportQueue error:', e));
-      });
-  }, { timezone: 'Europe/Madrid' });
-  console.log('[RAG] Indexing queue processor scheduled (every 30 s).');
+  console.log('[RAG] v3.0.0 — indexing queue delegada a n8n workflow "RAG Indexing".');
 } else {
   console.log('[RAG] RAG_ENABLED is not "true" — indexing queue disabled.');
 }

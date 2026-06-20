@@ -1,8 +1,8 @@
 # CMDB Enterprise Platform — User Manual
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Audience:** Department managers, auditors, and users who manage the CMDB on a daily basis
-**Date:** 2026-04-07
+**Date:** 2026-06-20
 
 ---
 
@@ -15,14 +15,14 @@
 5. [Governance Flow: Registration Order](#5-governance-flow-registration-order)
 6. [Navigation: the Sidebar](#6-navigation-the-sidebar)
 7. [CI Inventory Management](#7-ci-inventory-management)
-8. [Bulk Import by CSV](#8-bulk-import-by-csv)
+8. [Bulk Import (Excel with AI analysis)](#8-bulk-import-excel-with-ai-analysis)
 9. [Relationship and Topology Management](#9-relationship-and-topology-management)
 10. [Vulnerability Management](#10-vulnerability-management)
 11. [Document Repository](#11-document-repository)
 12. [Contracts and Addenda](#12-contracts-and-addenda)
 13. [License Repository](#13-license-repository)
 14. [Hardware Models and Lifecycle Dates](#14-hardware-models-and-lifecycle-dates)
-15. [Automated Daily Alerts](#15-automated-daily-alerts)
+15. [Email Alerts — Alert Engine](#15-email-alerts--professional-alert-engine-v284)
 16. [Reports Center](#16-reports-center)
 17. [Configuration and User Management](#17-configuration-and-user-management)
 18. [Master Data — CI Types](#18-master-data--ci-types)
@@ -31,6 +31,14 @@
 21. [Audit Log](#21-audit-log)
 22. [NIS2 / GDPR Resilience Fields](#22-nis2--gdpr-resilience-fields)
 23. [AI Assistant — intelligent document search](#23-ai-assistant--intelligent-document-search)
+25. [DCIM Module — Technical Rooms & Data Centers](#25-dcim-module--technical-rooms--data-centers-v260)
+26. [Master Data — Operating System and Base Software](#26-master-data--operating-system-and-base-software-v270)
+27. [CI Infrastructure Fields](#27-ci-infrastructure-fields-v270)
+28. [Bulk Import — Cascade Creation](#28-bulk-import--cascade-creation-v270)
+29. [Relation Map](#29-relation-map-v270)
+30. [Event Log — Improvements](#30-event-log--improvements-v270)
+31. [Plugin Management — ADMIN only](#31-plugin-management-v280--admin-only)
+32. [Decommission Module — Retirement Plans](#32-decommission-module--retirement-plans-v285)
 
 ---
 
@@ -177,7 +185,8 @@ The platform has three access levels:
 | View Dashboard | Yes | Yes | Yes |
 | View CI Inventory | Yes | Yes | Yes |
 | Create/edit CIs | Yes | No | No |
-| Bulk CSV import | Yes | No | No |
+| Bulk import (Excel/AI) | Yes | No | No |
+| Decommission plans | Yes (create/edit) | View only | View only |
 | Create/delete CI relationships | Yes | No | No |
 | View Vulnerabilities | Yes | Yes | Yes |
 | Change vulnerability status | Yes | No | No |
@@ -348,50 +357,115 @@ When you need to retire several assets at once (e.g. decommissioning a whole roo
 
 ---
 
-## 8. Bulk Import by CSV
+## 8. Bulk Import (Excel with AI analysis)
 
-If you need to register many assets at once, bulk import lets you do it from an Excel or CSV file.
+To register many assets at once, the platform offers a **bulk importer in Excel (`.xlsx`) format with AI-assisted analysis**. The flow analyses each row, detects conflicts and possible duplicates, and lets you review before confirming the creation. Available to **ADMIN only**.
+
+> **Access:** **Inventory → Bulk Import** (`/inventory/bulk`). The screen has two tabs: **Import** (upload a new file) and **My imports** (review previous batches).
 
 ### Step 1: Download the template
 
-1. In the Inventory, click the **"CSV Template"** button.
-2. A file is downloaded with all the fields and example values already included.
+On the import screen, click **"Download template"**. This downloads `plantilla-cis.xlsx`, an Excel workbook with two sheets:
 
-### CSV fields
+- **Data** — the editable sheet, with **48 columns**, a frozen header, validation **dropdown lists** (CI type, criticality, environment, branch, cost centre, impact, classification, location…) and **two example rows** that you must delete before importing.
+- **Instructions** — a description of each field and its valid values.
 
-| Field | Required | Description | Example |
-|-------|:--------:|-------------|---------|
-| `name` | Yes | Asset name | `srv-prd-web-01` |
-| `ciType` | Recommended | CI type code | `PHYSICAL_SERVER` |
-| `criticality` | Yes | Criticality level | `HIGH` |
-| `environment` | Yes | Environment | `PRODUCTION` |
-| `manufacturer` | No | Exact manufacturer name | `Dell` |
-| `serialNumber` | No | Serial number | `SN-DL-00001` |
-| `model` | No | Device model | `PowerEdge R740` |
-| `version` | No | Software version | `2.1.0` |
-| `licenseType` | No | Licence type | `subscription` |
-| `status` | No | `active` or `inactive` | `active` |
+### Step 2: The 48 columns
 
-Valid values for `criticality`: `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL`.
-Valid values for `environment`: `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION`.
+Only the first four are **required** (marked with `*`). The rest are optional and are grouped as follows:
 
-To see the CI type codes available in your installation, go to **Master Data → CI Types**.
+**Identification and basics (1–13)**
 
-### Step 2: Fill in and upload the file
+| Column | Req. | Description |
+|--------|:----:|-------------|
+| `name` | Yes | CI name. Unique. |
+| `ciType` | Yes | CI type code (see **Master Data → CI Types**). |
+| `criticality` | Yes | `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL`. |
+| `environment` | Yes | `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION`. |
+| `status` | No | `ACTIVO`, `INACTIVO`, `RETIRADO` (default: `ACTIVO`). |
+| `inventoryNumber` | No | Internal inventory number (unique if provided). |
+| `manufacturer` | No | Manufacturer (master value). |
+| `serialNumber` | No | Serial number (creates a hardware-type asset). |
+| `model` | No | Device model. |
+| `branch` | No | Branch / site (master value). |
+| `costCenter` | No | Cost centre (master value). |
+| `version` | No | Software version (creates a software-type asset). |
+| `licenseType` | No | Software licence type (e.g. `perpetual`, `subscription`). |
 
-1. Fill in the file with your data. You can edit it with Excel.
-2. Save it as **CSV UTF-8**.
-3. Go to **Inventory → Import CSV** and select your file.
-4. The platform shows how many assets were imported successfully and how many had errors, with a description of each problem.
+**Lifecycle and base GRC (14–20)**
 
-### Common errors
+| Column | Description |
+|--------|-------------|
+| `eolDate` / `eosDate` | End-of-Life / End-of-Support (`YYYY-MM-DD`). |
+| `businessImpact` | Business impact (NIS2): `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`. |
+| `dataClassification` | Data classification (GDPR): `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, `RESTRICTED`. |
+| `assignedUser` | User assigned to the asset. |
+| `ipAddress` | Management console IP. |
+| `description` | Free-text description. |
 
-| Error | Likely cause | Solution |
-|-------|-------------|----------|
-| `Slug already exists` | An asset with that name already exists | Change the asset name |
-| `Invalid criticality` | The value is not recognised | Use exactly one of the valid values |
-| `Invalid environment` | The value is not recognised | Use exactly one of the valid values |
-| `Missing required field` | A required field is empty | Fill in `name`, `criticality`, and `environment` |
+**Cascade masters (21–24)** — see §28
+
+| Column | Description |
+|--------|-------------|
+| `osName` / `osVersion` | Operating system: the master is created if it does not exist. |
+| `baseSoftwareName` / `baseSoftwareVersion` | Base software (physical/virtual servers and cloud instances only). |
+
+**Infrastructure (25–36)** — see §27
+
+| Column | Description |
+|--------|-------------|
+| `userDni` | National ID / document of the assigned user. |
+| `adminIp` | Out-of-band administration IP. |
+| `mgmtIp` | Management IP (iDRAC, iLO, IPMI…). |
+| `vlan` | VLAN ID or name. |
+| `cpuModel` / `vCpus` / `ram` / `disk` | Processor, vCPU count, memory and storage. |
+| `hostName` | Host FQDN. |
+| `clusterName` | Cluster the CI belongs to. |
+| `firmwareVersion` | Firmware version (BIOS, UEFI…). |
+| `dns` | DNS servers (comma-separated). |
+
+**Physical location and owners (37–43)**
+
+| Column | Description |
+|--------|-------------|
+| `floor` / `room` / `rack` / `rackUnit` | Floor, room, rack and rack unit. |
+| `location` | Physical location (master value). |
+| `businessOwner` | Business owner email (must exist in the system). |
+| `technicalLead` | Technical lead email (must exist in the system). |
+
+**Continuity / GRC (44–48)**
+
+| Column | Description |
+|--------|-------------|
+| `rto` / `rpo` | Recovery Time / Point Objective, in minutes. |
+| `recoveryPriority` | Recovery priority `1` (highest) to `5` (lowest). |
+| `spofRisk` | Single point of failure risk: `YES` / `NO`. |
+| `containsPii` | Contains personal data (GDPR): `YES` / `NO`. |
+
+### Step 3: Upload the file
+
+Drag the `.xlsx` onto the upload zone (or click to select it) and press **Upload**. The platform creates an **import batch** and takes you to its detail screen.
+
+### Step 4: AI-assisted review
+
+Each row goes through the states **Pending → Analyzing → Analyzed** (or **Error**). During analysis, the AI:
+
+- **Normalises** values to the system's valid formats.
+- **Detects conflicts**: flags rows whose name, serial number or inventory number already exists in the CMDB.
+- Highlights **possible duplicates** for you to review.
+- Prepares the **cascade creation** of master data (operating system, base software, branch, cost centre) that does not yet exist.
+
+You can edit the proposed decision for each row before confirming.
+
+### Step 5: Confirm the creation
+
+- **Commit row** — creates that CI individually.
+- **Commit batch** — creates all analysed, error-free CIs at once.
+- **Re-analyze** — re-runs the AI on a single row or the whole batch.
+
+Every creation is recorded in the **Audit Log**. Previous batches remain available in the **My imports** tab.
+
+> **Related fields:** §22 (NIS2/GDPR resilience), §27 (infrastructure) and §28 (cascade creation of masters) detail the behaviour of specific columns.
 
 ---
 
@@ -1254,16 +1328,17 @@ To re-queue all documents in bulk (for example after a model update), an adminis
 
 ### Filtering search sources
 
-Below the question box you'll see five source-type "chips": **Documents**, **CIs**, **Contracts**, **Licenses** and **Vulnerabilities**. The assistant can search any of these alongside traditional document text.
+Below the question box you'll see six source-type "chips": **Documents**, **CIs**, **Contracts**, **Licenses**, **Vulnerabilities** and **Decommission**. The assistant can search any of these alongside traditional document text.
 
 - With no chip selected, the assistant searches **all** available sources.
 - Clicking one or more chips restricts the query to those types. The selection is multi-select (you can activate several) and is preserved across the current browser tab (closing the tab resets it).
 - The **Clear** button restores the selection to "all sources".
 - **Contracts chip:** when active, the assistant searches not only the contract records but also the PDF documents associated with the contract and the assets (CIs) it covers. For example, selecting this chip and asking about "Oracle support conditions" will search the contract, any linked addenda, and the related CIs.
 - **Licenses chip:** same behaviour — includes documents and CIs associated with the licenses.
+- **Decommission chip:** filters by decommission plans. Useful for queries such as "which systems are planned for decommission in Q3?" or "what is the status of the SAP-ERP decommission plan?".
 - If the RAG subsystem has just been enabled for the first time, some categories may be empty until the background indexer processes them. An administrator can speed this up with a full reindex (see System Administrator Manual §19.10).
 
-The citations returned by the assistant include an icon indicating the source type (document, CI, contract, license or vulnerability). Clicking a citation opens the corresponding listing in the inventory, contracts, licenses or vulnerabilities page, already focused on the cited item.
+The citations returned by the assistant include an icon indicating the source type (document, CI, contract, license, vulnerability or decommission plan). Clicking a citation opens the corresponding listing in the inventory, contracts, licenses, vulnerabilities or decommission module, already focused on the cited item.
 
 > The assistant always responds in the **interface language** (configurable in your profile). If documents are in English and the interface is in Spanish, responses are generated in Spanish.
 
@@ -1522,3 +1597,50 @@ Click **Logs** to expand the plugin's audit log (uploads, validations, activatio
 ### 31.10 Marketplace
 
 If the system administrator has configured a **marketplace**, the panel shows plugins available for download. If it is not configured, this is stated explicitly.
+
+---
+
+## 32. Decommission Module — Retirement Plans (v2.8.5)
+
+The **Decommission** module lets you plan the orderly retirement of an entire **system** and of all the assets that depend on it: it generates the dependency tree, assigns dates, groups the associated documentation, and produces a print view for the change committee.
+
+### 32.1 Access and permissions
+
+- Sidebar → **Decommission** (`/decommission`).
+- **All roles** can view plans. **ADMIN only** can create plans, generate the retirement inventory, edit dates, remove associations, and delete plans.
+
+### 32.2 Create a plan (ADMIN only)
+
+1. Click **"New Plan"**.
+2. Give it a **name** and select the **system** to retire. The picker lists only **System**-type CIs (type to filter).
+3. On confirmation, the plan detail screen opens.
+
+A plan can be in **Draft**, **Active**, **Completed**, or **Cancelled** status.
+
+### 32.3 Generate the retirement inventory (ADMIN only)
+
+On the plan detail, click **"Generate"**. The platform walks the system's **dependency tree** (recursive query) and builds the hierarchical list of all affected CIs:
+
+- The **system** appears at the root (highlighted in red).
+- Dependent CIs are nested by depth level.
+- CIs **shared** with other systems are marked in **amber** — review their retirement carefully, as other services may depend on them.
+- Use **"Regenerate"** to recompute the list if the dependency tree has changed.
+
+### 32.4 Plan tabs
+
+- **Inventory** — tree of CIs with their type, scheduled retirement **date** (editable inline by ADMIN), and a *shared* indicator. Incoherent dates are highlighted in red (see 32.5).
+- **Gantt** — a timeline chart (SVG) of the scheduled retirements. Legend: **red** = system, **blue** = dependent CI, **amber** = shared. Only CIs with an assigned date are shown.
+- **Documents / Contracts / Licenses** — items associated with the plan, with their **source**: **AUTO** (inherited automatically from the plan's CIs) or **MANUAL** (added by hand). ADMIN can remove any association.
+
+### 32.5 Date coherence
+
+When you generate the plan or edit dates, the platform checks that each dependent asset's retirement date is **not later** than the system's. Incoherences are listed as **warnings** and flagged with an alert icon in the inventory table, but they **do not block** the plan: they help you review the schedule before executing it.
+
+### 32.6 Printing
+
+The **Print** button produces a paper-optimised view (full inventory + documents + contracts + licenses) that you can attach to the change record or present to the committee.
+
+### 32.7 Important notes
+
+- A plan is a **planning tool**: it does not modify or retire CIs by itself. The actual retirement of each asset is performed from the **Inventory**.
+- Deleting a plan (ADMIN) removes only the planning, **never** the real assets, documents, contracts, or licenses.

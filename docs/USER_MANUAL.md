@@ -1,8 +1,8 @@
 # CMDB Enterprise Platform — Manual de Usuario
 
-**Versión:** 1.4.0
+**Versión:** 1.5.0
 **Público:** Responsables de departamento, auditores y usuarios que gestionan el CMDB en el día a día
-**Fecha:** 2026-04-07
+**Fecha:** 2026-06-20
 
 ---
 
@@ -15,14 +15,14 @@
 5. [Flujo de Gobernanza: Orden de Registro](#5-flujo-de-gobernanza-orden-de-registro)
 6. [Navegación: el menú lateral](#6-navegación-el-menú-lateral)
 7. [Gestión del Inventario de CIs](#7-gestión-del-inventario-de-cis)
-8. [Importación Masiva por CSV](#8-importación-masiva-por-csv)
+8. [Importación Masiva (Excel con análisis IA)](#8-importación-masiva-excel-con-análisis-ia)
 9. [Gestión de Relaciones y Topología](#9-gestión-de-relaciones-y-topología)
 10. [Gestión de Vulnerabilidades](#10-gestión-de-vulnerabilidades)
 11. [Repositorio Documental](#11-repositorio-documental)
 12. [Contratos y Adendas](#12-contratos-y-adendas)
 13. [Repositorio de Licencias](#13-repositorio-de-licencias)
 14. [Modelos de Hardware y Fechas de Ciclo de Vida](#14-modelos-de-hardware-y-fechas-de-ciclo-de-vida)
-15. [Alertas Diarias Automáticas](#15-alertas-diarias-automáticas)
+15. [Alertas Email — Motor de Alertas](#15-alertas-email--motor-de-alertas-v284)
 16. [Centro de Reportes](#16-centro-de-reportes)
 17. [Configuración y Gestión de Usuarios](#17-configuración-y-gestión-de-usuarios)
 18. [Datos Maestros — Tipos de CI](#18-datos-maestros--tipos-de-ci)
@@ -31,6 +31,14 @@
 21. [Registro de Auditoría](#21-registro-de-auditoría)
 22. [Campos de Resiliencia NIS2 / GDPR](#22-campos-de-resiliencia-nis2--gdpr)
 23. [Asistente IA — búsqueda inteligente de documentos](#23-asistente-ia--búsqueda-inteligente-de-documentos)
+25. [Módulo DCIM — Salas técnicas y CPD](#25-módulo-dcim--salas-técnicas-y-cpd-v260)
+26. [Datos Maestros — Sistema Operativo y Software Base](#26-datos-maestros--sistema-operativo-y-software-base-v270)
+27. [Campos de Infraestructura en CI](#27-campos-de-infraestructura-en-ci-v270)
+28. [Alta Masiva — Creación en Cascada](#28-alta-masiva--creación-en-cascada-v270)
+29. [Mapa de Relaciones](#29-mapa-de-relaciones-v270)
+30. [Registro de Eventos — Mejoras](#30-registro-de-eventos--mejoras-v270)
+31. [Gestión de Plugins — solo ADMIN](#31-gestión-de-plugins-v280--solo-admin)
+32. [Módulo Decomisionado — Planes de Baja](#32-módulo-decomisionado--planes-de-baja-v285)
 
 ---
 
@@ -177,7 +185,8 @@ La plataforma tiene tres niveles de acceso:
 | Ver Dashboard | Sí | Sí | Sí |
 | Ver Inventario de CIs | Sí | Sí | Sí |
 | Crear/modificar CIs | Sí | No | No |
-| Importar CSV masivo | Sí | No | No |
+| Importación masiva (Excel/IA) | Sí | No | No |
+| Planes de Decomisionado | Sí (crear/editar) | Solo ver | Solo ver |
 | Crear/eliminar relaciones entre CIs | Sí | No | No |
 | Ver Vulnerabilidades | Sí | Sí | Sí |
 | Cambiar estado de vulnerabilidades | Sí | No | No |
@@ -348,50 +357,115 @@ Cuando necesites dar de baja varios activos a la vez (por ejemplo, decomisión d
 
 ---
 
-## 8. Importación Masiva por CSV
+## 8. Importación Masiva (Excel con análisis IA)
 
-Si necesitas registrar muchos activos a la vez, la importación masiva te permite hacerlo desde un fichero Excel o CSV.
+Para dar de alta muchos activos a la vez, la plataforma ofrece un **importador masivo en formato Excel (`.xlsx`) con análisis asistido por IA**. El flujo analiza cada fila, detecta conflictos y posibles duplicados, y te deja revisar antes de confirmar el alta. Disponible **solo para ADMIN**.
+
+> **Acceso:** **Inventario → Importación Masiva** (`/inventory/bulk`). La pantalla tiene dos pestañas: **Importación** (subir un fichero nuevo) y **Mis importaciones** (consultar lotes anteriores).
 
 ### Paso 1: Descargar la plantilla
 
-1. En el Inventario, haz clic en el botón **"Plantilla CSV"**.
-2. Se descarga un fichero con los campos y ejemplos ya incluidos.
+En la pantalla de importación, haz clic en **"Descargar plantilla"**. Se descarga `plantilla-cis.xlsx`, un libro Excel con dos hojas:
 
-### Campos del CSV
+- **Datos** — la hoja editable, con **48 columnas**, cabecera fija, **listas desplegables** de validación (tipo de CI, criticidad, entorno, delegación, centro de coste, impacto, clasificación, ubicación…) y **dos filas de ejemplo** que debes borrar antes de importar.
+- **Instrucciones** — descripción de cada campo y sus valores válidos.
 
-| Campo | Obligatorio | Descripción | Ejemplo |
-|-------|:-----------:|-------------|---------|
-| `name` | Sí | Nombre del activo | `srv-prd-web-01` |
-| `ciType` | Recomendado | Código del tipo de CI | `PHYSICAL_SERVER` |
-| `criticality` | Sí | Nivel de criticidad | `HIGH` |
-| `environment` | Sí | Entorno | `PRODUCTION` |
-| `manufacturer` | No | Nombre del fabricante (exacto) | `Dell` |
-| `serialNumber` | No | Número de serie | `SN-DL-00001` |
-| `model` | No | Modelo del dispositivo | `PowerEdge R740` |
-| `version` | No | Versión de software | `2.1.0` |
-| `licenseType` | No | Tipo de licencia | `subscription` |
-| `status` | No | `active` o `inactive` | `active` |
+### Paso 2: Las 48 columnas
 
-Los valores válidos para `criticality` son: `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL`.
-Los valores válidos para `environment` son: `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION`.
+Solo las cuatro primeras son **obligatorias** (marcadas con `*`). El resto son opcionales y se agrupan así:
 
-Para ver los códigos de tipo de CI disponibles en tu instalación, ve a **Datos Maestros → Tipos de CI**.
+**Identificación y básicos (1–13)**
 
-### Paso 2: Rellenar y subir el fichero
+| Columna | Oblig. | Descripción |
+|---------|:------:|-------------|
+| `name` | Sí | Nombre del CI. Único. |
+| `ciType` | Sí | Código del tipo de CI (ver **Datos Maestros → Tipos de CI**). |
+| `criticality` | Sí | `LOW`, `MEDIUM`, `HIGH`, `MISSION_CRITICAL`. |
+| `environment` | Sí | `DEVELOPMENT`, `TESTING`, `STAGING`, `PRODUCTION`. |
+| `status` | No | `ACTIVO`, `INACTIVO`, `RETIRADO` (defecto: `ACTIVO`). |
+| `inventoryNumber` | No | Número de inventario interno (único si se indica). |
+| `manufacturer` | No | Fabricante (valor maestro). |
+| `serialNumber` | No | Nº de serie (genera un activo de tipo hardware). |
+| `model` | No | Modelo del dispositivo. |
+| `branch` | No | Delegación / sede (valor maestro). |
+| `costCenter` | No | Centro de coste (valor maestro). |
+| `version` | No | Versión de software (genera un activo de tipo software). |
+| `licenseType` | No | Tipo de licencia del software (p. ej. `perpetual`, `subscription`). |
 
-1. Rellena el fichero con tus datos. Puedes editarlo con Excel.
-2. Guárdalo como **CSV UTF-8**.
-3. Ve a **Inventario → Importar CSV** y selecciona tu fichero.
-4. La plataforma muestra cuántos activos se importaron correctamente y cuántos tuvieron errores, con una descripción de cada problema.
+**Ciclo de vida y GRC base (14–20)**
 
-### Errores frecuentes
+| Columna | Descripción |
+|---------|-------------|
+| `eolDate` / `eosDate` | Fin de vida / fin de soporte (`YYYY-MM-DD`). |
+| `businessImpact` | Impacto de negocio (NIS2): `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`. |
+| `dataClassification` | Clasificación de datos (GDPR): `PUBLIC`, `INTERNAL`, `CONFIDENTIAL`, `RESTRICTED`. |
+| `assignedUser` | Usuario asignado al activo. |
+| `ipAddress` | IP de consola de gestión. |
+| `description` | Descripción libre. |
 
-| Error | Causa probable | Solución |
-|-------|---------------|----------|
-| `Slug already exists` | Ya existe un activo con ese nombre | Cambia el nombre del activo |
-| `Invalid criticality` | El valor no es reconocido | Usa exactamente uno de los valores válidos |
-| `Invalid environment` | El valor no es reconocido | Usa exactamente uno de los valores válidos |
-| `Missing required field` | Falta un campo obligatorio | Rellena `name`, `criticality` y `environment` |
+**Maestros en cascada (21–24)** — ver §28
+
+| Columna | Descripción |
+|---------|-------------|
+| `osName` / `osVersion` | Sistema operativo: se crea el maestro si no existe. |
+| `baseSoftwareName` / `baseSoftwareVersion` | Software base (solo servidores físicos/virtuales e instancias cloud). |
+
+**Infraestructura (25–36)** — ver §27
+
+| Columna | Descripción |
+|---------|-------------|
+| `userDni` | DNI / documento del usuario asignado. |
+| `adminIp` | IP de administración fuera de banda. |
+| `mgmtIp` | IP de gestión (iDRAC, iLO, IPMI…). |
+| `vlan` | ID o nombre de VLAN. |
+| `cpuModel` / `vCpus` / `ram` / `disk` | Procesador, nº de vCPUs, memoria y almacenamiento. |
+| `hostName` | FQDN del host. |
+| `clusterName` | Clúster al que pertenece. |
+| `firmwareVersion` | Versión de firmware (BIOS, UEFI…). |
+| `dns` | Servidores DNS (separados por coma). |
+
+**Ubicación física y propietarios (37–43)**
+
+| Columna | Descripción |
+|---------|-------------|
+| `floor` / `room` / `rack` / `rackUnit` | Planta, sala, rack y unidad de rack. |
+| `location` | Localización física (valor maestro). |
+| `businessOwner` | Email del propietario de negocio (debe existir en el sistema). |
+| `technicalLead` | Email del responsable técnico (debe existir en el sistema). |
+
+**Continuidad / GRC (44–48)**
+
+| Columna | Descripción |
+|---------|-------------|
+| `rto` / `rpo` | Recovery Time / Point Objective, en minutos. |
+| `recoveryPriority` | Prioridad de recuperación `1` (máxima) a `5` (mínima). |
+| `spofRisk` | Riesgo de punto único de fallo: `YES` / `NO`. |
+| `containsPii` | Contiene datos personales (GDPR): `YES` / `NO`. |
+
+### Paso 3: Subir el fichero
+
+Arrastra el `.xlsx` a la zona de carga (o haz clic para seleccionarlo) y pulsa **Subir**. La plataforma crea un **lote de importación** y te lleva a su pantalla de detalle.
+
+### Paso 4: Revisión asistida por IA
+
+Cada fila pasa por los estados **Pendiente → Analizando → Analizado** (o **Error**). Durante el análisis, la IA:
+
+- **Normaliza** los valores a los formatos válidos del sistema.
+- **Detecta conflictos**: marca las filas cuyo nombre, nº de serie o nº de inventario ya existe en el CMDB.
+- Señala **posibles duplicados** para que los revises.
+- Prepara la **creación en cascada** de maestros (sistema operativo, software base, delegación, centro de coste) que no existan.
+
+Puedes editar la decisión propuesta de cada fila antes de confirmar.
+
+### Paso 5: Confirmar el alta
+
+- **Confirmar fila** — crea ese CI de forma individual.
+- **Confirmar lote** — crea de una vez todos los CIs analizados sin error.
+- **Reanalizar** — vuelve a pasar la IA sobre una fila o sobre el lote completo.
+
+Cada alta queda registrada en el **Registro de Auditoría**. Los lotes anteriores quedan disponibles en la pestaña **Mis importaciones**.
+
+> **Campos relacionados:** §22 (resiliencia NIS2/GDPR), §27 (infraestructura) y §28 (creación en cascada de maestros) detallan el comportamiento de columnas específicas.
 
 ---
 
@@ -1254,16 +1328,17 @@ Para volver a poner en cola todos los documentos en bloque (por ejemplo, tras un
 
 ### Filtrar las fuentes de búsqueda
 
-Bajo el cuadro de pregunta se muestran cinco "chips" de tipo de fuente: **Documentos**, **CIs**, **Contratos**, **Licencias** y **Vulnerabilidades**. El asistente puede consultar cualquiera de ellas además de los documentos textuales tradicionales.
+Bajo el cuadro de pregunta se muestran seis "chips" de tipo de fuente: **Documentos**, **CIs**, **Contratos**, **Licencias**, **Vulnerabilidades** y **Decomisión**. El asistente puede consultar cualquiera de ellas además de los documentos textuales tradicionales.
 
 - Sin ningún chip seleccionado, el asistente busca en **todas** las fuentes disponibles.
 - Al pulsar uno o varios chips, la consulta se limita a esos tipos. La selección es multi-respuesta (puedes activar varios) y se conserva durante la sesión del navegador (al cerrar la pestaña, vuelve al estado por defecto).
 - El botón **Limpiar** restablece la selección a "todas las fuentes".
 - **Chip Contratos:** cuando está activo, el asistente busca no solo en los registros de contratos, sino también en los documentos PDF asociados al contrato y en los activos (CIs) que cubre. Por ejemplo, si seleccionas este chip y preguntas por "condiciones de soporte Oracle", el asistente consultará el contrato, las adendas vinculadas y los CIs relacionados.
 - **Chip Licencias:** comportamiento análogo: incluye los documentos y CIs asociados a las licencias.
+- **Chip Decomisión:** filtra por planes de decomisión. Útil para consultas como "¿qué sistemas están planificados para decomisión en Q3?" o "¿en qué estado está el plan de decomisión de SAP-ERP?".
 - Si recientemente se ha activado el subsistema RAG por primera vez, algunas categorías pueden aparecer vacías hasta que el proceso de indexación en segundo plano las procese. El administrador puede acelerarlo con un reindex completo (ver Manual del Administrador §19.10).
 
-Las citas que devuelve el asistente incluyen un icono identificativo del tipo de fuente (documento, CI, contrato, licencia o vulnerabilidad) y, al hacer clic, abren la página correspondiente del inventario, contratos, licencias o vulnerabilidades, ya filtrada por el elemento citado.
+Las citas que devuelve el asistente incluyen un icono identificativo del tipo de fuente (documento, CI, contrato, licencia, vulnerabilidad o plan de decomisión) y, al hacer clic, abren la página correspondiente del inventario, contratos, licencias, vulnerabilidades o módulo de decomisión, ya filtrada por el elemento citado.
 
 > El asistente responde siempre en el **idioma de la interfaz** (configurable en tu perfil). Si los documentos están en inglés y la interfaz está en español, las respuestas se generan en español.
 
@@ -1536,3 +1611,50 @@ Pulsa **Logs** para desplegar el registro de auditoría del plugin (subidas, val
 ### 31.10 Marketplace
 
 Si el administrador del sistema ha configurado un **marketplace**, el panel muestra los plugins disponibles para descargar. Si no está configurado, se indica explícitamente.
+
+---
+
+## 32. Módulo Decomisionado — Planes de Baja (v2.8.5)
+
+El módulo **Decomisionado** permite planificar la baja ordenada de un **sistema** completo y de todos los activos que dependen de él: genera el árbol de dependencias, asigna fechas, agrupa la documentación asociada y produce una vista de impresión para el comité de cambios.
+
+### 32.1 Acceso y permisos
+
+- Menú lateral → **Decomisionado** (`/decommission`).
+- **Todos los roles** pueden consultar los planes. **Solo ADMIN** puede crear planes, generar el inventario de baja, editar fechas, quitar asociaciones y eliminar planes.
+
+### 32.2 Crear un plan (solo ADMIN)
+
+1. Pulsa **"Nuevo Plan"**.
+2. Asigna un **nombre** y selecciona el **sistema** a dar de baja. El buscador lista únicamente los CIs de tipo **Sistema** (escribe para filtrar).
+3. Al confirmar, se abre la pantalla de detalle del plan.
+
+Un plan puede estar en estado **Borrador**, **Activo**, **Completado** o **Cancelado**.
+
+### 32.3 Generar el inventario de baja (solo ADMIN)
+
+En el detalle del plan, pulsa **"Generar"**. La plataforma recorre el **árbol de dependencias** del sistema (consulta recursiva) y construye la lista jerárquica de todos los CIs afectados:
+
+- El **sistema** aparece en la raíz (resaltado en rojo).
+- Los CIs dependientes se anidan por nivel de profundidad.
+- Los CIs **compartidos** con otros sistemas se marcan en **ámbar** — revisa su baja con cuidado, porque otros servicios pueden depender de ellos.
+- Usa **"Regenerar"** para recalcular la lista si el árbol de dependencias ha cambiado.
+
+### 32.4 Pestañas del plan
+
+- **Inventario** — árbol de CIs con su tipo, **fecha programada** de baja (editable en línea por ADMIN) e indicador de *compartido*. Las fechas incoherentes se resaltan en rojo (ver 32.5).
+- **Gantt** — diagrama temporal (SVG) de las bajas programadas. Leyenda: **rojo** = sistema, **azul** = CI dependiente, **ámbar** = compartido. Solo se muestran los CIs con fecha asignada.
+- **Documentos / Contratos / Licencias** — elementos asociados al plan, con su **origen**: **AUTO** (heredado automáticamente de los CIs del plan) o **MANUAL** (añadido a mano). ADMIN puede quitar cualquier asociación.
+
+### 32.5 Coherencia de fechas
+
+Al generar el plan o editar fechas, la plataforma comprueba que la fecha de baja de cada activo dependiente **no sea posterior** a la del sistema. Las incoherencias se listan como **avisos** y se marcan con un icono de alerta en la tabla de inventario, pero **no bloquean** el plan: sirven para que revises el calendario antes de ejecutarlo.
+
+### 32.6 Impresión
+
+El botón **Imprimir** genera una vista optimizada para papel (inventario completo + documentos + contratos + licencias) que puedes adjuntar al expediente de cambio o presentar al comité.
+
+### 32.7 Notas importantes
+
+- El plan es una **herramienta de planificación**: no modifica ni da de baja los CIs por sí mismo. La baja efectiva de cada activo se realiza desde el **Inventario**.
+- Eliminar un plan (ADMIN) borra únicamente la planificación, **nunca** los activos, documentos, contratos o licencias reales.

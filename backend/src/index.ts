@@ -234,9 +234,14 @@ function purgeSsoTokens(): void {
 setInterval(purgeSsoTokens, 5 * 60 * 1000);
 
 // General API limiter: 300 requests per minute per IP
+// Skip /api/internal/* — those endpoints have their own auth (M2M token / n8n-gate JWT)
+// and are only reachable from nginx subrequests or the internal container network.
+// Counting auth_request subrequests (one per n8n asset) against the same IP limit
+// would exhaust the quota in seconds during n8n page load.
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 300,
+  skip: (req: Request) => req.path.startsWith('/internal/'),
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Demasiadas peticiones. Inténtelo de nuevo en un momento.' },

@@ -6,7 +6,8 @@ import { createInternalMaintenanceRouter } from './maintenance.js';
 import { createInternalRagRouter, type RagQueueFunctions } from './rag.js';
 import { createInternalBulkRouter }  from './bulk.js';
 import { createInternalUsersRouter }  from './users.js';
-import { createInternalBackupRouter } from './backup.js';
+import { createInternalBackupRouter }  from './backup.js';
+import { createInternalNotifyRouter }  from './notify.js';
 
 /**
  * Router para /api/internal/*
@@ -100,6 +101,9 @@ export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunc
 
   // Backup automatizado vía n8n (T7)
   router.use('/backup', authenticateService, createInternalBackupRouter(prisma));
+
+  // Configuración de canales Teams/Slack para el workflow n8n "Notificaciones" (T8)
+  router.use('/notify', authenticateService, createInternalNotifyRouter(prisma));
 
   return router;
 }

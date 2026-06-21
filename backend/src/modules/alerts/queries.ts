@@ -25,19 +25,46 @@ export async function getLastSuccessfulRun(prisma: PrismaClient) {
 }
 
 export async function upsertConfig(prisma: PrismaClient, data: AlertConfigUpdate) {
-  return prisma.alertConfig.upsert({
+  // Separate new fields (Prisma client not yet regenerated for T8 columns)
+  const { teamsWebhookUrl, slackBotToken, slackChannel, ...ormData } = data;
+
+  const config = await prisma.alertConfig.upsert({
     where:  { id: 'default' },
-    create: { id: 'default', ...data },
-    update: data,
+    create: { id: 'default', ...ormData },
+    update: ormData,
   });
+
+  // Persist notify-channel fields via raw SQL if any are provided
+  const hasChannelUpdate = teamsWebhookUrl !== undefined || slackBotToken !== undefined || slackChannel !== undefined;
+  if (hasChannelUpdate) {
+    await prisma.$executeRaw`
+      UPDATE "alert_config" SET
+        teams_webhook_url = COALESCE(${teamsWebhookUrl ?? null}, teams_webhook_url),
+        slack_bot_token   = COALESCE(${slackBotToken   ?? null}, slack_bot_token),
+        slack_channel     = COALESCE(${slackChannel     ?? null}, slack_channel)
+      WHERE id = 'default'`;
+  }
+
+  return config;
 }
 
 export async function upsertRule(prisma: PrismaClient, category: string, data: AlertRuleUpdate) {
-  return prisma.alertRule.upsert({
+  // Separate channels field (Prisma client not yet regenerated for T8 column)
+  const { channels, ...ormData } = data;
+
+  const rule = await prisma.alertRule.upsert({
     where:  { category },
-    create: { category, ...data },
-    update: data,
+    create: { category, ...ormData },
+    update: ormData,
   });
+
+  if (channels !== undefined) {
+    await prisma.$executeRaw`
+      UPDATE "alert_rules" SET channels = ${channels}::text[]
+      WHERE category = ${category}`;
+  }
+
+  return rule;
 }
 
 export async function createRun(prisma: PrismaClient, data: {

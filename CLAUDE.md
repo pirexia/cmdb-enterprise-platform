@@ -254,15 +254,20 @@ These are caused by a Prisma client generation mismatch inside Docker; they do n
 
 ### Overview
 
-Single-repo monolith with three Docker services behind an nginx TLS gateway:
+Single-repo monolith with nine Docker services behind an nginx TLS gateway (v3.0.0):
 
 ```
-Browser ──HTTPS:443──▶ nginx ─── /         ──▶ frontend (Next.js, :3001, HTTP internal)
-                               └── /api/*   ──▶ backend  (Express,  :3000, HTTP internal)
-                                                              └──▶ postgres (:5432, internal)
+Browser ──HTTPS:443──▶ nginx ─── /         ──▶ frontend  (Next.js,  :3001, HTTP internal)
+                               ├── /api/*   ──▶ backend   (Express,  :3000, HTTP internal)
+                               └── /n8n/*   ──▶ n8n-main  (:5678, auth_request ADMIN gate)
+                                                  └── Redis (:6379) ← BullMQ queue
+                                                  └── n8n-worker-{1,2} (job execution)
+                               backend ──▶ postgres (:5432, internal, schema: public + n8n_data)
+                               backend ──▶ ollama   (:11434, internal)
 ```
 
-Only nginx exposes host ports (443 HTTPS, 80 HTTP→redirect). Frontend and backend are internal containers with no host port binding.
+Only nginx exposes host ports (443 HTTPS, 80 HTTP→redirect). All other containers are internal.
+`/api/internal/*` is blocked at nginx (deny all → 404); accessible only container-to-container via `X-CMDB-Service-Token`.
 
 Two compose files: `docker-compose.yml` (development, exposes all ports, includes Adminer) and `docker-compose.prod.yml` (production, nginx as gateway, DB and backend not exposed, isolated networks, named TLS volume `cmdb-tls-certs`).
 
@@ -471,7 +476,7 @@ Rules:
 ## Plan Activo
 
 **Versión actual en producción:** v2.9.2 — ✅ LIBERADA (tag `v2.9.2`, merge develop→main, 2026-06-20)
-**Próxima versión:** —
+**Próxima versión:** v3.0.0 — 🔄 EN DESARROLLO (rama `develop`)
 **Rama activa:** `develop`
 **PRs abiertos:** —
 
@@ -498,6 +503,7 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+- **v3.0.0** 🔄 EN DESARROLLO (2026-06-21): Integración n8n Queue Mode + Redis. T0–T8 completos (M2M auth, n8n/Redis en compose, nginx gate, 5 dominios de cron migrados, 6 nuevos endpoints /api/internal/*, pg_dump backup, Teams/Slack canales). Pendiente: T9 docs, T10 deploy. `docs/PLAN_STATUS_v3.0.0.md`.
 - **v2.9.2** ✅ LIBERADA (2026-06-20): AI/RAG improvements — qwen3:latest + think:false; stats CMDB en prompt (fix conteo); OCR density trigger + DPI 300; DecommissionPlan indexado en RAG (chip Decomisión en chat); cascada re-index CIs cuando maestro renombrado; `modules/ai/` extraído de `index.ts` (−640 líneas). `docs/PLAN_v2.9.2.md`.
 - **v2.9.1** ✅ LIBERADA (2026-06-20): Unificación estética DCIM + Decommission al patrón canónico de la casa. Fix `/api/plugins` 403 (faltaba `authenticateToken` en mounts del plugin engine). PR #163.
 - **v2.9.0** ✅ LIBERADA (2026-06-20): Modularización backend Strangler Fig — `index.ts` ~8 200→~4 900 líneas; 7 dominios extraídos a `modules/` (settings, vendors, integrations, licenses, contracts, masters, documents) + `shared/` middleware/utils. Tests jest+supertest por módulo (todos verdes). PRs #154–#162. `docs/PLAN_v2.9.0.md`.
@@ -513,6 +519,9 @@ Rules:
 1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
 2. Actualizar esta sección con la nueva versión y estado.
 3. Rama: `feature/...` cortada de `develop`.
+
+### Resumen v3.0.0 (en desarrollo)
+n8n Queue Mode (main + 2 workers) + Redis 7 integrados en ambos compose; nginx `/n8n/` con auth_request ADMIN. M2M auth `X-CMDB-Service-Token` + `/api/internal/*` router (`modules/internal/`). 5 dominios de scheduling migrados de node-cron a n8n: alertas diarias, 4 crons de mantenimiento, RAG indexing (*/30s), bulk CI import (webhook), LDAP sync. 6 módulos internos nuevos: alerts, maintenance, rag, bulk, users, backup, notify. `postgresql16-client` en Dockerfile backend para `pg_dump`. DB migration: `alert_config` + `alert_rules` con canales Teams/Slack. `docs/n8n/WORKFLOWS.md` + `ADMIN_GUIDE.md` + `BACKUP_RESTORE_GUIDE.md`. **Variables de entorno críticas nuevas: `CMDB_SERVICE_TOKEN` (≥32 chars), `REDIS_PASSWORD`, `N8N_ENCRYPTION_KEY`, `BACKUP_LOCAL_PATH`.**
 
 ### Resumen v2.9.2
 AI/RAG: modelo qwen3:latest (think:false); inyección stats CMDB en prompt (60s cache, fix conteo); OCR density trigger (< 100 chars/página) + DPI 300; DecommissionPlan serializado e indexado en RAG (chip Decomisión + i18n ×6 + cita → /decommission/:id); cascada re-index CIs al renombrar branches/cost-centers/ci-types (dependency injection en masters router); extracción `modules/ai/` (queue.ts + router.ts, ~640 líneas fuera de index.ts); fix ALLOWED_ENTITY_TYPES incluye 'decommission'. `docs/PLAN_v2.9.2.md`.

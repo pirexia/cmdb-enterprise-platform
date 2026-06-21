@@ -9,7 +9,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,17 +157,16 @@ export default function BulkReviewPage() {
   // ── Load reference data once ────────────────────────────────────────────────
   const loadRefs = useCallback(async () => {
     try {
-      const [dt, vn, ct, ci] = await Promise.all([
+      const [dt, vn, ct, ciData] = await Promise.all([
         apiFetch("/api/masters/document-types"),
         apiFetch("/api/vendors"),
         apiFetch("/api/contracts"),
-        apiFetch("/api/cis"),
+        fetchAllCIs<CIOpt>().catch(() => [] as CIOpt[]),
       ]);
       setDocTypes(await dt.json().catch(() => []));
       setVendors(await vn.json().catch(() => []));
       setContracts(await ct.json().catch(() => []));
-      const ciData = await ci.json().catch(() => ({}));
-      setCIs((ciData as { data?: CIOpt[] }).data ?? []);
+      setCIs(ciData);
     } catch { /* non-blocking */ }
   }, []);
 

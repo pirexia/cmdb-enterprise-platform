@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { X, Loader2, AlertTriangle, Search, Check } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,11 +100,11 @@ export default function AddContractModal({ onClose, onCreated }: { onClose: () =
     const safe = (p: Promise<Response>) => p.then((r) => r.json()).catch(() => []);
     Promise.all([
       safe(apiFetch("/api/vendors")),
-      safe(apiFetch("/api/cis")),
+      fetchAllCIs<CIOption>().catch(() => [] as CIOption[]),
       safe(apiFetch("/api/contracts")),
     ]).then(([v, c, ct]) => {
       setVendors(v as Vendor[]);
-      setCis(((c as { data?: CIOption[] }).data ?? []) as CIOption[]);
+      setCis(c as CIOption[]);
       setContracts((((ct as { data?: ContractOption[] }).data ?? []) as ContractOption[]));
     });
   }, []);

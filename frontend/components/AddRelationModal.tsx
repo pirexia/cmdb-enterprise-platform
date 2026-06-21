@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link2, Search, AlertTriangle, RefreshCw, ChevronDown } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { RELATION_TYPES, RELATION_CATEGORIES, relationAllowed, type RelationTypeValue } from "@/lib/relationTypes";
 
@@ -143,9 +143,8 @@ export default function AddRelationModal({ onClose, onCreated, preselectedSource
   const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
-    apiFetch("/api/cis")
-      .then((r) => r.json())
-      .then((json: { data: CIOption[] }) => setCis(json.data))
+    fetchAllCIs<CIOption>()
+      .then((data) => setCis(data))
       .catch(() => setCis([]))
       .finally(() => setLoadingCIs(false));
   }, []);

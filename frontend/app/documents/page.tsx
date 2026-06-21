@@ -10,7 +10,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { usePageSize } from "@/hooks/usePageSize";
 import PageSizeSelector from "@/components/PageSizeSelector";
 import PaginationControls from "@/components/PaginationControls";
@@ -423,10 +423,9 @@ export default function DocumentsPage() {
 
   const loadModalData = useCallback(async () => {
     try {
-      const [cisRes, contractsRes] = await Promise.all([apiFetch("/api/cis"), apiFetch("/api/contracts")]);
-      const cisData: unknown = await cisRes.json();
+      const [cisData, contractsRes] = await Promise.all([fetchAllCIs<CIOption>(), apiFetch("/api/contracts")]);
       const contractsData: unknown = await contractsRes.json();
-      setCIs(((cisData as { data?: CIOption[] }).data) ?? []);
+      setCIs(cisData);
       setContracts(Array.isArray(contractsData) ? (contractsData as ContractOption[]) : []);
     } catch { /* non-blocking */ }
   }, []);

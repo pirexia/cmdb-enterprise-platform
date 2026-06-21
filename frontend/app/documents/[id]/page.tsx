@@ -9,7 +9,7 @@ import {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -486,9 +486,8 @@ function AddCIsModal({
 
   useEffect(() => {
     setLoading(true);
-    apiFetch("/api/cis")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((data: CIListItem[]) => {
+    fetchAllCIs<CIListItem>()
+      .then((data) => {
         setAllCIs(data.filter((ci) => !existingCiIds.includes(ci.id)));
       })
       .catch(() => setAllCIs([]))

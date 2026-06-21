@@ -7,7 +7,7 @@ import {
   ShieldAlert, ShieldCheck, ShieldOff, Globe, Wrench,
   FileText, CalendarX2, BarChart3,
 } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 import PluginSlot from "@/components/plugins/PluginSlot";
 
@@ -236,15 +236,13 @@ export default function DashboardPage() {
   const fetchAll = async () => {
     setLoading(true); setError(null);
     try {
-      const [cisRes, contrRes] = await Promise.all([
-        apiFetch("/api/cis"),
+      const [cisData, contrRes] = await Promise.all([
+        fetchAllCIs<CI>(),
         apiFetch("/api/contracts"),
       ]);
-      if (!cisRes.ok)   throw new Error(`CIs: ${cisRes.status}`);
       if (!contrRes.ok) throw new Error(`Contratos: ${contrRes.status}`);
-      const cisJson   = await cisRes.json();
       const contrJson = await contrRes.json();
-      setCis(cisJson.data ?? []);
+      setCis(cisData);
       setContracts(contrJson.data ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

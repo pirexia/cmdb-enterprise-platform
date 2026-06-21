@@ -19,7 +19,7 @@ import {
   Network, Search, Link2, RefreshCw, AlertTriangle, ArrowLeft,
   ChevronDown, LayoutList, Download, Trash2,
 } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import AddRelationModal from "@/components/AddRelationModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -645,11 +645,10 @@ export default function MapPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   useEffect(() => {
-    apiFetch("/api/cis")
-      .then((r) => r.json())
-      .then((json: { data: CIOption[] }) => {
-        setAllCIs(json.data);
-        setAllCIsMap(new Map(json.data.map((c) => [c.id, c])));
+    fetchAllCIs<CIOption>()
+      .then((data) => {
+        setAllCIs(data);
+        setAllCIsMap(new Map(data.map((c) => [c.id, c])));
       })
       .catch(() => setError(t("map.load_cis_error")))
       .finally(() => setLoadingCIs(false));

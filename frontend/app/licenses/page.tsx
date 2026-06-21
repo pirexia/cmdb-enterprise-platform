@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import AddLicenseModal from "@/components/AddLicenseModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { usePageSize } from "@/hooks/usePageSize";
@@ -194,9 +194,8 @@ function LicenseRow({ license, onExpand, expanded }: { license: License; onExpan
     setShowCISelector(true); setSelectedCiIds(new Set()); setCiSearch("");
     if (allCIs.length === 0) {
       setAllCIsLoading(true);
-      apiFetch("/api/cis")
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((d) => { const list: CIRef[] = Array.isArray(d) ? d : (d.data ?? []); setAllCIs(list); })
+      fetchAllCIs<CIRef>()
+        .then((list) => setAllCIs(list))
         .catch(() => {}).finally(() => setAllCIsLoading(false));
     }
   };

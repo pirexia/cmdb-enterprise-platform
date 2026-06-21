@@ -40,3 +40,27 @@ export function apiFetch(path: string, options?: RequestInit): Promise<Response>
     },
   });
 }
+
+/**
+ * Fetches the complete CI inventory across every page.
+ *
+ * GET /api/cis is server-paginated: it returns { total, page, limit, data } and
+ * caps each page at CI_MAX_PAGE_SIZE (250) rows. List and aggregation views need
+ * every CI, so this loops pages until it has collected `total`. Returns the
+ * flattened CI array (same shape as a single page's `data`).
+ */
+export async function fetchAllCIs<T = unknown>(): Promise<T[]> {
+  const PAGE_SIZE = 250; // mirrors backend CI_MAX_PAGE_SIZE
+  const all: T[] = [];
+  let page = 1;
+  // Safety bound: stops a runaway loop if `total` and `data` ever disagree.
+  for (let guard = 0; guard < 1000; guard++) {
+    const res = await apiFetch(`/api/cis?limit=${PAGE_SIZE}&page=${page}`);
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    const json = (await res.json()) as { total: number; data: T[] };
+    all.push(...json.data);
+    if (json.data.length === 0 || all.length >= json.total) break;
+    page++;
+  }
+  return all;
+}

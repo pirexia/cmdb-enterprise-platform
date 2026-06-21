@@ -7,7 +7,7 @@ import {
   Server, ArrowLeft, Pencil, Check, X, RefreshCw,
   AlertTriangle, LayoutGrid, Zap, Edit3, Flame, Trash2, Tag,
 } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import dynamic from "next/dynamic";
@@ -221,8 +221,7 @@ export default function RoomPage() {
   // Load RACK CIs when a RACK_SLOT footprint is selected
   useEffect(() => {
     if (selectedEditFp?.kind !== "RACK_SLOT") { setRackCIs([]); setSelAssignRack(""); return; }
-    apiFetch("/api/cis?limit=500").then((r) => r.json()).then((raw: any) => {
-      const cis: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+    fetchAllCIs<any>().then((cis) => {
       const racks = cis
         .filter((c: any) => {
           if (typeof c !== "object" || c === null) return false;

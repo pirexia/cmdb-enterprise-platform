@@ -278,6 +278,10 @@ services:
       N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD is required}
       # Service token for /api/internal/* calls from workflows
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:?CMDB_SERVICE_TOKEN is required}
+      # Disable telemetry and external n8n.io calls (CSP would block them anyway)
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       # Timezone
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
@@ -315,6 +319,9 @@ services:
       QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:?CMDB_SERVICE_TOKEN is required}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
     volumes:
@@ -348,6 +355,9 @@ services:
       QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?N8N_ENCRYPTION_KEY is required}
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:?CMDB_SERVICE_TOKEN is required}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_VERSION_NOTIFICATIONS_ENABLED: "false"
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
     volumes:

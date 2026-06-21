@@ -51,7 +51,7 @@ Para instalación y gestión de la UI de n8n, ver [ADMIN_GUIDE.md](./ADMIN_GUIDE
 
 | Variable | Descripción |
 |----------|-------------|
-| `CMDB_BASE_URL` | p.ej. `http://cmdb-backend:3000` |
+| `CMDB_BASE_URL` | `http://backend:3000` (nombre de servicio compose en prod; `cmdb-backend` es solo el contenedor de **dev**) |
 | `CMDB_SERVICE_TOKEN` | Token M2M ≥32 chars |
 | `SMTP_*` | Configuración SMTP (igual que el backend) |
 
@@ -337,40 +337,34 @@ curl -X POST "https://<N8N_URL>/webhook/bulk-import-cis" \
 
 ## 7. Notificaciones Teams/Slack
 
-**Nombre en n8n:** `Notificaciones CMDB`
-**Trigger:** Webhook interno — llamado desde el workflow de Alertas y otros
-**Propósito:** Enrutar notificaciones a Teams y/o Slack según la configuración en DB
+**Nombre en n8n:** `Notificaciones CMDB`  ·  **Fichero:** `docs/n8n/json/notificaciones-cmdb.json`
+**Trigger:** Webhook `POST /webhook/notify` — responde **al instante** (modo `onReceived`); relay fire-and-forget, el llamante no espera la entrega
+**Propósito:** Enrutar una notificación a Teams y/o Slack según la configuración guardada en CMDB
 
-### Flujo
+### Flujo (implementación entregada)
 
 ```
-[Webhook interno: POST /webhook/notify]
+[Webhook POST /webhook/notify]   ← responde 200 al instante (onReceived)
   Body: { channel: 'teams'|'slack'|'both', subject, message, severity }
          │
-         ├─ channel includes 'teams'
-         │        │
-         │        ▼
-         │ [HTTP POST] Teams Incoming Webhook URL
-         │   Body: Adaptive Card con subject + message + severity color
+         ▼
+[HTTP GET] http://backend:3000/api/internal/notify/config   (X-CMDB-Service-Token)
+  ← { teamsWebhookUrl, slackBotToken, slackChannel }
          │
-         └─ channel includes 'slack'
-                  │
-                  ▼
-         [Slack node] Post message to #channel
-           Token: SLACK_BOT_TOKEN
-           Text: `:${severity}: *${subject}*\n${message}`
+         ├─▶ [IF Teams?]  channel ∈ {teams,both}  Y  teamsWebhookUrl definido
+         │        └─ true → [HTTP POST teamsWebhookUrl]  MessageCard (themeColor según severity)
+         │
+         └─▶ [IF Slack?]  channel ∈ {slack,both}  Y  slackBotToken definido
+                  └─ true → [HTTP POST slack.com/api/chat.postMessage]  Authorization: Bearer <slackBotToken>
 ```
+
+> **Dos gates IF independientes** (no un Switch de 3 salidas): así `channel:'both'` activa ambos canales de forma natural, y si falta la URL/token de un canal su gate da *false* y se omite (no se hace POST a `null`). Los nodos *Send* llevan `onError: continueRegularOutput` para que el fallo de un canal no aborte el otro.
 
 ### Configuración en la UI de administración
 
-Los webhooks de Teams y tokens de Slack se configuran en `Configuración > Alertas > Canales`
-y se almacenan en la tabla `alert_config` de la DB.
+El webhook de Teams, el token de Slack y el canal se configuran en **Configuración → Alertas → Canales de notificación** (sección de UI añadida en v3.0.1) y se guardan en `alert_config`. El workflow los lee en ejecución vía `GET /api/internal/notify/config`.
 
-El workflow de n8n lee estos valores en tiempo de ejecución vía:
-```
-GET /api/internal/notify/config
-← { teamsWebhookUrl, slackBotToken, slackChannel }
-```
+> **Seguridad:** ese endpoint M2M devuelve los secretos a n8n, pero el endpoint **ADMIN** `GET /api/alerts/config` nunca los expone al navegador — solo `teamsConfigured`/`slackConfigured` (booleanos) + `slackChannel`. El campo del token en la UI es *write-only*.
 
 ---
 
@@ -379,30 +373,73 @@ GET /api/internal/notify/config
 Todas las instancias n8n (main + workers) comparten estas variables via `.env`:
 
 ```env
-CMDB_BASE_URL=http://cmdb-backend:3000
+CMDB_BASE_URL=http://backend:3000   # servicio compose (prod). En dev el contenedor es "cmdb-backend".
 CMDB_SERVICE_TOKEN=<mínimo 32 chars, igual que en backend .env>
 FRONTEND_URL=https://localhost
 ```
+
+> Los JSON entregados **hardcodean** `http://backend:3000` en las URLs de los nodos HTTP (no usan `CMDB_BASE_URL`), de modo que importan y funcionan sin variables extra. Si prefieres parametrizar, sustituye la URL por `={{ $env.CMDB_BASE_URL }}/api/internal/...`.
 
 Los tokens, URLs y contraseñas específicos de cada workflow se almacenan como
 **Credentials** en n8n (encriptadas con `N8N_ENCRYPTION_KEY`), no como env vars.
 
 ---
 
-## Importar workflows en n8n
+## Instalación y administración de los workflows
 
-Los ficheros JSON de cada workflow están en `docs/n8n/json/`:
+Los 7 workflows están versionados como **JSON importables** en `docs/n8n/json/`. Se entregan **sin IDs de credenciales** (para que el selector de credencial sea elegible al importar) y con las URLs internas apuntando a `http://backend:3000`.
 
-```bash
-# Copiar al contenedor y usar la API de n8n para importar
-curl -X POST "http://localhost:5678/api/v1/workflows" \
-  -H "Content-Type: application/json" \
-  -H "X-N8N-API-KEY: <tu-api-key>" \
-  -d @docs/n8n/json/alertas-cmdb.json
-```
+| Workflow | Fichero | Trigger | Qué hace |
+|----------|---------|---------|----------|
+| Alertas CMDB | `alertas-cmdb.json` | Cron 08:00 | Escanea EOL/EOS/garantía/contratos/vulns/licencias → email + registra el run |
+| Mantenimiento CMDB | `mantenimiento-cmdb.json` | 4 crons (03/02/04/horario) | Purga audit, limpia trusted devices, scan potencia DCIM, limpia staging |
+| RAG Indexing | `rag-indexing.json` | Cada 30 s | Procesa cola de indexado RAG + análisis IA de importaciones |
+| Bulk Import CIs | `bulk-import-cis.json` | Webhook | Recibe XLSX → crea batch de importación de CIs |
+| LDAP/AD Sync | `ldap-ad-sync.json` | Cron 01:00 | Sincroniza usuarios del directorio (crea / reactiva / desactiva) |
+| Backup CMDB | `backup-cmdb.json` | Cron 02:00 | `pg_dump` + `tar` de documentos → registra en audit |
+| Notificaciones CMDB | `notificaciones-cmdb.json` | Webhook | Relay a Teams / Slack |
 
-O desde la UI de n8n: **Menu → Import from file**.
+### Paso 0 — Credencial M2M (una sola vez)
 
-> Los ficheros JSON se generan/exportan desde la UI de n8n tras configurar
-> las credenciales. No están versionados en este repo porque contienen
-> referencias a IDs de credenciales específicos de cada instalación.
+Casi todos los nodos HTTP llaman a `/api/internal/*`, protegido con `X-CMDB-Service-Token`. Crea la credencial una vez y reutilízala en todos los workflows:
+
+1. **Settings → Credentials → Add credential → "Header Auth"**
+2. **Name:** `X-CMDB-Service-Token`  ·  **Value:** el valor de `CMDB_SERVICE_TOKEN` del `.env` del backend
+3. Guárdala como **`CMDB Service Token`**
+
+### Paso 1 — Importar
+
+UI de n8n: **menú (⋮ arriba a la derecha) → Import from File →** selecciona el `.json`.
+(Alternativa por API: `POST http://localhost:5678/api/v1/workflows` con cabecera `X-N8N-API-KEY` y `-d @<fichero>.json`.)
+
+### Paso 2 — Asignar credenciales (nodos marcados con ⚠️ tras importar)
+
+| Workflow | Credenciales a seleccionar |
+|----------|----------------------------|
+| Todos | **CMDB Service Token** (Header Auth) en cada nodo HTTP a `/api/internal/*` |
+| Alertas CMDB | + credencial **SMTP** en `Send Email` y ajustar `fromEmail` |
+| LDAP/AD Sync | + credencial **LDAP** en `LDAP Search` y poner `baseDN` / `filter` / `attributes` reales |
+| Notificaciones / Backup | solo CMDB Service Token (Teams/Slack y el destino remoto se leen en runtime o se añaden aparte) |
+
+### Paso 3 — Verificar y activar (¡en este orden!)
+
+1. **Execute workflow** (test manual) e inspecciona la salida de cada nodo.
+2. Para webhooks (Bulk, Notificaciones): pulsa *Listen for test event* y lanza un POST de prueba.
+3. **Solo cuando el test pase**, activa el toggle del workflow. Validar limpio ≠ funcionar: comprueba la salida real antes de activar.
+4. La **zona horaria** de los Schedule sale de *Workflow Settings* (los JSON ya traen `Europe/Madrid`).
+
+### Administración diaria
+
+- **Activar / Desactivar:** toggle arriba a la derecha. Un workflow inactivo no dispara su Schedule ni registra su Webhook de producción.
+- **Historial:** pestaña **Executions** (por workflow o global); filtra por *success* / *error*.
+- **Reintentos:** `Send Email` (Alertas) reintenta 3×; el resto no reintenta (el siguiente ciclo del cron es el reintento natural). RAG y LDAP usan `onError: continueRegularOutput` para tolerar respuestas `207` (error parcial) sin abortar.
+- **Credenciales:** centralizadas en Settings → Credentials, cifradas con `N8N_ENCRYPTION_KEY` ⚠️ (irrecuperables si se pierde la clave).
+- **Hostname interno:** los JSON usan `http://backend:3000` (servicio compose, válido en prod). En **dev** el contenedor es `cmdb-backend`.
+
+### Extensiones opcionales (no incluidas en el JSON base)
+
+Los JSON son la **línea base funcional**; las secciones 1-7 describen el diseño completo, del que puedes añadir:
+- **Alertas:** registrar también runs `SKIPPED`/`ALL_CLEAR` (segunda rama del IF → `POST /alerts/record`).
+- **Bulk Import:** polling con `GET /bulk/batches/:id` + aviso al operador; **proteger el webhook** con Basic/Header Auth antes de exponerlo fuera de la red interna.
+- **Backup:** nodo de subida remota (S3/SFTP) entre `Trigger backup` y `Record backup` (cifrar si el destino es compartido).
+- **Notificaciones:** lo invocan otros workflows vía `POST http://cmdb-n8n-main:5678/webhook/notify` (red interna de Podman).

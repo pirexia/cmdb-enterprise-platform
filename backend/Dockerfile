@@ -45,7 +45,8 @@ RUN apk add --no-cache \
       tesseract-ocr-data-fra \
       tesseract-ocr-data-ita \
       tesseract-ocr-data-osd \
-      poppler-utils
+      poppler-utils \
+      postgresql16-client
 
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 ENV NODE_ENV=production

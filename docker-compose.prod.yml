@@ -121,11 +121,17 @@ services:
       PLUGIN_ENABLE_MARKETPLACE: ${PLUGIN_ENABLE_MARKETPLACE:-true}
       PLUGIN_MARKETPLACE_URL: ${PLUGIN_MARKETPLACE_URL:-}
       PLUGIN_SIGNING_PUBLIC_KEY: ${PLUGIN_SIGNING_PUBLIC_KEY:-}
+      # ── Backup (T7 — n8n workflow "Backup CMDB") ──────────────────────────────
+      BACKUP_DIR: /app/backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      # v3.0.0 — M2M service auth token (shared with n8n)
+      CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:?CMDB_SERVICE_TOKEN required (min 32 chars)}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z
       - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
       - cmdb-plugins:/var/lib/cmdb/plugins:Z
+      - ${BACKUP_LOCAL_PATH:-/var/backups/cmdb}:/app/backups:Z
     # Backend NOT exposed to host — reachable only via nginx (/api/*)
     networks:
       - cmdb-internal

@@ -5,7 +5,8 @@ import { createInternalAlertsRouter }      from './alerts.js';
 import { createInternalMaintenanceRouter } from './maintenance.js';
 import { createInternalRagRouter, type RagQueueFunctions } from './rag.js';
 import { createInternalBulkRouter }  from './bulk.js';
-import { createInternalUsersRouter } from './users.js';
+import { createInternalUsersRouter }  from './users.js';
+import { createInternalBackupRouter } from './backup.js';
 
 /**
  * Router para /api/internal/*
@@ -96,6 +97,9 @@ export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunc
 
   // Sincronización LDAP/AD vía n8n (T6)
   router.use('/users', authenticateService, createInternalUsersRouter(prisma));
+
+  // Backup automatizado vía n8n (T7)
+  router.use('/backup', authenticateService, createInternalBackupRouter(prisma));
 
   return router;
 }

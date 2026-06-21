@@ -121,11 +121,16 @@ services:
       PLUGIN_ENABLE_MARKETPLACE: ${PLUGIN_ENABLE_MARKETPLACE:-true}
       PLUGIN_MARKETPLACE_URL: ${PLUGIN_MARKETPLACE_URL:-}
       PLUGIN_SIGNING_PUBLIC_KEY: ${PLUGIN_SIGNING_PUBLIC_KEY:-}
+      # ── Backup (T7) ───────────────────────────────────────────────────────────
+      BACKUP_DIR: /app/backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z
       - ${DOCUMENTS_STORAGE_PATH:-./document-storage}:/app/documents:Z
       - cmdb-plugins:/var/lib/cmdb/plugins:Z
+      - ${BACKUP_LOCAL_PATH:-./backups}:/app/backups:Z
     # Backend NOT exposed to host — reachable only via nginx (/api/*)
     depends_on:
       postgres:

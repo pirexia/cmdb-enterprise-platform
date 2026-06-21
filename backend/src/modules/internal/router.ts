@@ -4,7 +4,8 @@ import { authenticateService } from '../../shared/middleware/serviceAuth.js';
 import { createInternalAlertsRouter }      from './alerts.js';
 import { createInternalMaintenanceRouter } from './maintenance.js';
 import { createInternalRagRouter, type RagQueueFunctions } from './rag.js';
-import { createInternalBulkRouter }                        from './bulk.js';
+import { createInternalBulkRouter }  from './bulk.js';
+import { createInternalUsersRouter } from './users.js';
 
 /**
  * Router para /api/internal/*
@@ -92,6 +93,9 @@ export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunc
 
   // Importaciones masivas CI vía n8n (T5)
   router.use('/bulk', authenticateService, createInternalBulkRouter(prisma));
+
+  // Sincronización LDAP/AD vía n8n (T6)
+  router.use('/users', authenticateService, createInternalUsersRouter(prisma));
 
   return router;
 }

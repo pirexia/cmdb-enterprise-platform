@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -103,12 +103,10 @@ export default function VulnerabilitiesPage() {
   const fetchAll = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await apiFetch("/api/cis");
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const json: { data: CI[] } = await res.json();
+      const cisList = await fetchAllCIs<CI>();
 
       const rows: VulnRow[] = [];
-      for (const ci of json.data) {
+      for (const ci of cisList) {
         for (const v of ci.vulnerabilities ?? []) {
           rows.push({ ...v, ciId: ci.id, ciName: ci.name, ciSlug: ci.apiSlug });
         }

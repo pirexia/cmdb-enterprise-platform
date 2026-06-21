@@ -10,7 +10,7 @@ import {
 import AddContractModal from "@/components/AddContractModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { usePageSize } from "@/hooks/usePageSize";
 import PageSizeSelector from "@/components/PageSizeSelector";
@@ -216,13 +216,8 @@ function ContractRow({ contract, onExpand, expanded, onContractUpdated, onContra
     setCiSearch("");
     if (allCIs.length === 0) {
       setAllCIsLoading(true);
-      apiFetch("/api/cis")
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((data) => {
-          // API may return { data: CIRef[] } or CIRef[]
-          const list: CIRef[] = Array.isArray(data) ? data : (data.data ?? []);
-          setAllCIs(list);
-        })
+      fetchAllCIs<CIRef>()
+        .then((list) => setAllCIs(list))
         .catch(() => {})
         .finally(() => setAllCIsLoading(false));
     }

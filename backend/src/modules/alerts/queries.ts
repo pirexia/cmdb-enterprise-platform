@@ -6,7 +6,26 @@ export async function getConfig(prisma: PrismaClient) {
   if (!config) {
     config = await prisma.alertConfig.create({ data: { id: 'default' } });
   }
-  return config;
+  // The Prisma model includes the T8 channel columns, so `config` carries the raw
+  // secrets (Teams webhook URL + Slack bot token). Strip them — the ADMIN UI must
+  // only ever receive booleans + the non-secret channel name, never the secret
+  // values themselves (A02 / "slackBotToken must not appear in logs").
+  const {
+    teamsWebhookUrl = null,
+    slackBotToken   = null,
+    slackChannel    = null,
+    ...safe
+  } = config as typeof config & {
+    teamsWebhookUrl?: string | null;
+    slackBotToken?:   string | null;
+    slackChannel?:    string | null;
+  };
+  return {
+    ...safe,
+    teamsConfigured: Boolean(teamsWebhookUrl),
+    slackConfigured: Boolean(slackBotToken),
+    slackChannel,
+  };
 }
 
 export async function getRules(prisma: PrismaClient) {
@@ -45,7 +64,10 @@ export async function upsertConfig(prisma: PrismaClient, data: AlertConfigUpdate
       WHERE id = 'default'`;
   }
 
-  return config;
+  // Return the sanitized shape (secrets stripped, configured-booleans added) so the
+  // PUT response never echoes the Slack token / Teams URL — and reflects the value
+  // just written via the raw channel UPDATE above.
+  return getConfig(prisma);
 }
 
 export async function upsertRule(prisma: PrismaClient, category: string, data: AlertRuleUpdate) {

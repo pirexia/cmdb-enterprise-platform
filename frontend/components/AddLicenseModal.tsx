@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { X, Loader2, AlertTriangle, Search, Check } from "lucide-react";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,13 +124,13 @@ export default function AddLicenseModal({ onClose, onCreated }: { onClose: () =>
     const safe = (p: Promise<Response>) => p.then((r) => r.json()).catch(() => []);
     Promise.all([
       safe(apiFetch("/api/vendors")),
-      safe(apiFetch("/api/cis")),
+      fetchAllCIs<CIOption>().catch(() => [] as CIOption[]),
       safe(apiFetch("/api/licenses")),
       safe(apiFetch("/api/masters/license-types")),
       safe(apiFetch("/api/masters/license-metrics")),
     ]).then(([v, c, l, lt, lm]) => {
       setVendors(v as Vendor[]);
-      setCis(((c as { data?: CIOption[] }).data ?? []) as CIOption[]);
+      setCis(c as CIOption[]);
       setLicenses((((l as { data?: LicenseOption[] }).data ?? []) as LicenseOption[]));
       setLicenseTypes(lt as LicenseType[]);
       setLicenseMetrics(lm as LicenseMetric[]);

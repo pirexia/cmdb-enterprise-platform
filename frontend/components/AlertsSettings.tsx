@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Bell, Mail, Play, Clock, Globe, RefreshCw, CheckCircle, XCircle, Loader2, Plus, X } from "lucide-react";
+import { Bell, Mail, Play, Clock, Globe, RefreshCw, CheckCircle, XCircle, Loader2, Plus, X, MessageSquare } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -21,6 +21,9 @@ interface AlertConfig {
   smtpConfigured:    boolean;
   smtpHost:          string | null;
   smtpPort:          number | null;
+  teamsConfigured?:  boolean;
+  slackConfigured?:  boolean;
+  slackChannel?:     string | null;
 }
 
 interface AlertRule {
@@ -146,6 +149,11 @@ export default function AlertsSettings({ isAdmin }: { isAdmin: boolean }) {
   const [draft, setDraft] = useState<Partial<AlertConfig>>({});
   // Local draft for rules (keyed by category)
   const [ruleDrafts, setRuleDrafts] = useState<Record<string, Partial<AlertRule>>>({});
+  // Local draft for notification channels (T8). Secrets are write-only: the
+  // token/URL inputs start empty and are only sent when the admin types a value.
+  const [chDraft, setChDraft] = useState<{ teamsWebhookUrl: string; slackBotToken: string; slackChannel: string }>({
+    teamsWebhookUrl: "", slackBotToken: "", slackChannel: "",
+  });
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok });
@@ -162,6 +170,7 @@ export default function AlertsSettings({ isAdmin }: { isAdmin: boolean }) {
       ]);
       setConfig(cfg);
       setDraft(cfg);
+      setChDraft({ teamsWebhookUrl: "", slackBotToken: "", slackChannel: cfg.slackChannel ?? "" });
       setRules(rls);
       setRuleDrafts(Object.fromEntries(rls.map((r: AlertRule) => [r.category, r])));
       setHistory(hist);
@@ -196,6 +205,30 @@ export default function AlertsSettings({ isAdmin }: { isAdmin: boolean }) {
       setConfig(updated);
       setDraft(updated);
       showToast(t("settings.alerts.config_saved"));
+    } catch {
+      showToast(t("settings.alerts.save_error"), false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveChannels() {
+    setSaving(true);
+    try {
+      // COALESCE on the backend keeps the existing value when a field is null,
+      // so we only send the secrets when the admin actually typed something.
+      const body: Record<string, string | null> = { slackChannel: chDraft.slackChannel.trim() || null };
+      if (chDraft.teamsWebhookUrl.trim()) body.teamsWebhookUrl = chDraft.teamsWebhookUrl.trim();
+      if (chDraft.slackBotToken.trim())   body.slackBotToken   = chDraft.slackBotToken.trim();
+      const res = await apiFetch("/api/alerts/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      showToast(t("settings.alerts.channels_saved"));
+      setChDraft((d) => ({ ...d, teamsWebhookUrl: "", slackBotToken: "" }));
+      loadAll();
     } catch {
       showToast(t("settings.alerts.save_error"), false);
     } finally {
@@ -443,6 +476,90 @@ export default function AlertsSettings({ isAdmin }: { isAdmin: boolean }) {
             >
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               {t("settings.alerts.save_config")}
+            </button>
+          </div>
+        )}
+      </section>
+
+      {/* Notification Channels (Teams / Slack) — T8 */}
+      <section className="rounded-xl border border-slate-200 bg-white p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <MessageSquare className="h-5 w-5 text-slate-400" />
+          <h2 className="text-base font-semibold text-slate-900">{t("settings.alerts.channels_title")}</h2>
+        </div>
+        <p className="text-xs text-slate-400 mb-5">{t("settings.alerts.channels_note")}</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Teams webhook */}
+          <div className="md:col-span-2 rounded-lg border border-slate-200 px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-medium text-slate-800">{t("settings.alerts.teams_webhook")}</p>
+              {config?.teamsConfigured ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />{t("settings.alerts.channel_configured")}
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{t("settings.alerts.channel_not_configured")}</span>
+              )}
+            </div>
+            <input
+              type="url"
+              disabled={!isAdmin}
+              value={chDraft.teamsWebhookUrl}
+              onChange={(e) => setChDraft((d) => ({ ...d, teamsWebhookUrl: e.target.value }))}
+              placeholder="https://…webhook.office.com/webhookb2/…"
+              className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-400 mt-1">{t("settings.alerts.teams_webhook_hint")}</p>
+          </div>
+
+          {/* Slack bot token */}
+          <div className="rounded-lg border border-slate-200 px-4 py-3">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-sm font-medium text-slate-800">{t("settings.alerts.slack_token")}</p>
+              {config?.slackConfigured ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500" />{t("settings.alerts.channel_configured")}
+                </span>
+              ) : (
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{t("settings.alerts.channel_not_configured")}</span>
+              )}
+            </div>
+            <input
+              type="password"
+              autoComplete="new-password"
+              disabled={!isAdmin}
+              value={chDraft.slackBotToken}
+              onChange={(e) => setChDraft((d) => ({ ...d, slackBotToken: e.target.value }))}
+              placeholder="xoxb-…"
+              className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-400 mt-1">{t("settings.alerts.slack_token_hint")}</p>
+          </div>
+
+          {/* Slack channel */}
+          <div className="rounded-lg border border-slate-200 px-4 py-3">
+            <p className="text-sm font-medium text-slate-800 mb-1">{t("settings.alerts.slack_channel")}</p>
+            <input
+              type="text"
+              disabled={!isAdmin}
+              value={chDraft.slackChannel}
+              onChange={(e) => setChDraft((d) => ({ ...d, slackChannel: e.target.value }))}
+              placeholder="#alerts"
+              className="w-full rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+            />
+            <p className="text-xs text-slate-400 mt-1">{t("settings.alerts.slack_channel_hint")}</p>
+          </div>
+        </div>
+
+        {isAdmin && (
+          <div className="mt-5 flex justify-end">
+            <button
+              onClick={saveChannels}
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            >
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("settings.alerts.save_channels")}
             </button>
           </div>
         )}

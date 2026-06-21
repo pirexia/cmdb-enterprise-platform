@@ -441,6 +441,8 @@ Before committing any `fix` or `feat`:
 | `cron` | Cron job patterns and scheduling |
 | `pre-commit-standards` | Conventional Commits + pre-commit hooks |
 | `graphify` | Codebase knowledge graph (see § graphify below) |
+| `n8n-workflow-patterns` | Diseño de workflows n8n — patrones Schedule/Webhook/HTTP/Code/Loop |
+| `n8n-node-configuration` | Configuración detallada de nodos n8n — HTTP Request, credenciales, expresiones |
 
 ### Task → required skills
 
@@ -453,6 +455,7 @@ Before committing any `fix` or `feat`:
 | Tests / QA | `javascript-typescript-jest`, `webapp-testing`, `find-bugs` |
 | Docker / Podman / deploy | `docker-security-guide`, `nginx-configuration`, `autoship` |
 | Cron / scheduled jobs | `cron` |
+| n8n workflows | `n8n-workflow-patterns`, `n8n-node-configuration` |
 | Documentation | `documentation-writer`, `readme-i18n` |
 | Code review | `differential-review`, `find-bugs`, `owasp-security` |
 | Git / commits / CI | `pre-commit-standards`, `gh-fix-ci`, `autoship` |
@@ -475,7 +478,7 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.0.0 — ✅ LIBERADA (tag `v3.0.0`, merge develop→main, 2026-06-21)
+**Versión actual en producción:** v3.0.1 — ✅ LIBERADA (tag `v3.0.1`, merge develop→main, 2026-06-21)
 **Próxima versión:** —
 **Rama activa:** `develop`
 **PRs abiertos:** —
@@ -503,6 +506,7 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+- **v3.0.1** ✅ LIBERADA (2026-06-21): UI de configuración de canales Teams/Slack en Alertas (campos write-only, fix de fuga de secretos en `getConfig`); 7 workflows n8n importables en `docs/n8n/json/` + guía instalación/admin en `docs/n8n/WORKFLOWS.md`; fix hostname M2M (`backend:3000`, no `cmdb-backend`); fix paginación completa de CIs (`fetchAllCIs`) en vistas de lista/agregación; skills n8n (`n8n-workflow-patterns`, `n8n-node-configuration`).
 - **v3.0.0** ✅ LIBERADA (2026-06-21): n8n Queue Mode (main + 2 workers) + Redis 7; nginx `/n8n/` con auth_request ADMIN; M2M auth `X-CMDB-Service-Token`; `/api/internal/*` router; 5 dominios de cron migrados a n8n; `pg_dump` backup; Teams/Slack canales. `docs/PLAN_STATUS_v3.0.0.md`.
 - **v2.9.2** ✅ LIBERADA (2026-06-20): AI/RAG improvements — qwen3:latest + think:false; stats CMDB en prompt (fix conteo); OCR density trigger + DPI 300; DecommissionPlan indexado en RAG (chip Decomisión en chat); cascada re-index CIs cuando maestro renombrado; `modules/ai/` extraído de `index.ts` (−640 líneas). `docs/PLAN_v2.9.2.md`.
 - **v2.9.1** ✅ LIBERADA (2026-06-20): Unificación estética DCIM + Decommission al patrón canónico de la casa. Fix `/api/plugins` 403 (faltaba `authenticateToken` en mounts del plugin engine). PR #163.

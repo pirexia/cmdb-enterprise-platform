@@ -20,7 +20,7 @@ import AddRelationModal from "@/components/AddRelationModal";
 import CIDetailModal from "@/components/CIDetailModal";
 import BulkUpdateCIModal from "@/components/BulkUpdateCIModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { usePageSize } from "@/hooks/usePageSize";
 import PageSizeSelector from "@/components/PageSizeSelector";
@@ -390,10 +390,8 @@ export default function InventoryPage() {
   const fetchCIs = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await apiFetch("/api/cis");
-      if (!res.ok) throw new Error(`Status ${res.status}`);
-      const json: { total: number; data: CI[] } = await res.json();
-      setCis(json.data);
+      const data = await fetchAllCIs<CI>();
+      setCis(data);
     } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
     finally { setLoading(false); }
   };

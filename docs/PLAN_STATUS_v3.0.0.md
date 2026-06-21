@@ -47,29 +47,30 @@ T1 → T0 → T2 → T2.5 → T3 → T3.5 → T4 → T5 → T6 → T7 → T8 →
 - `backend/src/modules/internal/rag.ts` (POST /process-batch, DI pattern); cron */30s eliminado de `index.ts`
 
 ### Tarea 5: Importaciones masivas vía n8n
-- [ ] 🔄 En progreso — Iniciada: 2026-06-21
-- Workflow n8n alimenta `POST /api/cis/bulk/batches` (pipeline existente)
-- Nuevo endpoint: `POST /api/internal/bulk/submit` (service auth → delegate to existing pipeline)
+- [x] ✅ COMPLETADA — Commit: 3c73b09
+- `backend/src/modules/internal/bulk.ts` (POST /submit + GET /batches/:id)
 
 ### Tarea 6: Sincronización LDAP/AD vía n8n
-- [ ] Pendiente
-- Archivos: `backend/src/modules/internal/users.ts` (nuevos endpoints CRUD), migración DB (si se añaden campos)
+- [x] ✅ COMPLETADA — Commit: b64b4a3
+- `backend/src/modules/internal/users.ts` (GET /ldap-sync-candidates + POST /ldap-sync)
 
 ### Tarea 7: Backup automatizado vía n8n + BACKUP_RESTORE_GUIDE.md
-- [ ] Pendiente
-- Entregable: `docs/BACKUP_RESTORE_GUIDE.md`
-- Nota D-D: certs excluidos del backup automatizado
+- [x] ✅ COMPLETADA — Commit: 70d11ea
+- `postgresql16-client` en Dockerfile; `modules/internal/backup.ts` (trigger/record/list); `docs/BACKUP_RESTORE_GUIDE.md`
 
 ### Tarea 8: Notificaciones Teams/Slack vía n8n
-- [ ] Pendiente
-- Archivos: migración DB (`alert_config` + `alert_rules`), `backend/src/modules/alerts/schemas.ts`, `backend/src/modules/internal/notify.ts`
+- [x] ✅ COMPLETADA — Commit: 2d9ccd0
+- Migración DB `20260621120000_add_notify_channels`; `schemas.ts` + `queries.ts` actualizados; `modules/internal/notify.ts`
 
 ### Tarea 9: Actualizar toda la documentación
-- [ ] Pendiente
-- Archivos: `README.md`, `README.en.md`, `docs/SYSADMIN_MANUAL.md`, `docs/SYSADMIN_MANUAL.en.md`, `docs/USER_MANUAL.md`, `docs/USER_MANUAL.en.md`, `docs/DEPLOY.md` (nuevo), `docs/RAG_HOST_PREPARATION.md`, `CLAUDE.md`, `docs/n8n/WORKFLOWS.md` (nuevo), `docs/n8n/ADMIN_GUIDE.md` (nuevo)
+- [x] ✅ COMPLETADA — Commit: 29d389c
+- CLAUDE.md, README ×2, ARCHITECTURE.en.md, SYSADMIN_MANUAL ×2, DEPLOY.md (nuevo), docs/n8n/WORKFLOWS.md + ADMIN_GUIDE.md (nuevo), BACKUP_RESTORE_GUIDE.md
 
 ### Tarea 10: Despliegue limpio en main + smoke tests
-- [ ] Pendiente
+- [ ] ⏳ PENDIENTE — Requiere acción manual del operador
+- Ver `docs/DEPLOY.md` §Verificación post-despliegue para el checklist completo
+- Prerequisito: ejecutar `podman-compose -f docker-compose.prod.yml up -d --build` en el servidor de producción
+- Prerequisito: configurar workflows en UI n8n tras el primer arranque
 
 ---
 
@@ -79,7 +80,17 @@ T1 → T0 → T2 → T2.5 → T3 → T3.5 → T4 → T5 → T6 → T7 → T8 →
 ## Errores encontrados y resolución
 - (vacío)
 
-## Próxima acción al reanudar
-1. T5: `POST /api/internal/bulk/submit` + `docs/n8n/WORKFLOWS.md` (sección Bulk Import)
-2. T6: LDAP sync endpoints + workflow
-3. T7: backup workflow + BACKUP_RESTORE_GUIDE.md
+## Estado final
+**T0–T9: ✅ TODAS COMPLETADAS** (11 commits en `develop`)
+**T10: ⏳ Pendiente** — despliegue en producción + smoke tests (manual)
+
+### Checklist T10 (para el operador)
+- [ ] `podman-compose -f docker-compose.prod.yml up -d --build`
+- [ ] `curl -sk https://localhost/api/health` → `{"status":"ok"}`
+- [ ] `podman exec cmdb-redis redis-cli -a "$REDIS_PASS" ping` → PONG
+- [ ] Acceso a UI n8n en https://\<dominio\>/n8n/ con cuenta ADMIN
+- [ ] Crear credencial `X-CMDB-Service-Token` en n8n UI
+- [ ] Importar y activar workflows desde docs/n8n/
+- [ ] Test de backup: `POST /api/internal/backup/trigger` → dump creado en BACKUP_LOCAL_PATH
+- [ ] `prisma migrate deploy` aplicada (migración T8: notify_channels)
+- [ ] Merge develop → main + tag v3.0.0

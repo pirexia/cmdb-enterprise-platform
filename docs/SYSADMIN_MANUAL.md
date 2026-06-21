@@ -1528,17 +1528,46 @@ chmod 600 /opt/cmdb-enterprise-platform/.env
 
 ## 13. Tareas de Mantenimiento Periódico
 
-| Frecuencia | Tarea | Comando / Acción |
-|------------|-------|-----------------|
-| Diario (automático) | Backup BD | Cron 02:00 AM |
-| Diario (automático) | Alertas email | Cron 08:30 AM |
-| Semanal | Revisar logs de backup | `tail -n 50 /var/log/cmdb-backup.log` |
-| Mensual | `npm audit` en backend/frontend | `docker exec cmdb-backend-prod npm audit` |
-| Mensual | Verificar caducidad SSL | `openssl x509 -noout -dates -in backend/certs/server.crt` |
-| Mensual | Limpieza de imágenes Docker | `docker image prune -f` |
-| Trimestral | Rotación de JWT_SECRET | Ver sección 10 |
-| Anual | Renovación certificado SSL | Ver sección 4.3 |
-| Anual | Revisión de usuarios activos | Pestaña Configuración → Usuarios |
+> **v3.0.0:** Las tareas marcadas como "n8n" las gestiona automáticamente el workflow
+> correspondiente. Para revisar ejecuciones: UI n8n → Executions.
+
+| Frecuencia | Tarea | Método | Comando / Acción |
+|------------|-------|--------|-----------------|
+| Diario 02:00 (automático) | Backup BD + docs | **n8n** workflow "Backup CMDB" | Logs en UI n8n + audit_logs |
+| Diario 08:30 (automático) | Alertas email EOL/EOS | **n8n** workflow "Alertas CMDB" | Logs en UI n8n |
+| Diario 03:00 (automático) | Purga audit_logs > retención | **n8n** workflow "Mantenimiento" | `POST /api/internal/maintenance/purge-audit-logs` |
+| Diario 02:00 (automático) | Limpieza trusted devices | **n8n** workflow "Mantenimiento" | `POST /api/internal/maintenance/cleanup-trusted-devices` |
+| Cada hora (automático) | Limpieza bulk staging | **n8n** workflow "Mantenimiento" | `POST /api/internal/maintenance/cleanup-bulk-staging` |
+| Cada 30 s (automático) | RAG indexing queue | **n8n** workflow "RAG Indexing" | `POST /api/internal/rag/process-batch` |
+| Semanal | Revisar ejecuciones fallidas n8n | Manual | UI n8n → Executions → filter Error |
+| Semanal | Verificar backups locales | Manual | `ls -lh /var/backups/cmdb/` |
+| Mensual | `npm audit` en backend/frontend | Manual | `podman exec cmdb-backend-prod npm audit` |
+| Mensual | Verificar caducidad SSL | Manual | `openssl x509 -noout -dates -in certs/server.crt` |
+| Mensual | Limpieza de imágenes container | Manual | `podman image prune -f` |
+| Trimestral | Rotación de JWT_SECRET | Manual | Ver sección 10 |
+| Trimestral | Rotación CMDB_SERVICE_TOKEN | Manual | Ver docs/n8n/ADMIN_GUIDE.md |
+| Anual | Renovación certificado SSL | Manual | Ver sección 4.3 |
+| Anual | Revisión de usuarios activos | Manual | Configuración → Usuarios |
+
+### Verificación rápida del estado n8n/Redis
+
+```bash
+# Redis sano
+REDIS_PASS=$(grep REDIS_PASSWORD .env | cut -d= -f2)
+podman exec cmdb-redis redis-cli -a "$REDIS_PASS" ping  # → PONG
+
+# n8n-main sano
+curl -sk https://localhost/n8n/healthz  # → {"status":"ok"}
+
+# Endpoint M2M activo
+TOKEN=$(grep CMDB_SERVICE_TOKEN .env | cut -d= -f2)
+curl -s -H "X-CMDB-Service-Token: $TOKEN" http://localhost:3000/api/internal/ping
+# → {"pong":true,...}
+
+# Backups recientes
+curl -s -H "X-CMDB-Service-Token: $TOKEN" \
+  http://localhost:3000/api/internal/backup/list | python3 -m json.tool
+```
 
 ---
 

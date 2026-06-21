@@ -7,7 +7,7 @@
 [![Stack](https://img.shields.io/badge/stack-Node.js%20%7C%20Next.js%20%7C%20PostgreSQL-blue)](https://github.com/pirexia/cmdb-enterprise-platform)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![RHEL](https://img.shields.io/badge/tested%20on-RHEL%208%2F9-red)](https://www.redhat.com/en/technologies/linux-platforms/enterprise-linux)
-[![Version](https://img.shields.io/badge/version-2.8.7-informational)](https://github.com/pirexia/cmdb-enterprise-platform/releases/tag/v2.8.7)
+[![Version](https://img.shields.io/badge/version-3.0.0--dev-orange)](https://github.com/pirexia/cmdb-enterprise-platform/releases)
 
 ---
 
@@ -30,7 +30,8 @@
 | 🌍 **Soporte Multilingüe (i18n)** | Interfaz completa en Español e Inglés con selector de idioma persistente y contextos compartidos. |
 | 🔐 **Seguridad Enterprise** | Autenticación Híbrida LDAP/AD + Local con fail-soft fallback, MFA (TOTP RFC 6238) **obligatorio para admins** y sugerido para usuarios en primer login, dispositivos de confianza con TTL configurable, RBAC tres niveles (Admin/Auditor/Viewer), JWT HS256, bcrypt cost-10, **política de contraseñas configurable** (longitud por rol, complejidad, diccionario, historial de 20), conformidad ISO 27001. |
 | 📡 **Inteligencia de Ciclo de Vida** | Integración con endoflife.date API para automatización de EOL/EOSL, centro de consulta de hardware/software, verificación manual con fuentes externas. |
-| 📧 **Proactividad (Alertas)** | Motor de alertas diarias (cron) con informes personalizados por email sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas. |
+| 📧 **Proactividad (Alertas)** | Motor de alertas diarias vía n8n con informes personalizados por email, Teams y Slack sobre vencimientos de contratos, CIs próximos a EoL/EoS y vulnerabilidades críticas/altas. |
+| ⚙️ **Automatización con n8n** | n8n Queue Mode integrado (main + 2 workers + Redis). Workflows: alertas email, mantenimiento, RAG indexing, importación masiva CI, sincronización LDAP/AD, backup automatizado y notificaciones Teams/Slack. API M2M interna (`/api/internal/*`) para desacoplar scheduling de la lógica de negocio. |
 | 🕸️ **Topología y Dependencias** | Relaciones N:M entre CIs con 5 tipos (HOSTS, DEPENDS_ON, CONNECTED_TO, PROVIDES_SERVICE, BACKED_UP_BY), análisis de impacto, mapa de dependencias por CI con grafo enfocado e interactivo (React Flow). |
 | 🐳 **Infraestructura Production-Ready** | Despliegue Podman Rootless en RHEL con persistencia (loginctl enable-linger), imágenes multi-stage, usuario de servicio dedicado, conformidad Zero Trust. |
 

@@ -41,8 +41,7 @@ export async function scanAlerts(
         dm.eol_date  AS model_eol,
         dm.eos_date  AS model_eos
       FROM "configuration_items" ci
-      LEFT JOIN "hardware_cis"  hci ON hci.ci_id          = ci.id
-      LEFT JOIN "device_models" dm  ON dm.id              = hci.device_model_id
+      LEFT JOIN "device_models" dm  ON dm.id              = ci.ci_model_id
       WHERE (
            (ci.eol_date  IS NOT NULL AND ci.eol_date  <= ${warnDate})
         OR (ci.eos_date  IS NOT NULL AND ci.eos_date  <= ${warnDate})

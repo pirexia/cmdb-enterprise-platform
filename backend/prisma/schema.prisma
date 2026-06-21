@@ -1343,6 +1343,10 @@ model AlertConfig {
   recipients        String[]
   sendAllClear      Boolean  @default(false) @map("send_all_clear")
   suppressUnchanged Boolean  @default(true)  @map("suppress_unchanged")
+  // Notification channels (v3.0.0 T8) — stored encrypted-at-rest by PG; n8n reads via /api/internal/notify/config
+  teamsWebhookUrl   String?  @map("teams_webhook_url") @db.VarChar(2048)
+  slackBotToken     String?  @map("slack_bot_token")   @db.VarChar(512)
+  slackChannel      String?  @map("slack_channel")     @db.VarChar(255)
   updatedAt         DateTime @updatedAt      @map("updated_at")
 
   @@map("alert_config")
@@ -1354,6 +1358,7 @@ model AlertRule {
   enabled    Boolean  @default(true)
   warnDays   Int      @default(30)         @map("warn_days")
   recipients String[]
+  channels   String[] @default(["email"])
   updatedAt  DateTime @updatedAt           @map("updated_at")
 
   @@map("alert_rules")

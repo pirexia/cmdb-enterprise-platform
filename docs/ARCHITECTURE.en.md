@@ -88,41 +88,40 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 
 ## 3. Container Topology
 
+**v3.0.0 — 9 containers** (updated from 3 in v2.x)
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        HOST: cmdb-server                             │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                     cmdb-public network                      │  │
-│  │                                                              │  │
-│  │   ┌────────────────────────────────────────────────────┐    │  │
-│  │   │  cmdb-nginx    (nginx 1.30-alpine)                  │    │  │
-│  │   │  Host ports: :443 (HTTPS)  :80 (→ redirect 301)    │    │  │
-│  │   │  /         → frontend:3001                          │    │  │
-│  │   │  /api/*    → backend:3000                           │    │  │
-│  │   │  certs: tls-certs (ro)                             │    │  │
-│  │   └──────────────┬──────────────┬─────────────────────┘    │  │
-│  │                  │              │                            │  │
-│  │                  ▼              ▼                            │  │
-│  │   ┌─────────────────┐  ┌───────────────────────────────┐   │  │
-│  │   │  cmdb-frontend   │  │       cmdb-backend            │   │  │
-│  │   │  Next.js :3001   │  │  Express + Prisma :3000       │   │  │
-│  │   │  (HTTP internal) │  │  (HTTP internal)              │   │  │
-│  │   └─────────────────┘  └────────────┬──────────────────┘   │  │
-│  │       (NOT exposed to host)          │  certs: tls-certs(rw)│  │
-│  └──────────────────────────────────────┼──────────────────────┘  │
-│                                         │                          │
-│                                   ┌─────▼──────────────────┐      │
-│                                   │   cmdb-internal network │      │
-│                                   │   cmdb-postgres-prod    │      │
-│                                   │   PostgreSQL 16 :5432   │      │
-│                                   │   (NOT exposed to host) │      │
-│                                   └─────────────────────────┘      │
-│                                                                     │
-│   Host ports exposed:  :443 (HTTPS)   :80 (HTTP → redirect)        │
-│   Frontend and backend: internal Docker network only                │
-└─────────────────────────────────────────────────────────────────────┘
+Browser ──HTTPS:443──▶ nginx (cmdb-public) ──── /        ──▶ cmdb-frontend  (Next.js :3001)
+                                            ├── /api/*    ──▶ cmdb-backend   (Express :3000)
+                                            └── /n8n/*    ──▶ n8n-main       (:5678, auth_request gate)
+
+cmdb-backend (cmdb-internal) ──▶ cmdb-postgres-prod  (PostgreSQL 16 :5432)
+                              ──▶ cmdb-ollama-prod    (Ollama :11434)
+                              ──▶ cmdb-redis          (Redis 7 :6379, BullMQ queue)
+
+n8n-main     (cmdb-public + cmdb-internal) ──▶ cmdb-redis (BullMQ enqueue)
+                                            ──▶ cmdb-postgres-prod (schema: n8n_data)
+n8n-worker-1 (cmdb-public + cmdb-internal) ──▶ cmdb-redis (BullMQ consume)
+n8n-worker-2 (cmdb-public + cmdb-internal) ──▶ cmdb-redis (BullMQ consume)
 ```
+
+| Container | Image | Network(s) | Host Port |
+|-----------|-------|------------|-----------|
+| `cmdb-nginx` | nginx:1.30-alpine | public | 443, 80 |
+| `cmdb-frontend` | cmdb-frontend:latest | public | — |
+| `cmdb-backend-prod` | cmdb-backend:latest | public + internal | — |
+| `cmdb-postgres-prod` | pgvector/pgvector:pg16 | internal | — |
+| `cmdb-ollama-prod` | ollama/ollama:latest | internal | — |
+| `cmdb-redis` | redis:7-alpine | internal | — |
+| `n8n-main` | n8nio/n8n:1 | public + internal | — |
+| `n8n-worker-1` | n8nio/n8n:1 | public + internal | — |
+| `n8n-worker-2` | n8nio/n8n:1 | public + internal | — |
+
+**nginx routes (v3.0.0):**
+- `/` → frontend :3001
+- `/api/*` → backend :3000
+- `/n8n/*` → n8n-main :5678 (protected by `auth_request /api/internal/n8n-gate` — ADMIN JWT required)
+- `/api/internal/*` → `deny all; return 404;` (M2M only, blocked externally)
 
 ---
 
@@ -132,8 +131,10 @@ The platform is deployed as a set of Docker containers orchestrated with Docker 
 
 | Network | Type | Description |
 |---------|------|-------------|
-| `cmdb-public` | Bridge | Frontend ↔ Backend ↔ Host |
-| `cmdb-internal` | Bridge (internal: true) | Backend ↔ PostgreSQL only — **no external access** |
+| `cmdb-public` | Bridge | nginx ↔ frontend ↔ backend ↔ n8n nodes ↔ host |
+| `cmdb-internal` | Bridge (`internal: true`) | backend ↔ postgres ↔ ollama ↔ redis — **no external access** |
+
+n8n workers are on **both** networks: `cmdb-public` for external calls (SMTP, Teams, LDAP, S3) and `cmdb-internal` to reach postgres/ollama/redis/backend.
 
 ### Ports and Protocols
 

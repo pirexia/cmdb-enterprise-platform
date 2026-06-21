@@ -1517,17 +1517,37 @@ chmod 600 /opt/cmdb-enterprise-platform/.env
 
 ## 13. Periodic Maintenance Tasks
 
-| Frequency | Task | Command / Action |
-|-----------|------|-----------------|
-| Daily (automatic) | DB Backup | Cron 02:00 AM |
-| Daily (automatic) | Email alerts | Cron 08:30 AM |
-| Weekly | Review backup logs | `tail -n 50 /var/log/cmdb-backup.log` |
-| Monthly | `npm audit` on backend/frontend | `docker exec cmdb-backend-prod npm audit` |
-| Monthly | Verify SSL expiry | `openssl x509 -noout -dates -in backend/certs/server.crt` |
-| Monthly | Docker image cleanup | `docker image prune -f` |
-| Quarterly | JWT_SECRET rotation | See section 10 |
-| Annual | SSL certificate renewal | See section 4.3 |
-| Annual | Review active users | Settings tab → Users |
+> **v3.0.0:** Tasks marked as "n8n" are managed automatically by the corresponding workflow.
+> Review executions in the n8n UI → Executions.
+
+| Frequency | Task | Method | Command / Action |
+|-----------|------|--------|-----------------|
+| Daily 02:00 (automatic) | DB + docs backup | **n8n** "Backup CMDB" | Logs in n8n UI + audit_logs |
+| Daily 08:30 (automatic) | EOL/EOS email alerts | **n8n** "Alertas CMDB" | Logs in n8n UI |
+| Daily 03:00 (automatic) | Purge audit_logs > retention | **n8n** "Mantenimiento" | `POST /api/internal/maintenance/purge-audit-logs` |
+| Daily 02:00 (automatic) | Cleanup trusted devices | **n8n** "Mantenimiento" | `POST /api/internal/maintenance/cleanup-trusted-devices` |
+| Hourly (automatic) | Bulk staging cleanup | **n8n** "Mantenimiento" | `POST /api/internal/maintenance/cleanup-bulk-staging` |
+| Every 30 s (automatic) | RAG indexing queue | **n8n** "RAG Indexing" | `POST /api/internal/rag/process-batch` |
+| Weekly | Review failed n8n runs | Manual | n8n UI → Executions → filter Error |
+| Weekly | Verify local backups exist | Manual | `ls -lh /var/backups/cmdb/` |
+| Monthly | `npm audit` on backend/frontend | Manual | `podman exec cmdb-backend-prod npm audit` |
+| Monthly | Verify SSL expiry | Manual | `openssl x509 -noout -dates -in certs/server.crt` |
+| Monthly | Container image cleanup | Manual | `podman image prune -f` |
+| Quarterly | JWT_SECRET rotation | Manual | See section 10 |
+| Quarterly | CMDB_SERVICE_TOKEN rotation | Manual | See docs/n8n/ADMIN_GUIDE.md |
+| Annual | SSL certificate renewal | Manual | See section 4.3 |
+| Annual | Review active users | Manual | Settings → Users |
+
+### Quick health check (n8n / Redis)
+
+```bash
+REDIS_PASS=$(grep REDIS_PASSWORD .env | cut -d= -f2)
+podman exec cmdb-redis redis-cli -a "$REDIS_PASS" ping          # → PONG
+
+TOKEN=$(grep CMDB_SERVICE_TOKEN .env | cut -d= -f2)
+curl -s -H "X-CMDB-Service-Token: $TOKEN" \
+  http://localhost:3000/api/internal/ping                        # → {"pong":true}
+```
 
 ---
 

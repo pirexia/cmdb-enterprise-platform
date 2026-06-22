@@ -42,6 +42,80 @@ n8n-main (UI + trigger evaluator)
 | `REDIS_PASSWORD` | `.env` | Contraseña de Redis. Usada por n8n y Redis por igual. |
 | `N8N_ALLOWED_IPS` | `.env` | IPs/CIDRs que pueden acceder a la UI vía nginx. Default: `127.0.0.1`. |
 | `WEBHOOK_URL` | `.env` | URL base para webhooks de n8n (p.ej. `https://cmdb.empresa.com/n8n/`). |
+| `EXECUTIONS_DATA_SAVE_ON_SUCCESS` | compose | `none` — no persistir ejecuciones exitosas. Ver [Retención de ejecuciones](#retención-de-ejecuciones). |
+| `EXECUTIONS_DATA_SAVE_ON_ERROR` | compose | `all` — sí persistir ejecuciones fallidas (para depurar). |
+| `EXECUTIONS_DATA_PRUNE` | compose (main) | `true` — purga automática del histórico. |
+| `EXECUTIONS_DATA_MAX_AGE` | compose (main) | `168` horas (7 días) — antigüedad máxima antes de purgar. |
+| `EXECUTIONS_DATA_PRUNE_MAX_COUNT` | compose (main) | `10000` — tope duro de filas en `execution_entity`. |
+
+> **Nota sobre `CMDB_SERVICE_TOKEN` y los workflows:** los workflows **no leen** esta env var
+> vía `$env`. Autentican contra `/api/internal/*` mediante la **credencial de n8n** `Header Auth account`
+> (tipo `httpHeaderAuth`), guardada cifrada en la BD. El valor del token debe coincidir en ambos sitios:
+> la env var del backend (para *validar*) y la credencial de n8n (para *enviar* el header). Por eso un
+> workflow recién importado aparece **inactivo** hasta que un ADMIN vincula sus credenciales en la UI.
+
+---
+
+## Retención de ejecuciones
+
+Cada ejecución de un workflow puede persistirse en el schema `n8n_data` (tablas `execution_entity`
++ `execution_data`). Algunos workflows sondean con mucha frecuencia — **RAG Indexing corre cada 30 s
+(~2.880 ejecuciones/día)** — por lo que sin una política de retención la tabla crece **sin límite**
+(hinchazón de la BD, UI de n8n lenta).
+
+**Política configurada** (en `n8n-main` + ambos workers del `docker-compose.prod.yml`):
+
+| Variable | Valor | Efecto |
+|----------|-------|--------|
+| `EXECUTIONS_DATA_SAVE_ON_SUCCESS` | `none` | Las ejecuciones **exitosas NO se guardan**. |
+| `EXECUTIONS_DATA_SAVE_ON_ERROR` | `all` | Las ejecuciones **fallidas SÍ se guardan**. |
+| `EXECUTIONS_DATA_SAVE_ON_PROGRESS` | `false` | No persistir estados intermedios. |
+| `EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS` | `false` | No guardar ejecuciones manuales (botón *Execute Workflow*). |
+| `EXECUTIONS_DATA_PRUNE` | `true` | Purga automática (solo en `n8n-main`). |
+| `EXECUTIONS_DATA_MAX_AGE` | `168` | Retener errores 7 días como máximo. |
+| `EXECUTIONS_DATA_PRUNE_MAX_COUNT` | `10000` | Tope duro de filas. |
+
+> **Estas variables son globales de la instancia**, no por-workflow. Aplican por igual a *todos* los
+> workflows (RAG Indexing, Alertas CMDB, LDAP/AD Sync, Backup, etc.).
+
+### El criterio es por ESTADO, no por contenido
+
+n8n decide **solo por el estado final** de la ejecución, sin inspeccionar el payload:
+
+| Ejecución | ¿Se guarda con esta política? |
+|-----------|-------------------------------|
+| `error` / `crashed` | ✅ Sí (7 días, tope 10k) |
+| `success` — tick vacío (no-op) | ❌ No |
+| `success` — **que sí hizo trabajo real** (p. ej. indexó 3 documentos) | ❌ **No tampoco** |
+
+No existe en n8n una opción "guardar solo los éxitos que hicieron algo": las únicas son
+`none` / `all` / `error`. Poner `all` reintroduce la hinchazón (los ~2.880 ticks/día casi todos vacíos).
+
+### ¿Dónde queda el rastro auditable del trabajo real?
+
+El registro durable de **qué se indexó y cuándo** NO depende del histórico de n8n: el backend escribe
+una fila **`INDEX_BATCH` en `audit_logs`** solo cuando hubo trabajo real
+(`backend/src/modules/ai/queue.ts`, guard `if (totalActivity > 0)`). Es inmutable (insert-only,
+ISO 27001 A.8.15). Así:
+
+- **Histórico de ejecuciones de n8n** = telemetría operativa efímera → solo conservamos los **fallos**.
+- **`audit_logs` `INDEX_BATCH`** = registro de negocio durable → **intacto**, es el sitio correcto.
+
+### Purga manual del histórico acumulado
+
+Si el histórico ya creció antes de aplicar la política, puede vaciarse con:
+
+```sql
+TRUNCATE TABLE n8n_data.execution_annotation_tags,
+               n8n_data.execution_annotations,
+               n8n_data.execution_data,
+               n8n_data.execution_metadata,
+               n8n_data.execution_entity
+RESTART IDENTITY CASCADE;
+```
+
+> El `CASCADE` también vacía tablas internas de n8n que esta plataforma no usa
+> (`test_case_execution`, `chat_hub_messages`) — sin pérdida de datos de negocio.
 
 ---
 

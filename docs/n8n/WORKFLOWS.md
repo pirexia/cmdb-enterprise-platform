@@ -147,6 +147,11 @@ Si alguna lanza excepción, el error se captura, se loguea y se incluye en la re
 - **Error handling:** "Continue on Fail" activo para capturar el 207 sin abortar el workflow
 - **Retry on fail:** Desactivado — el siguiente ciclo (30s) es el reintento natural
 
+> **Retención:** este workflow genera ~2.880 ejecuciones/día, casi todas no-ops. La instancia está
+> configurada para **no persistir ejecuciones exitosas** (solo los fallos, 7 días). El rastro durable
+> de qué se indexó vive en `audit_logs` como filas `INDEX_BATCH`. Ver
+> [ADMIN_GUIDE.md § Retención de ejecuciones](./ADMIN_GUIDE.md#retención-de-ejecuciones).
+
 ---
 
 ## 4. Bulk Import CIs

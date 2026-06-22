@@ -26,7 +26,8 @@
     "assistant": "Asistente IA",
     "dcim": "Salas técnicas y CPD",
     "plugins": "Plugins",
-    "decommission": "Decomisado"
+    "decommission": "Decomisado",
+    "timeline": "Línea de Tiempo"
   },
   "actions": {
     "create": "Crear",
@@ -1818,5 +1819,63 @@
     "no_documents": "Sin documentos vinculados",
     "no_contracts": "Sin contratos vinculados",
     "no_licenses": "Sin licencias vinculadas"
+  },
+  "timeline": {
+    "title": "Línea de Tiempo",
+    "subtitle": "Vista Gantt de fechas del sistema CMDB",
+    "items_count": "elementos",
+    "hint_ctrl_scroll": "Ctrl + scroll para zoom",
+    "today": "Hoy",
+    "no_data": "No hay elementos para mostrar en el rango seleccionado.",
+    "no_inherited_dates": "Este CI no tiene fechas heredadas de datos maestros.",
+    "mobile_warning": "Vista optimizada para escritorio",
+    "mobile_hint": "Por favor accede desde una pantalla de al menos 1024px de ancho.",
+    "filters": {
+      "type": "Tipo",
+      "type_ci": "CI",
+      "type_contract": "Contrato",
+      "type_license": "Licencia",
+      "type_decommission": "Decomisado",
+      "type_os": "SO",
+      "type_software": "Software",
+      "type_model": "Modelo HW",
+      "subtype": "Subtipo",
+      "status": "Estado",
+      "dateType": "Tipo de Fecha",
+      "search": "Buscar...",
+      "clear": "Limpiar filtros",
+      "apply": "Aplicar",
+      "date_eol": "EOL",
+      "date_eos": "EOS",
+      "date_end": "Vencimiento",
+      "date_start": "Inicio",
+      "date_completed": "Completado",
+      "date_custom": "Personalizada"
+    },
+    "zoom": {
+      "day": "Día",
+      "week": "Semana",
+      "month": "Mes",
+      "quarter": "Trimestre",
+      "year": "Año",
+      "in": "Acercar",
+      "out": "Alejar"
+    },
+    "legend": {
+      "green": "> 30 días",
+      "yellow": "15–30 días",
+      "red": "< 15 días",
+      "expired": "Vencido",
+      "inactive": "Inactivo/Retirado",
+      "none": "Sin fecha fin",
+      "inherited": "Heredado"
+    },
+    "tooltip": {
+      "startDate": "Inicio",
+      "endDate": "Fin",
+      "daysLeft": "Días restantes",
+      "status": "Estado",
+      "type": "Tipo"
+    }
   }
 }

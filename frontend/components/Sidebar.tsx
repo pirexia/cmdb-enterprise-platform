@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Monitor, FileText, Building2, Settings,
   Server, Network, User, LogOut, Plug, Shield, BarChart,
   ClipboardList, UserCircle, FolderOpen, Key, Sparkles, Puzzle,
-  PowerOff,
+  PowerOff, CalendarClock,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
@@ -28,6 +28,7 @@ const NAV_ITEMS: NavEntry[] = [
   { type: "link", labelKey: "sidebar.contracts",       href: "/contracts",      icon: FileText                                  },
   { type: "link", labelKey: "sidebar.licenses",        href: "/licenses",       icon: Key                                       },
   { type: "link", labelKey: "sidebar.map",             href: "/map",            icon: Network                                   },
+  { type: "link", labelKey: "sidebar.timeline",        href: "/timeline",       icon: CalendarClock                             },
   { type: "link", labelKey: "sidebar.documents",       href: "/documents",      icon: FolderOpen                                },
   { type: "link", labelKey: "sidebar.assistant",       href: "/chat",           icon: Sparkles                                  },
   { type: "link", labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities", icon: Shield                                   },

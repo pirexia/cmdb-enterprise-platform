@@ -26,7 +26,8 @@
     "assistant": "Assistant IA",
     "dcim": "Salles Techniques & DC",
     "plugins": "Plugins",
-    "decommission": "Décommissionnement"
+    "decommission": "Décommissionnement",
+    "timeline": "Chronologie"
   },
   "actions": {
     "create": "Créer",
@@ -1699,5 +1700,63 @@
     "no_documents": "Aucun document lié",
     "no_contracts": "Aucun contrat lié",
     "no_licenses": "Aucune licence liée"
+  },
+  "timeline": {
+    "title": "Chronologie",
+    "subtitle": "Vue Gantt des dates du système CMDB",
+    "items_count": "éléments",
+    "hint_ctrl_scroll": "Ctrl + molette pour zoomer",
+    "today": "Aujourd'hui",
+    "no_data": "Aucun élément à afficher dans la plage sélectionnée.",
+    "no_inherited_dates": "Ce CI n'a pas de dates héritées des données de référence.",
+    "mobile_warning": "Vue optimisée pour bureau",
+    "mobile_hint": "Veuillez accéder depuis un écran d'au moins 1024px de large.",
+    "filters": {
+      "type": "Type",
+      "type_ci": "CI",
+      "type_contract": "Contrat",
+      "type_license": "Licence",
+      "type_decommission": "Décommissionnement",
+      "type_os": "OS",
+      "type_software": "Logiciel",
+      "type_model": "Modèle HW",
+      "subtype": "Sous-type",
+      "status": "Statut",
+      "dateType": "Type de date",
+      "search": "Rechercher...",
+      "clear": "Effacer les filtres",
+      "apply": "Appliquer",
+      "date_eol": "EOL",
+      "date_eos": "EOS",
+      "date_end": "Date de fin",
+      "date_start": "Date de début",
+      "date_completed": "Terminé",
+      "date_custom": "Personnalisé"
+    },
+    "zoom": {
+      "day": "Jour",
+      "week": "Semaine",
+      "month": "Mois",
+      "quarter": "Trimestre",
+      "year": "Année",
+      "in": "Zoom avant",
+      "out": "Zoom arrière"
+    },
+    "legend": {
+      "green": "> 30 jours",
+      "yellow": "15–30 jours",
+      "red": "< 15 jours",
+      "expired": "Expiré",
+      "inactive": "Inactif/Retiré",
+      "none": "Sans date de fin",
+      "inherited": "Hérité"
+    },
+    "tooltip": {
+      "startDate": "Début",
+      "endDate": "Fin",
+      "daysLeft": "Jours restants",
+      "status": "Statut",
+      "type": "Type"
+    }
   }
 }

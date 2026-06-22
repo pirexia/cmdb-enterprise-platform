@@ -199,16 +199,16 @@ describe('GET /api/timeline/legacy/:ciId', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns empty milestones for unknown CI', async () => {
+  it('returns empty children for unknown CI', async () => {
     mockCIFindUnique.mockResolvedValue(null);
     const res = await supertest(buildApp())
       .get(`/api/timeline/legacy/${CI_ID}`)
       .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
     expect(res.status).toBe(200);
-    expect(res.body.milestones).toEqual([]);
+    expect(res.body.children).toEqual([]);
   });
 
-  it('aggregates inherited dates from OS and DeviceModel', async () => {
+  it('aggregates related entities (OS, model, contract, license) as children', async () => {
     mockCIFindUnique.mockResolvedValue({
       id: CI_ID,
       operatingSystemId: 'os-1',
@@ -227,6 +227,12 @@ describe('GET /api/timeline/legacy/:ciId', () => {
         lifecycleDates: [],
       },
       baseSoftwares: [],
+      contracts: [
+        { contractNumber: 'SOPORTE-2025', startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
+      ],
+      licenses: [
+        { name: 'vSphere', status: 'ACTIVO', startDate: new Date('2024-01-01'), endDate: new Date('2027-01-01') },
+      ],
     });
 
     const res = await supertest(buildApp())
@@ -234,14 +240,23 @@ describe('GET /api/timeline/legacy/:ciId', () => {
       .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.milestones).toHaveLength(2);
-    expect(res.body.milestones.every((m: any) => m.inherited === true)).toBe(true);
+    // one child each: os, model, contract, license
+    expect(res.body.children).toHaveLength(4);
 
-    const osMilestone = res.body.milestones.find((m: any) => m.inheritedFrom === 'os');
-    expect(osMilestone?.date).toBe('2030-06-30');
+    const os = res.body.children.find((c: any) => c.source === 'os');
+    expect(os?.sourceName).toBe('RHEL 9');
+    expect(os?.milestones[0].date).toBe('2030-06-30');
 
-    const modelMilestone = res.body.milestones.find((m: any) => m.inheritedFrom === 'model');
-    expect(modelMilestone?.type).toBe('eol');
-    expect(modelMilestone?.date).toBe('2028-01-01');
+    const model = res.body.children.find((c: any) => c.source === 'model');
+    expect(model?.milestones.find((m: any) => m.type === 'eol')?.date).toBe('2028-01-01');
+
+    const contract = res.body.children.find((c: any) => c.source === 'contract');
+    expect(contract?.sourceName).toBe('SOPORTE-2025');
+    expect(contract?.startDate).toBe('2025-01-01');
+    expect(contract?.endDate).toBe('2026-12-31');
+
+    const license = res.body.children.find((c: any) => c.source === 'license');
+    expect(license?.sourceName).toBe('vSphere');
+    expect(license?.endDate).toBe('2027-01-01');
   });
 });

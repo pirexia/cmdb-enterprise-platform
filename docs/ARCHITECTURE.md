@@ -1516,7 +1516,7 @@ Patrón factory idéntico al de `dcim/` y `catalog/`. Tres endpoints bajo `authe
 |----------|-------------|
 | `GET /api/timeline/items` | Agrega TimelineItem[] de 7 entidades en paralelo (Promise.all). Zod query params, `escapeLike` para search, cap por entidad |
 | `GET /api/timeline/filters` | Metadatos para dropdowns (CIType[], DateType[], statuses[]) |
-| `GET /api/timeline/legacy/:ciId` | Fechas heredadas de OS, DeviceModel, BaseSoftware (M:M) con `inherited:true` |
+| `GET /api/timeline/legacy/:ciId` | Entidades relacionadas como `children[]`: OS, DeviceModel, BaseSoftware (M:M), **Contratos** (`_ContractToCI`) y **Licencias** (`_LicenseToCI`) — render como filas hijas desplegables bajo el CI |
 
 `DecommissionPlan` no está en el cliente Prisma del host → usa `$queryRaw` con tagged template literal (mismo patrón que `modules/decommission/`).
 

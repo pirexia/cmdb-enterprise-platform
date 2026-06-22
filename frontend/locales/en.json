@@ -1876,6 +1876,7 @@
       "daysLeft": "Days left",
       "status": "Status",
       "type": "Type"
-    }
+    },
+    "expand_hint": "Click ▸ next to a CI to see its related dates"
   }
 }

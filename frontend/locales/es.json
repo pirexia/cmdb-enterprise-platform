@@ -1876,6 +1876,7 @@
       "daysLeft": "Días restantes",
       "status": "Estado",
       "type": "Tipo"
-    }
+    },
+    "expand_hint": "Haz clic en ▸ junto a un CI para ver sus fechas relacionadas"
   }
 }

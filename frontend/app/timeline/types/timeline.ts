@@ -1,6 +1,6 @@
 export type TimelineKind = 'ci' | 'contract' | 'license' | 'decommission' | 'os' | 'software' | 'model';
 export type MilestoneType = 'eol' | 'eos' | 'lastCheck' | 'end' | 'completed' | 'custom';
-export type InheritedFrom = 'os' | 'software' | 'model';
+export type InheritedFrom = 'os' | 'software' | 'model' | 'contract' | 'license';
 
 export interface TimelineMilestone {
   type: MilestoneType;
@@ -28,9 +28,18 @@ export interface TimelineFiltersData {
   statuses: { value: string; label: string; kinds: TimelineKind[] }[];
 }
 
+export interface TimelineLegacyChild {
+  source: InheritedFrom;
+  sourceName: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  milestones: TimelineMilestone[];
+}
+
 export interface TimelineLegacyDates {
   ciId: string;
-  milestones: TimelineMilestone[];
+  children: TimelineLegacyChild[];
 }
 
 export type ZoomLevel = 'day' | 'week' | 'month' | 'quarter' | 'year';

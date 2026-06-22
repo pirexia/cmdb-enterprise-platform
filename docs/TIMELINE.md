@@ -50,9 +50,21 @@ El botón **Centrar en Hoy** (`Target` icon) desplaza el scroll horizontal hasta
 
 La lógica de color está centralizada en `frontend/lib/timelineColor.ts`.
 
-### Fechas heredadas
+### Fechas relacionadas (filas desplegables)
 
-Al hacer clic en una fila de tipo CI, se consulta `GET /api/timeline/legacy/:ciId` y se muestran los hitos heredados del SO, DeviceModel y BaseSoftwares asociados. Los hitos heredados aparecen como diamantes punteados en el Gantt y se listan en la barra azul inferior.
+Cada fila de tipo **CI** tiene un **chevron desplegable** (▸) junto al nombre. Al expandirlo se consulta `GET /api/timeline/legacy/:ciId` y se insertan **filas hijas indentadas** debajo del CI, una por cada entidad relacionada:
+
+| Fuente | `source` | Contenido en la fila hija |
+|--------|----------|---------------------------|
+| Sistema Operativo | `os` | Diamantes punteados por cada fecha de ciclo de vida del SO |
+| Modelo de dispositivo | `model` | EOL/EOS del modelo + fechas `DeviceModelDate` |
+| Software Base (M:M) | `software` | Una fila por cada software, con sus fechas |
+| Contrato (M:M) | `contract` | **Barra de intervalo punteada** start→end + hito de vencimiento |
+| Licencia (M:M) | `license` | **Barra de intervalo punteada** start→end + hito de vencimiento |
+
+Las filas hijas se renderizan con marcas punteadas para diferenciarlas de las fechas propias del CI. Cada `ciId` se consulta una sola vez y se cachea mientras dure la sesión; pueden expandirse varios CIs simultáneamente.
+
+**Nota:** las fuentes solo-fecha (OS, software, modelo) que no tengan ninguna fecha de ciclo de vida se omiten (no aportan hitos al Gantt). Contratos y licencias se muestran siempre que estén asociados, porque tienen intervalo start/end.
 
 ### Filtros
 
@@ -124,21 +136,32 @@ Devuelve metadatos para poblar los dropdowns del panel de filtros:
 
 #### `GET /api/timeline/legacy/:ciId`
 
-Requiere UUID válido (middleware `requireUuidParam`). Agrega todas las fechas heredadas del CI desde:
-- `OperatingSystemDate` (vía `operatingSystemId`)
-- `DeviceModelDate` + `eolDate`/`eosDate` (vía `ciModelId`)
-- `BaseSoftwareDate` de todos los `CIBaseSoftware` asociados (relación M:M)
+Requiere UUID válido (middleware `requireUuidParam`). Agrega todas las entidades relacionadas con el CI como **children** (cada una se renderiza como fila hija indentada):
+- `OperatingSystemDate` (vía `operatingSystemId`) → `source: 'os'`
+- `DeviceModelDate` + `eolDate`/`eosDate` del modelo (vía `ciModelId`) → `source: 'model'`
+- `BaseSoftwareDate` de todos los `CIBaseSoftware` asociados (M:M) → `source: 'software'`
+- **Contratos** asociados (M:M `_ContractToCI`) → `source: 'contract'` con `startDate`/`endDate`
+- **Licencias** asociadas (M:M `_LicenseToCI`) → `source: 'license'` con `startDate`/`endDate` + `status`
 
 ```json
 {
   "ciId": "uuid",
-  "milestones": [
+  "children": [
     {
-      "type": "eol",
-      "date": "2027-01-01",
-      "label": "EOL Windows Server 2019",
-      "inherited": true,
-      "inheritedFrom": "os"
+      "source": "model",
+      "sourceName": "Synergy 480 Gen10 Plus",
+      "milestones": [
+        { "type": "eol", "date": "2029-12-31", "label": "EOL", "inherited": true, "inheritedFrom": "model" }
+      ]
+    },
+    {
+      "source": "contract",
+      "sourceName": "SOPORTE-2025",
+      "startDate": "2025-01-01",
+      "endDate": "2026-12-31",
+      "milestones": [
+        { "type": "end", "date": "2026-12-31", "label": "Vencimiento", "inherited": true, "inheritedFrom": "contract" }
+      ]
     }
   ]
 }

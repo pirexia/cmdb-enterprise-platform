@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { apiFetch } from "@/lib/apiFetch";
-import { TimelineItem, TimelineFiltersState, TimelineFiltersData, TimelineLegacyDates } from "../types/timeline";
+import { TimelineItem, TimelineFiltersState, TimelineFiltersData, TimelineLegacyDates, TimelineLegacyChild } from "../types/timeline";
 
 interface TimelineData {
   total: number;
@@ -64,19 +64,45 @@ export function useTimelineFiltersData() {
   return data;
 }
 
-export function useLegacyDates(ciId: string | null) {
-  const [legacy, setLegacy] = useState<TimelineLegacyDates | null>(null);
-  const [loading, setLoading] = useState(false);
+/**
+ * Fetches and caches the inherited/related dates (children) of every expanded CI.
+ * Each ciId is fetched at most once; results are kept in a map keyed by ciId.
+ */
+export function useLegacyDatesMap(expandedIds: Set<string>) {
+  const [legacyMap, setLegacyMap] = useState<Record<string, TimelineLegacyChild[]>>({});
+  const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
+  const inFlight = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!ciId) { setLegacy(null); return; }
-    setLoading(true);
-    apiFetch(`/api/timeline/legacy/${ciId}`)
-      .then(r => r.json())
-      .then(setLegacy)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, [ciId]);
+    const toLoad = [...expandedIds].filter(
+      id => legacyMap[id] === undefined && !inFlight.current.has(id),
+    );
+    if (toLoad.length === 0) return;
 
-  return { legacy, loading };
+    toLoad.forEach(id => inFlight.current.add(id));
+    setLoadingIds(prev => {
+      const next = new Set(prev);
+      toLoad.forEach(id => next.add(id));
+      return next;
+    });
+
+    toLoad.forEach(async id => {
+      try {
+        const res = await apiFetch(`/api/timeline/legacy/${id}`);
+        const data: TimelineLegacyDates = await res.json();
+        setLegacyMap(prev => ({ ...prev, [id]: data.children ?? [] }));
+      } catch {
+        setLegacyMap(prev => ({ ...prev, [id]: [] }));
+      } finally {
+        inFlight.current.delete(id);
+        setLoadingIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    });
+  }, [expandedIds, legacyMap]);
+
+  return { legacyMap, loadingIds };
 }

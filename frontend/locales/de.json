@@ -1757,6 +1757,7 @@
       "daysLeft": "Verbleibende Tage",
       "status": "Status",
       "type": "Typ"
-    }
+    },
+    "expand_hint": "Klicke auf ▸ neben einem CI, um zugehörige Daten anzuzeigen"
   }
 }

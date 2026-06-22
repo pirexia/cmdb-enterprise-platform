@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { TimelineItem, TimelineMilestone, TimelineFiltersData, TimelineLegacyDates } from './types.js';
+import { TimelineItem, TimelineMilestone, TimelineFiltersData, TimelineLegacyDates, TimelineLegacyChild } from './types.js';
 import { TimelineItemsQuery } from './schemas.js';
 import { escapeLike } from '../../shared/utils/likeEscape.js';
 
@@ -459,78 +459,109 @@ export async function getLegacyDates(
           },
         },
       },
+      contracts: {
+        select: {
+          contractNumber: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
+      licenses: {
+        select: {
+          name: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+        },
+      },
     },
   });
 
-  if (!ci) return { ciId, milestones: [] };
+  if (!ci) return { ciId, children: [] };
 
-  const milestones: TimelineMilestone[] = [];
+  const children: TimelineLegacyChild[] = [];
 
-  // OS dates
+  // ── OS (one child) ──────────────────────────────────────────────────────────
   if (ci.operatingSystem) {
     const osName = ci.operatingSystem.version
       ? `${ci.operatingSystem.name} ${ci.operatingSystem.version}`
       : ci.operatingSystem.name;
-    for (const d of ci.operatingSystem.lifecycleDates) {
-      milestones.push({
-        type: 'custom',
-        date: toIso(d.dateValue)!,
-        label: `${d.dateType.name} (${osName})`,
-        inherited: true,
-        inheritedFrom: 'os',
-      });
+    const ms: TimelineMilestone[] = ci.operatingSystem.lifecycleDates.map(d => ({
+      type: 'custom' as const,
+      date: toIso(d.dateValue)!,
+      label: d.dateType.name,
+      inherited: true,
+      inheritedFrom: 'os' as const,
+    }));
+    if (ms.length) {
+      children.push({ source: 'os', sourceName: osName, milestones: ms });
     }
   }
 
-  // DeviceModel dates
+  // ── DeviceModel (one child) ─────────────────────────────────────────────────
   if (ci.ciModel) {
     const modelName = ci.ciModel.name;
+    const ms: TimelineMilestone[] = [];
     if (ci.ciModel.eolDate) {
-      milestones.push({
-        type: 'eol',
-        date: toIso(ci.ciModel.eolDate)!,
-        label: `EOL (${modelName})`,
-        inherited: true,
-        inheritedFrom: 'model',
-      });
+      ms.push({ type: 'eol', date: toIso(ci.ciModel.eolDate)!, label: 'EOL', inherited: true, inheritedFrom: 'model' });
     }
     if (ci.ciModel.eosDate) {
-      milestones.push({
-        type: 'eos',
-        date: toIso(ci.ciModel.eosDate)!,
-        label: `EOS (${modelName})`,
-        inherited: true,
-        inheritedFrom: 'model',
-      });
+      ms.push({ type: 'eos', date: toIso(ci.ciModel.eosDate)!, label: 'EOS', inherited: true, inheritedFrom: 'model' });
     }
     for (const d of ci.ciModel.lifecycleDates) {
-      milestones.push({
-        type: 'custom',
-        date: toIso(d.dateValue)!,
-        label: `${d.dateType.name} (${modelName})`,
-        inherited: true,
-        inheritedFrom: 'model',
-      });
+      ms.push({ type: 'custom', date: toIso(d.dateValue)!, label: d.dateType.name, inherited: true, inheritedFrom: 'model' });
+    }
+    if (ms.length) {
+      children.push({ source: 'model', sourceName: modelName, milestones: ms });
     }
   }
 
-  // BaseSoftware dates (M:M — all associated)
+  // ── BaseSoftware (M:M — one child each) ─────────────────────────────────────
   for (const bsw of ci.baseSoftwares) {
     const sw = bsw.baseSoftware;
     const swName = sw.version ? `${sw.name} ${sw.version}` : sw.name;
-    for (const d of sw.lifecycleDates) {
-      milestones.push({
-        type: 'custom',
-        date: toIso(d.dateValue)!,
-        label: `${d.dateType.name} (${swName})`,
-        inherited: true,
-        inheritedFrom: 'software',
-      });
+    const ms: TimelineMilestone[] = sw.lifecycleDates.map(d => ({
+      type: 'custom' as const,
+      date: toIso(d.dateValue)!,
+      label: d.dateType.name,
+      inherited: true,
+      inheritedFrom: 'software' as const,
+    }));
+    if (ms.length) {
+      children.push({ source: 'software', sourceName: swName, milestones: ms });
     }
   }
 
-  // Sort by date ascending
-  milestones.sort((a, b) => a.date.localeCompare(b.date));
+  // ── Contracts (M:M — one child each, interval) ──────────────────────────────
+  for (const c of ci.contracts) {
+    const ms: TimelineMilestone[] = [];
+    if (c.endDate) {
+      ms.push({ type: 'end', date: toIso(c.endDate)!, label: 'Vencimiento', inherited: true, inheritedFrom: 'contract' });
+    }
+    children.push({
+      source: 'contract',
+      sourceName: c.contractNumber,
+      startDate: toIso(c.startDate),
+      endDate: toIso(c.endDate),
+      milestones: ms,
+    });
+  }
 
-  return { ciId, milestones };
+  // ── Licenses (M:M — one child each, interval) ───────────────────────────────
+  for (const l of ci.licenses) {
+    const ms: TimelineMilestone[] = [];
+    if (l.endDate) {
+      ms.push({ type: 'end', date: toIso(l.endDate)!, label: 'Vencimiento', inherited: true, inheritedFrom: 'license' });
+    }
+    children.push({
+      source: 'license',
+      sourceName: l.name,
+      status: l.status ?? undefined,
+      startDate: toIso(l.startDate),
+      endDate: toIso(l.endDate),
+      milestones: ms,
+    });
+  }
+
+  return { ciId, children };
 }

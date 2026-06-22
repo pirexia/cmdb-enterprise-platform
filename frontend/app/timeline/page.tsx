@@ -2,9 +2,9 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { RefreshCw, AlertTriangle, X } from "lucide-react";
-import { ZoomLevel, TimelineMilestone } from "./types/timeline";
-import { useTimeline, useTimelineFiltersData, useLegacyDates } from "./hooks/useTimeline";
+import { RefreshCw, AlertTriangle } from "lucide-react";
+import { ZoomLevel } from "./types/timeline";
+import { useTimeline, useTimelineFiltersData, useLegacyDatesMap } from "./hooks/useTimeline";
 import { useTimelineFilters } from "./hooks/useTimelineFilters";
 import TimelineGantt, { type TimelineGanttHandle } from "./components/TimelineGantt";
 import TimelineFilters from "./components/TimelineFilters";
@@ -13,17 +13,22 @@ import TimelineLegend from "./components/TimelineLegend";
 
 export default function TimelinePage() {
   const { t } = useLanguage();
-  const [zoom, setZoom]               = useState<ZoomLevel>("month");
-  const [selectedCiId, setSelectedCiId] = useState<string | null>(null);
+  const [zoom, setZoom]             = useState<ZoomLevel>("month");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const ganttRef = useRef<TimelineGanttHandle>(null);
 
   const { filters, updateFilters, clearFilters, initialized } = useTimelineFilters();
   const filtersData = useTimelineFiltersData();
   const { items, loading, error, refetch }                    = useTimeline(filters, initialized);
-  const { legacy }                                            = useLegacyDates(selectedCiId);
+  const { legacyMap, loadingIds }                             = useLegacyDatesMap(expandedIds);
 
-  const legacyMap: Record<string, TimelineMilestone[]> =
-    selectedCiId && legacy ? { [selectedCiId]: legacy.milestones } : {};
+  const toggleExpand = useCallback((ciId: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(ciId)) next.delete(ciId); else next.add(ciId);
+      return next;
+    });
+  }, []);
 
   const handleCenterToday = useCallback(() => { ganttRef.current?.centerToday(); }, []);
 
@@ -85,8 +90,8 @@ export default function TimelinePage() {
         {/* Toolbar */}
         <div className="bg-white border border-slate-200 shadow-sm px-4 py-2.5 flex items-center gap-4 flex-wrap">
           <TimelineToolbar zoom={zoom} onZoomChange={setZoom} onCenterToday={handleCenterToday} />
-          <span className="text-xs text-slate-400 ml-auto hidden sm:block">
-            {t("timeline.hint_ctrl_scroll")}
+          <span className="text-xs text-slate-400 ml-auto hidden lg:block">
+            {t("timeline.expand_hint")} · {t("timeline.hint_ctrl_scroll")}
           </span>
         </div>
 
@@ -115,28 +120,12 @@ export default function TimelinePage() {
               items={items}
               zoom={zoom}
               onZoomChange={setZoom}
+              expandedIds={expandedIds}
+              onToggleExpand={toggleExpand}
               legacyMap={legacyMap}
-              onClickItem={(id) => setSelectedCiId(prev => prev === id ? null : id)}
+              loadingIds={loadingIds}
             />
             <TimelineLegend />
-          </div>
-        )}
-
-        {/* Selected CI inherited dates bar */}
-        {selectedCiId && (
-          <div className="bg-blue-50 border border-blue-200 px-4 py-3 text-xs text-blue-800 flex items-start gap-2">
-            <span className="font-semibold shrink-0">{t("timeline.legend.inherited")}:</span>
-            <span>
-              {legacy?.milestones.length
-                ? legacy.milestones.map(m => `${m.label} (${m.date})`).join(" · ")
-                : t("timeline.no_inherited_dates")}
-            </span>
-            <button
-              onClick={() => setSelectedCiId(null)}
-              className="ml-auto text-blue-500 hover:text-blue-700 shrink-0"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
           </div>
         )}
       </div>

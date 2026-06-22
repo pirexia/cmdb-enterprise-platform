@@ -1714,9 +1714,19 @@ Los filtros se guardan automáticamente y se restauran en la próxima visita.
 | Gris claro | CI con estado INACTIVO o RETIRADO |
 | Azul | Sin fecha de vencimiento definida |
 
-### 33.6 Fechas heredadas de maestros
+### 33.6 Fechas relacionadas (desplegar un CI)
 
-Haz clic en cualquier fila de tipo **CI** para consultar las fechas heredadas de sus maestros asociados (Sistema Operativo, Modelo de Dispositivo, Softwares Base). Aparecerán como diamantes punteados en el Gantt y se listarán en una barra azul en la parte inferior. Haz clic en la ✕ para cerrar.
+Cada fila de tipo **CI** tiene un triángulo desplegable (▸) junto al nombre. Al hacer clic, la fila se expande y muestra **debajo, indentadas**, todas las fechas relacionadas con ese CI:
+
+- **Modelo de dispositivo**: EOL, EOS y fechas de ciclo de vida del modelo.
+- **Sistema Operativo**: fechas de fin de soporte/vida del SO asignado.
+- **Software Base**: una fila por cada software asociado, con sus fechas.
+- **Contratos**: barra de intervalo (inicio → vencimiento) por cada contrato asociado.
+- **Licencias**: barra de intervalo (inicio → vencimiento) por cada licencia asociada.
+
+Las fechas relacionadas se dibujan con marcas **punteadas** para distinguirlas de las fechas propias del CI. Puedes desplegar varios CIs a la vez. Vuelve a hacer clic en el triángulo para contraer.
+
+> Si un CI solo muestra el modelo al desplegarlo, es porque en los datos ese CI no tiene SO con fechas, ni contratos ni licencias asociados. Las fuentes sin ninguna fecha no se listan.
 
 ### 33.7 Notas
 

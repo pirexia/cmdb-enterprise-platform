@@ -1698,9 +1698,19 @@ Filters are saved automatically and restored on your next visit.
 | Light gray | CI with status INACTIVE or RETIRED |
 | Blue | No end date defined |
 
-### 33.6 Inherited master dates
+### 33.6 Related dates (expanding a CI)
 
-Click any **CI** row to load inherited dates from its associated masters (Operating System, Device Model, Base Software). They appear as dashed diamonds in the Gantt and are listed in a blue bar at the bottom. Click ✕ to close.
+Every **CI** row has an expand triangle (▸) next to its name. Clicking it expands the row and shows, **indented below it**, all dates related to that CI:
+
+- **Device Model**: EOL, EOS and the model's lifecycle dates.
+- **Operating System**: end-of-support/life dates of the assigned OS.
+- **Base Software**: one row per associated software, with its dates.
+- **Contracts**: an interval bar (start → end) for each associated contract.
+- **Licenses**: an interval bar (start → end) for each associated license.
+
+Related dates are drawn with **dashed** marks to distinguish them from the CI's own dates. You can expand multiple CIs at once. Click the triangle again to collapse.
+
+> If a CI only shows the model when expanded, it's because in the data that CI has no OS with dates, nor any associated contracts or licenses. Sources without any date are not listed.
 
 ### 33.7 Notes
 

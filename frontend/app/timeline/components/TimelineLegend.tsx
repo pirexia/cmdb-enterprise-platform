@@ -23,8 +23,9 @@ export default function TimelineLegend() {
         </span>
       ))}
       <span className="flex items-center gap-1">
+        <span className="text-slate-400">↳</span>
         <svg width="12" height="12">
-          <polygon points="6,0 12,6 6,12 0,6" fill="none" stroke="#64748b" strokeWidth="1.5" strokeDasharray="3 2" />
+          <polygon points="6,0 12,6 6,12 0,6" fill="#94a3b8" stroke="#64748b" strokeWidth="1" />
         </svg>
         {t("timeline.legend.inherited")}
       </span>

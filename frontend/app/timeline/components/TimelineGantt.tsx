@@ -5,13 +5,13 @@ import React, {
   forwardRef, useImperativeHandle,
 } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { TimelineItem, TimelineLegacyChild, ZoomLevel, InheritedFrom } from "../types/timeline";
+import { TimelineItem, TimelineLegacyChild, TimelineMilestone, ZoomLevel, InheritedFrom } from "../types/timeline";
 import { getBandFromItem, getTokens, getColorBand } from "@/lib/timelineColor";
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 const LABEL_W     = 260;
 const ROW_H       = 38;
-const CHILD_H     = 30;
+const CHILD_H     = 28;
 const HEADER_H    = 56;
 const DIAMOND_R   = 7;
 const CHILD_R     = 6;
@@ -70,18 +70,16 @@ function buildTicks(start: Date, end: Date, zoom: ZoomLevel, pxDay: number) {
   return ticks;
 }
 
-// ─── Diamond ─────────────────────────────────────────────────────────────────
-function Diamond({ cx, cy, r, fill, stroke, dashed }: {
-  cx: number; cy: number; r: number; fill: string; stroke: string; dashed?: boolean;
+// ─── Diamond (always solid) ─────────────────────────────────────────────────────
+function Diamond({ cx, cy, r, fill, stroke }: {
+  cx: number; cy: number; r: number; fill: string; stroke: string;
 }) {
   return (
     <polygon
       points={`${cx},${cy - r} ${cx + r},${cy} ${cx},${cy + r} ${cx - r},${cy}`}
-      fill={dashed ? "none" : fill}
+      fill={fill}
       stroke={stroke}
-      strokeWidth={dashed ? 1.5 : 1}
-      strokeDasharray={dashed ? "3 2" : undefined}
-      opacity={dashed ? 0.85 : 1}
+      strokeWidth={1}
     />
   );
 }
@@ -89,13 +87,14 @@ function Diamond({ cx, cy, r, fill, stroke, dashed }: {
 // ─── Display row model ─────────────────────────────────────────────────────────
 type DisplayRow =
   | { kind: "item"; item: TimelineItem }
-  | { kind: "child"; parentId: string; child: TimelineLegacyChild }
+  | { kind: "childDate"; parentId: string; source: InheritedFrom; sourceName: string; status?: string; milestone: TimelineMilestone }
+  | { kind: "childInterval"; parentId: string; child: TimelineLegacyChild }
   | { kind: "loading"; parentId: string }
   | { kind: "empty"; parentId: string };
 
 function rowHeight(r: DisplayRow) { return r.kind === "item" ? ROW_H : CHILD_H; }
 
-// ─── Item row ─────────────────────────────────────────────────────────────────
+// ─── Item row (parent CI / contract / license / …) ──────────────────────────────
 function ItemRow({ item, y, h, startDate, pxDay, svgWidth, locale, expandable, expanded, onToggle }: {
   item: TimelineItem; y: number; h: number; startDate: Date; pxDay: number; svgWidth: number;
   locale: string; expandable: boolean; expanded: boolean; onToggle: () => void;
@@ -168,57 +167,79 @@ function ItemRow({ item, y, h, startDate, pxDay, svgWidth, locale, expandable, e
   );
 }
 
-// ─── Child row (indented inherited/related dates) ───────────────────────────────
-function ChildRow({ child, y, h, startDate, pxDay, svgWidth, locale }: {
-  child: TimelineLegacyChild; y: number; h: number; startDate: Date; pxDay: number; svgWidth: number; locale: string;
+// ─── Child header (badge + label + grid line), shared by both child kinds ────────
+function childHeader(source: InheritedFrom, label: string, y: number, h: number, svgWidth: number, keyId: string) {
+  const midY = y + h / 2;
+  return (
+    <>
+      <rect x={0} y={y} width={svgWidth} height={h} fill="#fafbfc" stroke="#eef2f6" strokeWidth={0.5} />
+      <text x={CHILD_INDENT - 12} y={midY + 4} fill="#94a3b8" fontSize={11}>↳</text>
+      <rect x={CHILD_INDENT} y={midY - 6} width={20} height={12} rx={2} fill="#e2e8f0" />
+      <text x={CHILD_INDENT + 10} y={midY + 3} textAnchor="middle" fill="#475569" fontSize={7.5} fontWeight={600}>
+        {SOURCE_BADGE[source]}
+      </text>
+      <clipPath id={`clbl-${keyId}`}><rect x={CHILD_INDENT + 24} y={y} width={LABEL_W - CHILD_INDENT - 28} height={h} /></clipPath>
+      <text x={CHILD_INDENT + 24} y={midY + 4} fill="#475569" fontSize={10}
+        clipPath={`url(#clbl-${keyId})`} style={{ fontFamily: "inherit" }}>
+        {label}
+      </text>
+      <line x1={LABEL_W} y1={y} x2={LABEL_W} y2={y + h} stroke="#e2e8f0" strokeWidth={1} />
+    </>
+  );
+}
+
+// ─── Child row: a single inherited date (one solid diamond) ─────────────────────
+function ChildDateRow({ source, sourceName, status, milestone, y, h, startDate, pxDay, svgWidth, locale, keyId }: {
+  source: InheritedFrom; sourceName: string; status?: string; milestone: TimelineMilestone;
+  y: number; h: number; startDate: Date; pxDay: number; svgWidth: number; locale: string; keyId: string;
 }) {
-  const midY  = y + h / 2;
-  const xOf = (d: string) => LABEL_W + diffDays(startDate, parseDate(d)) * pxDay;
-  const band = getColorBand(child.endDate, child.status);
-  const tok  = getTokens(band);
-  const labelId = `${child.source}-${child.sourceName}-${y}`;
+  const midY = y + h / 2;
+  const cx   = LABEL_W + diffDays(startDate, parseDate(milestone.date)) * pxDay;
+  const tok  = getTokens(getColorBand(milestone.date, status));
+  const label = `${milestone.label} · ${sourceName}`;
 
   return (
     <g>
-      <rect x={0} y={y} width={svgWidth} height={h} fill="#fafbfc" stroke="#eef2f6" strokeWidth={0.5} />
+      {childHeader(source, label, y, h, svgWidth, keyId)}
+      <g>
+        <Diamond cx={cx} cy={midY} r={CHILD_R} fill={tok.fill} stroke={tok.stroke} />
+        <title>{`${milestone.label} — ${sourceName}\n${parseDate(milestone.date).toLocaleDateString(locale)}`}</title>
+      </g>
+    </g>
+  );
+}
 
-      {/* Tree connector */}
-      <text x={CHILD_INDENT - 12} y={midY + 4} fill="#94a3b8" fontSize={11}>↳</text>
+// ─── Child row: an interval (contract / license) ────────────────────────────────
+function ChildIntervalRow({ child, y, h, startDate, pxDay, svgWidth, locale, keyId }: {
+  child: TimelineLegacyChild; y: number; h: number; startDate: Date; pxDay: number; svgWidth: number; locale: string; keyId: string;
+}) {
+  const midY = y + h / 2;
+  const xOf  = (d: string) => LABEL_W + diffDays(startDate, parseDate(d)) * pxDay;
+  const tok  = getTokens(getColorBand(child.endDate, child.status));
 
-      {/* Source badge */}
-      <rect x={CHILD_INDENT} y={midY - 6} width={20} height={12} rx={2} fill="#e2e8f0" />
-      <text x={CHILD_INDENT + 10} y={midY + 3} textAnchor="middle" fill="#475569" fontSize={7.5} fontWeight={600}>
-        {SOURCE_BADGE[child.source]}
-      </text>
+  return (
+    <g>
+      {childHeader(child.source, child.sourceName, y, h, svgWidth, keyId)}
 
-      {/* Label */}
-      <clipPath id={`clbl-${labelId}`}><rect x={CHILD_INDENT + 24} y={y} width={LABEL_W - CHILD_INDENT - 28} height={h} /></clipPath>
-      <text x={CHILD_INDENT + 24} y={midY + 4} fill="#475569" fontSize={10}
-        clipPath={`url(#clbl-${labelId})`} style={{ fontFamily: "inherit" }}>
-        {child.sourceName}
-      </text>
-      <line x1={LABEL_W} y1={y} x2={LABEL_W} y2={y + h} stroke="#e2e8f0" strokeWidth={1} />
-
-      {/* Bar (interval children: contracts, licenses) — dashed to mark inheritance */}
+      {/* Interval bar */}
       {child.startDate && child.endDate && (() => {
         const x1 = xOf(child.startDate), x2 = xOf(child.endDate);
         const w = Math.max(x2 - x1, 4);
         return (
           <g>
-            <rect x={x1} y={midY - 6} width={w} height={12} fill={tok.fill} fillOpacity={0.45}
-              stroke={tok.stroke} strokeWidth={1} strokeDasharray="3 2" rx={2} />
+            <rect x={x1} y={midY - 6} width={w} height={12} fill={tok.fill} fillOpacity={0.55} stroke={tok.stroke} strokeWidth={1} rx={2} />
             <title>{`${child.sourceName}\n${child.startDate} → ${child.endDate}`}</title>
           </g>
         );
       })()}
 
-      {/* Milestones (dashed diamonds — inherited) */}
+      {/* End diamond(s) — solid */}
       {child.milestones.map((m, i) => {
-        const cx = xOf(m.date);
-        const mT = getTokens(getColorBand(m.date, child.status));
+        const cx  = xOf(m.date);
+        const mT  = getTokens(getColorBand(m.date, child.status));
         return (
           <g key={i}>
-            <Diamond cx={cx} cy={midY} r={CHILD_R} fill={mT.fill} stroke={mT.stroke} dashed />
+            <Diamond cx={cx} cy={midY} r={CHILD_R} fill={mT.fill} stroke={mT.stroke} />
             <title>{`${m.label} — ${child.sourceName}\n${parseDate(m.date).toLocaleDateString(locale)}`}</title>
           </g>
         );
@@ -247,7 +268,7 @@ const TimelineGantt = forwardRef<TimelineGanttHandle, Props>(
     const containerRef = useRef<HTMLDivElement>(null);
     const pxDay = PX_PER_DAY[zoom];
 
-    // Build flattened display rows (items + expanded children)
+    // Build flattened display rows (items + one row per inherited date)
     const displayRows = useMemo<DisplayRow[]>(() => {
       const rows: DisplayRow[] = [];
       for (const item of items) {
@@ -259,7 +280,20 @@ const TimelineGantt = forwardRef<TimelineGanttHandle, Props>(
           } else if (children.length === 0) {
             rows.push({ kind: "empty", parentId: item.id });
           } else {
-            for (const child of children) rows.push({ kind: "child", parentId: item.id, child });
+            for (const child of children) {
+              const isInterval = !!(child.startDate && child.endDate);
+              if (isInterval) {
+                rows.push({ kind: "childInterval", parentId: item.id, child });
+              } else {
+                // one row per inherited date
+                for (const m of child.milestones) {
+                  rows.push({
+                    kind: "childDate", parentId: item.id,
+                    source: child.source, sourceName: child.sourceName, status: child.status, milestone: m,
+                  });
+                }
+              }
+            }
           }
         }
       }
@@ -274,7 +308,9 @@ const TimelineGantt = forwardRef<TimelineGanttHandle, Props>(
         if (r.kind === "item") {
           push(r.item.startDate); push(r.item.endDate);
           for (const m of r.item.milestones) push(m.date);
-        } else if (r.kind === "child") {
+        } else if (r.kind === "childDate") {
+          push(r.milestone.date);
+        } else if (r.kind === "childInterval") {
           push(r.child.startDate); push(r.child.endDate);
           for (const m of r.child.milestones) push(m.date);
         }
@@ -333,10 +369,18 @@ const TimelineGantt = forwardRef<TimelineGanttHandle, Props>(
             onToggle={() => onToggleExpand(r.item.id)}
           />,
         );
-      } else if (r.kind === "child") {
+      } else if (r.kind === "childDate") {
         rowEls.push(
-          <ChildRow
-            key={`c-${r.parentId}-${i}`}
+          <ChildDateRow
+            key={`cd-${r.parentId}-${i}`} keyId={`${r.parentId}-${i}`}
+            source={r.source} sourceName={r.sourceName} status={r.status} milestone={r.milestone}
+            y={y} h={h} startDate={startDate} pxDay={pxDay} svgWidth={svgWidth} locale={locale}
+          />,
+        );
+      } else if (r.kind === "childInterval") {
+        rowEls.push(
+          <ChildIntervalRow
+            key={`ci-${r.parentId}-${i}`} keyId={`${r.parentId}-${i}`}
             child={r.child} y={y} h={h} startDate={startDate} pxDay={pxDay} svgWidth={svgWidth} locale={locale}
           />,
         );

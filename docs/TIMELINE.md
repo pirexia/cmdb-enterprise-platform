@@ -62,7 +62,7 @@ Cada fila de tipo **CI** tiene un **chevron desplegable** (▸) junto al nombre.
 | Contrato (M:M) | `contract` | **Barra de intervalo punteada** start→end + hito de vencimiento |
 | Licencia (M:M) | `license` | **Barra de intervalo punteada** start→end + hito de vencimiento |
 
-Las filas hijas se renderizan con marcas punteadas para diferenciarlas de las fechas propias del CI. Cada `ciId` se consulta una sola vez y se cachea mientras dure la sesión; pueden expandirse varios CIs simultáneamente.
+Cada fecha heredada de las fuentes solo-fecha (OS, modelo, software) ocupa **su propia fila hija** con un único diamante **sólido** y tooltip al pasar el ratón (tipo de fecha + fecha). Contratos y licencias se muestran como una fila con barra de intervalo (start→end). Cada `ciId` se consulta una sola vez y se cachea mientras dure la sesión; pueden expandirse varios CIs simultáneamente.
 
 **Nota:** las fuentes solo-fecha (OS, software, modelo) que no tengan ninguna fecha de ciclo de vida se omiten (no aportan hitos al Gantt). Contratos y licencias se muestran siempre que estén asociados, porque tienen intervalo start/end.
 

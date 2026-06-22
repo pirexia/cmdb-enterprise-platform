@@ -254,6 +254,16 @@ services:
     environment:
       # Queue Mode
       EXECUTIONS_MODE: queue
+      # Execution data retention — RAG indexing polls every 30s (~2.880 ejecuciones/día).
+      # Sin esto, execution_entity crece sin límite (hinchazón BD + UI lenta). Solo se
+      # guardan ejecuciones FALLIDAS, retenidas 7 días; purga automática con tope de filas.
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 168
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: 10000
       # Database (schema separado n8n_data en PostgreSQL existente — Decisión D1)
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
@@ -307,6 +317,12 @@ services:
     command: worker
     environment:
       EXECUTIONS_MODE: queue
+      # Execution data retention (ver n8n-main) — el worker es quien persiste la
+      # ejecución en queue mode, así que estas vars deben estar también aquí.
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
@@ -345,6 +361,12 @@ services:
     command: worker
     environment:
       EXECUTIONS_MODE: queue
+      # Execution data retention (ver n8n-main) — el worker es quien persiste la
+      # ejecución en queue mode, así que estas vars deben estar también aquí.
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432

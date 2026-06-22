@@ -1658,3 +1658,78 @@ El botón **Imprimir** genera una vista optimizada para papel (inventario comple
 
 - El plan es una **herramienta de planificación**: no modifica ni da de baja los CIs por sí mismo. La baja efectiva de cada activo se realiza desde el **Inventario**.
 - Eliminar un plan (ADMIN) borra únicamente la planificación, **nunca** los activos, documentos, contratos o licencias reales.
+
+---
+
+## 33. Línea de Tiempo (v3.1.0)
+
+La **Línea de Tiempo** es una vista Gantt interactiva y de solo lectura que agrega en un único panel todas las fechas relevantes del sistema: contratos, licencias, planes de decomisado, CIs con sus fechas EOL/EOS, y los maestros (Sistemas Operativos, Software Base, Modelos de Dispositivo).
+
+### 33.1 Acceso
+
+Desde el menú lateral → icono de calendario → **Línea de Tiempo** (`/timeline`). Disponible para todos los roles: VIEWER, AUDITOR y ADMIN.
+
+### 33.2 Panel de filtros
+
+En la parte superior de la página encontrarás el panel de filtros:
+
+| Filtro | Descripción |
+|--------|-------------|
+| **Tipo** | Activa/desactiva las 7 categorías de elementos: CI, Contrato, Licencia, Decomisado, SO, Software, Modelo HW |
+| **Subtipo** | Aparece cuando "CI" está activo; permite filtrar por tipo de CI (Servidor, Switch, etc.) |
+| **Búsqueda** | Filtra por nombre del elemento (debounce 300ms) |
+| **Estado** | Filtra por estado (ACTIVO, INACTIVO, RETIRADO) según los tipos seleccionados |
+| **Tipo de Fecha** | Selecciona qué fechas mostrar: EOL, EOS, Vencimiento, Inicio, Completado, Personalizadas |
+| **Limpiar filtros** | Restaura todos los filtros a su valor por defecto |
+
+Los filtros se guardan automáticamente y se restauran en la próxima visita.
+
+### 33.3 Navegación en el Gantt
+
+**Zoom:**
+- Usa los botones **Día / Semana / Mes / Trimestre / Año** en la barra de herramientas.
+- Mantén `Ctrl` y usa la rueda del ratón sobre el Gantt para hacer zoom in/out.
+
+**Scroll:**
+- Horizontal: desplaza el tiempo.
+- Vertical: desplaza la lista de elementos.
+
+**Centrar en Hoy:** botón con icono de diana en la barra de herramientas. La **línea roja vertical** indica la fecha actual.
+
+### 33.4 Lectura del Gantt
+
+- **Barra de color**: intervalo entre `startDate` y `endDate` (contratos, licencias).
+- **Diamante sólido**: hito puntual (EOL, EOS, vencimiento, fecha custom).
+- **Diamante punteado**: fecha **heredada** de un maestro asociado al CI (SO, DeviceModel, BaseSoftware).
+- **Badge** en el extremo derecho de la etiqueta: indica el tipo (`CI`, `CO`, `LI`, `DE`, `OS`, `SO`, `MO`).
+
+### 33.5 Código de color
+
+| Color | Significado |
+|-------|-------------|
+| Verde | Más de 30 días hasta el vencimiento |
+| Amarillo | Entre 15 y 30 días hasta el vencimiento |
+| Rojo | Menos de 15 días hasta el vencimiento |
+| Gris oscuro | Elemento vencido |
+| Gris claro | CI con estado INACTIVO o RETIRADO |
+| Azul | Sin fecha de vencimiento definida |
+
+### 33.6 Fechas relacionadas (desplegar un CI)
+
+Cada fila de tipo **CI** tiene un triángulo desplegable (▸) junto al nombre. Al hacer clic, la fila se expande y muestra **debajo, indentadas**, todas las fechas relacionadas con ese CI:
+
+- **Modelo de dispositivo**: EOL, EOS y fechas de ciclo de vida del modelo.
+- **Sistema Operativo**: fechas de fin de soporte/vida del SO asignado.
+- **Software Base**: una fila por cada software asociado, con sus fechas.
+- **Contratos**: barra de intervalo (inicio → vencimiento) por cada contrato asociado.
+- **Licencias**: barra de intervalo (inicio → vencimiento) por cada licencia asociada.
+
+Las fechas relacionadas se dibujan con marcas **punteadas** para distinguirlas de las fechas propias del CI. Puedes desplegar varios CIs a la vez. Vuelve a hacer clic en el triángulo para contraer.
+
+> Si un CI solo muestra el modelo al desplegarlo, es porque en los datos ese CI no tiene SO con fechas, ni contratos ni licencias asociados. Las fuentes sin ninguna fecha no se listan.
+
+### 33.7 Notas
+
+- La vista es **solo lectura**: no permite modificar fechas desde este módulo.
+- Los elementos se limitan a 200 por consulta (ajustable con los filtros). Para conjuntos mayores, usa los filtros de tipo o búsqueda para acotar.
+- En pantallas de menos de 1024px la vista muestra un aviso de optimización para escritorio.

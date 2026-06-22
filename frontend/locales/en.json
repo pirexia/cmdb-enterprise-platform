@@ -26,7 +26,8 @@
     "assistant": "AI Assistant",
     "dcim": "Technical Rooms & DCs",
     "plugins": "Plugins",
-    "decommission": "Decommission"
+    "decommission": "Decommission",
+    "timeline": "Timeline"
   },
   "actions": {
     "create": "Create",
@@ -1818,5 +1819,64 @@
     "no_documents": "No linked documents",
     "no_contracts": "No linked contracts",
     "no_licenses": "No linked licenses"
+  },
+  "timeline": {
+    "title": "Timeline",
+    "subtitle": "Gantt view of CMDB system dates",
+    "items_count": "items",
+    "hint_ctrl_scroll": "Ctrl + scroll to zoom",
+    "today": "Today",
+    "no_data": "No items to display in the selected range.",
+    "no_inherited_dates": "This CI has no inherited dates from master data.",
+    "mobile_warning": "Desktop optimized view",
+    "mobile_hint": "Please access from a screen at least 1024px wide.",
+    "filters": {
+      "type": "Type",
+      "type_ci": "CI",
+      "type_contract": "Contract",
+      "type_license": "License",
+      "type_decommission": "Decommission",
+      "type_os": "OS",
+      "type_software": "Software",
+      "type_model": "HW Model",
+      "subtype": "Subtype",
+      "status": "Status",
+      "dateType": "Date Type",
+      "search": "Search...",
+      "clear": "Clear filters",
+      "apply": "Apply",
+      "date_eol": "EOL",
+      "date_eos": "EOS",
+      "date_end": "End date",
+      "date_start": "Start date",
+      "date_completed": "Completed",
+      "date_custom": "Custom"
+    },
+    "zoom": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "quarter": "Quarter",
+      "year": "Year",
+      "in": "Zoom in",
+      "out": "Zoom out"
+    },
+    "legend": {
+      "green": "> 30 days",
+      "yellow": "15–30 days",
+      "red": "< 15 days",
+      "expired": "Expired",
+      "inactive": "Inactive/Retired",
+      "none": "No end date",
+      "inherited": "Inherited"
+    },
+    "tooltip": {
+      "startDate": "Start",
+      "endDate": "End",
+      "daysLeft": "Days left",
+      "status": "Status",
+      "type": "Type"
+    },
+    "expand_hint": "Click ▸ next to a CI to see its related dates"
   }
 }

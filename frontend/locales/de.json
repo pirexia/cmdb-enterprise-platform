@@ -26,7 +26,8 @@
     "assistant": "KI-Assistent",
     "dcim": "Technikräume & RZ",
     "plugins": "Plugins",
-    "decommission": "Außerbetriebnahme"
+    "decommission": "Außerbetriebnahme",
+    "timeline": "Zeitstrahl"
   },
   "actions": {
     "create": "Erstellen",
@@ -1699,5 +1700,64 @@
     "no_documents": "Keine verknüpften Dokumente",
     "no_contracts": "Keine verknüpften Verträge",
     "no_licenses": "Keine verknüpften Lizenzen"
+  },
+  "timeline": {
+    "title": "Zeitstrahl",
+    "subtitle": "Gantt-Ansicht der CMDB-Systemdaten",
+    "items_count": "Elemente",
+    "hint_ctrl_scroll": "Strg + Scrollen zum Zoomen",
+    "today": "Heute",
+    "no_data": "Keine Elemente im ausgewählten Bereich.",
+    "no_inherited_dates": "Dieses CI hat keine geerbten Daten aus Stammdaten.",
+    "mobile_warning": "Für Desktop optimierte Ansicht",
+    "mobile_hint": "Bitte öffnen Sie die Seite auf einem Bildschirm mit mindestens 1024px Breite.",
+    "filters": {
+      "type": "Typ",
+      "type_ci": "CI",
+      "type_contract": "Vertrag",
+      "type_license": "Lizenz",
+      "type_decommission": "Außerbetriebnahme",
+      "type_os": "BS",
+      "type_software": "Software",
+      "type_model": "HW-Modell",
+      "subtype": "Untertyp",
+      "status": "Status",
+      "dateType": "Datumstyp",
+      "search": "Suchen...",
+      "clear": "Filter löschen",
+      "apply": "Anwenden",
+      "date_eol": "EOL",
+      "date_eos": "EOS",
+      "date_end": "Enddatum",
+      "date_start": "Startdatum",
+      "date_completed": "Abgeschlossen",
+      "date_custom": "Benutzerdefiniert"
+    },
+    "zoom": {
+      "day": "Tag",
+      "week": "Woche",
+      "month": "Monat",
+      "quarter": "Quartal",
+      "year": "Jahr",
+      "in": "Vergrößern",
+      "out": "Verkleinern"
+    },
+    "legend": {
+      "green": "> 30 Tage",
+      "yellow": "15–30 Tage",
+      "red": "< 15 Tage",
+      "expired": "Abgelaufen",
+      "inactive": "Inaktiv/Ausgemustert",
+      "none": "Kein Enddatum",
+      "inherited": "Geerbt"
+    },
+    "tooltip": {
+      "startDate": "Start",
+      "endDate": "Ende",
+      "daysLeft": "Verbleibende Tage",
+      "status": "Status",
+      "type": "Typ"
+    },
+    "expand_hint": "Klicke auf ▸ neben einem CI, um zugehörige Daten anzuzeigen"
   }
 }

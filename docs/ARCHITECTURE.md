@@ -1501,3 +1501,54 @@ El campo `eol_source` se propaga hasta el frontend via `flattenCI()` en `index.t
 | Traducciones embebidas en email-builder.ts | Ficheros JSON en disco | Sin I/O en tiempo de envío; bundle independiente de frontend |
 | Dedup por fingerprint SHA-256 | Hash de IDs sin ordenar | Orden estable (`.sort()`) garantiza idempotencia ante reordenamientos |
 | `emailService.ts` como shim vacío | Eliminar el fichero | Evita romper imports en branches pendientes de merge |
+
+---
+
+## Módulo Línea de Tiempo (Gantt) — v3.1.0
+
+Módulo read-only que agrega todas las fechas del sistema CMDB en una vista Gantt interactiva disponible en `/timeline` para todos los roles (VIEWER+).
+
+### Backend `backend/src/modules/timeline/`
+
+Patrón factory idéntico al de `dcim/` y `catalog/`. Tres endpoints bajo `authenticateToken` (sin `requireAdmin`/`requireAudit` — acceso VIEWER):
+
+| Endpoint | Descripción |
+|----------|-------------|
+| `GET /api/timeline/items` | Agrega TimelineItem[] de 7 entidades en paralelo (Promise.all). Zod query params, `escapeLike` para search, cap por entidad |
+| `GET /api/timeline/filters` | Metadatos para dropdowns (CIType[], DateType[], statuses[]) |
+| `GET /api/timeline/legacy/:ciId` | Entidades relacionadas como `children[]`: OS, DeviceModel, BaseSoftware (M:M), **Contratos** (`_ContractToCI`) y **Licencias** (`_LicenseToCI`) — render como filas hijas desplegables bajo el CI |
+
+`DecommissionPlan` no está en el cliente Prisma del host → usa `$queryRaw` con tagged template literal (mismo patrón que `modules/decommission/`).
+
+Sin AuditLog (A.8.15 aplica solo a escrituras).
+
+### Frontend `frontend/app/timeline/`
+
+SVG Gantt custom (react-modern-gantt descartado por incapacidad de soportar hitos diamante personalizados + zoom Ctrl+scroll). Color computado en `frontend/lib/timelineColor.ts` (fuente única para barras, hitos y leyenda).
+
+Filtros persisten en `localStorage` clave `"timeline-filters"`. `TimelineGantt` expone handle imperativo `centerToday()` vía `forwardRef` + `useImperativeHandle`.
+
+### Modelo de datos
+
+```ts
+interface TimelineItem {
+  id: string; kind: TimelineKind; name: string;
+  subType?: string; status?: string;
+  startDate?: string; endDate?: string;
+  milestones: TimelineMilestone[];
+}
+interface TimelineMilestone {
+  type: 'eol'|'eos'|'lastCheck'|'end'|'completed'|'custom';
+  date: string; label: string;
+  inherited?: boolean; inheritedFrom?: 'os'|'software'|'model';
+}
+```
+
+### Decisiones de implementación
+
+| Decisión | Alternativa descartada | Razón |
+|----------|------------------------|-------|
+| SVG Gantt custom | react-modern-gantt@0.9.x | Librería no soporta diamantes custom, herencia punteada ni Ctrl+scroll zoom |
+| Color en frontend | Color en backend | Backend devuelve fechas crudas; el color depende del instante de visualización |
+| `$queryRaw` para DecommissionPlan | Prisma ORM | Modelo no generado en cliente host (mismatch Docker/host, igual que License) |
+| Sin AuditLog | AuditLog en GET | A.8.15 aplica a operaciones de escritura; endpoints son read-only |

@@ -1644,3 +1644,76 @@ The **Print** button produces a paper-optimised view (full inventory + documents
 
 - A plan is a **planning tool**: it does not modify or retire CIs by itself. The actual retirement of each asset is performed from the **Inventory**.
 - Deleting a plan (ADMIN) removes only the planning, **never** the real assets, documents, contracts, or licenses.
+
+---
+
+## 33. Timeline (v3.1.0)
+
+The **Timeline** is an interactive, read-only Gantt view that aggregates all relevant dates in the CMDB system into a single panel: contracts, licenses, decommission plans, CIs with their EOL/EOS dates, and master data (Operating Systems, Base Software, Device Models).
+
+### 33.1 Access
+
+Sidebar → calendar icon → **Timeline** (`/timeline`). Available to all roles: VIEWER, AUDITOR, and ADMIN.
+
+### 33.2 Filter panel
+
+| Filter | Description |
+|--------|-------------|
+| **Type** | Toggle the 7 entity categories: CI, Contract, License, Decommission, OS, Software, HW Model |
+| **Subtype** | Visible when "CI" is active; filters by CI type (Server, Switch, etc.) |
+| **Search** | Filters by element name (300ms debounce) |
+| **Status** | Filters by status (ACTIVE, INACTIVE, RETIRED) for the selected types |
+| **Date Type** | Select which dates to show: EOL, EOS, End date, Start date, Completed, Custom |
+| **Clear filters** | Resets all filters to defaults |
+
+Filters are saved automatically and restored on your next visit.
+
+### 33.3 Gantt navigation
+
+**Zoom:**
+- Use the **Day / Week / Month / Quarter / Year** buttons in the toolbar.
+- Hold `Ctrl` and scroll the mouse wheel over the Gantt to zoom in/out.
+
+**Scroll:**
+- Horizontal: moves through time.
+- Vertical: scrolls the element list.
+
+**Center on Today:** button with crosshair icon in the toolbar. The **red vertical line** marks today.
+
+### 33.4 Reading the Gantt
+
+- **Colored bar**: interval between `startDate` and `endDate` (contracts, licenses).
+- **Solid diamond**: point-in-time milestone (EOL, EOS, end date, custom date).
+- **Dashed diamond**: date **inherited** from a master linked to the CI (OS, DeviceModel, BaseSoftware).
+- **Badge** at the right edge of the label: shows the entity type (`CI`, `CO`, `LI`, `DE`, `OS`, `SO`, `MO`).
+
+### 33.5 Color coding
+
+| Color | Meaning |
+|-------|---------|
+| Green | More than 30 days until expiry |
+| Yellow | 15–30 days until expiry |
+| Red | Less than 15 days until expiry |
+| Dark gray | Expired (past date) |
+| Light gray | CI with status INACTIVE or RETIRED |
+| Blue | No end date defined |
+
+### 33.6 Related dates (expanding a CI)
+
+Every **CI** row has an expand triangle (▸) next to its name. Clicking it expands the row and shows, **indented below it**, all dates related to that CI:
+
+- **Device Model**: EOL, EOS and the model's lifecycle dates.
+- **Operating System**: end-of-support/life dates of the assigned OS.
+- **Base Software**: one row per associated software, with its dates.
+- **Contracts**: an interval bar (start → end) for each associated contract.
+- **Licenses**: an interval bar (start → end) for each associated license.
+
+Related dates are drawn with **dashed** marks to distinguish them from the CI's own dates. You can expand multiple CIs at once. Click the triangle again to collapse.
+
+> If a CI only shows the model when expanded, it's because in the data that CI has no OS with dates, nor any associated contracts or licenses. Sources without any date are not listed.
+
+### 33.7 Notes
+
+- This view is **read-only**: dates cannot be modified here.
+- Results are capped at 200 items per query — use the type and search filters to narrow down larger datasets.
+- On screens narrower than 1024px, a desktop-optimized notice is shown instead of the Gantt.

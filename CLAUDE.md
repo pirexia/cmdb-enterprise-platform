@@ -121,6 +121,12 @@ Dispatch independent micro-tasks to subagents (`Agent` tool) whenever possible:
 | Failing GitHub Actions checks | `gh-fix-ci` |
 | About to claim work is done | `superpowers:verification-before-completion` |
 | About to merge / finish a branch | `superpowers:finishing-a-development-branch` |
+| Writing code with tests-first discipline | `superpowers:test-driven-development` |
+| Requesting a review of your own changes | `superpowers:requesting-code-review` |
+| Acting on review feedback you received | `superpowers:receiving-code-review` |
+| Isolating parallel work in a separate checkout | `superpowers:using-git-worktrees` |
+| Authoring or editing a skill in `.claude/skills/` | `superpowers:writing-skills` |
+| Unsure which superpowers skill applies | `superpowers:using-superpowers` |
 
 When in doubt, invoke `find-skills` — it searches for a skill by description.
 
@@ -473,8 +479,6 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-
----
 
 ## Plan Activo
 

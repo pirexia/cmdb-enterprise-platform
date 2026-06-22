@@ -279,8 +279,10 @@ services:
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
-    volumes:
-      - n8n-data:/home/node/.n8n:ro,Z
+    # Workers are stateless: encryption key from N8N_ENCRYPTION_KEY (env), DB is
+    # Postgres, binary-data mode is default (in-DB). No .n8n mount — n8n uses the
+    # image's own /home/node/.n8n (node-owned, writable, ephemeral); mounting the
+    # shared volume read-only crash-loops the worker on its settings write.
     depends_on:
       - n8n-main
       - redis
@@ -307,8 +309,10 @@ services:
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
-    volumes:
-      - n8n-data:/home/node/.n8n:ro,Z
+    # Workers are stateless: encryption key from N8N_ENCRYPTION_KEY (env), DB is
+    # Postgres, binary-data mode is default (in-DB). No .n8n mount — n8n uses the
+    # image's own /home/node/.n8n (node-owned, writable, ephemeral); mounting the
+    # shared volume read-only crash-loops the worker on its settings write.
     depends_on:
       - n8n-main
       - redis

@@ -38,7 +38,7 @@ const env = {
   url:                  () => process.env.LDAP_URL                      ?? 'ldap://localhost:389',
   bindDn:               () => process.env.LDAP_BIND_DN                  ?? '',
   bindPassword:         () => process.env.LDAP_BIND_PASSWORD            ?? '',
-  searchBase:           () => process.env.LDAP_SEARCH_BASE              ?? 'dc=example,dc=com',
+  searchBase:           () => process.env.LDAP_SEARCH_BASE ?? process.env.LDAP_BASE_DN ?? 'dc=example,dc=com',
   rejectUnauthorized:   ()  => process.env.LDAP_TLS_REJECT_UNAUTHORIZED !== '0',
 };
 

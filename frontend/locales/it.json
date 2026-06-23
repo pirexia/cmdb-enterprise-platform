@@ -787,7 +787,7 @@
       "load_error": "Errore nel caricamento della configurazione avvisi",
       "smtp_title": "Stato SMTP",
       "smtp_ok": "Configurato",
-      "smtp_missing": "Non configurato (SMTP_HOST / SMTP_USER non definiti in ENV)",
+      "smtp_missing": "Non configurato (SMTP_HOST non definito in ENV)",
       "smtp_note": "Le credenziali SMTP sono configurate esclusivamente tramite variabili d'ambiente.",
       "config_title": "Configurazione Globale",
       "enabled": "Attiva avvisi email",

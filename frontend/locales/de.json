@@ -787,7 +787,7 @@
       "load_error": "Fehler beim Laden der Alarmkonfiguration",
       "smtp_title": "SMTP-Status",
       "smtp_ok": "Konfiguriert",
-      "smtp_missing": "Nicht konfiguriert (SMTP_HOST / SMTP_USER nicht in ENV gesetzt)",
+      "smtp_missing": "Nicht konfiguriert (SMTP_HOST nicht in ENV gesetzt)",
       "smtp_note": "SMTP-Anmeldedaten werden ausschließlich über Umgebungsvariablen konfiguriert.",
       "config_title": "Globale Konfiguration",
       "enabled": "E-Mail-Alarme aktivieren",

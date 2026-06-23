@@ -787,7 +787,7 @@
       "load_error": "Erreur lors du chargement de la configuration des alertes",
       "smtp_title": "État SMTP",
       "smtp_ok": "Configuré",
-      "smtp_missing": "Non configuré (SMTP_HOST / SMTP_USER non définis en ENV)",
+      "smtp_missing": "Non configuré (SMTP_HOST non défini en ENV)",
       "smtp_note": "Les identifiants SMTP sont configurés exclusivement via des variables d'environnement.",
       "config_title": "Configuration Globale",
       "enabled": "Activer les alertes email",

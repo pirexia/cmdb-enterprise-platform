@@ -832,7 +832,7 @@
       "load_error": "Error loading alert configuration",
       "smtp_title": "SMTP Status",
       "smtp_ok": "Configured",
-      "smtp_missing": "Not configured (SMTP_HOST / SMTP_USER not set in ENV)",
+      "smtp_missing": "Not configured (SMTP_HOST not set in ENV)",
       "smtp_note": "SMTP credentials are configured exclusively via environment variables (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS). They are not stored in the database.",
       "config_title": "Global Configuration",
       "enabled": "Enable email alerts",

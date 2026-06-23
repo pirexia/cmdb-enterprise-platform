@@ -43,5 +43,10 @@ export async function sendEmail(
 }
 
 export function smtpConfigured(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER);
+  // SMTP_HOST is the only hard requirement. SMTP_USER/SMTP_PASS are optional:
+  // unauthenticated internal relays (e.g. a corporate mailscan on port 25 with no
+  // AUTH) are a valid configuration — sendEmail() already handles an empty user by
+  // omitting the auth block. Requiring SMTP_USER here wrongly flagged such relays as
+  // "not configured".
+  return Boolean(process.env.SMTP_HOST);
 }

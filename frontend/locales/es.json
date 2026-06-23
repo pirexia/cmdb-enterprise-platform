@@ -832,7 +832,7 @@
       "load_error": "Error al cargar la configuración de alertas",
       "smtp_title": "Estado SMTP",
       "smtp_ok": "Configurado",
-      "smtp_missing": "No configurado (SMTP_HOST / SMTP_USER no definidos en ENV)",
+      "smtp_missing": "No configurado (SMTP_HOST no definido en ENV)",
       "smtp_note": "Las credenciales SMTP se configuran exclusivamente mediante variables de entorno (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS). No se almacenan en base de datos.",
       "config_title": "Configuración Global",
       "enabled": "Activar alertas email",

@@ -60,6 +60,7 @@ import { createMastersRouter }        from './modules/masters/router';
 import { createDocumentsRouter, createBulkQueueProcessor } from './modules/documents/router';
 import { createInternalRouter }       from './modules/internal/router';
 import { createTimelineRouter }       from './modules/timeline/router';
+import { createN8nProvisioningRouter } from './modules/n8n-provisioning/router';
 import { docVisibilitySqlCol }        from './shared/utils/docVisibility';
 import { UserRole, JwtPayload }  from './shared/types';
 import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authenticate';
@@ -308,6 +309,9 @@ app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 
 // Timeline module — read-only Gantt data; all authenticated roles allowed (VIEWER+)
 app.use('/api/timeline', authenticateToken, createTimelineRouter(prisma));
+
+// n8n Provisioning — resync bajo demanda (ADMIN only; auth interna en el router)
+app.use('/api/admin/n8n', authenticateToken, createN8nProvisioningRouter(prisma));
 
 // ── Internal M2M router — /api/internal/* ────────────────────────────────────
 // Accessible ONLY from the internal Podman network (n8n-workers → backend).

@@ -72,24 +72,24 @@
 
 ## Tareas
 
-### Task 0 — Spike: bootstrap no interactivo de owner + API key de n8n (1.123.27)
+### Task 0 — Spike: bootstrap no interactivo de owner + API key de n8n (1.123.27) ✅ COMPLETADA (2026-06-23)
 
 **Objetivo:** Determinar la secuencia exacta y reproducible para, en una instancia n8n recién arrancada y vacía, (a) crear/garantizar la cuenta propietaria sin el wizard interactivo y (b) emitir una API key pública válida, todo desde el host (psql + `podman exec`).
 
 **Files:**
-- Crear: `scripts/lib/n8n-bootstrap.sh`
-- Crear: `docs/n8n/PROVISIONING.md` (documenta la secuencia hallada)
+- Crear: `scripts/lib/n8n-bootstrap.sh` ✅
+- Crear: `docs/n8n/PROVISIONING.md` (documenta la secuencia hallada) ✅
 
 **Interfaces:**
-- Produce: función bash `n8n_ensure_owner_and_key(container, db_container, db_user, db_name) -> echo API_KEY` usada por install/update.
+- Produce: función bash `n8n_ensure_owner_and_key()` (consume env: `CTR_EXEC`, `N8N_CTR`, `PG_CTR`, `BACKEND_CTR`, `DB_USER`, `DB_NAME`, creds owner/provisioner) → imprime la API key por stdout. Usada por install/update.
 
-- [ ] **Step 1:** Investigar en una instancia limpia: probar `N8N_USER_MANAGEMENT_DISABLED`, owner-setup vía `POST /rest/owner/setup`, y emisión de key vía `POST /rest/api-keys` tras `POST /rest/login`. Documentar el formato del `apiKey` (JWT firmado por n8n vs token plano) inspeccionando `n8n_data.user_api_keys` y `n8n_data.settings`.
-- [ ] **Step 2:** Escribir `n8n_ensure_owner_and_key()` con la secuencia que funcione. Criterio de aceptación: la key devuelta autentica `GET /api/v1/workflows` con `200` (`X-N8N-API-KEY: <key>`).
-- [ ] **Step 3:** Validar idempotencia: una segunda llamada no falla y reutiliza/rota la key de forma controlada (label fija `cmdb-provisioning`).
-- [ ] **Step 4:** Documentar en `docs/n8n/PROVISIONING.md` la secuencia + supuestos de versión (1.123.x).
-- [ ] **Step 5:** Commit: `chore(n8n): spike bootstrap owner+API key no interactivo (scripts/lib/n8n-bootstrap.sh)`.
+- [x] **Step 1:** Investigado en vivo (n8n 1.123.27). **Hallazgos** (detalle en `docs/n8n/PROVISIONING.md`): la API key es un **JWT HS256 firmado por n8n** (`rawApiKey`) — NO se puede insertar a mano; hay que emitirla por `POST /rest/api-keys`. `N8N_BASIC_AUTH_*` se ignora (auth `email`). Login: `POST /rest/login` con campo `emailOrLdapLoginId`. Owner fresh: `POST /rest/owner/setup`.
+- [x] **Step 2:** `n8n_ensure_owner_and_key()` escrita y **validada end-to-end**: la key emitida autentica `GET /api/v1/workflows` → `200` (7 workflows). Dos caminos: Caso A `owner/setup` (instancia nueva), Caso B identidad de servicio `global:admin` por BD + login (owner ya existe, validado en vivo).
+- [x] **Step 3:** Label fijo `cmdb-provisioning`; rotación por `DELETE /rest/api-keys/:id` documentada.
+- [x] **Step 4:** `docs/n8n/PROVISIONING.md` escrito.
+- [x] **Step 5:** Commit.
 
-> **Salida de seguridad:** si el bootstrap por env/REST resultara inviable en 1.123.27, el fallback documentado es insertar la cuenta owner + key directamente en `n8n_data` firmando el JWT con el secreto de `settings` (acoplado a versión; marcar como frágil y cubrir con un test de smoke en update.sh).
+> **Hallazgo que ajusta el diseño (afecta T2/T5):** la API pública de n8n **NO lista credenciales** (no hay scope `credential:list`/`credential:read` para `global:admin`; solo `credential:create`/`delete`). → La idempotencia de credenciales **lee los nombres existentes de `n8n_data.credentials_entity` por Postgres** (el backend comparte la BD) y luego delete+create por la API. Scopes válidos confirmados: `workflow:{create,read,update,delete,list,activate,deactivate}`, `credential:{create,delete}`.
 
 ---
 
@@ -148,11 +148,12 @@
     createWorkflow(body: unknown): Promise<{ id: string }>;
     updateWorkflow(id: string, body: unknown): Promise<void>;
     activateWorkflow(id: string): Promise<void>;
-    listCredentials(): Promise<{ id: string; name: string; type: string }[]>;
     createCredential(body: unknown): Promise<{ id: string }>;
+    deleteCredential(id: string): Promise<void>;
   }
   export function makeN8nApiClient(cfg: N8nProvisioningConfig): N8nApiClient;
   ```
+  > Confirmado en spike (Task 0): la API pública **no expone** list/get de credenciales para el rol disponible. Por eso `N8nApiClient` no incluye `listCredentials`; la existencia de una credencial se consulta por BD (Task 5).
 
 - [ ] **Step 1:** Test con `fetch` mockeado: `listWorkflows()` envía `GET {apiBaseUrl}/api/v1/workflows` con header `X-N8N-API-KEY` y parsea `data[]`.
 - [ ] **Step 2:** jest → FAIL.
@@ -219,16 +220,16 @@
 - Crear: `backend/src/modules/n8n-provisioning/__tests__/provisioner.test.ts`
 
 **Interfaces:**
-- Consume: `N8nApiClient`, builders (Task 3), `renderWorkflows` (Task 4).
+- Consume: `N8nApiClient`, builders (Task 3), `renderWorkflows` (Task 4), `PrismaClient` (para leer `n8n_data.credentials_entity`).
 - Produce:
   ```ts
   export interface ProvisionReport { credentials: {name:string; action:'created'|'recreated'|'skipped'}[]; workflows: {name:string; action:'created'|'updated'; active:boolean}[]; errors: string[]; }
-  export async function provisionAll(client: N8nApiClient, cfg: N8nProvisioningConfig): Promise<ProvisionReport>;
+  export async function provisionAll(client: N8nApiClient, cfg: N8nProvisioningConfig, prisma: PrismaClient): Promise<ProvisionReport>;
   ```
 
-- [ ] **Step 1:** Test con `N8nApiClient` mockeado: upsert por nombre (si la credencial existe → recreate; si el workflow existe → update por id; si no → create). Activación según `activateWhen` + presencia de config (SMTP→Alertas activo; `useLdap=false`→LDAP no se activa).
+- [ ] **Step 1:** Test con `N8nApiClient` + `prisma.$queryRaw` mockeados: idempotencia de credenciales — si el nombre existe en `n8n_data.credentials_entity` → `deleteCredential(id)` + `createCredential` (recreate); si no → create. Workflows: match por nombre vía `listWorkflows` → update por id / create. Activación según `activateWhen` + presencia de config (SMTP→Alertas activo; `useLdap=false`→LDAP no se activa).
 - [ ] **Step 2:** jest → FAIL.
-- [ ] **Step 3:** Implementar `provisionAll`: (1) credenciales (match por nombre vía `listCredentials`), (2) workflows (match por nombre vía `listWorkflows`, update/create), (3) `activateWorkflow` por política. Acumular `ProvisionReport`; capturar errores por item sin abortar el resto.
+- [ ] **Step 3:** Implementar `provisionAll`: (1) credenciales — leer nombres+ids existentes con `` prisma.$queryRaw`SELECT id, name FROM n8n_data.credentials_entity` `` (la API no lista credenciales, confirmado en Task 0); recreate (delete+create) o create. (2) workflows — match por nombre vía `listWorkflows`, update/create. (3) `activateWorkflow` por política. Acumular `ProvisionReport`; capturar errores por item sin abortar el resto.
 - [ ] **Step 4:** jest → PASS.
 - [ ] **Step 5:** Commit: `feat(n8n-provisioning): orquestador idempotente provisionAll`.
 

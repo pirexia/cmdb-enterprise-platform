@@ -1,0 +1,66 @@
+// AUTO-GENERADO desde docs/n8n/json/rag-indexing.json — plantilla de workflow n8n.
+// Placeholders {{ENV:VAR}} se sustituyen en renderWorkflows(). NO bindea credenciales (lo hace el render).
+/* eslint-disable */
+const rag_indexing = {
+  "name": "RAG Indexing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "58ed2744-377d-4b96-ba63-06e670dedda2",
+      "name": "Every 30s",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:3000/api/internal/rag/process-batch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 25000
+        }
+      },
+      "id": "42159d6e-774e-4b40-a668-7a072831f0d3",
+      "name": "Process RAG batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Every 30s": {
+      "main": [
+        [
+          {
+            "node": "Process RAG batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid"
+  }
+} as const;
+export default rag_indexing;

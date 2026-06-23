@@ -48,6 +48,7 @@ import { createDecommissionRouter } from './modules/decommission/router';
 import { createCatalogRouter } from './modules/catalog/router';
 import { createAlertsRouter } from './modules/alerts/router';
 import { startAlertScheduler } from './modules/alerts/scheduler';
+import { provisionOnBoot } from './modules/n8n-provisioning/onBoot';
 import { VALID_RELATION_TYPES, validateRelationCiTypes } from './relationTypes';
 import { emitHook, initializePluginEngine } from './modules/plugins/index';
 import { createSettingsRouter } from './modules/settings/router';
@@ -3955,6 +3956,7 @@ if (process.env.RAG_ENABLED === 'true') {
   app.listen(PORT, () => {
     console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);
     console.log(`   Allowed CORS origins: ${ALLOWED_ORIGINS.join(', ')}`);
+    provisionOnBoot(); // fire-and-forget; no-op si N8N_API_KEY no está configurada
   });
 
   process.on('SIGTERM', async () => {

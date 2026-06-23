@@ -93,7 +93,7 @@
 
 ---
 
-### Task 1 — Config tipada del aprovisionamiento + nuevas env vars
+### Task 1 — Config tipada del aprovisionamiento + nuevas env vars ✅ COMPLETADA (commit `ec2dcfd`)
 
 **Files:**
 - Crear: `backend/src/modules/n8n-provisioning/config.ts`
@@ -133,7 +133,7 @@
 
 ---
 
-### Task 2 — Cliente API de n8n (`apiClient.ts`)
+### Task 2 — Cliente API de n8n (`apiClient.ts`) ✅ COMPLETADA (commit `bf5f209`)
 
 **Files:**
 - Crear: `backend/src/modules/n8n-provisioning/apiClient.ts`
@@ -165,7 +165,7 @@
 
 ---
 
-### Task 3 — Renderizado de credenciales desde env (`credentials.ts`)
+### Task 3 — Renderizado de credenciales desde env (`credentials.ts`) ✅ COMPLETADA (commit `06c1384`)
 
 **Files:**
 - Crear: `backend/src/modules/n8n-provisioning/credentials.ts`
@@ -189,7 +189,7 @@
 
 ---
 
-### Task 4 — Plantillas de workflow + renderizador (`workflows.ts` + `templates/`)
+### Task 4 — Plantillas de workflow + renderizador (`workflows.ts` + `templates/`) ✅ COMPLETADA (commit `cdff604`)
 
 **Files:**
 - Crear: `backend/src/modules/n8n-provisioning/templates/*.json` (7, copiadas de `docs/n8n/json/`, con placeholders)

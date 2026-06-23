@@ -839,6 +839,26 @@
       "col_status": "Stato",
       "col_total": "Avvisi",
       "col_msg_id": "ID Messaggio / Errore"
+    },
+    "n8n": {
+      "tab": "n8n / Workflows",
+      "title": "Provisioning n8n",
+      "desc": "Sincronizza credenziali e workflow n8n con la configurazione corrente dell'ambiente (.env). Idempotente: può essere eseguito più volte senza duplicati.",
+      "button": "Risincronizza configurazione",
+      "running": "Sincronizzazione...",
+      "success": "Sincronizzazione completata",
+      "error": "Errore di sincronizzazione",
+      "no_apikey": "N8N_API_KEY non configurata. Il provisioning automatico non è disponibile.",
+      "cred_created": "creato",
+      "cred_recreated": "ricreato",
+      "cred_skipped": "saltato",
+      "wf_created": "creato",
+      "wf_updated": "aggiornato",
+      "wf_active": "attivo",
+      "wf_inactive": "inattivo",
+      "section_creds": "Credenziali",
+      "section_wfs": "Workflow",
+      "section_errors": "Errori"
     }
   },
   "dashboard": {

@@ -723,6 +723,19 @@ success "JWT secret auto-generated."
 PLUGIN_DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
 success "Plugin DB role password auto-generated."
 
+# ── n8n / Redis secrets (v3.0.0+, always auto-generated) ─────────────────────
+# CMDB_SERVICE_TOKEN: M2M auth between n8n workers and backend /api/internal/*
+# REDIS_PASSWORD: BullMQ queue auth (n8n Queue Mode)
+# N8N_ENCRYPTION_KEY: AES-256 key for n8n credential store (must stay constant)
+# N8N_BASIC_AUTH_PASSWORD: legacy basic auth shim (kept for compat, ignored in 1.12x)
+# BACKUP_LOCAL_PATH: where pg_dump backups land inside the host
+CMDB_SERVICE_TOKEN="$(openssl rand -hex 32)"
+REDIS_PASSWORD="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 32)"
+N8N_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+N8N_BASIC_AUTH_PASSWORD="$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 20)Aa1!"
+BACKUP_LOCAL_PATH="${DATA_PATH}/backups"
+success "n8n / Redis secrets auto-generated."
+
 # ── TLS certificate setup ─────────────────────────────────────────────────────
 echo ""
 info "TLS certificate — nginx requires server.crt and server.key in ./certs/"
@@ -1100,6 +1113,28 @@ PLUGIN_REQUIRE_APPROVAL_PROD=true
 PLUGIN_ENABLE_MARKETPLACE=false
 PLUGIN_MARKETPLACE_URL=
 PLUGIN_SIGNING_PUBLIC_KEY=
+
+# ── n8n Queue Mode + Redis (v3.0.0+) ─────────────────────────────────────────
+# These are required by docker-compose.prod.yml with :? guards — must not be blank.
+CMDB_SERVICE_TOKEN=${CMDB_SERVICE_TOKEN}
+REDIS_PASSWORD=${REDIS_PASSWORD}
+N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+N8N_ALLOWED_IPS=127.0.0.1/32
+BACKUP_LOCAL_PATH=${BACKUP_LOCAL_PATH}
+
+# ── n8n provisioning automático (v3.2.0+) ────────────────────────────────────
+# N8N_API_KEY is populated by the installer (Phase 10d). Leave blank here;
+# it will be injected automatically after n8n starts.
+N8N_INTERNAL_URL=http://cmdb-n8n-main:5678
+N8N_API_KEY=
+ALERT_FROM_EMAIL=
+# LDAP_SEARCH_BASE mirrors LDAP_BASE_DN (fallback alias read by the login service)
+LDAP_SEARCH_BASE=${LDAP_BASE_DN}
+# Set these after configuring the LDAP group for CMDB access:
+LDAP_SYNC_GROUP_DN=
+LDAP_SYNC_DOMAIN=
 ENVEOF
 )
 
@@ -1278,6 +1313,64 @@ SQL
     warn "Plugins with DB migrations will fail until you run, as DB superuser:"
     warn "  sed 's/CHANGE_ME_IN_PRODUCTION/<password>/' scripts/create-plugin-db-role.sql | \\"
     warn "    $RUNTIME exec -i cmdb-postgres-prod psql -U admin -d cmdb_db"
+  fi
+
+  # ── Phase 10d — Bootstrap n8n owner + API key ─────────────────────────────
+  # Emite una N8N_API_KEY no-interactiva y la inyecta en .env para que el
+  # backend active el aprovisionamiento automático (provisionOnBoot) al arrancar.
+  step "Phase 10d: Bootstrapping n8n API key"
+  _N8N_BOOTSTRAP_LIB="$INSTALL_DIR/scripts/lib/n8n-bootstrap.sh"
+  if [ -f "$_N8N_BOOTSTRAP_LIB" ]; then
+    # shellcheck disable=SC1090
+    source "$_N8N_BOOTSTRAP_LIB"
+
+    # Esperar a que n8n-main esté sano (max 90 s)
+    info "Waiting for n8n to become healthy (max 90 s) ..."
+    _n8n_healthy=false
+    for _attempt in $(seq 1 45); do
+      if $RUNTIME exec cmdb-n8n-main \
+          curl -s http://localhost:5678/healthz 2>/dev/null | grep -q '"status":"ok"'; then
+        _n8n_healthy=true
+        break
+      fi
+      sleep 2
+    done
+
+    if [ "$_n8n_healthy" = "true" ]; then
+      export CTR_EXEC="$RUNTIME exec"
+      export N8N_CTR="cmdb-n8n-main"
+      export PG_CTR="cmdb-postgres-prod"
+      export BACKEND_CTR="cmdb-backend-prod"
+      export DB_USER="admin"
+      export DB_NAME="cmdb_db"
+
+      _n8n_key="$(n8n_ensure_owner_and_key 2>/dev/null)" || _n8n_key=""
+      if [ -n "$_n8n_key" ]; then
+        # Inyectar la key en .env (la línea N8N_API_KEY= ya existe desde Phase 7)
+        sed -i "s|^N8N_API_KEY=.*|N8N_API_KEY=${_n8n_key}|" "$INSTALL_DIR/.env"
+        unset _n8n_key  # no dejar la key en variables de entorno del proceso
+        success "n8n API key bootstrapped and written to .env"
+        # Reiniciar backend para que arranque provisionOnBoot con la nueva key
+        info "Restarting backend to trigger n8n auto-provisioning ..."
+        $COMPOSE_CMD -f docker-compose.prod.yml restart cmdb-backend-prod 2>/dev/null || true
+      else
+        warn "n8n API key bootstrap failed — provisioning will be skipped at runtime."
+        warn "Retry manually after install:"
+        warn "  source $INSTALL_DIR/scripts/lib/n8n-bootstrap.sh"
+        warn "  KEY=\$(n8n_ensure_owner_and_key)"
+        warn "  sed -i \"s|^N8N_API_KEY=.*|N8N_API_KEY=\$KEY|\" $INSTALL_DIR/.env"
+        warn "  $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml restart cmdb-backend-prod"
+      fi
+    else
+      warn "n8n did not become healthy in 90 s — skipping API key bootstrap."
+      warn "Run the following after n8n starts:"
+      warn "  source $INSTALL_DIR/scripts/lib/n8n-bootstrap.sh"
+      warn "  KEY=\$(n8n_ensure_owner_and_key)"
+      warn "  sed -i \"s|^N8N_API_KEY=.*|N8N_API_KEY=\$KEY|\" $INSTALL_DIR/.env"
+      warn "  $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.prod.yml restart cmdb-backend-prod"
+    fi
+  else
+    warn "scripts/lib/n8n-bootstrap.sh not found — skipping n8n API key bootstrap."
   fi
 
 elif [ "$PLATFORM" = "openshift" ]; then

@@ -1,7 +1,9 @@
-# n8n Workflows — CMDB Enterprise Platform v3.0.0
+# n8n Workflows — CMDB Enterprise Platform v3.2.0
 
 Catálogo completo de todos los workflows n8n desplegados en esta plataforma.
 Para instalación y gestión de la UI de n8n, ver [ADMIN_GUIDE.md](./ADMIN_GUIDE.md).
+
+> **v3.2.0+:** Desde esta versión, workflows y credenciales se aprovisionan **automáticamente** al arrancar el backend (`provisionOnBoot`). La sección [Instalación y administración](#instalación-y-administración-de-los-workflows) describe el proceso manual, que solo es necesario como fallback o para añadir credenciales opcionales (Slack, Teams).
 
 ---
 
@@ -391,6 +393,11 @@ Los tokens, URLs y contraseñas específicos de cada workflow se almacenan como
 ---
 
 ## Instalación y administración de los workflows
+
+> **v3.2.0+ — Aprovisionamiento automático (camino principal):**
+> El backend aprovisiona credenciales y workflows sin intervención manual. Las plantillas viven en `backend/src/modules/n8n-provisioning/workflows.ts`. Para forzar una re-sincronización: **Configuración → n8n → Re-sincronizar workflows** (solo ADMIN), o `POST /api/admin/n8n/resync`.
+>
+> Lo descrito a continuación (importar JSONs + asignar credenciales) es el **camino de fallback** cuando `N8N_API_KEY` no está configurada, o para añadir credenciales opcionales (Slack, Teams webhook) que el aprovisionamiento no gestiona automáticamente.
 
 Los 7 workflows están versionados como **JSON importables** en `docs/n8n/json/`. Se entregan **sin IDs de credenciales** (para que el selector de credencial sea elegible al importar) y con las URLs internas apuntando a `http://backend:3000`.
 

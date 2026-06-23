@@ -1564,10 +1564,25 @@ TOKEN=$(grep CMDB_SERVICE_TOKEN .env | cut -d= -f2)
 curl -s -H "X-CMDB-Service-Token: $TOKEN" http://localhost:3000/api/internal/ping
 # → {"pong":true,...}
 
+# Aprovisionamiento n8n (v3.2.0+) — verificar que N8N_API_KEY está poblada
+grep N8N_API_KEY .env | grep -v "^N8N_API_KEY=$" && echo "OK" || echo "VACÍA — ver docs/n8n/ADMIN_GUIDE.md § Aprovisionamiento automático"
+
+# Re-forzar aprovisionamiento (ADMIN JWT requerido)
+# curl -sk -X POST https://localhost/api/admin/n8n/resync -H "Authorization: Bearer $JWT" | python3 -m json.tool
+
 # Backups recientes
 curl -s -H "X-CMDB-Service-Token: $TOKEN" \
   http://localhost:3000/api/internal/backup/list | python3 -m json.tool
 ```
+
+> **v3.2.0+:** `N8N_API_KEY` la genera automáticamente `install.sh` (Phase 10d) o `update.sh` (`ensure_n8n_api_key`). Si está vacía tras una actualización, ejecutar manualmente:
+> ```bash
+> source scripts/lib/n8n-bootstrap.sh
+> KEY=$(n8n_ensure_owner_and_key)
+> sed -i "s|^N8N_API_KEY=.*|N8N_API_KEY=$KEY|" .env
+> unset KEY
+> podman-compose -f docker-compose.prod.yml restart cmdb-backend-prod
+> ```
 
 ---
 

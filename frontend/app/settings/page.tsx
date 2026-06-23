@@ -5,9 +5,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   Settings, Users, Plug, RefreshCw, AlertTriangle,
   ShieldCheck, Mail, Server, CheckCircle, XCircle,
-  Shield, Download, Upload, Loader2, Bell,
+  Shield, Download, Upload, Loader2, Bell, Workflow,
 } from "lucide-react";
 import AlertsSettings from "@/components/AlertsSettings";
+import N8nResyncCard from "@/components/admin/N8nResyncCard";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -24,7 +25,7 @@ interface User {
   created_at:       string;
 }
 
-type TabId = "users" | "integrations" | "certificates" | "branding" | "alerts";
+type TabId = "users" | "integrations" | "certificates" | "branding" | "alerts" | "n8n";
 
 interface StackComponent {
   name:           string;
@@ -370,6 +371,7 @@ export default function SettingsPage() {
     { id: "certificates", label: "SSL/TLS Certificates",         icon: <Shield className="h-4 w-4" /> },
     ...(isAdmin ? [{ id: "branding" as TabId, label: t("settings.branding.tab"), icon: <Settings className="h-4 w-4" /> }] : []),
     ...(isAdmin ? [{ id: "alerts"   as TabId, label: t("settings.alerts.tab"),    icon: <Bell     className="h-4 w-4" /> }] : []),
+    ...(isAdmin ? [{ id: "n8n"     as TabId, label: t("settings.n8n.tab"),       icon: <Workflow className="h-4 w-4" /> }] : []),
   ];
 
   function SysStatusBadge({ c }: { c: StackComponent }) {
@@ -1058,6 +1060,10 @@ export default function SettingsPage() {
 
             {tab === "alerts" && (
               <AlertsSettings isAdmin={isAdmin} />
+            )}
+
+            {tab === "n8n" && isAdmin && (
+              <N8nResyncCard />
             )}
           </div>
         </main>

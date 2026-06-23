@@ -1,0 +1,146 @@
+// AUTO-GENERADO desde docs/n8n/json/ldap-ad-sync.json — plantilla de workflow n8n.
+// Placeholders {{ENV:VAR}} se sustituyen en renderWorkflows(). NO bindea credenciales (lo hace el render).
+/* eslint-disable */
+const ldap_ad_sync = {
+  "name": "LDAP/AD Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 1 * * *"
+            }
+          ]
+        }
+      },
+      "id": "e74a275c-abd3-4d99-80c1-129ba7a2e3d3",
+      "name": "Schedule 01:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "baseDN": "{{ENV:LDAP_BASE_DN}}",
+        "filter": "(&(objectClass=user)(objectCategory=person)(memberOf={{ENV:LDAP_SYNC_GROUP_DN}})(!(userAccountControl:1.2.840.113556.1.4.803:=2)))",
+        "attributes": "mail,sAMAccountName,displayName",
+        "options": {}
+      },
+      "id": "30a377cf-73e3-4840-b473-2d6fc0cf1e18",
+      "name": "LDAP Search",
+      "type": "n8n-nodes-base.ldap",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://backend:3000/api/internal/users/ldap-sync-candidates",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "23a5de29-41d9-4c9c-ba17-bba2d18db43c",
+      "name": "Get sync candidates",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ldap = $('LDAP Search').all().map(i => i.json);\nconst cand = $input.first().json;\nconst existing = cand.existing || [];\nconst manual = (cand.manualUsers || []).map(e => String(e).toLowerCase());\nconst byEmail = {};\nfor (const u of existing) byEmail[String(u.email).toLowerCase()] = u;\nconst seen = new Set();\nconst creates = [];\nconst reactivates = [];\nfor (const u of ldap) {\n  const email = String(u.mail || u.email || '').toLowerCase();\n  if (!email) continue;\n  if (manual.includes(email)) continue;\n  seen.add(email);\n  const ex = byEmail[email];\n  if (!ex) {\n    creates.push({ email, username: u.sAMAccountName || email.split('@')[0], displayName: u.displayName || undefined, ssoExternalId: u.sAMAccountName || email, role: 'VIEWER' });\n  } else if (ex.active === false) {\n    reactivates.push(ex.email);\n  }\n}\nconst deactivates = existing.filter(u => u.active && !seen.has(String(u.email).toLowerCase())).map(u => u.email);\nreturn [{ json: { creates, reactivates, deactivates } }];"
+      },
+      "id": "158ea502-152d-48ac-b426-ec5f358f4bdd",
+      "name": "Compute diff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:3000/api/internal/users/ldap-sync",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "38310bbb-aa12-4c1e-b9f0-712ee92819e0",
+      "name": "Apply LDAP sync",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        960,
+        300
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Schedule 01:00": {
+      "main": [
+        [
+          {
+            "node": "LDAP Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LDAP Search": {
+      "main": [
+        [
+          {
+            "node": "Get sync candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get sync candidates": {
+      "main": [
+        [
+          {
+            "node": "Compute diff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute diff": {
+      "main": [
+        [
+          {
+            "node": "Apply LDAP sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid"
+  }
+} as const;
+export default ldap_ad_sync;

@@ -832,7 +832,7 @@
       "load_error": "Error loading alert configuration",
       "smtp_title": "SMTP Status",
       "smtp_ok": "Configured",
-      "smtp_missing": "Not configured (SMTP_HOST / SMTP_USER not set in ENV)",
+      "smtp_missing": "Not configured (SMTP_HOST not set in ENV)",
       "smtp_note": "SMTP credentials are configured exclusively via environment variables (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS). They are not stored in the database.",
       "config_title": "Global Configuration",
       "enabled": "Enable email alerts",
@@ -884,6 +884,26 @@
       "col_status": "Status",
       "col_total": "Alerts",
       "col_msg_id": "Message ID / Error"
+    },
+    "n8n": {
+      "tab": "n8n / Workflows",
+      "title": "n8n Provisioning",
+      "desc": "Syncs n8n credentials and workflows with the current environment configuration (.env). Idempotent: can be run multiple times without duplicates.",
+      "button": "Resync configuration",
+      "running": "Syncing...",
+      "success": "Sync completed",
+      "error": "Sync error",
+      "no_apikey": "N8N_API_KEY not configured. Automatic provisioning is unavailable.",
+      "cred_created": "created",
+      "cred_recreated": "recreated",
+      "cred_skipped": "skipped",
+      "wf_created": "created",
+      "wf_updated": "updated",
+      "wf_active": "active",
+      "wf_inactive": "inactive",
+      "section_creds": "Credentials",
+      "section_wfs": "Workflows",
+      "section_errors": "Errors"
     }
   },
   "dashboard": {

@@ -1,0 +1,187 @@
+// AUTO-GENERADO desde docs/n8n/json/alertas-cmdb.json — plantilla de workflow n8n.
+// Placeholders {{ENV:VAR}} se sustituyen en renderWorkflows(). NO bindea credenciales (lo hace el render).
+/* eslint-disable */
+const alertas_cmdb = {
+  "name": "Alertas CMDB",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "5fb58adf-6474-44b1-9e6d-baf87bb8964e",
+      "name": "Schedule 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "http://backend:3000/api/internal/alerts/scan",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "b74bd26b-c85e-4faf-8e95-ac5624a1aa13",
+      "name": "Scan alerts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "da73adf4-5584-48de-a546-6398bb74c096",
+              "leftValue": "={{ $json.shouldSend }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8bd197b5-a6c4-40bc-bb92-70a49c9a9a13",
+      "name": "IF shouldSend",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "{{ENV:ALERT_FROM_EMAIL}}",
+        "toEmail": "={{ $('Scan alerts').item.json.recipients.join(',') }}",
+        "subject": "={{ $('Scan alerts').item.json.subject }}",
+        "emailFormat": "html",
+        "html": "={{ $('Scan alerts').item.json.htmlBody }}",
+        "options": {}
+      },
+      "id": "b7e52df6-caac-4ff4-9969-024e9fd1bb2e",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        680,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:3000/api/internal/alerts/record",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\"trigger\":\"CRON\",\"status\":\"SENT\",\"totalAlerts\":$('Scan alerts').item.json.totalAlerts,\"breakdown\":$('Scan alerts').item.json.breakdown,\"recipients\":$('Scan alerts').item.json.recipients,\"messageId\":String($json.messageId || \"\")} }}",
+        "options": {}
+      },
+      "id": "58cb2098-c53d-4e7b-88a9-dc55146adcab",
+      "name": "Record run",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "789b0421-5849-4c41-8b7b-b5ccb9fc2dde",
+      "name": "No alerts to send",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        680,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule 08:00": {
+      "main": [
+        [
+          {
+            "node": "Scan alerts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scan alerts": {
+      "main": [
+        [
+          {
+            "node": "IF shouldSend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF shouldSend": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No alerts to send",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Record run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid"
+  }
+} as const;
+export default alertas_cmdb;

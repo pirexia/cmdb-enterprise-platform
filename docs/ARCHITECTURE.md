@@ -593,7 +593,7 @@ El directorio (ya sea bind mount o volumen nombrado) debe incluirse en la estrat
 | Auditoría | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integraciones | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reportes | `/reports` | (client-side PDF/CSV generation) |
-| Configuración | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo` |
+| Configuración | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo`, `POST /api/admin/n8n/resync` |
 | Perfil | `/profile` | `GET/POST /api/users/me/mfa/*` |
 | Mapa | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relaciones | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
@@ -1115,6 +1115,14 @@ backend/src/
       router.ts / schemas.ts
     documents/                 — Repositorio documental + bulk import AI (~31 rutas)  [v2.9.0]
       router.ts / schemas.ts
+    ai/                        — Asistente IA/RAG (queue, indexado, chat)  [v2.9.2]
+      queue.ts / router.ts
+    timeline/                  — Vista Gantt/Timeline unificada (CIs, contratos, licencias, decom)  [v3.1.0]
+      router.ts / schemas.ts / queries.ts / types.ts
+    internal/                  — Endpoints M2M para n8n (alerts, maintenance, rag, bulk, users, backup, notify)  [v3.0.0]
+      router.ts (+ sub-routers por dominio)
+    n8n-provisioning/          — Aprovisionamiento idempotente de credenciales + workflows n8n  [v3.2.0]
+      provisioner.ts / onBoot.ts / router.ts / workflows.ts / apiClient.ts / config.ts
   services/
     ldap.ts / microsoftSso.ts / emailService.ts / eolService.ts / ragService.ts / …
 ```

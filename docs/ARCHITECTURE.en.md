@@ -508,7 +508,7 @@ The storage directory (whether a bind mount or a named volume) must be included 
 | Audit | `/audit` | `GET /api/audit-logs[?from=ISO&to=ISO]` |
 | Integrations | `/integrations` | `POST /api/integrations/greenbone|crowdstrike` |
 | Reports | `/reports` | (client-side PDF/CSV generation) |
-| Settings | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo` |
+| Settings | `/settings` | `GET/PATCH /api/users/*`, `GET /api/settings/theme`, `PUT /api/settings/theme`, `POST /api/settings/logo`, `DELETE /api/settings/logo`, `POST /api/admin/n8n/resync` |
 | Profile | `/profile` | `GET/POST /api/users/me/mfa/*` |
 | Map | `/map` | `GET /api/cis`, `GET /api/cis/:id/relations?depth=1-4` |
 | Relations | `/inventory` (modal) | `POST /api/relations`, `DELETE /api/relations/:id` |
@@ -1023,6 +1023,14 @@ backend/src/
     contracts/                 — Contracts CRUD + addenda + M2M CIs/documents  [v2.9.0]
     masters/                   — Master data (~43 routes): manufacturers, CI types, models, branches, …  [v2.9.0]
     documents/                 — Document repository + AI bulk import (~31 routes)  [v2.9.0]
+    ai/                        — AI/RAG assistant (queue, indexing, chat)  [v2.9.2]
+      queue.ts / router.ts
+    timeline/                  — Unified Gantt/Timeline view (CIs, contracts, licences, decom)  [v3.1.0]
+      router.ts / schemas.ts / queries.ts / types.ts
+    internal/                  — M2M endpoints for n8n (alerts, maintenance, rag, bulk, users, backup, notify)  [v3.0.0]
+      router.ts (+ per-domain sub-routers)
+    n8n-provisioning/          — Idempotent provisioning of n8n credentials + workflows  [v3.2.0]
+      provisioner.ts / onBoot.ts / router.ts / workflows.ts / apiClient.ts / config.ts
   services/
     ldap.ts / microsoftSso.ts / emailService.ts / eolService.ts / ragService.ts / …
 ```

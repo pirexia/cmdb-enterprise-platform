@@ -1,0 +1,71 @@
+// AUTO-GENERADO desde docs/n8n/json/bulk-import-cis.json — plantilla de workflow n8n.
+// Placeholders {{ENV:VAR}} se sustituyen en renderWorkflows(). NO bindea credenciales (lo hace el render).
+/* eslint-disable */
+const bulk_import_cis = {
+  "name": "Bulk Import CIs",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bulk-import-cis",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "46ee1deb-97bb-4f8d-ab78-8981c2eba75a",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "46ee1deb-97bb-4f8d-ab78-8981c2eba75a"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:3000/api/internal/bulk/submit",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "contentType": "multipart-form-data",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d7b2b315-5bde-45ce-9162-5251bfdff63c",
+      "name": "Submit to CMDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Submit to CMDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid"
+  }
+} as const;
+export default bulk_import_cis;

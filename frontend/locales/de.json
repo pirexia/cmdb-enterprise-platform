@@ -787,7 +787,7 @@
       "load_error": "Fehler beim Laden der Alarmkonfiguration",
       "smtp_title": "SMTP-Status",
       "smtp_ok": "Konfiguriert",
-      "smtp_missing": "Nicht konfiguriert (SMTP_HOST / SMTP_USER nicht in ENV gesetzt)",
+      "smtp_missing": "Nicht konfiguriert (SMTP_HOST nicht in ENV gesetzt)",
       "smtp_note": "SMTP-Anmeldedaten werden ausschließlich über Umgebungsvariablen konfiguriert.",
       "config_title": "Globale Konfiguration",
       "enabled": "E-Mail-Alarme aktivieren",
@@ -839,6 +839,26 @@
       "col_status": "Status",
       "col_total": "Alarme",
       "col_msg_id": "Nachrichten-ID / Fehler"
+    },
+    "n8n": {
+      "tab": "n8n / Workflows",
+      "title": "n8n-Bereitstellung",
+      "desc": "Synchronisiert n8n-Anmeldedaten und Workflows mit der aktuellen Umgebungskonfiguration (.env). Idempotent: kann mehrfach ohne Duplikate ausgeführt werden.",
+      "button": "Konfiguration synchronisieren",
+      "running": "Synchronisiere...",
+      "success": "Synchronisierung abgeschlossen",
+      "error": "Synchronisierungsfehler",
+      "no_apikey": "N8N_API_KEY nicht konfiguriert. Automatische Bereitstellung ist nicht verfügbar.",
+      "cred_created": "erstellt",
+      "cred_recreated": "neu erstellt",
+      "cred_skipped": "übersprungen",
+      "wf_created": "erstellt",
+      "wf_updated": "aktualisiert",
+      "wf_active": "aktiv",
+      "wf_inactive": "inaktiv",
+      "section_creds": "Anmeldedaten",
+      "section_wfs": "Workflows",
+      "section_errors": "Fehler"
     }
   },
   "dashboard": {

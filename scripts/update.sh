@@ -459,6 +459,12 @@ check_new_env_vars() {
     "FRONTEND_URL"
     "AZURE_AUTO_PROVISION"
     "LDAP_TLS_REJECT_UNAUTHORIZED"
+    "N8N_INTERNAL_URL"
+    "N8N_API_KEY"
+    "ALERT_FROM_EMAIL"
+    "LDAP_SEARCH_BASE"
+    "LDAP_SYNC_GROUP_DN"
+    "LDAP_SYNC_DOMAIN"
   )
 
   local missing=()
@@ -498,6 +504,16 @@ check_new_env_vars() {
         FRONTEND_URL)              echo "FRONTEND_URL=http://localhost:3001" ;;
         AZURE_AUTO_PROVISION)      echo "AZURE_AUTO_PROVISION=false" ;;
         LDAP_TLS_REJECT_UNAUTHORIZED) echo "LDAP_TLS_REJECT_UNAUTHORIZED=1" ;;
+        # v3.2.0 — n8n provisioning (optional; N8N_API_KEY populated by ensure_n8n_api_key)
+        N8N_INTERNAL_URL)   echo "N8N_INTERNAL_URL=http://cmdb-n8n-main:5678" ;;
+        N8N_API_KEY)        echo "N8N_API_KEY=" ;;
+        ALERT_FROM_EMAIL)   echo "ALERT_FROM_EMAIL=" ;;
+        LDAP_SEARCH_BASE)
+          # Mirror LDAP_BASE_DN if already present (alias used by the login service)
+          local _base; _base="$(grep -E '^LDAP_BASE_DN=' "${env_file}" | cut -d= -f2-)"
+          echo "LDAP_SEARCH_BASE=${_base}" ;;
+        LDAP_SYNC_GROUP_DN) echo "LDAP_SYNC_GROUP_DN=" ;;
+        LDAP_SYNC_DOMAIN)   echo "LDAP_SYNC_DOMAIN=" ;;
       esac
     done
   } >> "${env_file}"
@@ -522,36 +538,133 @@ ensure_required_env_vars() {
     return 0
   fi
 
-  if grep -q '^PLUGIN_DATABASE_URL=' "${env_file}"; then
-    success "PLUGIN_DATABASE_URL already present."
+  local _appended=false
+
+  # ── PLUGIN_DATABASE_URL (required since v2.8.0) ──────────────────────────────
+  if ! grep -q '^PLUGIN_DATABASE_URL=' "${env_file}"; then
+    warn "PLUGIN_DATABASE_URL missing (required by docker-compose.prod.yml since v2.8.0)."
+    if [ "${DRY_RUN}" = "true" ]; then
+      info "[DRY RUN] Would generate a cmdb_plugin password and append PLUGIN_* to ${env_file}."
+    else
+      PLUGIN_DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
+      local db_name="${POSTGRES_DB:-cmdb_db}"
+      {
+        echo ""
+        echo "# ── Added by update.sh ($(date '+%Y-%m-%d')) — Plugin Engine (v2.8.0) ──────────"
+        echo "PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:${PLUGIN_DB_PASSWORD}@postgres:5432/${db_name}"
+        grep -q '^PLUGIN_STORAGE_PATH='          "${env_file}" || echo "PLUGIN_STORAGE_PATH=/var/lib/cmdb/plugins"
+        grep -q '^PLUGIN_MAX_SIZE_MB='           "${env_file}" || echo "PLUGIN_MAX_SIZE_MB=50"
+        grep -q '^PLUGIN_REQUIRE_APPROVAL_PROD=' "${env_file}" || echo "PLUGIN_REQUIRE_APPROVAL_PROD=true"
+        grep -q '^PLUGIN_ENABLE_MARKETPLACE='    "${env_file}" || echo "PLUGIN_ENABLE_MARKETPLACE=false"
+        grep -q '^PLUGIN_MARKETPLACE_URL='       "${env_file}" || echo "PLUGIN_MARKETPLACE_URL="
+        grep -q '^PLUGIN_SIGNING_PUBLIC_KEY='    "${env_file}" || echo "PLUGIN_SIGNING_PUBLIC_KEY="
+      } >> "${env_file}"
+      PLUGIN_ROLE_NEEDS_BOOTSTRAP=true
+      _appended=true
+      success "PLUGIN_* variables appended to ${env_file} (DB role created after deploy)."
+    fi
+  fi
+
+  # ── n8n / Redis secrets (required since v3.0.0, :? guards in compose) ────────
+  local _n8n_missing=()
+  for _v in CMDB_SERVICE_TOKEN REDIS_PASSWORD N8N_ENCRYPTION_KEY N8N_BASIC_AUTH_PASSWORD BACKUP_LOCAL_PATH; do
+    grep -q "^${_v}=" "${env_file}" || _n8n_missing+=("${_v}")
+  done
+  if [ ${#_n8n_missing[@]} -gt 0 ]; then
+    warn "n8n/Redis required vars missing (introduced in v3.0.0): ${_n8n_missing[*]}"
+    if [ "${DRY_RUN}" = "true" ]; then
+      info "[DRY RUN] Would auto-generate secrets and append n8n/Redis vars to ${env_file}."
+    else
+      local _data_path; _data_path="${DATA_PATH:-/opt/cmdb-data}"
+      {
+        echo ""
+        echo "# ── Added by update.sh ($(date '+%Y-%m-%d')) — n8n Queue Mode (v3.0.0) ─────────"
+        grep -q '^CMDB_SERVICE_TOKEN='      "${env_file}" || echo "CMDB_SERVICE_TOKEN=$(openssl rand -hex 32)"
+        grep -q '^REDIS_PASSWORD='          "${env_file}" || echo "REDIS_PASSWORD=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 32)"
+        grep -q '^N8N_ENCRYPTION_KEY='      "${env_file}" || echo "N8N_ENCRYPTION_KEY=$(openssl rand -base64 32)"
+        grep -q '^N8N_BASIC_AUTH_USER='     "${env_file}" || echo "N8N_BASIC_AUTH_USER=admin"
+        grep -q '^N8N_BASIC_AUTH_PASSWORD=' "${env_file}" || echo "N8N_BASIC_AUTH_PASSWORD=$(openssl rand -base64 16 | tr -dc 'A-Za-z0-9' | head -c 20)Aa1!"
+        grep -q '^N8N_ALLOWED_IPS='         "${env_file}" || echo "N8N_ALLOWED_IPS=127.0.0.1/32"
+        grep -q '^BACKUP_LOCAL_PATH='       "${env_file}" || echo "BACKUP_LOCAL_PATH=${_data_path}/backups"
+      } >> "${env_file}"
+      _appended=true
+      success "n8n/Redis secrets appended to ${env_file}."
+    fi
+  fi
+
+  if [ "${_appended}" = "true" ]; then
+    warn "New required variables were appended to ${env_file}. Review before next update."
+  else
+    success "All compose-required env vars are present."
+  fi
+}
+
+# ── Step 6c: Bootstrap n8n API key si N8N_API_KEY está vacía (post-deploy) ────
+# Necesita: n8n arrancado, backend arrancado (para bcrypt). No bloquea el update.
+ensure_n8n_api_key() {
+  [ "${DRY_RUN}" = "true" ] && return 0
+
+  local env_file="${INSTALL_DIR}/.env"
+  [ -f "${env_file}" ] || return 0
+
+  # Solo actuar si la var existe pero está vacía
+  local current_key; current_key="$(grep -E '^N8N_API_KEY=' "${env_file}" | cut -d= -f2-)"
+  if [ -n "${current_key}" ]; then
+    success "N8N_API_KEY ya configurada — aprovisionamiento automático activo."
     return 0
   fi
 
-  warn "PLUGIN_DATABASE_URL missing (required by docker-compose.prod.yml since v2.8.0)."
+  # La var no está en .env aún (instalación muy antigua) o está vacía
+  if ! grep -q '^N8N_API_KEY=' "${env_file}"; then
+    return 0  # será añadida por check_new_env_vars
+  fi
 
-  if [ "${DRY_RUN}" = "true" ]; then
-    info "[DRY RUN] Would generate a cmdb_plugin password, append PLUGIN_* to ${env_file},"
-    info "[DRY RUN] and create the restricted cmdb_plugin DB role after deploy."
+  local _bootstrap_lib="${INSTALL_DIR}/scripts/lib/n8n-bootstrap.sh"
+  [ -f "${_bootstrap_lib}" ] || { warn "n8n-bootstrap.sh no encontrado — N8N_API_KEY no se puede generar."; return 0; }
+
+  step "Bootstrapping n8n API key (N8N_API_KEY vacía)"
+
+  # shellcheck disable=SC1090
+  source "${_bootstrap_lib}"
+
+  # Esperar a que n8n-main esté sano (max 60 s)
+  info "Waiting for n8n to become healthy (max 60 s) ..."
+  local _healthy=false
+  for _i in $(seq 1 30); do
+    if ${RUNTIME} exec cmdb-n8n-main \
+        curl -s http://localhost:5678/healthz 2>/dev/null | grep -q '"status":"ok"'; then
+      _healthy=true; break
+    fi
+    sleep 2
+  done
+
+  if [ "${_healthy}" != "true" ]; then
+    warn "n8n no respondió en 60 s — N8N_API_KEY no generada."
+    warn "Ejecutar manualmente tras arrancar n8n:"
+    warn "  source ${_bootstrap_lib} && KEY=\$(n8n_ensure_owner_and_key)"
+    warn "  sed -i \"s|^N8N_API_KEY=.*|N8N_API_KEY=\$KEY|\" ${env_file}"
+    warn "  ${COMPOSE_CMD} -f ${INSTALL_DIR}/docker-compose.prod.yml restart cmdb-backend-prod"
     return 0
   fi
 
-  PLUGIN_DB_PASSWORD="$(openssl rand -base64 24 | tr '+/=' 'ABC' | head -c 24)Aa1!"
-  local db_name="${POSTGRES_DB:-cmdb_db}"
+  export CTR_EXEC="${RUNTIME} exec"
+  export N8N_CTR="cmdb-n8n-main"
+  export PG_CTR="cmdb-postgres-prod"
+  export BACKEND_CTR="cmdb-backend-prod"
+  export DB_USER="${POSTGRES_USER:-admin}"
+  export DB_NAME="${POSTGRES_DB:-cmdb_db}"
 
-  {
-    echo ""
-    echo "# ── Added by update.sh ($(date '+%Y-%m-%d')) — Plugin Engine (v2.8.0) ──────────"
-    echo "PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:${PLUGIN_DB_PASSWORD}@postgres:5432/${db_name}"
-    grep -q '^PLUGIN_STORAGE_PATH='          "${env_file}" || echo "PLUGIN_STORAGE_PATH=/var/lib/cmdb/plugins"
-    grep -q '^PLUGIN_MAX_SIZE_MB='           "${env_file}" || echo "PLUGIN_MAX_SIZE_MB=50"
-    grep -q '^PLUGIN_REQUIRE_APPROVAL_PROD=' "${env_file}" || echo "PLUGIN_REQUIRE_APPROVAL_PROD=true"
-    grep -q '^PLUGIN_ENABLE_MARKETPLACE='    "${env_file}" || echo "PLUGIN_ENABLE_MARKETPLACE=false"
-    grep -q '^PLUGIN_MARKETPLACE_URL='       "${env_file}" || echo "PLUGIN_MARKETPLACE_URL="
-    grep -q '^PLUGIN_SIGNING_PUBLIC_KEY='    "${env_file}" || echo "PLUGIN_SIGNING_PUBLIC_KEY="
-  } >> "${env_file}"
-
-  PLUGIN_ROLE_NEEDS_BOOTSTRAP=true
-  success "PLUGIN_* variables appended to ${env_file} (DB role created after deploy)."
+  local _key; _key="$(n8n_ensure_owner_and_key 2>/dev/null)" || _key=""
+  if [ -n "${_key}" ]; then
+    sed -i "s|^N8N_API_KEY=.*|N8N_API_KEY=${_key}|" "${env_file}"
+    unset _key
+    success "N8N_API_KEY bootstrapped y escrita en .env"
+    info "Reiniciando backend para activar provisionOnBoot ..."
+    ${COMPOSE_CMD} -f "${INSTALL_DIR}/docker-compose.prod.yml" restart cmdb-backend-prod 2>/dev/null || true
+  else
+    warn "Bootstrap de API key falló — el aprovisionamiento n8n queda desactivado."
+    warn "Reintentar: source ${_bootstrap_lib} && n8n_ensure_owner_and_key"
+  fi
 }
 
 # ── Step 6b: Bootstrap the restricted cmdb_plugin DB role (post-deploy) ───────
@@ -830,6 +943,7 @@ main() {
   build_images          || rollback "Image build failed"
   deploy                || rollback "Health check failed after deploy"
   ensure_plugin_db_role      # create cmdb_plugin role now that Postgres is up
+  ensure_n8n_api_key         # bootstrap N8N_API_KEY if empty (v3.2.0+)
   ensure_ollama_models
 
   if [ "${DRY_RUN}" = "true" ]; then

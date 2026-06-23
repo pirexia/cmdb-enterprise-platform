@@ -482,8 +482,8 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.0.1 — ✅ LIBERADA (tag `v3.0.1`, merge develop→main, 2026-06-21)
-**Próxima versión:** —
+**Versión actual en producción:** v3.1.0 — ✅ LIBERADA (tag `v3.1.0`, merge develop→main, 2026-06-22)
+**En desarrollo:** v3.2.0 — `.env` fuente de verdad + aprovisionamiento n8n automático (T5–T11 ✅ en develop; T12 release pendiente orden explícita)
 **Rama activa:** `develop`
 **PRs abiertos:** —
 
@@ -510,6 +510,8 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+- **v3.2.0** 🚧 EN DESARROLLO (develop, 2026-06-23): `.env` única fuente de verdad para n8n — módulo `n8n-provisioning` (provisioner + onBoot + router + workflows), UI Configuración → n8n (resync card, i18n ×6), `install.sh` Phase 10d bootstrap, `update.sh` `ensure_n8n_api_key`. Commits T5–T11 en develop; T12 (release) pendiente.
+- **v3.1.0** ✅ LIBERADA (2026-06-22): módulo Línea de Tiempo Gantt — backend 3 endpoints (`/api/timeline/items`, `/filters`, `/legacy/:ciId`) + SVG Gantt frontend + i18n ×6 + docs.
 - **v3.0.1** ✅ LIBERADA (2026-06-21): UI de configuración de canales Teams/Slack en Alertas (campos write-only, fix de fuga de secretos en `getConfig`); 7 workflows n8n importables en `docs/n8n/json/` + guía instalación/admin en `docs/n8n/WORKFLOWS.md`; fix hostname M2M (`backend:3000`, no `cmdb-backend`); fix paginación completa de CIs (`fetchAllCIs`) en vistas de lista/agregación; skills n8n (`n8n-workflow-patterns`, `n8n-node-configuration`).
 - **v3.0.0** ✅ LIBERADA (2026-06-21): n8n Queue Mode (main + 2 workers) + Redis 7; nginx `/n8n/` con auth_request ADMIN; M2M auth `X-CMDB-Service-Token`; `/api/internal/*` router; 5 dominios de cron migrados a n8n; `pg_dump` backup; Teams/Slack canales. `docs/PLAN_STATUS_v3.0.0.md`.
 - **v2.9.2** ✅ LIBERADA (2026-06-20): AI/RAG improvements — qwen3:latest + think:false; stats CMDB en prompt (fix conteo); OCR density trigger + DPI 300; DecommissionPlan indexado en RAG (chip Decomisión en chat); cascada re-index CIs cuando maestro renombrado; `modules/ai/` extraído de `index.ts` (−640 líneas). `docs/PLAN_v2.9.2.md`.
@@ -527,6 +529,9 @@ Rules:
 1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
 2. Actualizar esta sección con la nueva versión y estado.
 3. Rama: `feature/...` cortada de `develop`.
+
+### Resumen v3.2.0
+`.env` como única fuente de verdad para n8n: módulo `backend/src/modules/n8n-provisioning/` con `provisioner.ts` (idempotente: lee credenciales vía `$queryRaw` en `n8n_data.credentials_entity`, delete+create o create; workflows via API list, update o create; activación por política `smtp`/`ldap`/`always`), `onBoot.ts` (fire-and-forget, retry ×10 cada 6s), `router.ts` (`POST /api/admin/n8n/resync`, solo ADMIN, AuditLog `N8N_RESYNC`), `workflows.ts` (plantillas en código). UI: `N8nResyncCard` en Configuración → pestaña n8n (ADMIN only), i18n ×6. `install.sh` Phase 10d: espera healthz n8n, `n8n_ensure_owner_and_key`, inyecta `N8N_API_KEY` en `.env` via `sed`, reinicia backend. `update.sh`: `ensure_required_env_vars` ampliado (genera secretos n8n/Redis con `openssl rand`), `check_new_env_vars` con vars v3.2.0, nueva `ensure_n8n_api_key()` post-deploy. **Variable nueva crítica: `N8N_API_KEY` (auto-generada, vacía → aprovisionamiento desactivado).**
 
 ### Resumen v3.0.0
 n8n Queue Mode (main + 2 workers) + Redis 7 integrados en ambos compose; nginx `/n8n/` con auth_request ADMIN. M2M auth `X-CMDB-Service-Token` + `/api/internal/*` router (`modules/internal/`). 5 dominios de scheduling migrados de node-cron a n8n: alertas diarias, 4 crons de mantenimiento, RAG indexing (*/30s), bulk CI import (webhook), LDAP sync. 6 módulos internos nuevos: alerts, maintenance, rag, bulk, users, backup, notify. `postgresql16-client` en Dockerfile backend para `pg_dump`. DB migration: `alert_config` + `alert_rules` con canales Teams/Slack. `docs/n8n/WORKFLOWS.md` + `ADMIN_GUIDE.md` + `BACKUP_RESTORE_GUIDE.md`. **Variables de entorno críticas nuevas: `CMDB_SERVICE_TOKEN` (≥32 chars), `REDIS_PASSWORD`, `N8N_ENCRYPTION_KEY`, `BACKUP_LOCAL_PATH`.**

@@ -164,6 +164,7 @@ services:
         NEXT_PUBLIC_BULK_MAX_FILES: ${BULK_MAX_FILES:-20}
         NEXT_PUBLIC_BULK_MAX_TOTAL_MB: ${BULK_MAX_TOTAL_MB:-200}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_TAG: ${GIT_TAG:-unknown}
     image: cmdb-frontend:latest
     container_name: cmdb-frontend-prod
     restart: unless-stopped

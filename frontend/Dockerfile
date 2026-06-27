@@ -46,6 +46,9 @@ ENV NEXT_PUBLIC_COMPANY_NAME=$NEXT_PUBLIC_COMPANY_NAME
 ARG GIT_COMMIT=unknown
 ENV GIT_COMMIT=$GIT_COMMIT
 
+ARG GIT_TAG=unknown
+ENV GIT_TAG=$GIT_TAG
+
 RUN npm run build
 
 # ── Stage 3: Runner ──────────────────────────────────────────────────────────

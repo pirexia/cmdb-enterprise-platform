@@ -16,7 +16,7 @@
 | Alta      | 1           | 1          | 0          |
 | Media     | 1           | 1          | 0          |
 | Baja      | 1           | 1          | 0          |
-| **Total** | **3**       | **3**      | **0**      |
+| **Total** | **4**       | **4**      | **0**      |
 
 **Riesgo global residual post-corrección:** Bajo. No se encontraron vulnerabilidades críticas ni bugs funcionales en los flujos principales (auth, CRUD, upload, SSRF, plugin engine).
 
@@ -107,6 +107,26 @@ app.use('/api/admin/n8n', authenticateToken, requireAdmin, createN8nProvisioning
 
 ---
 
+### BUG-004 — Medium | Infra | N8N_API_KEY + N8N_INTERNAL_URL no pasados al backend
+
+**GitHub Issue:** [#168](https://github.com/pirexia/cmdb-enterprise-platform/issues/168)
+**Archivos:** `docker-compose.yml:128`, `docker-compose.prod.yml:128`
+
+**Problema:** El módulo `n8n-provisioning` lee `N8N_API_KEY` y `N8N_INTERNAL_URL` de `process.env`, pero ninguno de los dos compose files declaraba estas variables en el bloque `environment` del servicio `backend`. Resultado: `loadN8nProvisioningConfig()` devuelve `apiKey: null` → `onBoot` emite warning silencioso y omite todo el aprovisionamiento → workflows nunca se crean.
+
+**Impacto:** Workflows n8n (Alertas, Mantenimiento, Backup, RAG Indexing) no se aprovisionan automáticamente en ningún despliegue dev ni prod. El botón "Resincronizar n8n" tampoco funciona.
+
+**Corrección (commit `85500e6`):**
+```yaml
+# Añadido en environment del servicio backend (ambos compose):
+N8N_API_KEY:       ${N8N_API_KEY:-}
+N8N_INTERNAL_URL:  ${N8N_INTERNAL_URL:-http://n8n-main:5678}
+```
+
+**Estado:** ✅ Corregido
+
+---
+
 ## Hallazgos informativos (sin issue — riesgo aceptado o documentado)
 
 ### INFO-001 — vm.Script no es sandbox de seguridad
@@ -157,7 +177,7 @@ Cuando `CMDB_SERVICE_TOKEN` no está definido en entornos no-producción, el mid
 |---------|-------|-------|
 | Errores TS nuevos | 0 | Solo pre-existing `license`/`licenseUser` (pre-existing conocidos) |
 | Cobertura de tests | No medible en host | Requiere contenedor backend con ts-jest |
-| Issues GitHub creados | 3 | #165 (High), #166 (Medium), #167 (Low) |
+| Issues GitHub creados | 4 | #165 (High), #166 (Medium), #167 (Low), #168 (Medium/Infra) |
 | Bugs Críticos corregidos | 0 | No se encontraron |
 | Bugs Altos corregidos | 1 | BUG-001 |
 | Bugs Medios corregidos | 1 | BUG-002 |

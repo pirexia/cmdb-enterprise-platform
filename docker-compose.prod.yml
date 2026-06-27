@@ -426,3 +426,6 @@ networks:
 
   cmdb-public:
     name: cmdb-public  # nginx ↔ frontend ↔ backend ↔ n8n (con egress para SMTP/Teams/Slack/LDAP)
+    ipam:
+      config:
+        - subnet: 10.89.2.0/24  # resolver fijo → 10.89.2.1 (nginx frontend.conf)

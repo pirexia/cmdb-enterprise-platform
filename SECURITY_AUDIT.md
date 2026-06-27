@@ -1,10 +1,74 @@
-# 🔐 Security Audit & ISO 27001 Compliance Report
+# Security Audit & ISO 27001 Compliance Report
 
 **Platform:** CMDB Enterprise Platform  
-**Audit Date:** 2026-04-07 (updated)
-**Auditor:** DevSecOps Team
-**Version:** v1.3.0  
+**Last Updated:** 2026-06-27 (v3.3.0 audit — see section below)
+**Previous audit:** 2026-04-07 (v1.3.0)
 **Status:** ✅ Active Controls Implemented
+
+---
+
+## v3.3.0 Security Audit (2026-06-27)
+
+**Auditor:** Claude Sonnet 4.6 (autónomo)
+**Rama auditada:** `develop` desde tag `v3.2.0`
+**Metodología:** SAST (análisis estático) + revisión de superficie de ataque (OWASP Top 10)
+
+### Resumen de findings
+
+| ID | Severidad | Estado | Descripción |
+|----|-----------|--------|-------------|
+| BUG-001 | High | ✅ Corregido | LDAP TLS: `allowUnauthorizedCerts` con lógica invertida (CWE-295, OWASP A02) |
+| BUG-002 | Medium | ✅ Corregido | RBAC manual en `/api/admin/n8n/resync` fuera del patrón canónico (CWE-284, OWASP A01) |
+| BUG-003 | Low | ✅ Corregido | Dev compose sin purga de ejecuciones n8n → crecimiento ilimitado de BD |
+| BUG-004 | Medium | ✅ Corregido | `N8N_API_KEY`/`N8N_INTERNAL_URL` no pasadas al contenedor backend → aprovisionamiento silencioso |
+
+**Riesgo residual post-corrección:** Bajo. 0 críticos, 0 altos pendientes.
+
+### Módulo n8n-provisioning — análisis detallado
+
+Nuevo en v3.2.0. Superficie de ataque auditada:
+
+| Archivo | Checks | Resultado |
+|---------|--------|-----------|
+| `apiClient.ts` | SSRF, injection en URLs, información sensible en logs | ✅ Limpio — `encodeURIComponent` en IDs; URL base desde env, no input de usuario; errors logean solo status HTTP |
+| `config.ts` | Secrets en código, efectos secundarios | ✅ Limpio — env-only, sin efectos secundarios; secrets (SMTP_PASS, LDAP_BIND_PASSWORD) nunca logeados |
+| `onBoot.ts` | DoS (unbounded retries), resource leak, throws | ✅ Limpio — retries acotados (10×6s); fire-and-forget; PrismaClient local dentro del scope |
+| `provisioner.ts` | SQL injection, SSRF, credential leak | ✅ Limpio — `$queryRaw` con tagged template literal; fail-soft por ítem; credentials no se loguean |
+| `credentials.ts` | TLS bypass, secrets | ✅ Corregido (BUG-001) — `allowUnauthorizedCerts` ahora opt-in explícito vía `LDAP_ALLOW_UNAUTHORIZED_CERTS=true` |
+| `router.ts` | RBAC | ✅ Corregido (BUG-002) — RBAC delegado al mount (`requireAdmin` en `index.ts:314`) |
+
+### Checklist OWASP Top 10 (cambios v3.2.0 → v3.3.0)
+
+| # | Risk | Resultado |
+|---|------|-----------|
+| A01 | Broken Access Control | ✅ BUG-002 corregido; `requireAdmin` en mount |
+| A02 | Cryptographic Failures | ✅ BUG-001 corregido; LDAP TLS verificado por defecto |
+| A03 | Injection | ✅ `$queryRaw` tagged literal en `provisioner.ts:67`; `encodeURIComponent` en apiClient |
+| A04 | Insecure Design | ✅ Provisioner idempotente; onBoot fail-safe; n8n API key como secreto de entorno |
+| A05 | Security Misconfiguration | ✅ BUG-003 corregido; BUG-004 corregido; EXECUTIONS_DATA_PRUNE en dev compose |
+| A06 | Vulnerable Components | ℹ️ Ver nota npm audit abajo |
+| A07 | Auth & Session Failures | ✅ Sin cambios — HttpOnly JWT, ADMIN MFA obligatorio |
+| A08 | Software & Data Integrity | ✅ Sin cambios en esta superficie |
+| A09 | Logging & Monitoring | ✅ `onBoot` loguea todos los outcomes; errors internos, no expuestos |
+| A10 | SSRF | ✅ `N8N_INTERNAL_URL` fija desde env; no se acepta URL de usuario para llamadas outbound |
+
+### npm audit (2026-06-27)
+
+```bash
+# Ejecutar dentro del contenedor backend para resultados definitivos:
+podman exec cmdb-backend sh -c "cd /app && npm audit --production"
+```
+
+> Pendiente de ejecución en el contenedor (sin acceso directo al entorno npm del host durante esta sesión).
+> Los packages del host pueden diferir de los del contenedor. Ver audit anterior (v1.3.0) sin vulnerabilidades.
+
+### Cambios de infraestructura auditados
+
+- **nginx resolver** (`d04b9f8`): cambiado de `10.89.1.1` a `10.89.0.1` (dev). Impacto de seguridad: ninguno — corrección operacional para DNS interno de Podman. El resolver es interno y no accesible desde internet.
+- **GIT_TAG en frontend** (`0c7abc4`): inyectado como `ARG` en Dockerfile en build-time. No es user-controlled en runtime. Sin impacto de seguridad.
+- **EXECUTIONS_DATA_PRUNE** (`0c7abc4`): limita almacenamiento de ejecuciones en n8n. Mejora A09 (logging apropiado sin acumulación infinita).
+
+---
 
 ---
 

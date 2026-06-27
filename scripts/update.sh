@@ -52,6 +52,7 @@ COMPOSE_CMD_ARRAY=()
 AUTO_YES=false
 NO_CACHE=false
 FORCE=false
+SKIP_BACKUP=false
 DRY_RUN=false
 REINDEX_FLAG=false
 RAG_PRESENT=false
@@ -76,7 +77,24 @@ err_handler() {
 detect_runtime() {
   step "Detecting container runtime"
 
-  if command -v docker &>/dev/null; then
+  # Detect podman first — even if 'docker' exists it may be a podman shim
+  # (RHEL 9 ships podman-docker which makes `docker --version` print "podman …").
+  # In that case, podman-compose is the correct compose binary.
+  local is_podman_shim=false
+  if command -v docker &>/dev/null && docker --version 2>/dev/null | grep -qi podman; then
+    is_podman_shim=true
+  fi
+
+  if command -v podman &>/dev/null || [ "${is_podman_shim}" = "true" ]; then
+    RUNTIME="podman"
+    if command -v podman-compose &>/dev/null; then
+      COMPOSE_CMD="podman-compose"
+      COMPOSE_CMD_ARRAY=(podman-compose)
+    else
+      error "Podman found but 'podman-compose' is not available. Install it first."
+      exit 1
+    fi
+  elif command -v docker &>/dev/null; then
     RUNTIME="docker"
     # Prefer the Compose V2 plugin; fall back to the legacy standalone binary
     if docker compose version &>/dev/null 2>&1; then
@@ -87,15 +105,6 @@ detect_runtime() {
       COMPOSE_CMD_ARRAY=(docker-compose)
     else
       error "Docker found but neither 'docker compose' plugin nor 'docker-compose' binary is available."
-      exit 1
-    fi
-  elif command -v podman &>/dev/null; then
-    RUNTIME="podman"
-    if command -v podman-compose &>/dev/null; then
-      COMPOSE_CMD="podman-compose"
-      COMPOSE_CMD_ARRAY=(podman-compose)
-    else
-      error "Podman found but 'podman-compose' is not available. Install it first."
       exit 1
     fi
   else
@@ -873,14 +882,15 @@ main() {
   # Parse flags
   for arg in "$@"; do
     case "${arg}" in
-      --yes)      AUTO_YES=true     ;;
-      --no-cache) NO_CACHE=true     ;;
-      --force)    FORCE=true        ;;
-      --dry-run)  DRY_RUN=true      ;;
-      --reindex)  REINDEX_FLAG=true ;;
+      --yes)          AUTO_YES=true     ;;
+      --no-cache)     NO_CACHE=true     ;;
+      --force)        FORCE=true        ;;
+      --skip-backup)  SKIP_BACKUP=true  ;;
+      --dry-run)      DRY_RUN=true      ;;
+      --reindex)      REINDEX_FLAG=true ;;
       *)
         error "Unknown flag: ${arg}"
-        echo "Usage: bash scripts/update.sh [--yes] [--no-cache] [--force] [--dry-run] [--reindex]" >&2
+        echo "Usage: bash scripts/update.sh [--yes] [--no-cache] [--force] [--skip-backup] [--dry-run] [--reindex]" >&2
         exit 1
         ;;
     esac
@@ -913,7 +923,13 @@ main() {
   detect_runtime
   version_guard         # exits cleanly if already up to date
 
-  pre_update_backup
+  if [ "${SKIP_BACKUP}" = "true" ]; then
+    warn "--skip-backup: omitiendo backup pre-deploy (usar solo en primer despliegue o entorno sin datos)."
+    # Sourcing .env es necesario para las detecciones RAG/LDAP posteriores
+    set -a; [ -f "${INSTALL_DIR}/.env" ] && source "${INSTALL_DIR}/.env"; set +a
+  else
+    pre_update_backup
+  fi
 
   # ── RAG subsystem detection (requires .env sourced by pre_update_backup) ──────
   local rag_detected

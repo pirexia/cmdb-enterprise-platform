@@ -15,8 +15,21 @@ if (!commit || commit === 'unknown') {
   } catch { /* outside git */ }
 }
 
+// Prefer GIT_TAG env (injected at Docker build time), then git describe, then package.json
+let version = process.env.GIT_TAG || 'unknown';
+if (!version || version === 'unknown') {
+  try {
+    version = execSync('git describe --tags --always', { cwd: root }).toString().trim();
+  } catch { /* outside git */ }
+}
+if (!version || version === 'unknown') {
+  version = pkg.version;
+}
+// Normalize: strip leading 'v' for display consistency
+version = version.replace(/^v/, '');
+
 const payload = {
-  version: pkg.version,
+  version,
   commit,
   buildDate: new Date().toISOString(),
 };

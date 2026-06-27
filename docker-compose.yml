@@ -125,6 +125,9 @@ services:
       BACKUP_DIR: /app/backups
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
+      # ── n8n Provisioning ──────────────────────────────────────────────────────
+      N8N_API_KEY:       ${N8N_API_KEY:-}
+      N8N_INTERNAL_URL:  ${N8N_INTERNAL_URL:-http://n8n-main:5678}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z
@@ -155,6 +158,8 @@ services:
         # Bulk import client-side limits (must match backend BULK_MAX_* for clean UX)
         NEXT_PUBLIC_BULK_MAX_FILES: ${BULK_MAX_FILES:-20}
         NEXT_PUBLIC_BULK_MAX_TOTAL_MB: ${BULK_MAX_TOTAL_MB:-200}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_TAG: ${GIT_TAG:-unknown}
     container_name: cmdb-frontend
     restart: always
     environment:
@@ -247,6 +252,14 @@ services:
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
+      # Execution data retention (dev: shorter than prod to keep DB small)
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 24
+      EXECUTIONS_DATA_PRUNE_MAX_COUNT: 500
     volumes:
       - n8n-data:/home/node/.n8n:Z
     ports:
@@ -279,6 +292,11 @@ services:
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
+      # Execution data retention (ver n8n-main)
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
     # Workers are stateless: encryption key from N8N_ENCRYPTION_KEY (env), DB is
     # Postgres, binary-data mode is default (in-DB). No .n8n mount — n8n uses the
     # image's own /home/node/.n8n (node-owned, writable, ephemeral); mounting the
@@ -309,6 +327,11 @@ services:
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:-dev-service-token-change-in-prod-min-32}
       GENERIC_TIMEZONE: Europe/Madrid
       TZ: Europe/Madrid
+      # Execution data retention (ver n8n-main)
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
     # Workers are stateless: encryption key from N8N_ENCRYPTION_KEY (env), DB is
     # Postgres, binary-data mode is default (in-DB). No .n8n mount — n8n uses the
     # image's own /home/node/.n8n (node-owned, writable, ephemeral); mounting the

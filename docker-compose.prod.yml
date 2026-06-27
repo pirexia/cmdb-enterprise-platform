@@ -126,6 +126,9 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
       # v3.0.0 — M2M service auth token (shared with n8n)
       CMDB_SERVICE_TOKEN: ${CMDB_SERVICE_TOKEN:?CMDB_SERVICE_TOKEN required (min 32 chars)}
+      # ── n8n Provisioning ──────────────────────────────────────────────────────
+      N8N_API_KEY:       ${N8N_API_KEY:-}
+      N8N_INTERNAL_URL:  ${N8N_INTERNAL_URL:-http://n8n-main:5678}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z
@@ -164,6 +167,7 @@ services:
         NEXT_PUBLIC_BULK_MAX_FILES: ${BULK_MAX_FILES:-20}
         NEXT_PUBLIC_BULK_MAX_TOTAL_MB: ${BULK_MAX_TOTAL_MB:-200}
         GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        GIT_TAG: ${GIT_TAG:-unknown}
     image: cmdb-frontend:latest
     container_name: cmdb-frontend-prod
     restart: unless-stopped

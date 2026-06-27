@@ -1549,6 +1549,15 @@ curl -s -H "X-CMDB-Service-Token: $TOKEN" \
   http://localhost:3000/api/internal/ping                        # → {"pong":true}
 ```
 
+> **v3.3.0 — Additional n8n-provisioning environment variables:**
+>
+> | Variable | Default | Description |
+> |----------|---------|-------------|
+> | `N8N_INTERNAL_URL` | `http://n8n-main:5678` | Internal URL used by the backend to reach n8n. Change only if the n8n container has a different name |
+> | `LDAP_ALLOW_UNAUTHORIZED_CERTS` | `false` | Set `true` ONLY in dev environments with ldaps:// and a self-signed certificate. Controls TLS certificate verification in the n8n LDAP workflow credential |
+>
+> If n8n workflows fail after an update, consult **`docs/n8n/TROUBLESHOOTING.md`** — it documents the three most common issues (INC-001: provisioning skipped, INC-002: 502 nginx, INC-003: execution accumulation).
+
 ---
 
 ## 14. OpenShift / Kubernetes Deployment

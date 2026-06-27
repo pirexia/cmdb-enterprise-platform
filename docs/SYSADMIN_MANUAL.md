@@ -1584,6 +1584,15 @@ curl -s -H "X-CMDB-Service-Token: $TOKEN" \
 > podman-compose -f docker-compose.prod.yml restart cmdb-backend-prod
 > ```
 
+> **v3.3.0 — Variables adicionales del módulo n8n-provisioning:**
+>
+> | Variable | Por defecto | Descripción |
+> |----------|-------------|-------------|
+> | `N8N_INTERNAL_URL` | `http://n8n-main:5678` | URL interna de n8n para el backend. Cambiar solo si el servicio n8n tiene un nombre de contenedor distinto |
+> | `LDAP_ALLOW_UNAUTHORIZED_CERTS` | `false` | Poner `true` SOLO en dev con LDAP/ldaps y certificado autofirmado. Aplica a la credencial n8n LDAP; desactiva verificación TLS del servidor LDAP en los workflows |
+>
+> Si los workflows n8n dan error tras actualizar, consultar **`docs/n8n/TROUBLESHOOTING.md`** — documenta las tres incidencias más comunes (INC-001: aprovisionamiento omitido, INC-002: 502 nginx, INC-003: ejecuciones acumuladas).
+
 ---
 
 ## 14. Despliegue en OpenShift / Kubernetes

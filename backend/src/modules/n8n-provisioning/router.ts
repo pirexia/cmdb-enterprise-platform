@@ -15,15 +15,7 @@ export function createN8nProvisioningRouter(prisma: PrismaClient): Router {
   const router = Router();
 
   router.post('/resync', async (req: any, res: any) => {
-    // 401 si no hay usuario (autenticación gestionada por el middleware externo)
-    if (!req.user) {
-      return res.status(401).json({ error: 'No autenticado' });
-    }
-    // 403 si no es ADMIN
-    if (req.user.role !== 'ADMIN') {
-      return res.status(403).json({ error: 'Se requiere rol ADMIN' });
-    }
-
+    // Auth y RBAC gestionados por authenticateToken + requireAdmin en el mount (index.ts)
     const cfg = loadN8nProvisioningConfig();
     if (!cfg.apiKey) {
       return res.status(503).json({ error: 'N8N_API_KEY no configurada; aprovisionamiento no disponible' });

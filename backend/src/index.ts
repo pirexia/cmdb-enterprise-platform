@@ -310,8 +310,8 @@ app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 // Timeline module — read-only Gantt data; all authenticated roles allowed (VIEWER+)
 app.use('/api/timeline', authenticateToken, createTimelineRouter(prisma));
 
-// n8n Provisioning — resync bajo demanda (ADMIN only; auth interna en el router)
-app.use('/api/admin/n8n', authenticateToken, createN8nProvisioningRouter(prisma));
+// n8n Provisioning — resync bajo demanda (ADMIN only)
+app.use('/api/admin/n8n', authenticateToken, requireAdmin, createN8nProvisioningRouter(prisma));
 
 // ── Internal M2M router — /api/internal/* ────────────────────────────────────
 // Accessible ONLY from the internal Podman network (n8n-workers → backend).

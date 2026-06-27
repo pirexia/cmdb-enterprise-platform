@@ -72,7 +72,9 @@ export function buildLdapCredential(cfg: N8nProvisioningConfig): LdapCredential 
       bindPassword: bindPassword ?? '',
       baseDn: baseDN ?? '',
       connectionSecurity,
-      allowUnauthorizedCerts: connectionSecurity !== 'none',
+      // Never skip cert verification — allowUnauthorizedCerts: true disables TLS validation (MITM risk).
+      // For self-signed certs in dev, set LDAP_ALLOW_UNAUTHORIZED_CERTS=true explicitly.
+      allowUnauthorizedCerts: process.env.LDAP_ALLOW_UNAUTHORIZED_CERTS === 'true',
     },
   };
 }

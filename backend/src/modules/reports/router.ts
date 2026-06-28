@@ -6,7 +6,8 @@ import { requireReportAccess } from './middleware.js';
 import { ReportQuerySchema, ExportQuerySchema, EXPORT_ROW_LIMIT } from './schemas.js';
 import { logReportView, logReportExport } from './audit.js';
 import { toCSV, toXLSX } from './export.js';
-import type { UserRole, ReportFilters } from './types.js';
+import type { UserRole, ReportFilters, ReportResult } from './types.js';
+import { pluginRuntime, routeRegistry } from '../plugins/engine.js';
 
 type AuthRequest = Request & { user?: { email?: string; role?: UserRole } };
 
@@ -38,7 +39,19 @@ export function createReportsRouter(prisma: PrismaClient): Router {
     const filters = parsed.data as ReportFilters;
 
     try {
-      const result = await def.query!(prisma, filters);
+      let result: ReportResult;
+
+      if (def.source === 'plugin' && def.pluginId && def.routePath) {
+        const routeDef = routeRegistry.match(def.pluginId, 'GET', def.routePath);
+        if (!routeDef) {
+          res.status(503).json({ error: 'Plugin report route not registered' });
+          return;
+        }
+        const raw = await pluginRuntime.runRoute(routeDef, { query: filters });
+        result = (raw ?? { data: [], total: 0 }) as ReportResult;
+      } else {
+        result = await def.query!(prisma, filters);
+      }
 
       // Fire-and-forget audit log (non-blocking)
       void logReportView(prisma, req.user?.email ?? 'unknown', def.id, {
@@ -71,7 +84,19 @@ export function createReportsRouter(prisma: PrismaClient): Router {
     const filters: ReportFilters = { ...rest, page: 1, limit: EXPORT_ROW_LIMIT };
 
     try {
-      const result = await def.query!(prisma, filters);
+      let result: ReportResult;
+
+      if (def.source === 'plugin' && def.pluginId && def.routePath) {
+        const routeDef = routeRegistry.match(def.pluginId, 'GET', def.routePath);
+        if (!routeDef) {
+          res.status(503).json({ error: 'Plugin report route not registered' });
+          return;
+        }
+        const raw = await pluginRuntime.runRoute(routeDef, { query: filters });
+        result = (raw ?? { data: [], total: 0 }) as ReportResult;
+      } else {
+        result = await def.query!(prisma, filters);
+      }
 
       void logReportExport(prisma, req.user?.email ?? 'unknown', def.id, format, {
         from: filters.from, to: filters.to, search: filters.search, total: result.total,

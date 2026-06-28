@@ -41,6 +41,29 @@ export const PluginManifestSchema = z.object({
     'InventoryColumn',
     'MapOverlay',
   ])).default([]),
+  reports: z.array(z.object({
+    id: z.string().regex(/^[a-z0-9-]+$/, 'report id must be kebab-case'),
+    nameKey: z.string(),
+    descriptionKey: z.string(),
+    category: z.enum(['inventory', 'security', 'financial', 'compliance', 'lifecycle', 'audit']),
+    minRole: z.enum(['ADMIN', 'AUDITOR', 'VIEWER']).default('VIEWER'),
+    icon: z.string().default('BarChart2'),
+    tags: z.array(z.string()).default([]),
+    exportFormats: z.array(z.enum(['csv', 'xlsx'])).default(['csv']),
+    columns: z.array(z.object({
+      key: z.string(),
+      labelKey: z.string(),
+      type: z.enum(['string', 'number', 'date', 'badge']).optional(),
+      sortable: z.boolean().optional(),
+    })).default([]),
+    filters: z.array(z.object({
+      key: z.string(),
+      type: z.enum(['date-range', 'select', 'multi-select', 'search', 'toggle']),
+      labelKey: z.string(),
+      options: z.array(z.object({ value: z.string(), labelKey: z.string() })).optional(),
+    })).default([]),
+    routePath: z.string().startsWith('/'), // registered plugin route that serves /data
+  })).default([]),
   signature: z.string().optional(), // Ed25519 base64
 });
 

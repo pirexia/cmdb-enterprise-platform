@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import type { Application } from 'express';
 import { PluginManifest, PluginManifestSchema, PluginStatus } from './schemas.js';
 import { pluginAudit } from './audit.js';
+import { registerReport, unregisterPluginReports } from '../reports/registry.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -613,12 +614,38 @@ export class PluginRuntime {
         permissions, allowedHosts, config,
       });
     }
+
+    const manifestTyped = manifest as { reports?: unknown[] };
+    if (Array.isArray(manifestTyped.reports)) {
+      for (const rpt of manifestTyped.reports as Array<{
+        id: string; nameKey: string; descriptionKey: string;
+        category: string; minRole: string; icon: string; tags: string[];
+        exportFormats: string[]; columns: unknown[]; filters: unknown[]; routePath: string;
+      }>) {
+        registerReport({
+          id: rpt.id,
+          nameKey: rpt.nameKey,
+          descriptionKey: rpt.descriptionKey,
+          category: rpt.category as import('../reports/types.js').ReportCategory,
+          minRole: (rpt.minRole ?? 'VIEWER') as import('../reports/types.js').UserRole,
+          icon: rpt.icon ?? 'BarChart2',
+          tags: rpt.tags ?? [],
+          exportFormats: (rpt.exportFormats ?? ['csv']) as ('csv' | 'xlsx')[],
+          columns: rpt.columns as import('../reports/types.js').ReportColumn[],
+          filters: rpt.filters as import('../reports/types.js').ReportFilterDefinition[],
+          source: 'plugin',
+          pluginId: plugin.pluginId,
+          routePath: rpt.routePath,
+        });
+      }
+    }
   }
 
   unregisterPlugin(pluginDbId: string, pluginIdKebab: string): void {
     hookRegistry.unregisterPlugin(pluginDbId);
     cronRegistry.stopPlugin(pluginDbId);
     routeRegistry.removePlugin(pluginIdKebab);
+    unregisterPluginReports(pluginIdKebab);
   }
 }
 

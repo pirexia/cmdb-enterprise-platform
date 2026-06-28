@@ -10,11 +10,17 @@ const BADGE_COLORS: Record<string, string> = {
   ACTIVO:          "bg-emerald-50 text-emerald-700",
   INACTIVO:        "bg-slate-100 text-slate-500",
   RETIRADO:        "bg-rose-50 text-rose-600",
-  // criticality
+  // criticality / business impact
   MISSION_CRITICAL:"bg-rose-100 text-rose-800",
+  CRITICAL:        "bg-rose-100 text-rose-800",
   HIGH:            "bg-orange-50 text-orange-700",
   MEDIUM:          "bg-yellow-50 text-yellow-700",
   LOW:             "bg-slate-50 text-slate-600",
+  // data classification
+  PUBLIC:          "bg-emerald-50 text-emerald-700",
+  INTERNAL:        "bg-blue-50 text-blue-700",
+  CONFIDENTIAL:    "bg-amber-50 text-amber-700",
+  RESTRICTED:      "bg-rose-50 text-rose-700",
   // environment
   PRODUCTION:      "bg-emerald-50 text-emerald-700",
   STAGING:         "bg-amber-50 text-amber-700",

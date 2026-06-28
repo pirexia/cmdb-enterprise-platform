@@ -12,11 +12,16 @@ export interface ReportColumn {
   type?: ColumnType;
   sortable?: boolean;
   width?: number;
+  // P5 — inline header filtering. When set, ReportTable renders a header control.
+  // 'multi-select' reuses the report filter whose key === column.key (finite options).
+  // 'text' wires the header input to the global `search` filter.
+  filter?: 'multi-select' | 'text';
 }
 
 export interface FilterOption {
   value: string;
-  labelKey: string;
+  labelKey?: string; // i18n key (static options)
+  label?: string;    // literal label (dynamic options resolved from DB)
 }
 
 export interface ReportFilterDefinition {
@@ -51,6 +56,10 @@ export interface ReportResult {
 
 export type ReportQueryFn = (prisma: PrismaClient, filters: ReportFilters) => Promise<ReportResult>;
 
+// P3 — resolve dynamic filter options at request time (e.g. CI types from DB).
+// Returns a map of filterKey → options, merged into the static filter defs by /filters.
+export type LoadFilterOptionsFn = (prisma: PrismaClient) => Promise<Record<string, FilterOption[]>>;
+
 export interface ReportDefinition {
   id: string;
   nameKey: string;
@@ -67,6 +76,8 @@ export interface ReportDefinition {
   query?: ReportQueryFn;
   // plugin reports: their registered route path handles /data proxy
   routePath?: string;
+  // P3 — optional dynamic filter options resolver
+  loadFilterOptions?: LoadFilterOptionsFn;
 }
 
 // Sent to the frontend — no query/routePath

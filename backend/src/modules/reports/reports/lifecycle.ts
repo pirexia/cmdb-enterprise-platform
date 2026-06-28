@@ -1,6 +1,7 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray, escapeLike } from '../filterUtils.js';
 
 registerReport({
   id: 'lifecycle',
@@ -34,7 +35,7 @@ registerReport({
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
   ],
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
-    const statusFilter = filters['status'] as string[] | undefined;
+    const statusFilter = asArray(filters['status']);
     const search = filters.search?.trim();
 
     const dateRange = {
@@ -43,10 +44,10 @@ registerReport({
     };
 
     const where = {
-      ...(statusFilter?.length ? { ci: { status: { in: statusFilter as ('ACTIVO'|'INACTIVO'|'RETIRADO')[] } } } : {}),
+      ...(statusFilter ? { ci: { status: { in: statusFilter as ('ACTIVO'|'INACTIVO'|'RETIRADO')[] } } } : {}),
       ...(Object.keys(dateRange).length ? { dateValue: dateRange } : {}),
       ...(search ? {
-        ci: { name: { contains: search.replace(/[%_\\]/g, (c) => `\\${c}`), mode: 'insensitive' as const } },
+        ci: { name: { contains: escapeLike(search), mode: 'insensitive' as const } },
       } : {}),
     };
 

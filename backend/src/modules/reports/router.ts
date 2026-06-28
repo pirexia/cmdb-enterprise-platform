@@ -21,10 +21,22 @@ export function createReportsRouter(prisma: PrismaClient): Router {
     res.json({ reports });
   });
 
-  // GET /api/reports/:id/filters — filter + column definitions
-  router.get('/:id/filters', requireReportAccess, (req: AuthRequest, res: Response): void => {
+  // GET /api/reports/:id/filters — filter + column definitions.
+  // Merges any dynamic options (P3) resolved from the DB into the static defs.
+  router.get('/:id/filters', requireReportAccess, async (req: AuthRequest, res: Response): Promise<void> => {
     const def = req.report!;
-    res.json({ filters: def.filters, columns: def.columns });
+    let filters = def.filters;
+    if (def.loadFilterOptions) {
+      try {
+        const dynamic = await def.loadFilterOptions(prisma);
+        filters = def.filters.map((f) =>
+          dynamic[f.key] ? { ...f, options: dynamic[f.key] } : f,
+        );
+      } catch (err) {
+        console.error(`[reports] loadFilterOptions failed for "${def.id}":`, err);
+      }
+    }
+    res.json({ filters, columns: def.columns });
   });
 
   // GET /api/reports/:id/data — paginated data

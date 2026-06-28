@@ -2,6 +2,34 @@
 
 ---
 
+# v3.4.1 — Correcciones Reporting Engine · ✅ COMPLETADA · 2026-06-28
+
+**Rama:** `feature/v3.4.1-reporting-fixes` → `develop`. Análisis Opus, ejecución autónoma.
+
+## Análisis (Opus)
+- **P2 (500)** — 2 causas verificadas: (a) multi-select de 1 valor → Express entrega string → `{ in: 'X' }` revienta Prisma (inventory/lifecycle/compliance/impactMap); (b) `orderBy: {[sort]}` con columna de relación → 500 (inventory).
+- **P7 (NaN)** — causa frontend: `security.ts` devuelve KPI string `"75%"`; `ReportTable` hacía `Number("75%")`=NaN. Mismo bug en licenses totalCost.
+- **P4** — premisa mayormente incorrecta: `CI.eolDate/eosDate` = columnas espejo por trigger (`trg_sync_ci_eol_eos`); `lifecycle` ya usa `ci_dates`+`dateType`; **no existen** `contract_dates`/`license_dates`. **No-op documentado** (pushback).
+- **P1** — 63 claves backend ausentes; `t()` hace traversal anidado → `reports.filter.horizon` no puede ser label y padre de opciones → opciones movidas a `reports.horizon.*`.
+
+## Ejecución (Sonnet, autónoma)
+1. `filterUtils.ts`: `asArray`, `resolveOrderBy`, `escapeLike`, `sortDir`. Aplicado en inventory/lifecycle/compliance/impactMap.
+2. inventory: filtro `ciType` multi-select dinámico (`loadFilterOptions`→BD); `/filters` mergea opciones dinámicas.
+3. impactMap ampliado a 17 relaciones (multi-select).
+4. i18n 6 idiomas: `ci.status.*`, `ci.criticality.*`, `env.*`, `rel.*` (17), `decomm.status.*`, `reports.col/filter/kpi.*`, `reports.horizon.*`, `footer.version_short`.
+5. `ReportTable`: `renderKpiValue` (fix NaN), filtros inline en cabeceras (popover multi-select + texto→search), badges completos.
+6. Viewer carga `/filters`; sidebar versión condicional + color legible; `package.json`→3.4.1.
+
+## Verificación local (prod compose)
+- version.json `3.4.1/87c17d8`; filtros 1-valor + sort relación → 200 (antes 500); ciType 31 opciones; coverage `'0%'`; i18n 6/6; `tsc`/`next build`/25 tests OK.
+
+## Commits
+- `fix(reports): 500 en filtros + ciType dinámico + i18n 6 idiomas (P1,P2,P3)`
+- `fix(reports): filtros inline en columnas + KPI string + versión sidebar (P5,P6,P7)`
+- `docs(v3.4.1): plan status + execution log`
+
+---
+
 # v3.4.0 — Reporting Engine
 
 ## Tarea 1 — Diseño (Opus) · ✅ COMPLETADA · 2026-06-28

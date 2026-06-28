@@ -5,7 +5,8 @@
   },
   "footer": {
     "copyright": "© {year} CMDB Platform",
-    "version": "v{version} · {commit}"
+    "version": "v{version} · {commit}",
+    "version_short": "v{version}"
   },
   "sidebar": {
     "dashboard": "Tableau de bord",
@@ -1155,7 +1156,13 @@
       "location": "Emplacement",
       "costCenter": "Centre de coût",
       "severity": "Sévérité",
-      "days": "Jours avant expiration"
+      "days": "Jours avant expiration",
+      "action": "Action",
+      "entity": "Entité",
+      "hasVulns": "Avec vulnérabilités",
+      "horizon": "Horizon",
+      "noCoverage": "Sans couverture",
+      "userEmail": "Utilisateur"
     },
     "kpi": {
       "total": "Total",
@@ -1168,7 +1175,15 @@
       "completed": "Terminés",
       "totalValue": "Valeur totale",
       "annualCost": "Coût annuel",
-      "overcapacity": "Surcapacité"
+      "overcapacity": "Surcapacité",
+      "active": "Actifs",
+      "coverage": "Couverture",
+      "inactive": "Inactifs",
+      "retired": "Retirés",
+      "totalCost": "Coût total",
+      "totalVulns": "Total vulnérabilités",
+      "uncovered": "Non couverts",
+      "warning": "En alerte"
     },
     "col": {
       "name": "Nom",
@@ -1224,7 +1239,28 @@
       "purchaseDate": "Date d'achat",
       "endOfLifeDate": "Fin de vie",
       "endOfSupportDate": "Fin support",
-      "warrantyDate": "Garantie"
+      "warrantyDate": "Garantie",
+      "agentCoverage": "Couverture agent",
+      "assignedUsers": "Utilisateurs affectés",
+      "branch": "Site",
+      "contractNumber": "N° contrat",
+      "cost": "Coût",
+      "critical": "Critiques",
+      "dateType": "Type de date",
+      "dateValue": "Date",
+      "daysRemaining": "Jours restants",
+      "daysToEol": "Jours avant EoL",
+      "daysToEos": "Jours avant EoS",
+      "details": "Détails",
+      "eosStatus": "Statut EoS",
+      "high": "Élevées",
+      "isAddendum": "Avenant",
+      "licenseNumber": "N° licence",
+      "low": "Faibles",
+      "medium": "Moyennes",
+      "metricValue": "Métrique",
+      "notes": "Notes",
+      "totalVulns": "Total vulns"
     },
     "def": {
       "inventory": {
@@ -1267,6 +1303,13 @@
         "name": "Plans de Décommissionnement",
         "desc": "État des plans de retrait des systèmes"
       }
+    },
+    "horizon": {
+      "expired": "Expirés",
+      "30d": "30 jours",
+      "90d": "90 jours",
+      "180d": "180 jours",
+      "365d": "365 jours"
     }
   },
   "audit": {
@@ -1930,5 +1973,51 @@
       "type": "Type"
     },
     "expand_hint": "Cliquez sur ▸ à côté d'un CI pour voir ses dates associées"
+  },
+  "ci": {
+    "status": {
+      "ACTIVO": "Actif",
+      "INACTIVO": "Inactif",
+      "RETIRADO": "Retiré"
+    },
+    "criticality": {
+      "LOW": "Faible",
+      "MEDIUM": "Moyenne",
+      "HIGH": "Élevée",
+      "MISSION_CRITICAL": "Critique"
+    }
+  },
+  "env": {
+    "DEVELOPMENT": "Développement",
+    "TESTING": "Test",
+    "STAGING": "Pré-production",
+    "PRODUCTION": "Production"
+  },
+  "rel": {
+    "HOSTS": "Héberge",
+    "DEPENDS_ON": "Dépend de",
+    "CONNECTED_TO": "Connecté à",
+    "CONNECTS_TO": "Se connecte à",
+    "PROVIDES_SERVICE": "Fournit un service",
+    "BACKED_UP_BY": "Sauvegardé par",
+    "REPLICATES_TO": "Réplique vers",
+    "CONTAINS": "Contient",
+    "COMPOSED_OF": "Composé de",
+    "ATTACHED_TO": "Attaché à",
+    "UPLINKS_TO": "Liaison montante vers",
+    "POWERS": "Alimente",
+    "PROTECTS": "Protège",
+    "RUNS_ON": "S'exécute sur",
+    "QUERIES": "Interroge",
+    "LICENSES": "Licencie",
+    "MANAGES": "Gère"
+  },
+  "decomm": {
+    "status": {
+      "DRAFT": "Brouillon",
+      "IN_PROGRESS": "En cours",
+      "COMPLETED": "Terminé",
+      "CANCELLED": "Annulé"
+    }
   }
 }

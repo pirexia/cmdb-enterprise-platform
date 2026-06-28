@@ -36,11 +36,11 @@ registerReport({
   filters: [
     { key: 'horizon', type: 'select', labelKey: 'reports.filter.horizon',
       options: [
-        { value: 'expired',  labelKey: 'reports.filter.horizon.expired' },
-        { value: '30',       labelKey: 'reports.filter.horizon.30d' },
-        { value: '90',       labelKey: 'reports.filter.horizon.90d' },
-        { value: '180',      labelKey: 'reports.filter.horizon.180d' },
-        { value: '365',      labelKey: 'reports.filter.horizon.365d' },
+        { value: 'expired',  labelKey: 'reports.horizon.expired' },
+        { value: '30',       labelKey: 'reports.horizon.30d' },
+        { value: '90',       labelKey: 'reports.horizon.90d' },
+        { value: '180',      labelKey: 'reports.horizon.180d' },
+        { value: '365',      labelKey: 'reports.horizon.365d' },
       ],
     },
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },

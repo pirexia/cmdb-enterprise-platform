@@ -7,7 +7,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useReportData } from "../hooks/useReportData";
 import ReportTable from "../components/ReportTable";
 import ReportFilterPanel from "../components/ReportFilterPanel";
-import type { ReportMeta, ReportFilters, ExportFormat } from "../types/report";
+import type { ReportMeta, ReportFilters, ExportFormat, ReportFilterDefinition } from "../types/report";
 
 const DEFAULT_FILTERS: ReportFilters = { page: 1, limit: 50 };
 
@@ -21,6 +21,8 @@ export default function ReportViewerPage() {
   const [metaErr, setMetaErr]   = useState<string | null>(null);
   const [filters, setFilters]   = useState<ReportFilters>(DEFAULT_FILTERS);
   const [exporting, setExporting] = useState(false);
+  // Enriched filter defs (dynamic options resolved server-side, e.g. CI types)
+  const [filterDefs, setFilterDefs] = useState<ReportFilterDefinition[] | null>(null);
 
   const { data, loading, error, fetch } = useReportData(reportId);
 
@@ -35,6 +37,17 @@ export default function ReportViewerPage() {
       })
       .catch((e) => setMetaErr(String(e)));
   }, [reportId]);
+
+  // Load enriched filter definitions (with dynamic options). Falls back to meta.filters.
+  useEffect(() => {
+    if (!meta) return;
+    apiFetch(`/api/reports/${reportId}/filters`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { filters?: ReportFilterDefinition[] } | null) => {
+        setFilterDefs(d?.filters ?? meta.filters);
+      })
+      .catch(() => setFilterDefs(meta.filters));
+  }, [meta, reportId]);
 
   // Fetch data whenever filters change (after meta loaded)
   useEffect(() => {
@@ -142,10 +155,10 @@ export default function ReportViewerPage() {
 
       <div className="px-8 py-8 flex gap-6 w-full">
         {/* Sidebar filters */}
-        {meta && meta.filters.length > 0 && (
+        {meta && (filterDefs ?? meta.filters).length > 0 && (
           <aside className="w-64 flex-shrink-0">
             <ReportFilterPanel
-              filterDefs={meta.filters}
+              filterDefs={filterDefs ?? meta.filters}
               filters={filters}
               onChange={handleFiltersChange}
             />
@@ -161,6 +174,7 @@ export default function ReportViewerPage() {
               total={data.total}
               kpis={data.kpis}
               filters={filters}
+              filterDefs={filterDefs ?? meta.filters}
               onFiltersChange={handleFiltersChange}
               loading={loading}
             />

@@ -68,7 +68,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
   const userRole               = user?.role ?? "";
   const { t }                  = useLanguage();
   const { companyName, logoUrl } = useTheme();
-  const [appVersion, setAppVersion] = useState<{ version: string; commit: string } | null>(null);
+  const [appVersion, setAppVersion] = useState<{ version: string; commit?: string } | null>(null);
 
   useEffect(() => {
     fetch('/version.json')
@@ -180,12 +180,14 @@ export default function Sidebar({ onClose }: SidebarProps) {
         )}
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] text-slate-600">
+            <p className="text-[10px] text-slate-500">
               {t("footer.copyright", { year: new Date().getFullYear() })}
             </p>
             {appVersion && (
-              <p className="text-[10px] text-slate-700">
-                {t("footer.version", { version: appVersion.version, commit: appVersion.commit })}
+              <p className="text-[10px] text-slate-400">
+                {appVersion.commit && appVersion.commit !== "unknown"
+                  ? t("footer.version", { version: appVersion.version, commit: appVersion.commit })
+                  : t("footer.version_short", { version: appVersion.version })}
               </p>
             )}
           </div>

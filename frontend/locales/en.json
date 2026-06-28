@@ -5,7 +5,8 @@
   },
   "footer": {
     "copyright": "© {year} CMDB Platform",
-    "version": "v{version} · {commit}"
+    "version": "v{version} · {commit}",
+    "version_short": "v{version}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -1200,7 +1201,13 @@
       "location": "Location",
       "costCenter": "Cost Center",
       "severity": "Severity",
-      "days": "Days to expiry"
+      "days": "Days to expiry",
+      "action": "Action",
+      "entity": "Entity",
+      "hasVulns": "With vulnerabilities",
+      "horizon": "Horizon",
+      "noCoverage": "No coverage",
+      "userEmail": "User"
     },
     "kpi": {
       "total": "Total",
@@ -1213,7 +1220,15 @@
       "completed": "Completed",
       "totalValue": "Total value",
       "annualCost": "Annual cost",
-      "overcapacity": "Overcapacity"
+      "overcapacity": "Overcapacity",
+      "active": "Active",
+      "coverage": "Coverage",
+      "inactive": "Inactive",
+      "retired": "Retired",
+      "totalCost": "Total cost",
+      "totalVulns": "Total vulnerabilities",
+      "uncovered": "Uncovered",
+      "warning": "Warning"
     },
     "col": {
       "name": "Name",
@@ -1269,7 +1284,28 @@
       "purchaseDate": "Purchase date",
       "endOfLifeDate": "End of life",
       "endOfSupportDate": "End of support",
-      "warrantyDate": "Warranty"
+      "warrantyDate": "Warranty",
+      "agentCoverage": "Agent coverage",
+      "assignedUsers": "Assigned users",
+      "branch": "Branch",
+      "contractNumber": "Contract no.",
+      "cost": "Cost",
+      "critical": "Critical",
+      "dateType": "Date type",
+      "dateValue": "Date",
+      "daysRemaining": "Days remaining",
+      "daysToEol": "Days to EoL",
+      "daysToEos": "Days to EoS",
+      "details": "Details",
+      "eosStatus": "EoS status",
+      "high": "High",
+      "isAddendum": "Addendum",
+      "licenseNumber": "License no.",
+      "low": "Low",
+      "medium": "Medium",
+      "metricValue": "Metric",
+      "notes": "Notes",
+      "totalVulns": "Total vulns"
     },
     "def": {
       "inventory": {
@@ -1312,6 +1348,13 @@
         "name": "Decommission Plans",
         "desc": "Status of system retirement plans"
       }
+    },
+    "horizon": {
+      "expired": "Expired",
+      "30d": "30 days",
+      "90d": "90 days",
+      "180d": "180 days",
+      "365d": "365 days"
     }
   },
   "audit": {
@@ -2049,5 +2092,51 @@
       "type": "Type"
     },
     "expand_hint": "Click ▸ next to a CI to see its related dates"
+  },
+  "ci": {
+    "status": {
+      "ACTIVO": "Active",
+      "INACTIVO": "Inactive",
+      "RETIRADO": "Retired"
+    },
+    "criticality": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "MISSION_CRITICAL": "Mission-critical"
+    }
+  },
+  "env": {
+    "DEVELOPMENT": "Development",
+    "TESTING": "Testing",
+    "STAGING": "Staging",
+    "PRODUCTION": "Production"
+  },
+  "rel": {
+    "HOSTS": "Hosts",
+    "DEPENDS_ON": "Depends on",
+    "CONNECTED_TO": "Connected to",
+    "CONNECTS_TO": "Connects to",
+    "PROVIDES_SERVICE": "Provides service",
+    "BACKED_UP_BY": "Backed up by",
+    "REPLICATES_TO": "Replicates to",
+    "CONTAINS": "Contains",
+    "COMPOSED_OF": "Composed of",
+    "ATTACHED_TO": "Attached to",
+    "UPLINKS_TO": "Uplinks to",
+    "POWERS": "Powers",
+    "PROTECTS": "Protects",
+    "RUNS_ON": "Runs on",
+    "QUERIES": "Queries",
+    "LICENSES": "Licenses",
+    "MANAGES": "Manages"
+  },
+  "decomm": {
+    "status": {
+      "DRAFT": "Draft",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled"
+    }
   }
 }

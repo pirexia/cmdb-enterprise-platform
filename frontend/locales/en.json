@@ -5,7 +5,8 @@
   },
   "footer": {
     "copyright": "© {year} CMDB Platform",
-    "version": "v{version} · {commit}"
+    "version": "v{version} · {commit}",
+    "version_short": "v{version}"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -1161,7 +1162,200 @@
     "quick_link_vulns_label": "Vulnerabilities",
     "quick_link_vulns_desc": "Export with applied filters",
     "quick_link_contracts_label": "Contracts & Addendums",
-    "quick_link_contracts_desc": "Download full list"
+    "quick_link_contracts_desc": "Download full list",
+    "list": {
+      "title": "Reports Center",
+      "subtitle": "Analyze and export CMDB data",
+      "search": "Search reports...",
+      "all_categories": "All categories",
+      "no_results": "No reports found"
+    },
+    "view": {
+      "back": "Back",
+      "filters": "Filters",
+      "clear": "Clear filters",
+      "loading": "Loading report...",
+      "no_data": "No data for the selected filters",
+      "total": "Total",
+      "page": "Page",
+      "search_placeholder": "Search..."
+    },
+    "category": {
+      "inventory": "Inventory",
+      "security": "Security",
+      "financial": "Financial",
+      "compliance": "Compliance",
+      "lifecycle": "Lifecycle",
+      "audit": "Audit"
+    },
+    "filter": {
+      "all": "All",
+      "search": "Search",
+      "from": "From",
+      "to": "To",
+      "status": "Status",
+      "criticality": "Criticality",
+      "environment": "Environment",
+      "relationType": "Relation type",
+      "ciType": "CI Type",
+      "location": "Location",
+      "costCenter": "Cost Center",
+      "severity": "Severity",
+      "days": "Days to expiry",
+      "action": "Action",
+      "entity": "Entity",
+      "hasVulns": "With vulnerabilities",
+      "horizon": "Horizon",
+      "noCoverage": "No coverage",
+      "userEmail": "User"
+    },
+    "kpi": {
+      "total": "Total",
+      "expired": "Expired",
+      "critical": "Critical",
+      "expiringSoon": "Expiring soon",
+      "missionCritical": "Mission critical",
+      "withVulns": "With vulnerabilities",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "totalValue": "Total value",
+      "annualCost": "Annual cost",
+      "overcapacity": "Overcapacity",
+      "active": "Active",
+      "coverage": "Coverage",
+      "inactive": "Inactive",
+      "retired": "Retired",
+      "totalCost": "Total cost",
+      "totalVulns": "Total vulnerabilities",
+      "uncovered": "Uncovered",
+      "warning": "Warning"
+    },
+    "col": {
+      "name": "Name",
+      "status": "Status",
+      "criticality": "Criticality",
+      "environment": "Environment",
+      "hasVulns": "Vulnerabilities",
+      "eolDate": "EoL Date",
+      "eosDate": "EoS Date",
+      "eolStatus": "EoL Status",
+      "ciType": "Type",
+      "location": "Location",
+      "costCenter": "Cost Center",
+      "brand": "Brand",
+      "model": "Model",
+      "serialNumber": "Serial No.",
+      "severity": "Severity",
+      "vulnCount": "Vulnerabilities",
+      "cvssScore": "CVSS",
+      "contractName": "Contract",
+      "vendor": "Vendor",
+      "contractType": "Type",
+      "startDate": "Start",
+      "endDate": "End",
+      "amount": "Amount",
+      "currency": "Currency",
+      "daysUntilExpiry": "Days to expiry",
+      "licenseName": "License",
+      "licenseType": "Type",
+      "totalSeats": "Seats",
+      "usedSeats": "Used",
+      "usagePercent": "% Used",
+      "annualCost": "Annual cost",
+      "action": "Action",
+      "entity": "Entity",
+      "entityId": "Entity ID",
+      "userEmail": "User",
+      "createdAt": "Date",
+      "sourceId": "Source ID",
+      "sourceName": "Source CI",
+      "sourceType": "Source Type",
+      "relationType": "Relation",
+      "targetId": "Target ID",
+      "targetName": "Target CI",
+      "targetType": "Target Type",
+      "targetStatus": "Target Status",
+      "systemCI": "System CI",
+      "createdBy": "Created by",
+      "completedAt": "Completed",
+      "ciCount": "CIs",
+      "contractCount": "Contracts",
+      "licenseCount": "Licenses",
+      "purchaseDate": "Purchase date",
+      "endOfLifeDate": "End of life",
+      "endOfSupportDate": "End of support",
+      "warrantyDate": "Warranty",
+      "agentCoverage": "Agent coverage",
+      "assignedUsers": "Assigned users",
+      "branch": "Branch",
+      "contractNumber": "Contract no.",
+      "cost": "Cost",
+      "critical": "Critical",
+      "dateType": "Date type",
+      "dateValue": "Date",
+      "daysRemaining": "Days remaining",
+      "daysToEol": "Days to EoL",
+      "daysToEos": "Days to EoS",
+      "details": "Details",
+      "eosStatus": "EoS status",
+      "high": "High",
+      "isAddendum": "Addendum",
+      "licenseNumber": "License no.",
+      "low": "Low",
+      "medium": "Medium",
+      "metricValue": "Metric",
+      "notes": "Notes",
+      "totalVulns": "Total vulns"
+    },
+    "def": {
+      "inventory": {
+        "name": "CI Inventory",
+        "desc": "Full asset listing with type, status and criticality"
+      },
+      "obsolescence": {
+        "name": "EoL/EoS Obsolescence",
+        "desc": "Assets approaching end of life or end of support"
+      },
+      "security": {
+        "name": "Security & Vulnerabilities",
+        "desc": "CIs with active vulnerabilities and CVSS scores"
+      },
+      "contracts": {
+        "name": "Contract Expiry",
+        "desc": "Contracts sorted by expiry date"
+      },
+      "licenses": {
+        "name": "License Usage",
+        "desc": "Licenses with utilisation and annual cost"
+      },
+      "compliance": {
+        "name": "Compliance by Environment",
+        "desc": "Production and mission-critical CIs without EOL date"
+      },
+      "lifecycle": {
+        "name": "CI Lifecycle",
+        "desc": "Purchase, warranty, support and end-of-life dates"
+      },
+      "auditTrail": {
+        "name": "Audit Trail",
+        "desc": "History of changes and access on the platform"
+      },
+      "impactMap": {
+        "name": "Impact Map",
+        "desc": "CI relationships: dependencies, redundancies and connectivity"
+      },
+      "decommission": {
+        "name": "Decommission Plans",
+        "desc": "Status of system retirement plans"
+      }
+    },
+    "horizon": {
+      "expired": "Expired",
+      "30d": "30 days",
+      "90d": "90 days",
+      "180d": "180 days",
+      "365d": "365 days"
+    }
   },
   "audit": {
     "title": "Audit Logs",
@@ -1898,5 +2092,51 @@
       "type": "Type"
     },
     "expand_hint": "Click ▸ next to a CI to see its related dates"
+  },
+  "ci": {
+    "status": {
+      "ACTIVO": "Active",
+      "INACTIVO": "Inactive",
+      "RETIRADO": "Retired"
+    },
+    "criticality": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "MISSION_CRITICAL": "Mission-critical"
+    }
+  },
+  "env": {
+    "DEVELOPMENT": "Development",
+    "TESTING": "Testing",
+    "STAGING": "Staging",
+    "PRODUCTION": "Production"
+  },
+  "rel": {
+    "HOSTS": "Hosts",
+    "DEPENDS_ON": "Depends on",
+    "CONNECTED_TO": "Connected to",
+    "CONNECTS_TO": "Connects to",
+    "PROVIDES_SERVICE": "Provides service",
+    "BACKED_UP_BY": "Backed up by",
+    "REPLICATES_TO": "Replicates to",
+    "CONTAINS": "Contains",
+    "COMPOSED_OF": "Composed of",
+    "ATTACHED_TO": "Attached to",
+    "UPLINKS_TO": "Uplinks to",
+    "POWERS": "Powers",
+    "PROTECTS": "Protects",
+    "RUNS_ON": "Runs on",
+    "QUERIES": "Queries",
+    "LICENSES": "Licenses",
+    "MANAGES": "Manages"
+  },
+  "decomm": {
+    "status": {
+      "DRAFT": "Draft",
+      "IN_PROGRESS": "In progress",
+      "COMPLETED": "Completed",
+      "CANCELLED": "Cancelled"
+    }
   }
 }

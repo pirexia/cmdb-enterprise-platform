@@ -482,8 +482,7 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.2.0 — ✅ LIBERADA (tag `v3.2.0`, merge develop→main, 2026-06-27)
-**En desarrollo:** v3.3.0 — bug hunt + diagnóstico n8n + pentest + compliance (en develop; T8 release pendiente orden explícita)
+**Versión actual en producción:** v3.4.1 — ✅ LIBERADA (tag `v3.4.1`, merge develop→main vía PR, 2026-06-28)
 **Rama activa:** `develop`
 **PRs abiertos:** —
 
@@ -510,7 +509,9 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
-- **v3.3.0** 🚧 EN DESARROLLO (develop, 2026-06-27): bug hunt (BUG-001 LDAP TLS, BUG-002 RBAC, BUG-003 ejecuciones, BUG-004 N8N_API_KEY en compose); diagnóstico n8n → workflows aprovisionados; SECURITY_AUDIT.md v3.3.0; COMPLIANCE_v3.3.0.md; docs/n8n/TROUBLESHOOTING.md. T8 (release) pendiente orden explícita.
+- **v3.4.1** ✅ LIBERADA (tag `v3.4.1`, merge develop→main vía PR, 2026-06-28): correcciones Reporting Engine + filtros inline en cabeceras de los 10 reportes (popover vía `createPortal`, texto/multiselect) — fix 500 en filtros (helper `asArray` para multi-select de 1 valor + `resolveOrderBy` allowlist para columnas de relación, en `modules/reports/filterUtils.ts`); filtro `ciType` dinámico (`loadFilterOptions`→BD, `/filters` enriquecido); i18n 6 idiomas (namespaces canónicos `ci.status.*`/`ci.criticality.*`/`env.*`/`rel.*` 17 valores/`decomm.status.*`, `reports.horizon.*`); filtros inline en cabeceras de columna (popover); fix NaN KPIs (`ReportTable.renderKpiValue` para strings tipo "75%"/"12 EUR"); sidebar versión (`footer.version_short` condicional + color legible + `package.json`→3.4.1). **P4 (migrar fechas a dateType) descartado**: `CI.eolDate/eosDate` son columnas espejo por trigger; no existen `contract_dates`/`license_dates`. `docs/PLAN_STATUS_v3.4.1.md`.
+- **v3.4.0** 🚧 EN DEVELOP (2026-06-28): Reporting Engine — módulo `backend/src/modules/reports/` (10 reportes core, registry extensible, RBAC por reporte, CSV/XLSX export, audit log), frontend `app/reports/` (listado + viewer dinámico), i18n ×6, extensibilidad plugins vía `manifest.reports[]`, 25 tests. Mergeado a develop; pendiente tag + merge a main.
+- **v3.3.0** 🚧 EN DEVELOP (develop, 2026-06-27): bug hunt (BUG-001 LDAP TLS, BUG-002 RBAC, BUG-003 ejecuciones, BUG-004 N8N_API_KEY en compose); diagnóstico n8n → workflows aprovisionados; SECURITY_AUDIT.md v3.3.0; COMPLIANCE_v3.3.0.md; docs/n8n/TROUBLESHOOTING.md. Pendiente tag + merge a main.
 - **v3.2.0** ✅ LIBERADA (2026-06-27): `.env` única fuente de verdad para n8n — módulo `n8n-provisioning` (provisioner + onBoot + router + workflows), UI Configuración → n8n (resync card, i18n ×6), `install.sh` Phase 10d bootstrap, `update.sh` `ensure_n8n_api_key`. Tag `v3.2.0`, merge develop→main.
 - **v3.1.0** ✅ LIBERADA (2026-06-22): módulo Línea de Tiempo Gantt — backend 3 endpoints (`/api/timeline/items`, `/filters`, `/legacy/:ciId`) + SVG Gantt frontend + i18n ×6 + docs.
 - **v3.0.1** ✅ LIBERADA (2026-06-21): UI de configuración de canales Teams/Slack en Alertas (campos write-only, fix de fuga de secretos en `getConfig`); 7 workflows n8n importables en `docs/n8n/json/` + guía instalación/admin en `docs/n8n/WORKFLOWS.md`; fix hostname M2M (`backend:3000`, no `cmdb-backend`); fix paginación completa de CIs (`fetchAllCIs`) en vistas de lista/agregación; skills n8n (`n8n-workflow-patterns`, `n8n-node-configuration`).
@@ -530,6 +531,9 @@ Rules:
 1. Crear `docs/PLAN_vX.Y.Z.md` con el plan completo.
 2. Actualizar esta sección con la nueva versión y estado.
 3. Rama: `feature/...` cortada de `develop`.
+
+### Resumen v3.4.0
+Reporting Engine completo: módulo backend `backend/src/modules/reports/` con `types.ts`, `registry.ts` (Map extensible), `schemas.ts` (Zod), `middleware.ts` (`requireReportAccess` RBAC 404/403), `audit.ts` (VIEW_REPORT/EXPORT_REPORT, insert-only), `export.ts` (toCSV + toXLSX ExcelJS), `router.ts` (GET /api/reports, /data, /export, /filters), y 10 reportes core: `inventory`, `obsolescence`, `security`, `contracts`, `licenses`, `compliance`, `lifecycle`, `audit-trail`, `impact-map`, `decommission`. Frontend: `app/reports/page.tsx` (listado agrupado por categoría, sustituye 675 líneas client-side), `app/reports/[id]/page.tsx` (viewer con sidebar filtros dinámicos + export), 3 componentes (`ReportCard`, `ReportTable`, `ReportFilterPanel`), 2 hooks (`useReports`, `useReportData`). i18n ×6 (ES/EN/DE/PT/FR/IT): claves `reports.list.*`, `.view.*`, `.category.*`, `.filter.*`, `.kpi.*`, `.col.*`, `.def.*`. Plugin extensibility: `plugins/schemas.ts` añade `reports[]` al manifest, `engine.ts` llama `registerReport(source:'plugin')` en activate y `unregisterPluginReports` en deactivate, `router.ts` proxía a `pluginRuntime.runRoute` manteniendo sandbox intacto. Tests: 25/25 ✓ (registry RBAC, 401/403/200, audit, CSV/XLSX, plugin proxy). Verificado en prod: 273 CIs, RBAC correcto, export CSV OK. **Desviaciones:** `decommission.ts` usa `$queryRawUnsafe` (Prisma no genera el modelo); `Environment` sin valor DR; `RelationType` con valores reales del schema (HOSTS/DEPENDS_ON/CONNECTED_TO/…). `docs/PLAN_STATUS_v3.4.0.md`.
 
 ### Resumen v3.3.0
 Bug hunt autónomo + diagnóstico n8n + pentest SAST + compliance: **BUG-001** LDAP TLS `allowUnauthorizedCerts` invertida (corregida en `credentials.ts`); **BUG-002** RBAC manual en router n8n-provisioning → centralizado a `requireAdmin` en mount `index.ts:314`; **BUG-003** dev compose sin purga ejecuciones n8n; **BUG-004** `N8N_API_KEY`/`N8N_INTERNAL_URL` no pasadas al backend en compose (raíz del aprovisionamiento omitido). Fix nginx resolver `10.89.1.1`→`10.89.0.1` (dev). Version badge: `GIT_TAG` ARG en Dockerfile + `gen-version.mjs` prioriza env→git describe→package.json. `SECURITY_AUDIT.md` actualizado (sección v3.3.0); `COMPLIANCE_v3.3.0.md` (ISO 27001 / GDPR / NIS2 / ISO 22301, todos ✅); `docs/n8n/TROUBLESHOOTING.md` (INC-001 a INC-003). Issues GitHub: #165–#168. **Variables nuevas:** `LDAP_ALLOW_UNAUTHORIZED_CERTS` (opt-in, default false), `N8N_INTERNAL_URL` (default `http://n8n-main:5678`) — ahora declaradas en ambos compose.

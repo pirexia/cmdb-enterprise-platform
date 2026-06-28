@@ -1,5 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { ChevronUp, ChevronDown, ChevronsUpDown, Filter as FilterIcon, X } from "lucide-react";
 import type { ReportColumn, ReportFilters, ReportKpi, ReportFilterDefinition } from "../types/report";
@@ -87,14 +88,30 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
   const { t } = useLanguage();
   const pageCount = Math.ceil(total / filters.limit);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!openFilter) return;
     function onClickAway(e: MouseEvent) {
       if (popRef.current && !popRef.current.contains(e.target as Node)) setOpenFilter(null);
     }
-    if (openFilter) document.addEventListener("mousedown", onClickAway);
-    return () => document.removeEventListener("mousedown", onClickAway);
+    // The popover is rendered in a portal with fixed positioning; if the page
+    // (or table) scrolls it would detach from its header, so close it — unless
+    // the scroll happens inside the dropdown's own option list.
+    function onScroll(e: Event) {
+      if (popRef.current && popRef.current.contains(e.target as Node)) return;
+      setOpenFilter(null);
+    }
+    function onResize() { setOpenFilter(null); }
+    document.addEventListener("mousedown", onClickAway);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      document.removeEventListener("mousedown", onClickAway);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
   }, [openFilter]);
 
   function toggleSort(key: string) {
@@ -134,21 +151,33 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
   function renderHeaderFilter(col: ReportColumn) {
     if (!col.filter) return null;
     const active = columnHasActiveFilter(col);
+    const isOpen = openFilter === col.key;
     return (
-      <span className="relative inline-flex">
+      <span className="inline-flex">
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setOpenFilter(openFilter === col.key ? null : col.key); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isOpen) { setOpenFilter(null); return; }
+            setAnchorRect((e.currentTarget as HTMLElement).getBoundingClientRect());
+            setOpenFilter(col.key);
+          }}
           className={`p-0.5 ${active ? "text-[var(--accent)]" : "text-slate-300 hover:text-slate-500"}`}
           aria-label={t("reports.view.filters")}
         >
           <FilterIcon className="w-3 h-3" />
         </button>
-        {openFilter === col.key && (
+        {isOpen && anchorRect && typeof document !== "undefined" && createPortal(
           <div
             ref={popRef}
-            className="absolute top-5 left-0 z-20 min-w-44 bg-white ring-1 ring-slate-200 shadow-lg p-2 normal-case"
             onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: anchorRect.bottom + 4,
+              // keep the popover within the viewport horizontally
+              left: Math.max(8, Math.min(anchorRect.left, window.innerWidth - 224)),
+            }}
+            className="z-50 w-52 bg-white ring-1 ring-slate-200 shadow-lg p-2 normal-case"
           >
             {col.filter === "text" ? (
               <input
@@ -160,7 +189,7 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
                 className="w-full border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-[var(--accent)]"
               />
             ) : (
-              <div className="max-h-56 overflow-y-auto space-y-0.5">
+              <div className="max-h-64 overflow-y-auto space-y-0.5">
                 {(defFor(col.key)?.options ?? []).map((o) => {
                   const selected = Array.isArray(filters[col.key]) ? (filters[col.key] as string[]) : [];
                   const isOn = selected.includes(o.value);
@@ -188,7 +217,8 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
                 )}
               </div>
             )}
-          </div>
+          </div>,
+          document.body,
         )}
       </span>
     );

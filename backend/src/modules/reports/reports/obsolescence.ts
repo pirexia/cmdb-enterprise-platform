@@ -1,6 +1,7 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray, escapeLike } from '../filterUtils.js';
 
 function daysUntil(date: Date): number {
   return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
@@ -23,7 +24,7 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',        labelKey: 'reports.col.name',     type: 'string', sortable: true },
+    { key: 'name',        labelKey: 'reports.col.name',     type: 'string', sortable: true, filter: 'text' },
     { key: 'ciType',      labelKey: 'reports.col.ciType',   type: 'string', sortable: true },
     { key: 'eolDate',     labelKey: 'reports.col.eolDate',  type: 'date',   sortable: true },
     { key: 'eosDate',     labelKey: 'reports.col.eosDate',  type: 'date',   sortable: true },
@@ -31,7 +32,7 @@ registerReport({
     { key: 'daysToEos',   labelKey: 'reports.col.daysToEos', type: 'number', sortable: true },
     { key: 'eolStatus',   labelKey: 'reports.col.eolStatus', type: 'badge' },
     { key: 'eosStatus',   labelKey: 'reports.col.eosStatus', type: 'badge' },
-    { key: 'criticality', labelKey: 'reports.col.criticality', type: 'badge', sortable: true },
+    { key: 'criticality', labelKey: 'reports.col.criticality', type: 'badge', sortable: true, filter: 'multi-select' },
   ],
   filters: [
     { key: 'horizon', type: 'select', labelKey: 'reports.filter.horizon',
@@ -43,10 +44,19 @@ registerReport({
         { value: '365',      labelKey: 'reports.horizon.365d' },
       ],
     },
+    { key: 'criticality', type: 'multi-select', labelKey: 'reports.filter.criticality',
+      options: [
+        { value: 'LOW',              labelKey: 'ci.criticality.LOW' },
+        { value: 'MEDIUM',           labelKey: 'ci.criticality.MEDIUM' },
+        { value: 'HIGH',             labelKey: 'ci.criticality.HIGH' },
+        { value: 'MISSION_CRITICAL', labelKey: 'ci.criticality.MISSION_CRITICAL' },
+      ],
+    },
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
   ],
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
     const horizon = (filters['horizon'] as string | undefined);
+    const criticalityFilter = asArray(filters['criticality']);
     const search  = filters.search?.trim();
     const now     = new Date();
 
@@ -65,8 +75,9 @@ registerReport({
 
     const where = {
       ...dateFilter,
+      ...(criticalityFilter ? { criticality: { in: criticalityFilter as ('LOW'|'MEDIUM'|'HIGH'|'MISSION_CRITICAL')[] } } : {}),
       ...(search ? {
-        name: { contains: search.replace(/[%_\\]/g, (c) => `\\${c}`), mode: 'insensitive' as const },
+        name: { contains: escapeLike(search), mode: 'insensitive' as const },
       } : {}),
     };
 

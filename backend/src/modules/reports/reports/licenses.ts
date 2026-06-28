@@ -1,6 +1,7 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray, escapeLike } from '../filterUtils.js';
 
 function daysUntil(date: Date): number {
   return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
@@ -17,8 +18,8 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',           labelKey: 'reports.col.name',           type: 'string', sortable: true },
-    { key: 'licenseNumber',  labelKey: 'reports.col.licenseNumber',  type: 'string', sortable: true },
+    { key: 'name',           labelKey: 'reports.col.name',           type: 'string', sortable: true, filter: 'text' },
+    { key: 'licenseNumber',  labelKey: 'reports.col.licenseNumber',  type: 'string', sortable: true, filter: 'text' },
     { key: 'vendor',         labelKey: 'reports.col.vendor',         type: 'string', sortable: true },
     { key: 'licenseType',    labelKey: 'reports.col.licenseType',    type: 'string', sortable: true },
     { key: 'metricValue',    labelKey: 'reports.col.metricValue',    type: 'number', sortable: true },
@@ -27,10 +28,10 @@ registerReport({
     { key: 'currency',       labelKey: 'reports.col.currency',       type: 'string' },
     { key: 'endDate',        labelKey: 'reports.col.endDate',        type: 'date',   sortable: true },
     { key: 'daysRemaining',  labelKey: 'reports.col.daysRemaining',  type: 'number', sortable: true },
-    { key: 'status',         labelKey: 'reports.col.status',         type: 'badge',  sortable: true },
+    { key: 'status',         labelKey: 'reports.col.status',         type: 'badge',  sortable: true, filter: 'multi-select' },
   ],
   filters: [
-    { key: 'status', type: 'select', labelKey: 'reports.filter.status',
+    { key: 'status', type: 'multi-select', labelKey: 'reports.filter.status',
       options: [
         { value: 'ACTIVO',    labelKey: 'ci.status.ACTIVO' },
         { value: 'INACTIVO',  labelKey: 'ci.status.INACTIVO' },
@@ -47,7 +48,7 @@ registerReport({
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
   ],
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
-    const statusFilter = filters['status'] as string | undefined;
+    const statusFilter = asArray(filters['status']);
     const horizon      = filters['horizon'] as string | undefined;
     const search       = filters.search?.trim();
     const now          = new Date();
@@ -61,12 +62,12 @@ registerReport({
     }
 
     const where = {
-      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(statusFilter ? { status: { in: statusFilter } } : {}),
       ...dateFilter,
       ...(search ? {
         OR: [
-          { name:          { contains: search.replace(/[%_\\]/g, (c) => `\\${c}`), mode: 'insensitive' as const } },
-          { licenseNumber: { contains: search.replace(/[%_\\]/g, (c) => `\\${c}`), mode: 'insensitive' as const } },
+          { name:          { contains: escapeLike(search), mode: 'insensitive' as const } },
+          { licenseNumber: { contains: escapeLike(search), mode: 'insensitive' as const } },
         ],
       } : {}),
     };

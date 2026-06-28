@@ -17,8 +17,8 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'contractNumber', labelKey: 'reports.col.contractNumber', type: 'string', sortable: true },
-    { key: 'vendor',         labelKey: 'reports.col.vendor',         type: 'string', sortable: true },
+    { key: 'contractNumber', labelKey: 'reports.col.contractNumber', type: 'string', sortable: true, filter: 'text' },
+    { key: 'vendor',         labelKey: 'reports.col.vendor',         type: 'string', sortable: true, filter: 'text' },
     { key: 'startDate',      labelKey: 'reports.col.startDate',      type: 'date',   sortable: true },
     { key: 'endDate',        labelKey: 'reports.col.endDate',        type: 'date',   sortable: true },
     { key: 'daysRemaining',  labelKey: 'reports.col.daysRemaining',  type: 'number', sortable: true },

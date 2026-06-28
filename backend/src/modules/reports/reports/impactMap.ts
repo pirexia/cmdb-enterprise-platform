@@ -15,11 +15,11 @@ registerReport({
   source: 'core',
   columns: [
     { key: 'sourceId',       labelKey: 'reports.col.sourceId',       type: 'string' },
-    { key: 'sourceName',     labelKey: 'reports.col.sourceName',     type: 'string', sortable: true },
+    { key: 'sourceName',     labelKey: 'reports.col.sourceName',     type: 'string', sortable: true, filter: 'text' },
     { key: 'sourceType',     labelKey: 'reports.col.sourceType',     type: 'string' },
     { key: 'relationType',   labelKey: 'reports.col.relationType',   type: 'badge',  sortable: true, filter: 'multi-select' },
     { key: 'targetId',       labelKey: 'reports.col.targetId',       type: 'string' },
-    { key: 'targetName',     labelKey: 'reports.col.targetName',     type: 'string', sortable: true },
+    { key: 'targetName',     labelKey: 'reports.col.targetName',     type: 'string', sortable: true, filter: 'text' },
     { key: 'targetType',     labelKey: 'reports.col.targetType',     type: 'string' },
     { key: 'targetStatus',   labelKey: 'reports.col.targetStatus',   type: 'badge' },
     { key: 'targetCriticality', labelKey: 'reports.col.criticality', type: 'badge' },

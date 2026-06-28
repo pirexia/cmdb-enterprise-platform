@@ -14,10 +14,10 @@ registerReport({
   source: 'core',
   columns: [
     { key: 'createdAt',  labelKey: 'reports.col.createdAt',  type: 'date',   sortable: true, width: 18 },
-    { key: 'action',     labelKey: 'reports.col.action',     type: 'string', sortable: true },
-    { key: 'entity',     labelKey: 'reports.col.entity',     type: 'string', sortable: true },
+    { key: 'action',     labelKey: 'reports.col.action',     type: 'string', sortable: true, filter: 'text' },
+    { key: 'entity',     labelKey: 'reports.col.entity',     type: 'string', sortable: true, filter: 'text' },
     { key: 'entityId',   labelKey: 'reports.col.entityId',   type: 'string' },
-    { key: 'userEmail',  labelKey: 'reports.col.userEmail',  type: 'string', sortable: true },
+    { key: 'userEmail',  labelKey: 'reports.col.userEmail',  type: 'string', sortable: true, filter: 'text' },
     { key: 'details',    labelKey: 'reports.col.details',    type: 'string', width: 40 },
   ],
   filters: [

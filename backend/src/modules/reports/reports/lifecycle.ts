@@ -14,9 +14,9 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',        labelKey: 'reports.col.name',        type: 'string', sortable: true },
+    { key: 'name',        labelKey: 'reports.col.name',        type: 'string', sortable: true, filter: 'text' },
     { key: 'ciType',      labelKey: 'reports.col.ciType',      type: 'string', sortable: true },
-    { key: 'status',      labelKey: 'reports.col.status',      type: 'badge',  sortable: true },
+    { key: 'status',      labelKey: 'reports.col.status',      type: 'badge',  sortable: true, filter: 'multi-select' },
     { key: 'criticality', labelKey: 'reports.col.criticality', type: 'badge',  sortable: true },
     { key: 'dateType',    labelKey: 'reports.col.dateType',    type: 'string', sortable: true },
     { key: 'dateValue',   labelKey: 'reports.col.dateValue',   type: 'date',   sortable: true },

@@ -1,6 +1,7 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray, escapeLike } from '../filterUtils.js';
 
 registerReport({
   id: 'security',
@@ -13,9 +14,9 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',           labelKey: 'reports.col.name',           type: 'string',  sortable: true },
+    { key: 'name',           labelKey: 'reports.col.name',           type: 'string',  sortable: true, filter: 'text' },
     { key: 'ciType',         labelKey: 'reports.col.ciType',         type: 'string',  sortable: true },
-    { key: 'criticality',    labelKey: 'reports.col.criticality',    type: 'badge',   sortable: true },
+    { key: 'criticality',    labelKey: 'reports.col.criticality',    type: 'badge',   sortable: true, filter: 'multi-select' },
     { key: 'totalVulns',     labelKey: 'reports.col.totalVulns',     type: 'number',  sortable: true },
     { key: 'critical',       labelKey: 'reports.col.critical',       type: 'number' },
     { key: 'high',           labelKey: 'reports.col.high',           type: 'number' },
@@ -24,6 +25,14 @@ registerReport({
     { key: 'agentCoverage',  labelKey: 'reports.col.agentCoverage',  type: 'badge' },
   ],
   filters: [
+    { key: 'criticality', type: 'multi-select', labelKey: 'reports.filter.criticality',
+      options: [
+        { value: 'LOW',              labelKey: 'ci.criticality.LOW' },
+        { value: 'MEDIUM',           labelKey: 'ci.criticality.MEDIUM' },
+        { value: 'HIGH',             labelKey: 'ci.criticality.HIGH' },
+        { value: 'MISSION_CRITICAL', labelKey: 'ci.criticality.MISSION_CRITICAL' },
+      ],
+    },
     { key: 'hasVulns', type: 'toggle', labelKey: 'reports.filter.hasVulns' },
     { key: 'noCoverage', type: 'toggle', labelKey: 'reports.filter.noCoverage' },
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
@@ -31,14 +40,16 @@ registerReport({
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
     const hasVulns   = filters['hasVulns'] === 'true';
     const noCoverage = filters['noCoverage'] === 'true';
+    const criticalityFilter = asArray(filters['criticality']);
     const search     = filters.search?.trim();
 
     const where: Record<string, unknown> = {};
     if (hasVulns)   where['vulnerabilities'] = { not: null };
     if (noCoverage) where['agentStatus'] = null;
+    if (criticalityFilter) where['criticality'] = { in: criticalityFilter };
     if (search) {
       where['name'] = {
-        contains: search.replace(/[%_\\]/g, (c) => `\\${c}`),
+        contains: escapeLike(search),
         mode: 'insensitive',
       };
     }

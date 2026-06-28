@@ -1,6 +1,9 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray } from '../filterUtils.js';
+
+const DECOMM_STATUSES = ['DRAFT', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
 
 type PlanRow = {
   id: string;
@@ -29,9 +32,9 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',          labelKey: 'reports.col.name',          type: 'string', sortable: true },
+    { key: 'name',          labelKey: 'reports.col.name',          type: 'string', sortable: true, filter: 'text' },
     { key: 'systemCI',      labelKey: 'reports.col.systemCI',      type: 'string', sortable: true },
-    { key: 'status',        labelKey: 'reports.col.status',        type: 'badge',  sortable: true },
+    { key: 'status',        labelKey: 'reports.col.status',        type: 'badge',  sortable: true, filter: 'multi-select' },
     { key: 'createdBy',     labelKey: 'reports.col.createdBy',     type: 'string' },
     { key: 'createdAt',     labelKey: 'reports.col.createdAt',     type: 'date',   sortable: true },
     { key: 'completedAt',   labelKey: 'reports.col.completedAt',   type: 'date',   sortable: true },
@@ -40,7 +43,7 @@ registerReport({
     { key: 'licenseCount',  labelKey: 'reports.col.licenseCount',  type: 'number' },
   ],
   filters: [
-    { key: 'status', type: 'select', labelKey: 'reports.filter.status',
+    { key: 'status', type: 'multi-select', labelKey: 'reports.filter.status',
       options: [
         { value: 'DRAFT',       labelKey: 'decomm.status.DRAFT' },
         { value: 'IN_PROGRESS', labelKey: 'decomm.status.IN_PROGRESS' },
@@ -53,12 +56,14 @@ registerReport({
     { key: 'search', type: 'search',     labelKey: 'reports.filter.search' },
   ],
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
-    const statusFilter = filters['status'] as string | undefined;
+    const statusFilter = asArray(filters['status'])?.filter((s) => DECOMM_STATUSES.includes(s));
     const search = filters.search?.trim();
     const offset = (filters.page - 1) * filters.limit;
 
     const conditions: string[] = [];
-    if (statusFilter)    conditions.push(`p.status = '${statusFilter.replace(/'/g, "''")}'`);
+    if (statusFilter && statusFilter.length) {
+      conditions.push(`p.status IN (${statusFilter.map((s) => `'${s}'`).join(',')})`);
+    }
     if (filters.from)    conditions.push(`p.created_at >= '${filters.from}'::date`);
     if (filters.to)      conditions.push(`p.created_at <= '${filters.to}'::date`);
     if (search) {

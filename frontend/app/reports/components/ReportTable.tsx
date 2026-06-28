@@ -127,8 +127,13 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
 
   const defFor = (key: string) => filterDefs.find((f) => f.key === key);
 
+  // A text-filter column writes to its own filter key when the report declares a
+  // matching search filter (e.g. audit-trail's `entity`/`action`); otherwise it
+  // drives the global `search`.
+  const textKeyFor = (col: ReportColumn) => (defFor(col.key)?.type === "search" ? col.key : "search");
+
   function columnHasActiveFilter(col: ReportColumn): boolean {
-    if (col.filter === "text") return !!filters.search;
+    if (col.filter === "text") return !!filters[textKeyFor(col)];
     const v = filters[col.key];
     return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && v !== "";
   }
@@ -183,8 +188,8 @@ export default function ReportTable({ columns, rows, total, kpis, filters, filte
               <input
                 autoFocus
                 type="text"
-                value={String(filters.search ?? "")}
-                onChange={(e) => onFiltersChange({ search: e.target.value || undefined, page: 1 })}
+                value={String(filters[textKeyFor(col)] ?? "")}
+                onChange={(e) => onFiltersChange({ [textKeyFor(col)]: e.target.value || undefined, page: 1 })}
                 placeholder={t("reports.view.search_placeholder")}
                 className="w-full border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-[var(--accent)]"
               />

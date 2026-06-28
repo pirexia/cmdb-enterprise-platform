@@ -1,6 +1,7 @@
 import { registerReport } from '../registry.js';
 import type { ReportFilters, ReportResult } from '../types.js';
 import type { PrismaClient } from '@prisma/client';
+import { asArray, escapeLike } from '../filterUtils.js';
 
 registerReport({
   id: 'compliance',
@@ -13,10 +14,10 @@ registerReport({
   exportFormats: ['csv', 'xlsx'],
   source: 'core',
   columns: [
-    { key: 'name',        labelKey: 'reports.col.name',        type: 'string', sortable: true },
-    { key: 'criticality', labelKey: 'reports.col.criticality', type: 'badge',  sortable: true },
+    { key: 'name',        labelKey: 'reports.col.name',        type: 'string', sortable: true, filter: 'text' },
+    { key: 'criticality', labelKey: 'reports.col.criticality', type: 'badge',  sortable: true, filter: 'multi-select' },
     { key: 'status',      labelKey: 'reports.col.status',      type: 'badge',  sortable: true },
-    { key: 'environment', labelKey: 'reports.col.environment', type: 'badge',  sortable: true },
+    { key: 'environment', labelKey: 'reports.col.environment', type: 'badge',  sortable: true, filter: 'multi-select' },
     { key: 'hasVulns',    labelKey: 'reports.col.hasVulns',    type: 'badge' },
     { key: 'eolDate',     labelKey: 'reports.col.eolDate',     type: 'date',   sortable: true },
     { key: 'eosDate',     labelKey: 'reports.col.eosDate',     type: 'date',   sortable: true },
@@ -39,15 +40,15 @@ registerReport({
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
   ],
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
-    const criticalityFilter = filters['criticality'] as ('LOW'|'MEDIUM'|'HIGH'|'MISSION_CRITICAL')[] | undefined;
-    const environmentFilter = filters['environment'] as ('DEVELOPMENT'|'TESTING'|'STAGING'|'PRODUCTION')[] | undefined;
+    const criticalityFilter = asArray(filters['criticality']) as ('LOW'|'MEDIUM'|'HIGH'|'MISSION_CRITICAL')[] | undefined;
+    const environmentFilter = asArray(filters['environment']) as ('DEVELOPMENT'|'TESTING'|'STAGING'|'PRODUCTION')[] | undefined;
     const search = filters.search?.trim();
 
     const where = {
-      ...(criticalityFilter?.length ? { criticality: { in: criticalityFilter } } : {}),
-      ...(environmentFilter?.length ? { environment: { in: environmentFilter } } : {}),
+      ...(criticalityFilter ? { criticality: { in: criticalityFilter } } : {}),
+      ...(environmentFilter ? { environment: { in: environmentFilter } } : {}),
       ...(search ? {
-        name: { contains: search.replace(/[%_\\]/g, (c) => `\\${c}`), mode: 'insensitive' as const },
+        name: { contains: escapeLike(search), mode: 'insensitive' as const },
       } : {}),
     };
 

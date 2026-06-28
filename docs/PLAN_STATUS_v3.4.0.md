@@ -1,7 +1,7 @@
 # PLAN_STATUS v3.4.0 — Reporting Engine
 
-> **Estado global:** 🔄 Tarea 1 (diseño, Opus) COMPLETADA · Tareas 2–8 ⏳ pendientes (ejecución Sonnet)
-> **Rama:** `feature/v3.4.0-reporting-engine` (cortar de `develop`) → destino `develop`. **NO merge a `main`.**
+> **Estado global:** ✅ T1–T6, T8 COMPLETADAS · T7 Docs pendiente · Rama lista para merge a `develop`
+> **Rama:** `feature/v3.4.0-reporting-engine` → destino `develop`. **NO merge a `main`.**
 > **Decisión de arquitectura clave (confirmada por usuario):** extensibilidad de plugins en **dos niveles** (core closures + plugin route sandboxed). Ver §3.
 
 ---
@@ -136,13 +136,22 @@ Claves `reports.*` en `frontend/locales/{es,en,de,pt,fr,it}.json` (las 6). Lista
 
 ## 12. Estado de tareas
 
-| Tarea | Estado |
-|---|---|
-| T1 Diseño (Opus) | ✅ Completada |
-| T2 Backend module | ⏳ Pendiente |
-| T3 Frontend | ⏳ Pendiente |
-| T4 Migrar 3 reportes | ⏳ Pendiente |
-| T5 Extensibilidad plugins | ⏳ Pendiente |
-| T6 Tests | ⏳ Pendiente |
-| T7 Documentación | ⏳ Pendiente |
-| T8 Deploy + verificación local | ⏳ Pendiente |
+| Tarea | Estado | Notas |
+|---|---|---|
+| T1 Diseño (Opus) | ✅ Completada | Arquitectura dos-niveles, 10 reportes, contratos de tipos |
+| T2 Backend module | ✅ Completada | `backend/src/modules/reports/` — types, registry, schemas, middleware, audit, export, 10 reportes core, router; mount en `index.ts:314`. `tsc --noEmit` limpio. Commit `a95a35d` |
+| T3 Frontend | ✅ Completada | `frontend/app/reports/` — types, 2 hooks, 3 componentes, `page.tsx` (listado), `[id]/page.tsx` (viewer). i18n ×6 (ES/EN/DE/PT/FR/IT) — claves `reports.list.*`, `reports.view.*`, `reports.category.*`, `reports.filter.*`, `reports.kpi.*`, `reports.col.*`, `reports.def.*`. Commit `5fd6eae` |
+| T4 Migrar 3 reportes | ✅ Completada | Los 3 reportes legacy (EoL, Contratos, Seguridad) son `obsolescence`, `contracts`, `security` en los 10 core. `page.tsx` anterior (675 líneas, client-side) reemplazado. |
+| T5 Extensibilidad plugins | ✅ Completada | `plugins/schemas.ts`: campo `reports[]` en manifest; `engine.ts`: `registerPlugin` → `registerReport(source:'plugin')`; `unregisterPlugin` → `unregisterPluginReports`; `router.ts`: proxy `routeRegistry.match + pluginRuntime.runRoute` para plugin reports. Commit `7e51198` |
+| T6 Tests | ✅ Completada | 25 tests (25 ✓ 0 ✗) en `reports/__tests__/reports.test.ts`. Cubre: registry RBAC, router 401/403/200, audit log VIEW_REPORT/EXPORT_REPORT, CSV/XLSX export, plugin proxy 200/503. Ejecutados en builder image con ts-jest. Commit `4a1821f` |
+| T7 Documentación | ⏳ Pendiente | USER_MANUAL, ARCHITECTURE, PLUGIN_ENGINE.md, CLAUDE.md |
+| T8 Deploy + verificación local | ✅ Completada | Prod: 10 reportes vía `/api/reports`, RBAC correcto (AUDITOR ve available=false en ADMIN reports), 273 CIs en inventory, export CSV 200 OK. Imagen `cmdb-backend:latest` running. |
+
+## 13. Desviaciones del plan original
+
+| Plan original | Implementado | Motivo |
+|---|---|---|
+| `$queryRaw` tagged templates en `decommission.ts` | `$queryRawUnsafe` con concatenación escapada | Prisma no genera `decommissionPlan` en el cliente (igual que `license`/`licenseUser`); la tabla existe pero el modelo no está en el client generado. Las variables de filtro se escapan manualmente antes de interpolación. |
+| `compliance.ts` con campo `Environment.DR` | Solo DEVELOPMENT/TESTING/STAGING/PRODUCTION | El enum `Environment` no tiene valor `DR`; se eliminó del filtro. |
+| `impactMap.ts` con relaciones PART_OF/RUNS_ON | HOSTS/DEPENDS_ON/CONNECTED_TO/… | Los valores reales del enum `RelationType` no coinciden con los del plan. Corregido según schema. |
+| Tests en contenedor de desarrollo | Builder image (`--target builder`) | Prod container solo tiene prod deps (sin ts-jest). Se usa la imagen builder temporalmente y se descarta. |

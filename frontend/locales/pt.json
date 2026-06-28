@@ -101,7 +101,10 @@
       "vulnerabilities": "Vulnerabilidades",
       "agent": "Agente CS",
       "support": "Suporte",
-      "status": "Estado"
+      "status": "Estado",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Resp. técnico"
     },
     "support_badge": {
       "expired": "Sem suporte",
@@ -280,7 +283,9 @@
       "has_refs_warning": "Se continuares, essas associações serão removidas silenciosamente (os contratos, licenças e documentos em si não são apagados). Os contadores ficam registados no audit log para forense.",
       "force_button": "Eliminar e romper relações"
     },
-    "eol_from_model": "(modelo)"
+    "eol_from_model": "(modelo)",
+    "unassigned": "Sem atribuição",
+    "filter_type_all": "Todos os tipos"
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",

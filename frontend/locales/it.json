@@ -101,7 +101,10 @@
       "vulnerabilities": "Vulnerabilità",
       "agent": "Agente CS",
       "support": "Supporto",
-      "status": "Stato"
+      "status": "Stato",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Resp. tecnico"
     },
     "support_badge": {
       "expired": "Senza supporto",
@@ -280,7 +283,9 @@
       "has_refs_warning": "Se procedi, queste associazioni saranno rimosse silenziosamente (i contratti, le licenze e i documenti stessi non vengono eliminati). I contatori vengono registrati nel log di audit per uso forense.",
       "force_button": "Elimina e rompi le relazioni"
     },
-    "eol_from_model": "(modello)"
+    "eol_from_model": "(modello)",
+    "unassigned": "Non assegnato",
+    "filter_type_all": "Tutti i tipi"
   },
   "vulnerabilities": {
     "title": "Vulnerabilità",

@@ -2,7 +2,7 @@
 
 > **Rama:** `feature/v3.4.1-reporting-fixes` → `develop` (NO `main`)
 > **Base:** v3.4.0 (Reporting Engine). Análisis: Opus · Ejecución: Sonnet (autónoma)
-> **Estado global:** 🔄 En progreso
+> **Estado global:** ✅ Completado — verificado en local (prod compose). Pendiente: merge a `develop`.
 
 ---
 
@@ -30,24 +30,41 @@
 
 | ID | Tarea | Estado |
 |---|---|---|
-| T1 | Backend: helpers `filterUtils.ts` (`asArray`, `resolveOrderBy`) | ⏳ |
-| T2 | Backend: aplicar helpers en inventory/lifecycle/compliance (fix 500) | ⏳ |
-| T3 | Backend: filtro ciType dinámico en inventory + mecanismo `loadFilterOptions` + endpoint `/filters` | ⏳ |
-| T4 | i18n: 63+ claves en 6 idiomas (namespaces canónicos + 17 rel.*) | ⏳ |
-| T5 | Frontend: `ReportTable` KPIs string (fix NaN P7) | ⏳ |
-| T6 | Frontend: filtros inline en cabeceras (P5) | ⏳ |
-| T7 | Frontend: viewer carga `/filters` (opciones dinámicas) | ⏳ |
-| T8 | Frontend: sidebar versión (P6) + bump package.json | ⏳ |
-| T9 | Verificación: tsc + build + smoke test local | ⏳ |
-| T10 | Docs: EXECUTION_LOG, PLAN_STATUS, CLAUDE.md | ⏳ |
+| T1 | Backend: helpers `filterUtils.ts` (`asArray`, `resolveOrderBy`, `escapeLike`, `sortDir`) | ✅ |
+| T2 | Backend: helpers en inventory/lifecycle/compliance/impactMap (fix 500) | ✅ |
+| T3 | Backend: filtro ciType dinámico + `loadFilterOptions` + `/filters` enriquecido | ✅ |
+| T4 | i18n: claves en 6 idiomas (namespaces canónicos + 17 rel.* + reports.horizon.*) | ✅ |
+| T5 | Frontend: `ReportTable.renderKpiValue` (fix NaN P7) | ✅ |
+| T6 | Frontend: filtros inline en cabeceras (P5) | ✅ |
+| T7 | Frontend: viewer carga `/filters` (opciones dinámicas) | ✅ |
+| T8 | Frontend: sidebar versión (P6) + bump package.json 3.2.0→3.4.1 | ✅ |
+| T9 | Verificación: tsc + build + smoke test local | ✅ |
+| T10 | Docs: EXECUTION_LOG, PLAN_STATUS, CLAUDE.md | ✅ |
+
+## Verificación (smoke test local, prod compose)
+- `version.json` → `{"version":"3.4.1","commit":"87c17d8"}` (P6 ✅)
+- inventory `?status=ACTIVO` (1 valor) → **HTTP 200** (antes 500) ✅
+- inventory `?criticality=HIGH` (1 valor) → **HTTP 200** ✅
+- inventory `?sort=ciType&dir=desc` (columna relación) → **HTTP 200** (antes 500) ✅
+- inventory `?status=ACTIVO&status=INACTIVO` (array) → **HTTP 200** ✅
+- inventory `/filters` → `ciType` con **31 opciones** dinámicas (P3 ✅)
+- security KPI coverage → `'0%'` (string, sin NaN; `renderKpiValue` lo muestra literal) (P7 ✅)
+- i18n: 132 claves backend resueltas en **6/6 idiomas**; claves frontend OK (P1 ✅)
+- `tsc` backend limpio; `next build` OK (29/29 páginas); 25/25 tests verdes
+- `/reports` → HTTP 200
+
+## Decisión P4 (no-op documentado)
+No se migró obsolescence/contracts/licenses a un sistema dateType: `CI.eolDate/eosDate`
+son columnas espejo por trigger; `lifecycle` ya usa `ci_dates`+`dateType`; no existen
+`contract_dates`/`license_dates`. Migrar añadiría JOINs/latencia/riesgo sin beneficio.
 
 ## Criterios de aceptación
-- [ ] 0 claves i18n sin resolver en los 10 reportes (6 idiomas)
-- [ ] Filtros laterales sin 500 (incluido 1 solo valor) en todos los reportes
-- [ ] inventory con filtro ciType (multi-select dinámico)
-- [ ] Filtros inline en cabeceras (multi-select finitos + texto)
-- [ ] KPIs coverage/totalCost sin NaN
-- [ ] Versión sidebar sin "Unknown", legible
-- [ ] `tsc --noEmit` limpio (salvo `license`/`licenseUser` pre-existentes)
-- [ ] Smoke test local OK
-- [ ] NO merge a main
+- [x] 0 claves i18n sin resolver en los 10 reportes (6 idiomas)
+- [x] Filtros laterales sin 500 (incluido 1 solo valor) en todos los reportes
+- [x] inventory con filtro ciType (multi-select dinámico)
+- [x] Filtros inline en cabeceras (multi-select finitos + texto)
+- [x] KPIs coverage/totalCost sin NaN
+- [x] Versión sidebar sin "Unknown", legible
+- [x] `tsc --noEmit` limpio (salvo `license`/`licenseUser` pre-existentes)
+- [x] Smoke test local OK
+- [x] NO merge a main

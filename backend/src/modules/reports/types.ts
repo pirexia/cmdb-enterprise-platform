@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
 export type ReportCategory = 'inventory' | 'security' | 'financial' | 'compliance' | 'lifecycle' | 'audit';
 export type ExportFormat = 'csv' | 'xlsx';
-export type ColumnType = 'string' | 'number' | 'date' | 'badge';
+export type ColumnType = 'string' | 'number' | 'date' | 'badge' | 'boolean';
 export type FilterType = 'date-range' | 'select' | 'multi-select' | 'search' | 'toggle';
 
 export interface ReportColumn {
@@ -16,6 +16,10 @@ export interface ReportColumn {
   // 'multi-select' reuses the report filter whose key === column.key (finite options).
   // 'text' wires the header input to the global `search` filter.
   filter?: 'multi-select' | 'text';
+  // v3.4.2 — configurable column picker
+  configurable?: boolean;   // can be shown/hidden by the user
+  defaultVisible?: boolean; // shown by default (when no saved config)
+  group?: string;           // picker grouping: general|location|network|hardware|software|governance|lifecycle
 }
 
 export interface FilterOption {
@@ -39,6 +43,8 @@ export interface ReportFilters {
   sort?: string;
   dir?: 'asc' | 'desc';
   search?: string;
+  visibleColumns?: string | string[]; // v3.4.2 — column picker selection; csv string at the API boundary
+
   [k: string]: unknown;
 }
 
@@ -68,7 +74,8 @@ export interface ReportDefinition {
   minRole: UserRole;
   icon: string;
   tags: string[];
-  columns: ReportColumn[];
+  columns: ReportColumn[];                // default-visible columns
+  allColumns?: ReportColumn[];            // v3.4.2 — full set available for the picker
   filters: ReportFilterDefinition[];
   exportFormats: ExportFormat[];
   source: 'core' | 'plugin';
@@ -91,6 +98,7 @@ export interface ReportMeta {
   tags: string[];
   exportFormats: ExportFormat[];
   columns: ReportColumn[];
+  allColumns?: ReportColumn[]; // v3.4.2 — full set for the column picker
   filters: ReportFilterDefinition[];
   source: 'core' | 'plugin';
   available: boolean; // role check result

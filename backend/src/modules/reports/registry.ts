@@ -38,6 +38,7 @@ export function getAvailableReports(userRole: UserRole): ReportMeta[] {
     tags: def.tags,
     exportFormats: def.exportFormats,
     columns: def.columns,
+    ...(def.allColumns ? { allColumns: def.allColumns } : {}),
     filters: def.filters,
     source: def.source,
     available: userRank >= ROLE_RANK[def.minRole],

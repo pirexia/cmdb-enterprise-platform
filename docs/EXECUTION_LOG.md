@@ -28,6 +28,11 @@
 - `fix(reports): filtros inline en columnas + KPI string + versión sidebar (P5,P6,P7)`
 - `docs(v3.4.1): plan status + execution log`
 
+## Extensión post-merge (mismo ciclo)
+- **E1** `662f491` — popover de filtro de columna recortado por `overflow-x-auto`; fix con `createPortal`+`position:fixed`, cierre en scroll/resize.
+- **E2** `268af13` — filtros inline en cabeceras extendidos a los 10 reportes; texto en cabecera escribe a clave propia (audit-trail entity/action) o `search`; status select→multiselect en licenses/decommission (asArray + IN, decommission con whitelist `DECOMM_STATUSES`); criticality multiselect nuevo en obsolescence/security.
+- **Release** — `develop`→`main` vía PR, tag `v3.4.1`, GitHub release.
+
 ---
 
 # v3.4.0 — Reporting Engine

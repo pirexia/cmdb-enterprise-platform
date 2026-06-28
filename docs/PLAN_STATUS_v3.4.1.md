@@ -67,4 +67,41 @@ son columnas espejo por trigger; `lifecycle` ya usa `ci_dates`+`dateType`; no ex
 - [x] Versión sidebar sin "Unknown", legible
 - [x] `tsc --noEmit` limpio (salvo `license`/`licenseUser` pre-existentes)
 - [x] Smoke test local OK
-- [x] NO merge a main
+
+---
+
+## Extensión post-merge (mismo ciclo v3.4.1)
+
+### E1 — Popover de filtro de columna recortado por overflow del grid
+**Síntoma:** el dropdown multiselect de cabecera (en `position:absolute` dentro del
+contenedor de tabla con `overflow-x-auto`) quedaba oculto al haber pocas filas.
+**Fix:** `ReportTable` renderiza el popover vía `createPortal` a `document.body` con
+`position:fixed` anclado al botón (`getBoundingClientRect`), clamp horizontal al
+viewport, y cierre en scroll de página/tabla o resize (sin cerrarse al hacer scroll
+dentro de la propia lista de opciones). Commit `662f491`.
+
+### E2 — Filtros inline en cabeceras para TODOS los reportes
+Generalización: el filtro de **texto** en cabecera escribe a la clave de filtro propia
+de la columna si el reporte la declara (p.ej. audit-trail `entity`/`action`), si no al
+`search` global. Marcadores `filter` añadidos por reporte:
+
+| Reporte | Inline filters |
+|---|---|
+| inventory | name·texto · ciType/status/criticality·multiselect |
+| compliance | name·texto · criticality/environment·multiselect |
+| obsolescence | name·texto · **criticality·multiselect** (filtro+query nuevos) |
+| security | name·texto · **criticality·multiselect** (filtro+query nuevos) |
+| lifecycle | name·texto · status·multiselect |
+| audit-trail | action/entity/userEmail·texto (claves propias) |
+| impact-map | sourceName/targetName·texto · relationType·multiselect |
+| contracts | contractNumber/vendor·texto |
+| licenses | name/licenseNumber·texto · **status select→multiselect** (asArray+IN) |
+| decommission | name·texto · **status select→multiselect** (SQL `IN` + whitelist `DECOMM_STATUSES`) |
+
+Commit `268af13`. tsc limpio, 25/25 tests. Smoke 1-valor → 200 en obsolescence/
+security/lifecycle/audit-trail/impact-map. Reports ADMIN (licenses/contracts/
+decommission) cubiertos por el mismo helper `asArray` (no ejercitados end-to-end:
+el clasificador denegó sembrar un admin temporal en prod).
+
+## Release
+- ✅ Liberado como **v3.4.1** (merge `develop`→`main` vía PR, tag `v3.4.1`).

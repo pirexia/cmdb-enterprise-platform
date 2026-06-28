@@ -482,8 +482,7 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.2.0 — ✅ LIBERADA (tag `v3.2.0`, merge develop→main, 2026-06-27)
-**En develop (no liberado aún):** v3.3.0 (bug hunt + n8n + pentest) + v3.4.0 (Reporting Engine) + v3.4.1 (correcciones Reporting) — mergeados a develop, pendientes de tag y merge a main
+**Versión actual en producción:** v3.4.1 — ✅ LIBERADA (tag `v3.4.1`, merge develop→main vía PR, 2026-06-28)
 **Rama activa:** `develop`
 **PRs abiertos:** —
 
@@ -510,7 +509,7 @@ Rules:
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
-- **v3.4.1** 🚧 EN DEVELOP (2026-06-28): correcciones Reporting Engine — fix 500 en filtros (helper `asArray` para multi-select de 1 valor + `resolveOrderBy` allowlist para columnas de relación, en `modules/reports/filterUtils.ts`); filtro `ciType` dinámico (`loadFilterOptions`→BD, `/filters` enriquecido); i18n 6 idiomas (namespaces canónicos `ci.status.*`/`ci.criticality.*`/`env.*`/`rel.*` 17 valores/`decomm.status.*`, `reports.horizon.*`); filtros inline en cabeceras de columna (popover); fix NaN KPIs (`ReportTable.renderKpiValue` para strings tipo "75%"/"12 EUR"); sidebar versión (`footer.version_short` condicional + color legible + `package.json`→3.4.1). **P4 (migrar fechas a dateType) descartado**: `CI.eolDate/eosDate` son columnas espejo por trigger; no existen `contract_dates`/`license_dates`. `docs/PLAN_STATUS_v3.4.1.md`.
+- **v3.4.1** ✅ LIBERADA (tag `v3.4.1`, merge develop→main vía PR, 2026-06-28): correcciones Reporting Engine + filtros inline en cabeceras de los 10 reportes (popover vía `createPortal`, texto/multiselect) — fix 500 en filtros (helper `asArray` para multi-select de 1 valor + `resolveOrderBy` allowlist para columnas de relación, en `modules/reports/filterUtils.ts`); filtro `ciType` dinámico (`loadFilterOptions`→BD, `/filters` enriquecido); i18n 6 idiomas (namespaces canónicos `ci.status.*`/`ci.criticality.*`/`env.*`/`rel.*` 17 valores/`decomm.status.*`, `reports.horizon.*`); filtros inline en cabeceras de columna (popover); fix NaN KPIs (`ReportTable.renderKpiValue` para strings tipo "75%"/"12 EUR"); sidebar versión (`footer.version_short` condicional + color legible + `package.json`→3.4.1). **P4 (migrar fechas a dateType) descartado**: `CI.eolDate/eosDate` son columnas espejo por trigger; no existen `contract_dates`/`license_dates`. `docs/PLAN_STATUS_v3.4.1.md`.
 - **v3.4.0** 🚧 EN DEVELOP (2026-06-28): Reporting Engine — módulo `backend/src/modules/reports/` (10 reportes core, registry extensible, RBAC por reporte, CSV/XLSX export, audit log), frontend `app/reports/` (listado + viewer dinámico), i18n ×6, extensibilidad plugins vía `manifest.reports[]`, 25 tests. Mergeado a develop; pendiente tag + merge a main.
 - **v3.3.0** 🚧 EN DEVELOP (develop, 2026-06-27): bug hunt (BUG-001 LDAP TLS, BUG-002 RBAC, BUG-003 ejecuciones, BUG-004 N8N_API_KEY en compose); diagnóstico n8n → workflows aprovisionados; SECURITY_AUDIT.md v3.3.0; COMPLIANCE_v3.3.0.md; docs/n8n/TROUBLESHOOTING.md. Pendiente tag + merge a main.
 - **v3.2.0** ✅ LIBERADA (2026-06-27): `.env` única fuente de verdad para n8n — módulo `n8n-provisioning` (provisioner + onBoot + router + workflows), UI Configuración → n8n (resync card, i18n ×6), `install.sh` Phase 10d bootstrap, `update.sh` `ensure_n8n_api_key`. Tag `v3.2.0`, merge develop→main.

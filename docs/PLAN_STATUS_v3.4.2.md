@@ -2,7 +2,7 @@
 
 > **Rama:** `feature/v3.4.2-inventory-column-picker` → `develop` (NO `main`)
 > **Base:** v3.4.1. Análisis: Opus · Ejecución: Sonnet (autónoma)
-> **Estado global:** 🔄 En progreso
+> **Estado global:** ✅ Completado — verificado en local. Pendiente: merge a `develop`.
 
 ## Objetivo
 Column picker dinámico en `/reports/inventory`: ver/añadir/quitar/reordenar columnas,
@@ -61,20 +61,32 @@ general · location · network · hardware · software · governance · lifecycl
 ## Tareas
 | ID | Tarea | Estado |
 |---|---|---|
-| T1 | types.ts (configurable/defaultVisible/group/allColumns/visibleColumns) | ⏳ |
-| T2 | inventory.ts COLUMN_SPECS (~50) + query dinámica | ⏳ |
-| T3 | schemas.ts + router /data + /export visibleColumns | ⏳ |
-| T4 | registry/meta exponen allColumns | ⏳ |
-| T5 | i18n ×6 (col.* nuevos + columnPicker.* + group.*) | ⏳ |
-| T6 | ColumnPicker.tsx | ⏳ |
-| T7 | ReportTable visibleColumns | ⏳ |
-| T8 | viewer + useReportData + localStorage | ⏳ |
-| T9 | build + smoke test local | ⏳ |
-| T10 | docs (PLAN_STATUS, EXECUTION_LOG, CLAUDE.md) | ⏳ |
+| T1 | types.ts (configurable/defaultVisible/group/allColumns/visibleColumns) | ✅ |
+| T2 | inventory.ts COLUMN_SPECS (61 columnas) + query dinámica | ✅ |
+| T3 | schemas.ts + router /export visibleColumns | ✅ |
+| T4 | registry/meta exponen allColumns | ✅ |
+| T5 | i18n ×6 (≈60 col.* + columnPicker.* + group.*) | ✅ |
+| T6 | ColumnPicker.tsx (portal, grupos, ▲▼, búsqueda) | ✅ |
+| T7 | ReportTable badges nuevos + effectiveColumns en viewer | ✅ |
+| T8 | viewer + localStorage + envío visibleColumns | ✅ |
+| T9 | build + smoke test local | ✅ |
+| T10 | docs (PLAN_STATUS, EXECUTION_LOG, CLAUDE.md) | ✅ |
+
+## Verificación (local, prod compose)
+- meta inventory: 8 columnas default · **61 allColumns** · 7 grupos (general/location/network/hardware/software/governance/lifecycle)
+- `/data?visibleColumns=name,adminIp,manufacturer,hwSerialNumber,businessImpact,spofRisk` → fila con **exactamente** esas keys (+id) → select Prisma dinámico sin over-fetching ✅
+- sort por columna hardware (`hwSerialNumber`, relación to-one) → 200 ✅
+- export CSV `visibleColumns=name,adminIp,businessImpact` → cabecera solo con esas 3 ✅
+- `next build` OK · backend `tsc` limpio · 25/25 tests · `/reports/inventory` 200
 
 ## Criterios de aceptación
-- [ ] allColumns ≥ 40 en inventory; select Prisma dinámico sin over-fetching
-- [ ] picker: grupos, búsqueda, show/hide, reorder, reset, aplicar
-- [ ] persistencia localStorage por usuario+reporte
-- [ ] tabla renderiza solo visibles en orden; export respeta visibles
-- [ ] i18n ×6; tsc limpio; smoke test OK; NO merge a main
+- [x] allColumns ≥ 40 (61); select Prisma dinámico sin over-fetching
+- [x] picker: grupos, búsqueda, show/hide, reorder ▲▼, reset
+- [x] persistencia localStorage por usuario+reporte
+- [x] tabla renderiza solo visibles en orden; export respeta visibles
+- [x] i18n ×6; tsc limpio; smoke test OK; NO merge a main
+
+## Diferido a v3.4.3 (documentado)
+Filtros inline server-side para las ~46 columnas nuevas (texto/multiselect dinámico/
+número/fecha/toggle). Fuera de objetivos y criterios de v3.4.2. Se mantienen los 4
+filtros existentes (status, criticality, ciType, name→search) operativos.

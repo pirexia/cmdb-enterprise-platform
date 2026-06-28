@@ -7,9 +7,14 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useReportData } from "../hooks/useReportData";
 import ReportTable from "../components/ReportTable";
 import ReportFilterPanel from "../components/ReportFilterPanel";
-import type { ReportMeta, ReportFilters, ExportFormat, ReportFilterDefinition } from "../types/report";
+import ColumnPicker from "../components/ColumnPicker";
+import type { ReportMeta, ReportFilters, ExportFormat, ReportFilterDefinition, ReportColumn } from "../types/report";
 
 const DEFAULT_FILTERS: ReportFilters = { page: 1, limit: 50 };
+
+function currentUserId(): string {
+  try { const u = JSON.parse(localStorage.getItem("cmdb_user") ?? "{}"); return u.id ?? u.email ?? "anon"; } catch { return "anon"; }
+}
 
 export default function ReportViewerPage() {
   const { t }    = useLanguage();
@@ -23,8 +28,12 @@ export default function ReportViewerPage() {
   const [exporting, setExporting] = useState(false);
   // Enriched filter defs (dynamic options resolved server-side, e.g. CI types)
   const [filterDefs, setFilterDefs] = useState<ReportFilterDefinition[] | null>(null);
+  // v3.4.2 — column picker: ordered visible column keys (only for reports with allColumns)
+  const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
 
   const { data, loading, error, fetch } = useReportData(reportId);
+
+  const lsKey = `report_columns_${reportId}_${typeof window !== "undefined" ? currentUserId() : "anon"}`;
 
   // Load report meta from the listing
   useEffect(() => {
@@ -49,14 +58,43 @@ export default function ReportViewerPage() {
       .catch(() => setFilterDefs(meta.filters));
   }, [meta, reportId]);
 
-  // Fetch data whenever filters change (after meta loaded)
+  // Initialise visible columns from localStorage (or report defaults) once meta loads
   useEffect(() => {
-    if (meta) fetch(filters);
-  }, [meta, filters, fetch]);
+    if (!meta) return;
+    const all = meta.allColumns;
+    const defaults = meta.columns.map((c) => c.key);
+    if (!all || all.length === 0) { setVisibleKeys(defaults); return; }
+    let initial = defaults;
+    try {
+      const saved = JSON.parse(localStorage.getItem(lsKey) ?? "null");
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter((k: string) => all.some((c) => c.key === k));
+        if (valid.length) initial = valid;
+      }
+    } catch { /* ignore */ }
+    setVisibleKeys(initial);
+  }, [meta, lsKey]);
+
+  // Fetch data whenever filters or visible columns change (after meta loaded)
+  useEffect(() => {
+    if (!meta || visibleKeys.length === 0) return;
+    fetch({ ...filters, visibleColumns: visibleKeys.join(",") });
+  }, [meta, filters, visibleKeys, fetch]);
 
   const handleFiltersChange = useCallback((partial: Partial<ReportFilters>) => {
     setFilters((prev) => ({ ...prev, ...partial }));
   }, []);
+
+  const handleColumnsChange = useCallback((keys: string[]) => {
+    setVisibleKeys(keys);
+    try { localStorage.setItem(lsKey, JSON.stringify(keys)); } catch { /* ignore */ }
+    setFilters((prev) => ({ ...prev, page: 1 }));
+  }, [lsKey]);
+
+  // The columns actually rendered (visible subset/order) — falls back to defaults
+  const effectiveColumns: ReportColumn[] = (meta?.allColumns && visibleKeys.length)
+    ? (visibleKeys.map((k) => meta.allColumns!.find((c) => c.key === k)).filter(Boolean) as ReportColumn[])
+    : (meta?.columns ?? []);
 
   async function handleExport(format: ExportFormat) {
     setExporting(true);
@@ -69,6 +107,7 @@ export default function ReportViewerPage() {
           else params.set(k, String(v));
         }
       });
+      if (visibleKeys.length) params.set("visibleColumns", visibleKeys.join(","));
       const res = await apiFetch(`/api/reports/${reportId}/export?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob  = await res.blob();
@@ -120,10 +159,18 @@ export default function ReportViewerPage() {
             </div>
           </div>
 
-          {/* Export buttons */}
+          {/* Column picker + export buttons */}
           {meta && (
             <div className="flex items-center gap-2">
               {loading && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+              {meta.allColumns && meta.allColumns.length > 0 && visibleKeys.length > 0 && (
+                <ColumnPicker
+                  allColumns={meta.allColumns}
+                  visible={visibleKeys}
+                  defaultKeys={meta.columns.map((c) => c.key)}
+                  onChange={handleColumnsChange}
+                />
+              )}
               {meta.exportFormats.includes("csv") && (
                 <button
                   onClick={() => handleExport("csv")}
@@ -169,7 +216,7 @@ export default function ReportViewerPage() {
         <div className="flex-1 min-w-0">
           {meta && data ? (
             <ReportTable
-              columns={meta.columns}
+              columns={effectiveColumns}
               rows={data.data}
               total={data.total}
               kpis={data.kpis}

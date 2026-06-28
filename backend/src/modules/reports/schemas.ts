@@ -8,6 +8,7 @@ export const ReportQuerySchema = z.object({
   sort:   z.string().max(64).optional(),
   dir:    z.enum(['asc', 'desc']).default('asc'),
   search: z.string().max(200).optional(),
+  visibleColumns: z.string().max(2000).optional(), // v3.4.2 — csv of column keys (subset/order)
 }).passthrough(); // allow report-specific filter keys
 
 export const ExportQuerySchema = z.object({
@@ -15,6 +16,7 @@ export const ExportQuerySchema = z.object({
   from:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   search: z.string().max(200).optional(),
+  visibleColumns: z.string().max(2000).optional(),
 }).passthrough();
 
 export const EXPORT_ROW_LIMIT = 50_000;

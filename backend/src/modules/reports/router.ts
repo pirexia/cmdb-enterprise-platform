@@ -6,7 +6,7 @@ import { requireReportAccess } from './middleware.js';
 import { ReportQuerySchema, ExportQuerySchema, EXPORT_ROW_LIMIT } from './schemas.js';
 import { logReportView, logReportExport } from './audit.js';
 import { toCSV, toXLSX } from './export.js';
-import type { UserRole, ReportFilters, ReportResult } from './types.js';
+import type { UserRole, ReportFilters, ReportResult, ReportColumn } from './types.js';
 import { pluginRuntime, routeRegistry } from '../plugins/engine.js';
 
 type AuthRequest = Request & { user?: { email?: string; role?: UserRole } };
@@ -95,6 +95,13 @@ export function createReportsRouter(prisma: PrismaClient): Router {
 
     const filters: ReportFilters = { ...rest, page: 1, limit: EXPORT_ROW_LIMIT };
 
+    // v3.4.2 — export only the visible columns (in their chosen order) when provided
+    const vcRaw = (rest as Record<string, unknown>)['visibleColumns'];
+    const vc = typeof vcRaw === 'string' && vcRaw ? vcRaw.split(',') : Array.isArray(vcRaw) ? (vcRaw as string[]) : undefined;
+    const pool = def.allColumns ?? def.columns;
+    const resolved = vc ? vc.map((k) => pool.find((c) => c.key === k)).filter(Boolean) as ReportColumn[] : [];
+    const exportCols = resolved.length ? resolved : def.columns;
+
     try {
       let result: ReportResult;
 
@@ -117,7 +124,7 @@ export function createReportsRouter(prisma: PrismaClient): Router {
       const filename = `${def.id}-${new Date().toISOString().slice(0, 10)}`;
 
       if (format === 'csv') {
-        const csv = toCSV(def.columns, result.data);
+        const csv = toCSV(exportCols, result.data);
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
         res.send('﻿' + csv); // BOM for Excel UTF-8
@@ -125,7 +132,7 @@ export function createReportsRouter(prisma: PrismaClient): Router {
       }
 
       if (format === 'xlsx') {
-        const buf = await toXLSX(def.columns, result.data);
+        const buf = await toXLSX(exportCols, result.data);
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
         res.send(buf);

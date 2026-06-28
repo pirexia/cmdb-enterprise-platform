@@ -2,6 +2,27 @@
 
 ---
 
+# v3.4.2 — Columnas configurables (Inventario) · ✅ COMPLETADA · 2026-06-28
+
+**Rama:** `feature/v3.4.2-inventory-column-picker` → `develop`.
+
+## Análisis (Opus) — correcciones a premisas del prompt
+- Códigos `dateType` kebab-case (no EOL/EOS); `CI.eolDate/eosDate` = columnas espejo por trigger (sortables); HardwareCI usa `serialNumber/model/manufacturer`; columnas derivadas de `ci_dates` (1:N) no sortables vía Prisma; relación CI→CIDate = `lifecycleDates`.
+- **Alcance:** picker completo; filtros server-side de columnas nuevas diferidos a v3.4.3.
+
+## Ejecución (Sonnet)
+- Backend: `types.ts` (+configurable/defaultVisible/group/allColumns/visibleColumns); `inventory.ts` COLUMN_SPECS (61 columnas), `select` Prisma dinámico (merge de fragmentos) + orderBy allowlist; `schemas.ts` visibleColumns; `router` export visibles; `registry` allColumns.
+- Frontend: `ColumnPicker.tsx` (portal, búsqueda, grupos, ▲▼/quitar, todas/ninguna/reset); `[id]/page.tsx` (visibleKeys + localStorage `report_columns_<id>_<userId>`, effectiveColumns, csv a /data y /export); `ReportTable` badges nuevos; i18n ×6.
+
+## Verificación local
+61 allColumns/8 default/7 grupos; data solo keys pedidas (sin over-fetching); sort hardware 200; export CSV solo visibles; next build + tsc + 25 tests OK.
+
+## Commits
+- `feat(reports): backend columnas configurables en inventory (~50 columnas)`
+- `feat(reports): column picker en Inventario de CIs (frontend)`
+
+---
+
 # v3.4.1 — Correcciones Reporting Engine · ✅ COMPLETADA · 2026-06-28
 
 **Rama:** `feature/v3.4.1-reporting-fixes` → `develop`. Análisis Opus, ejecución autónoma.

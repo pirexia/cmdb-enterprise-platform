@@ -3,10 +3,17 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Columns3, Search, X, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
-import type { ReportColumn } from "../types/report";
+
+// Minimal structural column shape — reusable by reports (ReportColumn) and the
+// inventory page (InvColumn). Both expose key/labelKey/group.
+export interface PickerColumn {
+  key: string;
+  labelKey: string;
+  group?: string;
+}
 
 interface Props {
-  allColumns: ReportColumn[];
+  allColumns: PickerColumn[];
   visible: string[];      // ordered visible keys
   defaultKeys: string[];  // for "reset to default"
   onChange: (keys: string[]) => void;
@@ -58,7 +65,7 @@ export default function ColumnPicker({ allColumns, visible, defaultKeys, onChang
   const reset = () => onChange(defaultKeys);
 
   const groups = useMemo(() => {
-    const m = new Map<string, ReportColumn[]>();
+    const m = new Map<string, PickerColumn[]>();
     const q = search.trim().toLowerCase();
     for (const c of allColumns) {
       if (q && !t(c.labelKey).toLowerCase().includes(q)) continue;

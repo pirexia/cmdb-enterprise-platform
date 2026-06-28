@@ -101,7 +101,10 @@
       "vulnerabilities": "Schwachstellen",
       "agent": "CS-Agent",
       "support": "Support",
-      "status": "Status"
+      "status": "Status",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Techn. Verantw."
     },
     "support_badge": {
       "expired": "Kein Support",
@@ -280,7 +283,9 @@
       "has_refs_warning": "Wenn Sie fortfahren, werden diese Verknüpfungen stillschweigend getrennt (Verträge, Lizenzen und Dokumente selbst werden nicht gelöscht). Die Referenzzahlen werden für Forensik im Audit-Log erfasst.",
       "force_button": "Löschen und Beziehungen trennen"
     },
-    "eol_from_model": "(Modell)"
+    "eol_from_model": "(Modell)",
+    "unassigned": "Nicht zugewiesen",
+    "filter_type_all": "Alle Typen"
   },
   "vulnerabilities": {
     "title": "Schwachstellen",

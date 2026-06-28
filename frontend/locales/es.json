@@ -101,7 +101,10 @@
       "vulnerabilities": "Vulnerabilidades",
       "agent": "Agente CS",
       "support": "Soporte",
-      "status": "Estado"
+      "status": "Estado",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Responsable técnico"
     },
     "support_badge": {
       "expired": "Sin soporte",
@@ -280,7 +283,9 @@
       "refs_documents": "{count} relación(es) con documentos",
       "has_refs_warning": "Si continúas, esas asociaciones se eliminarán silenciosamente (los contratos, licencias y documentos en sí no se borran). Las referencias se registran en el audit log para forense.",
       "force_button": "Eliminar y romper relaciones"
-    }
+    },
+    "unassigned": "Sin asignar",
+    "filter_type_all": "Todos los tipos"
   },
   "vulnerabilities": {
     "title": "Vulnerabilidades",

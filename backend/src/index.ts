@@ -522,6 +522,7 @@ const CI_INCLUDE = {
   software: true,
   location: true,
   costCenter: true,
+  branch:    { select: { id: true, name: true } },
   businessOwner: { select: { id: true, username: true, email: true } },
   technicalLead: { select: { id: true, username: true, email: true } },
   parentCI:  { select: { id: true, name: true, apiSlug: true } },
@@ -529,6 +530,7 @@ const CI_INCLUDE = {
   ciTypeDef: { select: { id: true, code: true, name: true, categoryCode: true } },
   ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true, manufacturer: { select: { id: true, name: true } } } },
   operatingSystem: { select: { id: true, name: true, version: true } },
+  lifecycleDates: { select: { dateValue: true, dateType: { select: { code: true } } } },
   contracts: {
     select: {
       id:             true,
@@ -556,6 +558,7 @@ function flattenCI(ci: any) {
     eolSource:     ci.eolDate  ? 'ci' : (ciModel?.eolDate  ? 'model' : null),
     eosSource:     ci.eosDate  ? 'ci' : (ciModel?.eosDate  ? 'model' : null),
     ciModelName:   ciModel?.name ?? null,
+    manufacturerName: ciModel?.manufacturer?.name ?? null,
   };
 }
 

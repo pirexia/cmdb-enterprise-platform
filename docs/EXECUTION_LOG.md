@@ -2,6 +2,21 @@
 
 ---
 
+# v3.4.3 — Column picker en la vista /inventory · ✅ COMPLETADA · 2026-06-28
+
+**Rama:** `feature/v3.4.3-inventory-column-picker` → `develop`. Decisión usuario: paridad total + especiales ocultables.
+
+- **Hallazgo:** `/api/cis` (CI_INCLUDE+flattenCI) ya devolvía casi todo; solo faltaba `branch`+`lifecycleDates`; `flattenCI` destripa `ciModel` → se expone `manufacturerName`.
+- **Backend:** CI_INCLUDE +branch +lifecycleDates; flattenCI +manufacturerName.
+- **Frontend:** interfaz CI ampliada (alineada con CIDetail); registro `InvCol` (~55 cols, especiales+planas, lifecycleDates por code); tabla refactorizada a dirigida-por-columnas (cabecera/filtros/cuerpo iteran sobre visibleCols; checkbox/nombre/acciones fijos); ColumnPicker reutilizado (PickerColumn) + localStorage `inventory_columns_<userId>`; i18n ×6.
+- **Errores resueltos en build:** CI no asignable a CIDetail (operatingSystem.version y ciModel.manufacturer opcionales → no opcionales); ReportColumn residual en ColumnPicker → PickerColumn.
+- **Verificación:** build OK; /api/cis con branch/lifecycleDates/manufacturerName (HPE/CPD); /inventory 200; desplegado.
+
+## Commit
+- `feat(inventory): column picker en la vista /inventory (paridad reporte)`
+
+---
+
 # v3.4.2 — Columnas configurables (Inventario) · ✅ COMPLETADA · 2026-06-28
 
 **Rama:** `feature/v3.4.2-inventory-column-picker` → `develop`.

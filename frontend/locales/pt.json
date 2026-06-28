@@ -1116,7 +1116,158 @@
     "quick_link_vulns_label": "Vulnerabilidades",
     "quick_link_vulns_desc": "Exportar com filtros aplicados",
     "quick_link_contracts_label": "Contratos & Adendas",
-    "quick_link_contracts_desc": "Transferir lista completa"
+    "quick_link_contracts_desc": "Transferir lista completa",
+    "list": {
+      "title": "Central de Relatórios",
+      "subtitle": "Analise e exporte dados da CMDB",
+      "search": "Pesquisar relatórios...",
+      "all_categories": "Todas as categorias",
+      "no_results": "Nenhum relatório encontrado"
+    },
+    "view": {
+      "back": "Voltar",
+      "filters": "Filtros",
+      "clear": "Limpar filtros",
+      "loading": "Carregando relatório...",
+      "no_data": "Sem dados para os filtros selecionados",
+      "total": "Total",
+      "page": "Página",
+      "search_placeholder": "Pesquisar..."
+    },
+    "category": {
+      "inventory": "Inventário",
+      "security": "Segurança",
+      "financial": "Financeiro",
+      "compliance": "Conformidade",
+      "lifecycle": "Ciclo de vida",
+      "audit": "Auditoria"
+    },
+    "filter": {
+      "all": "Todos",
+      "search": "Pesquisar",
+      "from": "De",
+      "to": "Até",
+      "status": "Estado",
+      "criticality": "Criticidade",
+      "environment": "Ambiente",
+      "relationType": "Tipo de relação",
+      "ciType": "Tipo CI",
+      "location": "Localização",
+      "costCenter": "Centro de custo",
+      "severity": "Severidade",
+      "days": "Dias para expirar"
+    },
+    "kpi": {
+      "total": "Total",
+      "expired": "Expirados",
+      "critical": "Críticos",
+      "expiringSoon": "A expirar",
+      "missionCritical": "Missão crítica",
+      "withVulns": "Com vulnerabilidades",
+      "inProgress": "Em andamento",
+      "completed": "Concluídos",
+      "totalValue": "Valor total",
+      "annualCost": "Custo anual",
+      "overcapacity": "Supercapacidade"
+    },
+    "col": {
+      "name": "Nome",
+      "status": "Estado",
+      "criticality": "Criticidade",
+      "environment": "Ambiente",
+      "hasVulns": "Vulnerabilidades",
+      "eolDate": "Data EoL",
+      "eosDate": "Data EoS",
+      "eolStatus": "Estado EoL",
+      "ciType": "Tipo",
+      "location": "Localização",
+      "costCenter": "C. Custo",
+      "brand": "Marca",
+      "model": "Modelo",
+      "serialNumber": "Nº Série",
+      "severity": "Severidade",
+      "vulnCount": "Vulnerabilidades",
+      "cvssScore": "CVSS",
+      "contractName": "Contrato",
+      "vendor": "Fornecedor",
+      "contractType": "Tipo",
+      "startDate": "Início",
+      "endDate": "Fim",
+      "amount": "Valor",
+      "currency": "Moeda",
+      "daysUntilExpiry": "Dias até expirar",
+      "licenseName": "Licença",
+      "licenseType": "Tipo",
+      "totalSeats": "Assentos",
+      "usedSeats": "Usados",
+      "usagePercent": "% Uso",
+      "annualCost": "Custo anual",
+      "action": "Ação",
+      "entity": "Entidade",
+      "entityId": "ID Entidade",
+      "userEmail": "Utilizador",
+      "createdAt": "Data",
+      "sourceId": "ID Origem",
+      "sourceName": "CI Origem",
+      "sourceType": "Tipo Origem",
+      "relationType": "Relação",
+      "targetId": "ID Destino",
+      "targetName": "CI Destino",
+      "targetType": "Tipo Destino",
+      "targetStatus": "Estado Destino",
+      "systemCI": "CI Sistema",
+      "createdBy": "Criado por",
+      "completedAt": "Concluído",
+      "ciCount": "CIs",
+      "contractCount": "Contratos",
+      "licenseCount": "Licenças",
+      "purchaseDate": "Data compra",
+      "endOfLifeDate": "Fim de vida",
+      "endOfSupportDate": "Fim suporte",
+      "warrantyDate": "Garantia"
+    },
+    "def": {
+      "inventory": {
+        "name": "Inventário de CIs",
+        "desc": "Lista completa de ativos com tipo, estado e criticidade"
+      },
+      "obsolescence": {
+        "name": "Obsolescência EoL/EoS",
+        "desc": "Ativos próximos do fim de vida ou suporte"
+      },
+      "security": {
+        "name": "Segurança e Vulnerabilidades",
+        "desc": "CIs com vulnerabilidades ativas e pontuações CVSS"
+      },
+      "contracts": {
+        "name": "Vencimento de Contratos",
+        "desc": "Contratos ordenados por data de vencimento"
+      },
+      "licenses": {
+        "name": "Uso de Licenças",
+        "desc": "Licenças com utilização e custo anual"
+      },
+      "compliance": {
+        "name": "Conformidade por Ambiente",
+        "desc": "CIs de produção e missão crítica sem data EOL"
+      },
+      "lifecycle": {
+        "name": "Ciclo de Vida de CIs",
+        "desc": "Datas de compra, garantia, suporte e fim de vida"
+      },
+      "auditTrail": {
+        "name": "Registro de Auditoria",
+        "desc": "Histórico de mudanças e acessos na plataforma"
+      },
+      "impactMap": {
+        "name": "Mapa de Impacto",
+        "desc": "Relações entre CIs: dependências, redundâncias e conectividade"
+      },
+      "decommission": {
+        "name": "Planos de Descomissionamento",
+        "desc": "Estado dos planos de retirada de sistemas"
+      }
+    }
   },
   "audit": {
     "title": "Registos de Auditoria",

@@ -60,6 +60,7 @@ import { createMastersRouter }        from './modules/masters/router';
 import { createDocumentsRouter, createBulkQueueProcessor } from './modules/documents/router';
 import { createInternalRouter }       from './modules/internal/router';
 import { createTimelineRouter }       from './modules/timeline/router';
+import { createReportsRouter }        from './modules/reports/index';
 import { createN8nProvisioningRouter } from './modules/n8n-provisioning/router';
 import { docVisibilitySqlCol }        from './shared/utils/docVisibility';
 import { UserRole, JwtPayload }  from './shared/types';
@@ -309,6 +310,9 @@ app.use('/api/alerts', authenticateToken, createAlertsRouter(prisma));
 
 // Timeline module — read-only Gantt data; all authenticated roles allowed (VIEWER+)
 app.use('/api/timeline', authenticateToken, createTimelineRouter(prisma));
+
+// Reports module — 10 core reports + plugin-extensible registry; RBAC per report
+app.use('/api/reports', authenticateToken, createReportsRouter(prisma));
 
 // n8n Provisioning — resync bajo demanda (ADMIN only)
 app.use('/api/admin/n8n', authenticateToken, requireAdmin, createN8nProvisioningRouter(prisma));

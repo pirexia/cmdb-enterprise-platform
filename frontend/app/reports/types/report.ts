@@ -9,11 +9,13 @@ export interface ReportColumn {
   labelKey: string;
   type?: ColumnType;
   sortable?: boolean;
+  filter?: 'multi-select' | 'text';
 }
 
 export interface FilterOption {
   value: string;
-  labelKey: string;
+  labelKey?: string;
+  label?: string;
 }
 
 export interface ReportFilterDefinition {

@@ -1,36 +1,61 @@
 "use client";
+import { useState, useRef, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
-import type { ReportColumn, ReportFilters, ReportKpi } from "../types/report";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Filter as FilterIcon, X } from "lucide-react";
+import type { ReportColumn, ReportFilters, ReportKpi, ReportFilterDefinition } from "../types/report";
 
 const BADGE_COLORS: Record<string, string> = {
-  ACTIVE:          "bg-emerald-50 text-emerald-700",
-  INACTIVE:        "bg-slate-100 text-slate-500",
-  RETIRED:         "bg-rose-50 text-rose-600",
-  MAINTENANCE:     "bg-amber-50 text-amber-700",
-  PLANNED:         "bg-blue-50 text-blue-700",
+  // CI status (Spanish enum values)
+  ACTIVO:          "bg-emerald-50 text-emerald-700",
+  INACTIVO:        "bg-slate-100 text-slate-500",
+  RETIRADO:        "bg-rose-50 text-rose-600",
+  // criticality
   MISSION_CRITICAL:"bg-rose-100 text-rose-800",
   HIGH:            "bg-orange-50 text-orange-700",
   MEDIUM:          "bg-yellow-50 text-yellow-700",
   LOW:             "bg-slate-50 text-slate-600",
+  // environment
   PRODUCTION:      "bg-emerald-50 text-emerald-700",
   STAGING:         "bg-amber-50 text-amber-700",
   DEVELOPMENT:     "bg-blue-50 text-blue-700",
   TESTING:         "bg-violet-50 text-violet-700",
+  // yes/no + coverage
   yes:             "bg-rose-50 text-rose-700",
   no:              "bg-emerald-50 text-emerald-700",
+  covered:         "bg-emerald-50 text-emerald-700",
+  uncovered:       "bg-rose-50 text-rose-700",
+  // contract/license lifecycle status
+  active:          "bg-emerald-50 text-emerald-700",
+  expiring:        "bg-amber-50 text-amber-700",
+  expired:         "bg-rose-50 text-rose-600",
+  open:            "bg-slate-100 text-slate-500",
+  // decommission status
   COMPLETED:       "bg-emerald-50 text-emerald-700",
   IN_PROGRESS:     "bg-amber-50 text-amber-700",
   DRAFT:           "bg-slate-100 text-slate-500",
   CANCELLED:       "bg-rose-50 text-rose-600",
+  // eol/eos semaphore
+  red:             "bg-rose-50 text-rose-700",
+  amber:           "bg-amber-50 text-amber-700",
+  green:           "bg-emerald-50 text-emerald-700",
+  // relation types
   DEPENDS_ON:      "bg-blue-50 text-blue-700",
   HOSTS:           "bg-teal-50 text-teal-700",
   CONNECTED_TO:    "bg-indigo-50 text-indigo-700",
+  CONNECTS_TO:     "bg-indigo-50 text-indigo-700",
   PROVIDES_SERVICE:"bg-violet-50 text-violet-700",
   BACKED_UP_BY:    "bg-cyan-50 text-cyan-700",
+  REPLICATES_TO:   "bg-cyan-50 text-cyan-700",
   CONTAINS:        "bg-orange-50 text-orange-700",
   COMPOSED_OF:     "bg-amber-50 text-amber-700",
   ATTACHED_TO:     "bg-slate-100 text-slate-600",
+  UPLINKS_TO:      "bg-sky-50 text-sky-700",
+  POWERS:          "bg-yellow-50 text-yellow-700",
+  PROTECTS:        "bg-emerald-50 text-emerald-700",
+  RUNS_ON:         "bg-blue-50 text-blue-700",
+  QUERIES:         "bg-purple-50 text-purple-700",
+  LICENSES:        "bg-pink-50 text-pink-700",
+  MANAGES:         "bg-slate-100 text-slate-600",
 };
 
 const KPI_TONES: Record<string, string> = {
@@ -46,13 +71,31 @@ interface Props {
   total: number;
   kpis?: ReportKpi[];
   filters: ReportFilters;
+  filterDefs?: ReportFilterDefinition[];
   onFiltersChange: (f: Partial<ReportFilters>) => void;
   loading: boolean;
 }
 
-export default function ReportTable({ columns, rows, total, kpis, filters, onFiltersChange, loading }: Props) {
+/** Render a KPI value: format numbers, but pass through pre-formatted strings (e.g. "75%", "12.00 EUR") to avoid NaN. */
+function renderKpiValue(value: number | string): string {
+  if (typeof value === "number") return value.toLocaleString();
+  const n = Number(value);
+  return Number.isFinite(n) && value.trim() !== "" ? n.toLocaleString() : String(value);
+}
+
+export default function ReportTable({ columns, rows, total, kpis, filters, filterDefs = [], onFiltersChange, loading }: Props) {
   const { t } = useLanguage();
   const pageCount = Math.ceil(total / filters.limit);
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickAway(e: MouseEvent) {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) setOpenFilter(null);
+    }
+    if (openFilter) document.addEventListener("mousedown", onClickAway);
+    return () => document.removeEventListener("mousedown", onClickAway);
+  }, [openFilter]);
 
   function toggleSort(key: string) {
     if (filters.sort === key) {
@@ -60,6 +103,17 @@ export default function ReportTable({ columns, rows, total, kpis, filters, onFil
     } else {
       onFiltersChange({ sort: key, dir: "asc", page: 1 });
     }
+  }
+
+  const optLabel = (o: { value: string; labelKey?: string; label?: string }) =>
+    o.label ?? (o.labelKey ? t(o.labelKey) : o.value);
+
+  const defFor = (key: string) => filterDefs.find((f) => f.key === key);
+
+  function columnHasActiveFilter(col: ReportColumn): boolean {
+    if (col.filter === "text") return !!filters.search;
+    const v = filters[col.key];
+    return Array.isArray(v) ? v.length > 0 : v !== undefined && v !== null && v !== "";
   }
 
   function renderCell(col: ReportColumn, row: Record<string, unknown>) {
@@ -77,6 +131,69 @@ export default function ReportTable({ columns, rows, total, kpis, filters, onFil
     return <span>{String(val)}</span>;
   }
 
+  function renderHeaderFilter(col: ReportColumn) {
+    if (!col.filter) return null;
+    const active = columnHasActiveFilter(col);
+    return (
+      <span className="relative inline-flex">
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setOpenFilter(openFilter === col.key ? null : col.key); }}
+          className={`p-0.5 ${active ? "text-[var(--accent)]" : "text-slate-300 hover:text-slate-500"}`}
+          aria-label={t("reports.view.filters")}
+        >
+          <FilterIcon className="w-3 h-3" />
+        </button>
+        {openFilter === col.key && (
+          <div
+            ref={popRef}
+            className="absolute top-5 left-0 z-20 min-w-44 bg-white ring-1 ring-slate-200 shadow-lg p-2 normal-case"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {col.filter === "text" ? (
+              <input
+                autoFocus
+                type="text"
+                value={String(filters.search ?? "")}
+                onChange={(e) => onFiltersChange({ search: e.target.value || undefined, page: 1 })}
+                placeholder={t("reports.view.search_placeholder")}
+                className="w-full border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:border-[var(--accent)]"
+              />
+            ) : (
+              <div className="max-h-56 overflow-y-auto space-y-0.5">
+                {(defFor(col.key)?.options ?? []).map((o) => {
+                  const selected = Array.isArray(filters[col.key]) ? (filters[col.key] as string[]) : [];
+                  const isOn = selected.includes(o.value);
+                  return (
+                    <label key={o.value} className="flex items-center gap-2 px-1.5 py-1 text-xs text-slate-700 hover:bg-slate-50 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isOn}
+                        onChange={() => {
+                          const next = isOn ? selected.filter((v) => v !== o.value) : [...selected, o.value];
+                          onFiltersChange({ [col.key]: next.length ? next : undefined, page: 1 });
+                        }}
+                      />
+                      {optLabel(o)}
+                    </label>
+                  );
+                })}
+                {active && (
+                  <button
+                    onClick={() => onFiltersChange({ [col.key]: undefined, page: 1 })}
+                    className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-700 px-1.5"
+                  >
+                    <X className="w-3 h-3" /> {t("reports.view.clear")}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </span>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* KPIs */}
@@ -84,7 +201,7 @@ export default function ReportTable({ columns, rows, total, kpis, filters, onFil
         <div className="flex flex-wrap gap-3">
           {kpis.map((kpi) => (
             <div key={kpi.labelKey} className={`px-4 py-2.5 flex flex-col ${KPI_TONES[kpi.tone ?? "neutral"] ?? KPI_TONES.neutral}`}>
-              <span className="text-xl font-bold tabular-nums">{Number(kpi.value).toLocaleString()}</span>
+              <span className="text-xl font-bold tabular-nums">{renderKpiValue(kpi.value)}</span>
               <span className="text-[11px] font-medium">{t(kpi.labelKey)}</span>
             </div>
           ))}
@@ -99,16 +216,21 @@ export default function ReportTable({ columns, rows, total, kpis, filters, onFil
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  className={`px-3 py-2.5 text-left text-[11px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap ${col.sortable ? "cursor-pointer select-none hover:bg-slate-100" : ""}`}
-                  onClick={col.sortable ? () => toggleSort(col.key) : undefined}
+                  className="px-3 py-2.5 text-left text-[11px] font-semibold text-slate-600 uppercase tracking-wide whitespace-nowrap"
                 >
                   <span className="flex items-center gap-1">
-                    {t(col.labelKey)}
-                    {col.sortable && (
-                      filters.sort === col.key
-                        ? (filters.dir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)
-                        : <ChevronsUpDown className="w-3 h-3 opacity-30" />
-                    )}
+                    <span
+                      className={col.sortable ? "cursor-pointer select-none hover:text-slate-900 flex items-center gap-1" : "flex items-center gap-1"}
+                      onClick={col.sortable ? () => toggleSort(col.key) : undefined}
+                    >
+                      {t(col.labelKey)}
+                      {col.sortable && (
+                        filters.sort === col.key
+                          ? (filters.dir === "asc" ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)
+                          : <ChevronsUpDown className="w-3 h-3 opacity-30" />
+                      )}
+                    </span>
+                    {renderHeaderFilter(col)}
                   </span>
                 </th>
               ))}

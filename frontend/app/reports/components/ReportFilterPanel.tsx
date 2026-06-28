@@ -14,6 +14,10 @@ export default function ReportFilterPanel({ filterDefs, filters, onChange }: Pro
   const { t } = useLanguage();
   const [open, setOpen] = useState(true);
 
+  // Static options use labelKey (i18n); dynamic options (P3) carry a literal label.
+  const optLabel = (o: { value: string; labelKey?: string; label?: string }) =>
+    o.label ?? (o.labelKey ? t(o.labelKey) : o.value);
+
   function handleChange(key: string, value: unknown) {
     onChange({ [key]: value, page: 1 });
   }
@@ -74,7 +78,7 @@ export default function ReportFilterPanel({ filterDefs, filters, onChange }: Pro
                   >
                     <option value="">{t("reports.filter.all")}</option>
                     {f.options?.map((o) => (
-                      <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
+                      <option key={o.value} value={o.value}>{optLabel(o)}</option>
                     ))}
                   </select>
                 </div>
@@ -105,7 +109,7 @@ export default function ReportFilterPanel({ filterDefs, filters, onChange }: Pro
                               : "border-slate-200 text-slate-600 hover:border-slate-300",
                           ].join(" ")}
                         >
-                          {t(o.labelKey)}
+                          {optLabel(o)}
                         </button>
                       );
                     })}

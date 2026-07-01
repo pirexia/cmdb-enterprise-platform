@@ -863,9 +863,9 @@ export default function InventoryPage() {
             )}
 
             {!loading && !error && (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[calc(100vh-16rem)]">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10">
+                  <thead className="sticky top-0 z-20 bg-slate-50">
                     {/* ── Sort row ── */}
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
                       {/* Bulk-select checkbox column (admin only) */}
@@ -934,7 +934,7 @@ export default function InventoryPage() {
                       {isAdmin && <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
                     </tr>
                     {/* ── Filter row ── */}
-                    <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
+                    <tr className="border-b-2 border-[var(--accent)]/20 bg-slate-50">
                       {/* Bulk-select column (empty cell in filter row) */}
                       {isAdmin && <td className="px-3 py-2" />}
                       {/* Name filter */}

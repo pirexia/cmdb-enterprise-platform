@@ -101,7 +101,10 @@
       "vulnerabilities": "Schwachstellen",
       "agent": "CS-Agent",
       "support": "Support",
-      "status": "Status"
+      "status": "Status",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Techn. Verantw."
     },
     "support_badge": {
       "expired": "Kein Support",
@@ -280,7 +283,9 @@
       "has_refs_warning": "Wenn Sie fortfahren, werden diese Verknüpfungen stillschweigend getrennt (Verträge, Lizenzen und Dokumente selbst werden nicht gelöscht). Die Referenzzahlen werden für Forensik im Audit-Log erfasst.",
       "force_button": "Löschen und Beziehungen trennen"
     },
-    "eol_from_model": "(Modell)"
+    "eol_from_model": "(Modell)",
+    "unassigned": "Nicht zugewiesen",
+    "filter_type_all": "Alle Typen"
   },
   "vulnerabilities": {
     "title": "Schwachstellen",
@@ -1260,7 +1265,56 @@
       "medium": "Mittel",
       "metricValue": "Metrik",
       "notes": "Notizen",
-      "totalVulns": "Vulns gesamt"
+      "totalVulns": "Vulns gesamt",
+      "apiSlug": "API-Slug",
+      "inventoryNumber": "Inventarnr.",
+      "verificationSource": "Prüfquelle",
+      "lastCheckDate": "Letzte Prüfung",
+      "updatedAt": "Aktualisiert",
+      "floor": "Etage",
+      "room": "Raum",
+      "rack": "Rack",
+      "rackUnit": "Rack-Einheit",
+      "assignedUser": "Zugew. Benutzer",
+      "userDni": "Benutzer-ID",
+      "adminIp": "Admin-IP",
+      "mgmtIp": "Mgmt-IP",
+      "consoleIp": "Konsolen-IP",
+      "dns": "DNS",
+      "vlan": "VLAN",
+      "hostName": "Hostname",
+      "cpuModel": "CPU-Modell",
+      "vCpus": "vCPUs",
+      "ram": "RAM",
+      "disk": "Festplatte",
+      "firmwareVersion": "Firmware",
+      "clusterName": "Cluster",
+      "ciModel": "Modell",
+      "manufacturer": "Hersteller",
+      "operatingSystem": "Betriebssystem",
+      "hwSerialNumber": "Seriennr.",
+      "hwModel": "HW-Modell",
+      "hwManufacturer": "HW-Hersteller",
+      "sizeU": "Größe (HE)",
+      "powerW": "Leistung (W)",
+      "uPosition": "HE-Position",
+      "orientation": "Ausrichtung",
+      "swVersion": "SW-Version",
+      "swLicenseType": "Lizenztyp",
+      "businessOwner": "Geschäftsverantw.",
+      "technicalLead": "Techn. Verantw.",
+      "parentCI": "Übergeordnetes CI",
+      "businessImpact": "Geschäftsauswirkung",
+      "dataClassification": "Datenklassifizierung",
+      "recoveryPriority": "Wiederherst.-Priorität",
+      "rto": "RTO (Min)",
+      "rpo": "RPO (Min)",
+      "spofRisk": "SPOF-Risiko",
+      "containsPii": "Enthält PII",
+      "warrantyEndDate": "Garantieende",
+      "deploymentDate": "Bereitstellungsdatum",
+      "decommissionDate": "Außerbetriebnahme",
+      "reviewDate": "Prüfdatum"
     },
     "def": {
       "inventory": {
@@ -1310,6 +1364,23 @@
       "90d": "90 Tage",
       "180d": "180 Tage",
       "365d": "365 Tage"
+    },
+    "columnPicker": {
+      "title": "Spalten",
+      "search": "Spalten suchen...",
+      "showAll": "Alle anzeigen",
+      "hideAll": "Alle ausblenden",
+      "reset": "Zurücksetzen",
+      "apply": "Anwenden",
+      "group": {
+        "general": "Allgemein",
+        "location": "Standort",
+        "network": "Netzwerk",
+        "hardware": "Hardware",
+        "software": "Software",
+        "governance": "Governance",
+        "lifecycle": "Lebenszyklus"
+      }
     }
   },
   "audit": {

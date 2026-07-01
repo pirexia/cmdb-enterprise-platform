@@ -25,6 +25,7 @@ import { exportToCSV } from "@/lib/csvExport";
 import { usePageSize } from "@/hooks/usePageSize";
 import PageSizeSelector from "@/components/PageSizeSelector";
 import PaginationControls from "@/components/PaginationControls";
+import ColumnPicker from "@/app/reports/components/ColumnPicker";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ interface CI {
   branchId:        string | null;
   ciModelId:       string | null;
   technicalLead:   User | null;
-  hardware:        { serialNumber: string; model: string; manufacturer: string } | null;
+  hardware:        { serialNumber: string; model: string; manufacturer: string; sizeU?: number | null; powerW?: number | null; uPosition?: number | null; orientation?: string | null } | null;
   software:        { version: string; licenseType: string } | null;
   vulnerabilities: Vulnerability[] | null;
   agentStatus:     AgentStatus | null;
@@ -91,6 +92,38 @@ interface CI {
   spofRisk:           boolean;
   containsPii:        boolean;
   dataClassification: string | null;
+  // v3.4.3 — extra fields surfaced by /api/cis (CI_INCLUDE) for the column picker
+  businessOwner?:     User | null;
+  location?:          { id: string; name: string } | null;
+  costCenter?:        { id: string; name: string } | null;
+  branch?:            { id: string; name: string } | null;
+  operatingSystem?:   { id: string; name: string; version: string | null } | null;
+  ciModel?:           { id: string; name: string; manufacturer: { id: string; name: string } | null } | null;
+  manufacturerName?:  string | null;
+  parentCI?:          { id: string; name: string } | null;
+  assignedUser?:      string | null;
+  userDni?:           string | null;
+  floor?:             string | null;
+  room?:              string | null;
+  rack?:              string | null;
+  rackUnit?:          string | null;
+  cpuModel?:          string | null;
+  vCpus?:             number | null;
+  ram?:               string | null;
+  disk?:              string | null;
+  firmwareVersion?:   string | null;
+  clusterName?:       string | null;
+  hostName?:          string | null;
+  adminIp?:           string | null;
+  mgmtIp?:            string | null;
+  consoleIp?:         string | null;
+  dns?:               string | null;
+  vlan?:              string | null;
+  verificationSource?: string | null;
+  lastCheckDate?:     string | null;
+  createdAt?:         string | null;
+  updatedAt?:         string | null;
+  lifecycleDates?:    { dateValue: string; dateType: { code: string } }[] | null;
 }
 
 // ─── Support status badge ─────────────────────────────────────────────────────
@@ -281,6 +314,10 @@ function AgentBadge({ agent }: { agent: AgentStatus | null }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function invUserId(): string {
+  try { const u = JSON.parse(localStorage.getItem("cmdb_user") ?? "{}"); return u.id ?? u.email ?? "anon"; } catch { return "anon"; }
+}
+
 export default function InventoryPage() {
   const { isAdmin }               = useAuth();
   const { t }                     = useLanguage();
@@ -308,6 +345,16 @@ export default function InventoryPage() {
 
   type SortCol = "name" | "ciType" | "environment" | "criticality" | "status" | null;
   type SortDir = "asc" | "desc";
+  interface InvCol {
+    key: string;
+    labelKey: string;
+    group: string;
+    defaultVisible?: boolean;
+    sortCol?: SortCol;
+    headerExtra?: React.ReactNode;
+    filterCell?: React.ReactNode;
+    cell: (ci: CI) => React.ReactNode;
+  }
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
   const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" });
   const { pageSize, setPageSize } = usePageSize();
@@ -472,6 +519,133 @@ export default function InventoryPage() {
 
   const totalPages  = Math.max(1, Math.ceil(filtered.length / pageSize));
   const displayed   = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  // ─── v3.4.3 — configurable columns ──────────────────────────────────────────
+  const filterSelectCls = (active: string) =>
+    `w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${active ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`;
+
+  const ALL_COLS: InvCol[] = useMemo(() => {
+    const lifeDate = (ci: CI, code: string) => {
+      const d = (ci.lifecycleDates ?? []).find((x) => x.dateType?.code === code);
+      return d ? String(d.dateValue).slice(0, 10) : "";
+    };
+    const txt = (v: unknown): React.ReactNode =>
+      v === null || v === undefined || v === "" ? <span className="text-slate-300">—</span> : <span className="text-slate-600">{String(v)}</span>;
+    const dateCell = (v: unknown): React.ReactNode =>
+      v ? <span className="text-slate-600">{String(v).slice(0, 10)}</span> : <span className="text-slate-300">—</span>;
+    const yesno = (v: boolean): React.ReactNode =>
+      <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold ${v ? "bg-rose-100 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{v ? t("common.yes") : t("common.no")}</span>;
+
+    return [
+      // general
+      { key: "support",     labelKey: "inventory.columns.support",     group: "general", defaultVisible: true,
+        cell: (ci) => <SupportBadge eolDate={ci.eolDate} eosDate={ci.eosDate} eolEffective={ci.eolEffective} eosEffective={ci.eosEffective} eolSource={ci.eolSource} eosSource={ci.eosSource} /> },
+      { key: "ciType",      labelKey: "inventory.columns.type",        group: "general", defaultVisible: true, sortCol: "ciType",
+        filterCell: <select value={filters.ciType} onChange={(e) => setFilter("ciType", e.target.value)} className={filterSelectCls(filters.ciType)}><option value="">{t("inventory.filter_type_all") || "Todos los tipos"}</option>{ciTypeCategories.map((cat) => <optgroup key={cat.code} label={cat.name}>{cat.ciTypes.map((ty) => <option key={ty.code} value={ty.code}>{CI_TYPE_META[ty.code]?.label ?? ty.name}</option>)}</optgroup>)}</select>,
+        cell: (ci) => { const rt = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER"); const tm = CI_TYPE_META[rt] ?? CI_TYPE_META["OTHER"]; return <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${tm.color}`}>{tm.icon}{ci.ciTypeName ?? (t(`inventory.ci_types.${rt}`, {}) || tm.label)}</span>; } },
+      { key: "environment", labelKey: "inventory.columns.environment", group: "general", defaultVisible: true, sortCol: "environment",
+        filterCell: <select value={filters.environment} onChange={(e) => setFilter("environment", e.target.value)} className={filterSelectCls(filters.environment)}><option value="">Todos</option><option value="PRODUCTION">Production</option><option value="STAGING">Staging</option><option value="TESTING">Testing</option><option value="DEVELOPMENT">Development</option></select>,
+        cell: (ci) => <EnvironmentBadge env={ci.environment} /> },
+      { key: "criticality", labelKey: "inventory.columns.criticality", group: "general", defaultVisible: true, sortCol: "criticality",
+        filterCell: <select value={filters.criticality} onChange={(e) => setFilter("criticality", e.target.value)} className={filterSelectCls(filters.criticality)}><option value="">Todas</option><option value="MISSION_CRITICAL">Mission Critical</option><option value="HIGH">High</option><option value="MEDIUM">Medium</option><option value="LOW">Low</option></select>,
+        cell: (ci) => <CriticalityBadge level={ci.criticality} /> },
+      { key: "status",      labelKey: "inventory.columns.status",      group: "general", defaultVisible: true, sortCol: "status",
+        filterCell: <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)} className={filterSelectCls(filters.status)}><option value="">{t("inventory.filter_status_all")}</option><option value="ACTIVO">{t("inventory.status.ACTIVO")}</option><option value="INACTIVO">{t("inventory.status.INACTIVO")}</option><option value="RETIRADO">{t("inventory.status.RETIRADO")}</option></select>,
+        cell: (ci) => <CIStatusBadge status={ci.status ?? "ACTIVO"} t={t} /> },
+      { key: "vulns",       labelKey: "inventory.columns.greenbone",    group: "general", defaultVisible: true, headerExtra: <ShieldAlert className="h-3.5 w-3.5" />,
+        filterCell: <select value={filters.vulns} onChange={(e) => setFilter("vulns", e.target.value)} className={filterSelectCls(filters.vulns)}><option value="">Todos</option><option value="no_data">Sin datos escáner</option><option value="clean">Sin vulns abiertas</option><option value="with_vulns">Con vulns abiertas</option><option value="critical">Con CRITICAL</option><option value="high">Con HIGH</option></select>,
+        cell: (ci) => <VulnBadge vulns={ci.vulnerabilities} /> },
+      { key: "agent",       labelKey: "inventory.columns.crowdstrike",  group: "general", defaultVisible: true, headerExtra: <Shield className="h-3.5 w-3.5" />,
+        filterCell: <select value={filters.agent} onChange={(e) => setFilter("agent", e.target.value)} className={filterSelectCls(filters.agent)}><option value="">Todos</option><option value="no_agent">Sin agente</option><option value="protected">Protegido (activo)</option><option value="reduced">Funcionalidad reducida</option><option value="detections">Con detecciones</option></select>,
+        cell: (ci) => <AgentBadge agent={ci.agentStatus} /> },
+      { key: "technicalLead", labelKey: "inventory.columns.technical_lead", group: "governance", defaultVisible: true,
+        cell: (ci) => ci.technicalLead ? <div><p className="font-medium text-slate-700">{ci.technicalLead.username}</p><p className="text-xs text-slate-400">{ci.technicalLead.email}</p></div> : <span className="text-xs italic text-slate-400">{t("inventory.unassigned") || "Sin asignar"}</span> },
+      { key: "inventoryNumber",   labelKey: "reports.col.inventoryNumber",   group: "general",  cell: (ci) => txt(ci.inventoryNumber) },
+      { key: "apiSlug",           labelKey: "reports.col.apiSlug",           group: "general",  cell: (ci) => txt(ci.apiSlug) },
+      { key: "verificationSource",labelKey: "reports.col.verificationSource",group: "general",  cell: (ci) => txt(ci.verificationSource) },
+      { key: "lastCheckDate",     labelKey: "reports.col.lastCheckDate",     group: "general",  cell: (ci) => dateCell(ci.lastCheckDate) },
+      { key: "createdAt",         labelKey: "reports.col.createdAt",         group: "general",  cell: (ci) => dateCell(ci.createdAt) },
+      { key: "updatedAt",         labelKey: "reports.col.updatedAt",         group: "general",  cell: (ci) => dateCell(ci.updatedAt) },
+      // location
+      { key: "location",   labelKey: "reports.col.location",   group: "location", cell: (ci) => txt(ci.location?.name) },
+      { key: "branch",     labelKey: "reports.col.branch",     group: "location", cell: (ci) => txt(ci.branch?.name) },
+      { key: "costCenter", labelKey: "reports.col.costCenter", group: "location", cell: (ci) => txt(ci.costCenter?.name) },
+      { key: "floor",      labelKey: "reports.col.floor",      group: "location", cell: (ci) => txt(ci.floor) },
+      { key: "room",       labelKey: "reports.col.room",       group: "location", cell: (ci) => txt(ci.room) },
+      { key: "rack",       labelKey: "reports.col.rack",       group: "location", cell: (ci) => txt(ci.rack) },
+      { key: "rackUnit",   labelKey: "reports.col.rackUnit",   group: "location", cell: (ci) => txt(ci.rackUnit) },
+      { key: "assignedUser", labelKey: "reports.col.assignedUser", group: "location", cell: (ci) => txt(ci.assignedUser) },
+      { key: "userDni",    labelKey: "reports.col.userDni",    group: "location", cell: (ci) => txt(ci.userDni) },
+      // network
+      { key: "adminIp",   labelKey: "reports.col.adminIp",   group: "network", cell: (ci) => txt(ci.adminIp) },
+      { key: "mgmtIp",    labelKey: "reports.col.mgmtIp",    group: "network", cell: (ci) => txt(ci.mgmtIp) },
+      { key: "consoleIp", labelKey: "reports.col.consoleIp", group: "network", cell: (ci) => txt(ci.consoleIp) },
+      { key: "dns",       labelKey: "reports.col.dns",       group: "network", cell: (ci) => txt(ci.dns) },
+      { key: "vlan",      labelKey: "reports.col.vlan",      group: "network", cell: (ci) => txt(ci.vlan) },
+      { key: "hostName",  labelKey: "reports.col.hostName",  group: "network", cell: (ci) => txt(ci.hostName) },
+      // hardware
+      { key: "cpuModel",        labelKey: "reports.col.cpuModel",        group: "hardware", cell: (ci) => txt(ci.cpuModel) },
+      { key: "vCpus",           labelKey: "reports.col.vCpus",           group: "hardware", cell: (ci) => txt(ci.vCpus) },
+      { key: "ram",             labelKey: "reports.col.ram",             group: "hardware", cell: (ci) => txt(ci.ram) },
+      { key: "disk",            labelKey: "reports.col.disk",            group: "hardware", cell: (ci) => txt(ci.disk) },
+      { key: "firmwareVersion", labelKey: "reports.col.firmwareVersion", group: "hardware", cell: (ci) => txt(ci.firmwareVersion) },
+      { key: "clusterName",     labelKey: "reports.col.clusterName",     group: "hardware", cell: (ci) => txt(ci.clusterName) },
+      { key: "ciModel",         labelKey: "reports.col.ciModel",         group: "hardware", cell: (ci) => txt(ci.ciModelName ?? ci.ciModel?.name) },
+      { key: "manufacturer",    labelKey: "reports.col.manufacturer",    group: "hardware", cell: (ci) => txt(ci.manufacturerName ?? ci.ciModel?.manufacturer?.name) },
+      { key: "operatingSystem", labelKey: "reports.col.operatingSystem", group: "hardware", cell: (ci) => txt(ci.operatingSystem?.name) },
+      { key: "hwSerialNumber",  labelKey: "reports.col.hwSerialNumber",  group: "hardware", cell: (ci) => txt(ci.hardware?.serialNumber) },
+      { key: "hwModel",         labelKey: "reports.col.hwModel",         group: "hardware", cell: (ci) => txt(ci.hardware?.model) },
+      { key: "hwManufacturer",  labelKey: "reports.col.hwManufacturer",  group: "hardware", cell: (ci) => txt(ci.hardware?.manufacturer) },
+      { key: "sizeU",           labelKey: "reports.col.sizeU",           group: "hardware", cell: (ci) => txt(ci.hardware?.sizeU) },
+      { key: "powerW",          labelKey: "reports.col.powerW",          group: "hardware", cell: (ci) => txt(ci.hardware?.powerW) },
+      // software
+      { key: "swVersion",     labelKey: "reports.col.swVersion",     group: "software", cell: (ci) => txt(ci.software?.version) },
+      { key: "swLicenseType", labelKey: "reports.col.swLicenseType", group: "software", cell: (ci) => txt(ci.software?.licenseType) },
+      // governance
+      { key: "businessOwner",      labelKey: "reports.col.businessOwner",      group: "governance", cell: (ci) => txt(ci.businessOwner?.username ?? ci.businessOwner?.email) },
+      { key: "parentCI",           labelKey: "reports.col.parentCI",           group: "governance", cell: (ci) => txt(ci.parentCI?.name) },
+      { key: "businessImpact",     labelKey: "reports.col.businessImpact",     group: "governance", cell: (ci) => txt(ci.businessImpact) },
+      { key: "dataClassification", labelKey: "reports.col.dataClassification", group: "governance", cell: (ci) => txt(ci.dataClassification) },
+      { key: "recoveryPriority",   labelKey: "reports.col.recoveryPriority",   group: "governance", cell: (ci) => txt(ci.recoveryPriority) },
+      { key: "rto",                labelKey: "reports.col.rto",                group: "governance", cell: (ci) => txt(ci.rto) },
+      { key: "rpo",                labelKey: "reports.col.rpo",                group: "governance", cell: (ci) => txt(ci.rpo) },
+      { key: "spofRisk",           labelKey: "reports.col.spofRisk",           group: "governance", cell: (ci) => yesno(ci.spofRisk) },
+      { key: "containsPii",        labelKey: "reports.col.containsPii",        group: "governance", cell: (ci) => yesno(ci.containsPii) },
+      // lifecycle
+      { key: "eolDate",          labelKey: "reports.col.eolDate",          group: "lifecycle", cell: (ci) => dateCell(ci.eolEffective ?? ci.eolDate) },
+      { key: "eosDate",          labelKey: "reports.col.eosDate",          group: "lifecycle", cell: (ci) => dateCell(ci.eosEffective ?? ci.eosDate) },
+      { key: "purchaseDate",     labelKey: "reports.col.purchaseDate",     group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "purchase-date")) },
+      { key: "warrantyEndDate",  labelKey: "reports.col.warrantyEndDate",  group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "hw-end-of-warranty")) },
+      { key: "deploymentDate",   labelKey: "reports.col.deploymentDate",   group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "deployment-date")) },
+      { key: "decommissionDate", labelKey: "reports.col.decommissionDate", group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "decommission-date")) },
+      { key: "reviewDate",       labelKey: "reports.col.reviewDate",       group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "review-date")) },
+    ];
+  }, [t, filters, ciTypeCategories]);
+
+  const DEFAULT_COL_KEYS = useMemo(() => ALL_COLS.filter((c) => c.defaultVisible).map((c) => c.key), [ALL_COLS]);
+  const colByKey = useMemo(() => Object.fromEntries(ALL_COLS.map((c) => [c.key, c])), [ALL_COLS]);
+  const [visibleKeys, setVisibleKeys] = useState<string[]>([]);
+  const colsLsKey = `inventory_columns_${typeof window !== "undefined" ? invUserId() : "anon"}`;
+
+  useEffect(() => {
+    if (ALL_COLS.length === 0) return;
+    let initial = DEFAULT_COL_KEYS;
+    try {
+      const saved = JSON.parse(localStorage.getItem(colsLsKey) ?? "null");
+      if (Array.isArray(saved) && saved.length) {
+        const valid = saved.filter((k: string) => colByKey[k]);
+        if (valid.length) initial = valid;
+      }
+    } catch { /* ignore */ }
+    setVisibleKeys((prev) => (prev.length ? prev : initial));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [DEFAULT_COL_KEYS]);
+
+  const handleColumnsChange = (keys: string[]) => {
+    setVisibleKeys(keys);
+    try { localStorage.setItem(colsLsKey, JSON.stringify(keys)); } catch { /* ignore */ }
+  };
+  const visibleCols = visibleKeys.map((k) => colByKey[k]).filter(Boolean) as InvCol[];
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`¿Está seguro de eliminar el CI "${name}"? Esta acción no se puede deshacer.`)) return;
@@ -656,6 +830,14 @@ export default function InventoryPage() {
                     <FilterX className="h-3.5 w-3.5" />Limpiar filtros
                   </button>
                 )}
+                {visibleKeys.length > 0 && (
+                  <ColumnPicker
+                    allColumns={ALL_COLS}
+                    visible={visibleKeys}
+                    defaultKeys={DEFAULT_COL_KEYS}
+                    onChange={handleColumnsChange}
+                  />
+                )}
                 <button onClick={fetchCIs} className="flex items-center justify-center rounded-none border border-slate-300 bg-slate-50 p-2 text-slate-500 hover:bg-slate-100 transition-colors">
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -681,9 +863,9 @@ export default function InventoryPage() {
             )}
 
             {!loading && !error && (
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[calc(100vh-16rem)]">
                 <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10">
+                  <thead className="sticky top-0 z-20 bg-slate-50">
                     {/* ── Sort row ── */}
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
                       {/* Bulk-select checkbox column (admin only) */}
@@ -736,41 +918,23 @@ export default function InventoryPage() {
                           {sort.col === "name" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
                         </button>
                       </th>
-                      {/* Type */}
-                      <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("ciType")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
-                          {t('inventory.columns.type')}
-                          {sort.col === "ciType" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
-                        </button>
-                      </th>
-                      {/* Environment */}
-                      <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("environment")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
-                          {t('inventory.columns.environment')}
-                          {sort.col === "environment" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
-                        </button>
-                      </th>
-                      {/* Criticality */}
-                      <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("criticality")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
-                          {t('inventory.columns.criticality')}
-                          {sort.col === "criticality" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
-                        </button>
-                      </th>
-                      {/* Status */}
-                      <th className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => toggleSort("status")} className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
-                          {t('inventory.columns.status')}
-                          {sort.col === "status" ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
-                        </button>
-                      </th>
-                      <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><ShieldAlert className="h-3.5 w-3.5" />Greenbone</div></th>
-                      <th className="px-4 py-3 whitespace-nowrap"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500"><Shield className="h-3.5 w-3.5" />CrowdStrike</div></th>
-                      <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">{t('inventory.columns.agent')}</th>
+                      {/* Configurable columns */}
+                      {visibleCols.map((col) => (
+                        <th key={col.key} className="px-4 py-3 whitespace-nowrap">
+                          {col.sortCol ? (
+                            <button onClick={() => toggleSort(col.sortCol!)} className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-[var(--accent)] transition-colors">
+                              {col.headerExtra}{t(col.labelKey)}
+                              {sort.col === col.sortCol ? (sort.dir === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-[var(--accent)]" /> : <ChevronDown className="h-3.5 w-3.5 text-[var(--accent)]" />) : <ChevronsUpDown className="h-3.5 w-3.5 opacity-30" />}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">{col.headerExtra}{t(col.labelKey)}</div>
+                          )}
+                        </th>
+                      ))}
                       {isAdmin && <th className="px-4 py-3 whitespace-nowrap text-xs font-semibold uppercase tracking-wider text-slate-500">Acciones</th>}
                     </tr>
                     {/* ── Filter row ── */}
-                    <tr className="border-b-2 border-[var(--accent)]/20 bg-[var(--accent)]/5">
+                    <tr className="border-b-2 border-[var(--accent)]/20 bg-slate-50">
                       {/* Bulk-select column (empty cell in filter row) */}
                       {isAdmin && <td className="px-3 py-2" />}
                       {/* Name filter */}
@@ -781,89 +945,20 @@ export default function InventoryPage() {
                             className="w-full rounded-none border border-slate-200 bg-white py-1.5 pl-7 pr-2 text-xs text-slate-700 placeholder:text-slate-300 focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20" />
                         </div>
                       </td>
-                      {/* Type filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.ciType} onChange={(e) => setFilter("ciType", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.ciType ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">Todos los tipos</option>
-                          {ciTypeCategories.map((cat) => (
-                            <optgroup key={cat.code} label={cat.name}>
-                              {cat.ciTypes.map((t) => (
-                                <option key={t.code} value={t.code}>{CI_TYPE_META[t.code]?.label ?? t.name}</option>
-                              ))}
-                            </optgroup>
-                          ))}
-                        </select>
-                      </td>
-                      {/* Environment filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.environment} onChange={(e) => setFilter("environment", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.environment ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">Todos</option>
-                          <option value="PRODUCTION">Production</option>
-                          <option value="STAGING">Staging</option>
-                          <option value="TESTING">Testing</option>
-                          <option value="DEVELOPMENT">Development</option>
-                        </select>
-                      </td>
-                      {/* Criticality filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.criticality} onChange={(e) => setFilter("criticality", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.criticality ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">Todas</option>
-                          <option value="MISSION_CRITICAL">Mission Critical</option>
-                          <option value="HIGH">High</option>
-                          <option value="MEDIUM">Medium</option>
-                          <option value="LOW">Low</option>
-                        </select>
-                      </td>
-                      {/* Status filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.status} onChange={(e) => setFilter("status", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.status ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">{t('inventory.filter_status_all')}</option>
-                          <option value="ACTIVO">{t('inventory.status.ACTIVO')}</option>
-                          <option value="INACTIVO">{t('inventory.status.INACTIVO')}</option>
-                          <option value="RETIRADO">{t('inventory.status.RETIRADO')}</option>
-                        </select>
-                      </td>
-                      {/* Vulns filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.vulns} onChange={(e) => setFilter("vulns", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.vulns ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">Todos</option>
-                          <option value="no_data">Sin datos escáner</option>
-                          <option value="clean">Sin vulns abiertas</option>
-                          <option value="with_vulns">Con vulns abiertas</option>
-                          <option value="critical">Con CRITICAL</option>
-                          <option value="high">Con HIGH</option>
-                        </select>
-                      </td>
-                      {/* Agent filter */}
-                      <td className="px-3 py-2">
-                        <select value={filters.agent} onChange={(e) => setFilter("agent", e.target.value)}
-                          className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${filters.agent ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium" : "border-slate-200 bg-white text-slate-600"}`}>
-                          <option value="">Todos</option>
-                          <option value="no_agent">Sin agente</option>
-                          <option value="protected">Protegido (activo)</option>
-                          <option value="reduced">Funcionalidad reducida</option>
-                          <option value="detections">Con detecciones</option>
-                        </select>
-                      </td>
-                      {/* Responsable técnico — no filter, empty cell */}
-                      <td className="px-3 py-2" />
+                      {/* Configurable column filters */}
+                      {visibleCols.map((col) => (
+                        <td key={col.key} className="px-3 py-2">{col.filterCell ?? null}</td>
+                      ))}
                       {isAdmin && <td className="px-3 py-2" />}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filtered.length === 0 ? (
-                      <tr><td colSpan={isAdmin ? 10 : 8} className="py-12 text-center text-slate-400 text-sm">
+                      <tr><td colSpan={visibleCols.length + 1 + (isAdmin ? 2 : 0)} className="py-12 text-center text-slate-400 text-sm">
                         {activeFilterCount > 0 ? "No hay CIs que coincidan con los filtros activos." : t('inventory.no_cis')}
                       </td></tr>
                     ) : (
                       displayed.map((ci) => {
-                        const resolvedType = ci.ciType || (ci.hardware ? "HARDWARE" : ci.software ? "SOFTWARE" : "OTHER");
-                        const typeMeta = CI_TYPE_META[resolvedType] ?? CI_TYPE_META["OTHER"];
                         const isSelected = selectedIds.has(ci.id);
 
                         return (
@@ -887,11 +982,6 @@ export default function InventoryPage() {
                               >{ci.name}</button>
                               <p className="text-xs text-slate-400 font-normal mt-0.5">{ci.apiSlug}</p>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                <SupportBadge
-                                  eolDate={ci.eolDate} eosDate={ci.eosDate}
-                                  eolEffective={ci.eolEffective} eosEffective={ci.eosEffective}
-                                  eolSource={ci.eolSource} eosSource={ci.eosSource}
-                                />
                                 {ci.spofRisk && (
                                   <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700" title="Punto Único de Fallo">SPOF</span>
                                 )}
@@ -912,24 +1002,9 @@ export default function InventoryPage() {
                                 </div>
                               )}
                             </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${typeMeta.color}`}>
-                                {typeMeta.icon}{ci.ciTypeName ?? (t(`inventory.ci_types.${resolvedType}`, {}) || typeMeta.label)}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3"><EnvironmentBadge env={ci.environment} /></td>
-                            <td className="px-4 py-3"><CriticalityBadge level={ci.criticality} /></td>
-                            <td className="px-4 py-3"><CIStatusBadge status={ci.status ?? "ACTIVO"} t={t} /></td>
-                            <td className="px-4 py-3"><VulnBadge vulns={ci.vulnerabilities} /></td>
-                            <td className="px-4 py-3"><AgentBadge agent={ci.agentStatus} /></td>
-                            <td className="px-4 py-3">
-                              {ci.technicalLead ? (
-                                <div>
-                                  <p className="font-medium text-slate-700">{ci.technicalLead.username}</p>
-                                  <p className="text-xs text-slate-400">{ci.technicalLead.email}</p>
-                                </div>
-                              ) : <span className="text-xs italic text-slate-400">Sin asignar</span>}
-                            </td>
+                            {visibleCols.map((col) => (
+                              <td key={col.key} className="px-4 py-3">{col.cell(ci)}</td>
+                            ))}
                             {isAdmin && (
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">

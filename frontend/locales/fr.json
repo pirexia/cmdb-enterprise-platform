@@ -101,7 +101,10 @@
       "vulnerabilities": "Vulnérabilités",
       "agent": "Agent CS",
       "support": "Support",
-      "status": "Statut"
+      "status": "Statut",
+      "greenbone": "Greenbone",
+      "crowdstrike": "CrowdStrike",
+      "technical_lead": "Resp. technique"
     },
     "support_badge": {
       "expired": "Sans support",
@@ -280,7 +283,9 @@
       "has_refs_warning": "Si vous continuez, ces associations seront supprimées silencieusement (les contrats, licences et documents eux-mêmes ne sont pas supprimés). Les compteurs sont enregistrés dans l'audit log pour la forensique.",
       "force_button": "Supprimer et rompre les relations"
     },
-    "eol_from_model": "(modèle)"
+    "eol_from_model": "(modèle)",
+    "unassigned": "Non attribué",
+    "filter_type_all": "Tous les types"
   },
   "vulnerabilities": {
     "title": "Vulnérabilités",
@@ -1260,7 +1265,56 @@
       "medium": "Moyennes",
       "metricValue": "Métrique",
       "notes": "Notes",
-      "totalVulns": "Total vulns"
+      "totalVulns": "Total vulns",
+      "apiSlug": "API Slug",
+      "inventoryNumber": "N° inventaire",
+      "verificationSource": "Source vérification",
+      "lastCheckDate": "Dernière vérif.",
+      "updatedAt": "Mis à jour",
+      "floor": "Étage",
+      "room": "Salle",
+      "rack": "Rack",
+      "rackUnit": "Unité rack",
+      "assignedUser": "Utilisateur affecté",
+      "userDni": "ID utilisateur",
+      "adminIp": "IP admin",
+      "mgmtIp": "IP gestion",
+      "consoleIp": "IP console",
+      "dns": "DNS",
+      "vlan": "VLAN",
+      "hostName": "Hostname",
+      "cpuModel": "Modèle CPU",
+      "vCpus": "vCPU",
+      "ram": "RAM",
+      "disk": "Disque",
+      "firmwareVersion": "Firmware",
+      "clusterName": "Cluster",
+      "ciModel": "Modèle",
+      "manufacturer": "Fabricant",
+      "operatingSystem": "SE",
+      "hwSerialNumber": "N° série",
+      "hwModel": "Modèle HW",
+      "hwManufacturer": "Fabricant HW",
+      "sizeU": "Taille (U)",
+      "powerW": "Puissance (W)",
+      "uPosition": "Position U",
+      "orientation": "Orientation",
+      "swVersion": "Version SW",
+      "swLicenseType": "Type licence",
+      "businessOwner": "Resp. métier",
+      "technicalLead": "Resp. technique",
+      "parentCI": "CI parent",
+      "businessImpact": "Impact métier",
+      "dataClassification": "Classification données",
+      "recoveryPriority": "Priorité reprise",
+      "rto": "RTO (min)",
+      "rpo": "RPO (min)",
+      "spofRisk": "Risque SPOF",
+      "containsPii": "Contient PII",
+      "warrantyEndDate": "Fin garantie",
+      "deploymentDate": "Date déploiement",
+      "decommissionDate": "Date retrait",
+      "reviewDate": "Date révision"
     },
     "def": {
       "inventory": {
@@ -1310,6 +1364,23 @@
       "90d": "90 jours",
       "180d": "180 jours",
       "365d": "365 jours"
+    },
+    "columnPicker": {
+      "title": "Colonnes",
+      "search": "Rechercher colonnes...",
+      "showAll": "Tout afficher",
+      "hideAll": "Tout masquer",
+      "reset": "Réinitialiser",
+      "apply": "Appliquer",
+      "group": {
+        "general": "Général",
+        "location": "Emplacement",
+        "network": "Réseau",
+        "hardware": "Matériel",
+        "software": "Logiciel",
+        "governance": "Gouvernance",
+        "lifecycle": "Cycle de vie"
+      }
     }
   },
   "audit": {

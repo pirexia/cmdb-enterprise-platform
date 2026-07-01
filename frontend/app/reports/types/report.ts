@@ -1,7 +1,7 @@
 export type ReportCategory = 'inventory' | 'security' | 'financial' | 'compliance' | 'lifecycle' | 'audit';
 export type ExportFormat = 'csv' | 'xlsx';
 export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
-export type ColumnType = 'string' | 'number' | 'date' | 'badge';
+export type ColumnType = 'string' | 'number' | 'date' | 'badge' | 'boolean';
 export type FilterType = 'date-range' | 'select' | 'multi-select' | 'search' | 'toggle';
 
 export interface ReportColumn {
@@ -10,6 +10,9 @@ export interface ReportColumn {
   type?: ColumnType;
   sortable?: boolean;
   filter?: 'multi-select' | 'text';
+  configurable?: boolean;
+  defaultVisible?: boolean;
+  group?: string;
 }
 
 export interface FilterOption {
@@ -41,6 +44,7 @@ export interface ReportMeta {
   tags: string[];
   exportFormats: ExportFormat[];
   columns: ReportColumn[];
+  allColumns?: ReportColumn[];
   filters: ReportFilterDefinition[];
   source: 'core' | 'plugin';
   available: boolean;

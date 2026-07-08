@@ -531,6 +531,12 @@ const CI_INCLUDE = {
   ciModel:   { select: { id: true, name: true, eolDate: true, eosDate: true, manufacturer: { select: { id: true, name: true } } } },
   operatingSystem: { select: { id: true, name: true, version: true } },
   lifecycleDates: { select: { dateValue: true, dateType: { select: { code: true } } } },
+  // v3.4.4 — INSTALLED_IN containment (blade/module → enclosure/converged)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  relationsFrom: {
+    where: { relationType: 'INSTALLED_IN' } as any, // v3.4.4: enum value added by migration; client regenerated at container build
+    select: { id: true, targetCI: { select: { id: true, name: true, status: true } } },
+  },
   contracts: {
     select: {
       id:             true,
@@ -544,9 +550,11 @@ const CI_INCLUDE = {
 // Flatten ciTypeDef relation into flat fields for backward-compatible API response
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function flattenCI(ci: any) {
-  const { ciTypeDef, ciTypeId, ciModel, ...rest } = ci;
+  const { ciTypeDef, ciTypeId, ciModel, relationsFrom, ...rest } = ci;
   const eolEffective = ci.eolDate ?? ciModel?.eolDate ?? null;
   const eosEffective = ci.eosDate ?? ciModel?.eosDate ?? null;
+  // v3.4.4 — INSTALLED_IN containment: at most one active relation per source (DB-enforced)
+  const installedIn = relationsFrom?.[0] ?? null;
   return {
     ...rest,
     ciTypeId:   ciTypeDef?.id           ?? null,
@@ -559,6 +567,10 @@ function flattenCI(ci: any) {
     eosSource:     ci.eosDate  ? 'ci' : (ciModel?.eosDate  ? 'model' : null),
     ciModelName:   ciModel?.name ?? null,
     manufacturerName: ciModel?.manufacturer?.name ?? null,
+    installedInRelationId: installedIn?.id ?? null,
+    installedInId:         installedIn?.targetCI?.id ?? null,
+    installedInName:       installedIn?.targetCI?.name ?? null,
+    installedInStatus:     installedIn?.targetCI?.status ?? null,
   };
 }
 
@@ -2796,6 +2808,21 @@ app.post('/api/admin/reset-vulnerabilities', authenticateToken, requireAdmin, as
 // ── CI Relationships (Topology) ──────────────────────────────────────────────
 
 /**
+ * v3.4.4 — INSTALLED_IN business rules: single container per source + container must not be retired.
+ * Shared by both POST /api/cis/:id/relations and POST /api/relations.
+ */
+async function validateInstalledIn(sourceCiId: string, targetCiId: string): Promise<{ status: number; error: string } | null> {
+  const existing = await prisma.cIRelation.findFirst({
+    where: { sourceCiId, relationType: 'INSTALLED_IN' as never },
+    select: { id: true, targetCI: { select: { name: true } } },
+  });
+  if (existing) return { status: 409, error: `El CI ya está instalado en "${existing.targetCI.name}". Desinstálalo primero.` };
+  const target = await prisma.cI.findUnique({ where: { id: targetCiId }, select: { status: true } });
+  if (target?.status === 'RETIRADO') return { status: 422, error: 'El chasis destino está retirado; no admite nuevas instalaciones.' };
+  return null;
+}
+
+/**
  * GET /api/cis/:id/relations
  * Returns all relationships for a specific CI (both outgoing and incoming).
  */
@@ -2815,6 +2842,8 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
       source_slug: string;
       target_name: string;
       target_slug: string;
+      source_status: string;
+      target_status: string;
       depth: number;
     };
 
@@ -2833,6 +2862,8 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
           s.api_slug    AS source_slug,
           t.name        AS target_name,
           t.api_slug    AS target_slug,
+          s.status      AS source_status,
+          t.status      AS target_status,
           1             AS depth
         FROM ci_relations r
         JOIN configuration_items s ON r.source_ci_id = s.id
@@ -2858,6 +2889,8 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
             s.api_slug    AS source_slug,
             t.name        AS target_name,
             t.api_slug    AS target_slug,
+            s.status      AS source_status,
+            t.status      AS target_status,
             1::int        AS depth,
             CASE WHEN r.source_ci_id = ${id}::uuid
                  THEN r.target_ci_id
@@ -2882,6 +2915,8 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
             s.api_slug,
             t.name,
             t.api_slug,
+            s.status,
+            t.status,
             prev.depth + 1,
             CASE WHEN r.source_ci_id = prev.frontier
                  THEN r.target_ci_id
@@ -2907,6 +2942,8 @@ app.get('/api/cis/:id/relations', authenticateToken, async (req: Request, res: R
           source_slug,
           target_name,
           target_slug,
+          source_status,
+          target_status,
           depth
         FROM traversal
         ORDER BY id::text, depth ASC
@@ -2959,6 +2996,12 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
     const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
     if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
 
+    // v3.4.4 — INSTALLED_IN business rules (single container per source + container not retired)
+    if (relationType === 'INSTALLED_IN') {
+      const violation = await validateInstalledIn(sourceCiId, targetCiId);
+      if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
+    }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
@@ -2984,8 +3027,10 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
     res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
   } catch (error: unknown) {
     console.error('[POST /api/cis/:id/relations] Error:', error);
+    // 23505 = unique_violation — covers both the legacy (source,target,type) unique
+    // constraint and the v3.4.4 partial index ci_relations_installed_in_source_unique
     if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === '23505') {
-      res.status(409).json({ error: 'This relationship already exists' });
+      res.status(409).json({ error: 'Relación duplicada o CI ya instalado' });
       return;
     }
     res.status(500).json({ error: 'Internal server error' });
@@ -3027,6 +3072,12 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
     const matrixErr = validateRelationCiTypes(relationType, srcCode, tgtCode);
     if (matrixErr) { res.status(422).json({ error: matrixErr }); return; }
 
+    // v3.4.4 — INSTALLED_IN business rules (single container per source + container not retired)
+    if (relationType === 'INSTALLED_IN') {
+      const violation = await validateInstalledIn(sourceCiId, targetCiId);
+      if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
+    }
+
     // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
     const relation = await prisma.$queryRaw<{ id: string }[]>`
       INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
@@ -3052,8 +3103,10 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
     res.status(201).json({ id: relation[0].id, sourceCiId, targetCiId, relationType, message: 'Relationship created successfully' });
   } catch (error: unknown) {
     console.error('[POST /api/relations] Error:', error);
+    // 23505 = unique_violation — covers both the legacy (source,target,type) unique
+    // constraint and the v3.4.4 partial index ci_relations_installed_in_source_unique
     if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: string }).code === '23505') {
-      res.status(409).json({ error: 'This relationship already exists' });
+      res.status(409).json({ error: 'Relación duplicada o CI ya instalado' });
       return;
     }
     res.status(500).json({ error: 'Internal server error' });

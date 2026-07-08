@@ -2,6 +2,19 @@
 
 ---
 
+# v3.4.4 — Relación INSTALLED_IN (Blade Enclosure / Convergentes) · 🔄 EN PROGRESO · 2026-07-08
+
+**Rama:** `feature/v3.4.4-blade-enclosure-relation` → `develop` (NO main). Plan: `docs/PLAN_v3.4.4.md` · Estado: `docs/PLAN_STATUS_v3.4.4.md`
+
+## Análisis (Fable) — 2026-07-08
+- Exploración con 2 agentes (backend relaciones+reportes, frontend relaciones+inventario) + API `/api/masters/ci-types` (cuenta test AUDITOR; lectura directa a BD prod denegada por clasificador).
+- **Hallazgos:** relaciones sin Zod — validación manual vía `VALID_RELATION_TYPES` + `RELATION_TYPE_MATRIX` espejada backend/frontend (`backend/src/relationTypes.ts` ↔ `frontend/lib/relationTypes.ts`); handlers genéricos `index.ts:2802-3096`; `CIDetailModal` NO muestra relaciones CI-CI hoy; `CI_INCLUDE` sin relaciones; patrón migración enum probado (`20260612170000_relation_types_extended`); `RELATION_COLORS` hardcodeado en `map/page.tsx`.
+- **Códigos CIType (BD):** contenedores `BLADE_SYSTEM___BLADE_ENCLOSURE`, `CONVERGED_INFRASTRUCTURE`; instalables (decisión usuario): `PHYSICAL_SERVER`, `STORAGE`, `NETWORK`.
+- **Decisiones D1-D11** en el plan; destacadas: matriz hardcodeada (no campo CIType), 2 migraciones (ADD VALUE + índice único parcial), sin endpoints nuevos, Blade Slots diferido, sin propagación de estado (badge advertencia).
+- Rama y tracking (#1-#6 con dependencias) creados.
+
+---
+
 # v3.4.3 — Column picker en la vista /inventory · ✅ COMPLETADA · 2026-06-28
 
 **Rama:** `feature/v3.4.3-inventory-column-picker` → `develop`. Decisión usuario: paridad total + especiales ocultables.

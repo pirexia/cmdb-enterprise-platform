@@ -9,6 +9,8 @@ import { apiFetch } from "@/lib/apiFetch";
 import PlaceCIModal from "@/components/dcim/PlaceCIModal";
 import PluginSlot from "@/components/plugins/PluginSlot";
 import { LifecycleDatesEditor } from "@/components/LifecycleDatesEditor";
+import InstallInEnclosureModal from "@/components/InstallInEnclosureModal";
+import { RELATION_TYPE_MATRIX, INSTALLED_IN_TARGET_TYPES } from "@/lib/relationTypes";
 
 // ─── Types (mirrors inventory/page.tsx) ───────────────────────────────────────
 
@@ -210,6 +212,50 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
     buildingName: string; branchName: string | null;
   }
   const [rackLocation, setRackLocation] = useState<RackLocation | null>(null);
+
+  // v3.4.4 — INSTALLED_IN containment (blade/module ↔ enclosure)
+  interface RelationRow {
+    id: string;
+    relation_type: string;
+    source_ci_id: string;
+    target_ci_id: string;
+    source_name: string;
+    target_name: string;
+    target_status: string | null;
+  }
+  const [outgoingRels, setOutgoingRels] = useState<RelationRow[]>([]);
+  const [incomingRels, setIncomingRels] = useState<RelationRow[]>([]);
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  const loadRelations = () => {
+    apiFetch(`/api/cis/${ci.id}/relations?depth=1`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d: { outgoing?: RelationRow[]; incoming?: RelationRow[] }) => {
+        setOutgoingRels(Array.isArray(d.outgoing) ? d.outgoing : []);
+        setIncomingRels(Array.isArray(d.incoming) ? d.incoming : []);
+      })
+      .catch(() => { setOutgoingRels([]); setIncomingRels([]); });
+  };
+
+  useEffect(() => {
+    loadRelations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ci.id]);
+
+  const installedRel   = outgoingRels.find((r) => r.relation_type === "INSTALLED_IN") ?? null;
+  const containedRels  = incomingRels.filter((r) => r.relation_type === "INSTALLED_IN");
+  const isInstallable  = ci.ciType !== null && RELATION_TYPE_MATRIX.INSTALLED_IN.source.includes(ci.ciType);
+  const isContainer    = ci.ciType !== null && INSTALLED_IN_TARGET_TYPES.includes(ci.ciType);
+  const showContainment = Boolean(installedRel) || containedRels.length > 0 || isInstallable || isContainer;
+
+  const handleUninstall = async (relationId: string) => {
+    if (!confirm(t("ci_detail.confirm_uninstall"))) return;
+    try {
+      await apiFetch(`/api/relations/${relationId}`, { method: "DELETE" });
+      loadRelations();
+      onUpdated?.();
+    } catch {/* silent */}
+  };
 
   // Inline editing state (admin only)
   const [users, setUsers]         = useState<UserRef[]>([]);
@@ -546,6 +592,91 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
               </dl>
             </div>
           )}
+
+          {/* Containment — INSTALLED_IN (blade/module ↔ enclosure), v3.4.4 */}
+          {showContainment && (
+            <Section title={t("ci_detail.section_containment")} color="slate">
+              {installedRel && (
+                <>
+                  <Field
+                    label={t("ci_detail.installed_in")}
+                    icon={<Server className="h-3 w-3" />}
+                    value={
+                      <span className="flex flex-wrap items-center gap-2">
+                        {installedRel.target_name}
+                        {installedRel.target_status === "RETIRADO" && (
+                          <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                            {t("ci_detail.enclosure_retired_warning")}
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
+                  {isAdmin && (
+                    <div className="col-span-2 flex gap-2 sm:col-span-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowInstallModal(true)}
+                        className="rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+                      >
+                        {t("ci_detail.change_enclosure_btn")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUninstall(installedRel.id)}
+                        className="rounded-none border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        {t("ci_detail.uninstall_btn")}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {isInstallable && !installedRel && isAdmin && (
+                <div className="col-span-2 sm:col-span-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowInstallModal(true)}
+                    className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 shadow-sm transition-colors"
+                  >
+                    <Server className="h-3.5 w-3.5" />
+                    {t("ci_detail.install_btn")}
+                  </button>
+                </div>
+              )}
+
+              {isContainer && (
+                <div className="col-span-2 sm:col-span-3">
+                  <dt className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    {t("ci_detail.contains")}
+                  </dt>
+                  {containedRels.length === 0 ? (
+                    <p className="text-sm italic text-slate-400">{t("ci_detail.no_installed")}</p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {containedRels.map((r) => (
+                        <li key={r.id} className="flex items-center justify-between rounded-none bg-white px-2 py-1 ring-1 ring-slate-200 text-sm">
+                          <span className="truncate text-slate-700">{r.source_name}</span>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleUninstall(r.id)}
+                              className="ml-2 flex-shrink-0 rounded-none p-1 text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                              title={t("ci_detail.uninstall_btn")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </Section>
+          )}
+
           {ci.software && (
             <Section title={t("ci_detail.section_software")} color="slate">
               <Field label={t("ci_detail.field_version")} value={ci.software.version} icon={<Package className="h-3 w-3" />} />
@@ -965,6 +1096,18 @@ export default function CIDetailModal({ ci, onClose, onEdit, onDelete, onUpdated
           } : undefined}
           onClose={() => setShowPlaceModal(false)}
           onPlaced={() => { setShowPlaceModal(false); onUpdated?.(); }}
+        />
+      )}
+
+      {/* Install in enclosure modal — v3.4.4 */}
+      {showInstallModal && (
+        <InstallInEnclosureModal
+          ciId={ci.id}
+          ciName={ci.name}
+          currentRelationId={installedRel?.id}
+          currentEnclosureName={installedRel?.target_name}
+          onClose={() => setShowInstallModal(false)}
+          onDone={() => { setShowInstallModal(false); loadRelations(); onUpdated?.(); }}
         />
       )}
     </div>

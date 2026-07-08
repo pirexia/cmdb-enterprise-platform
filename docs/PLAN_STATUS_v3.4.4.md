@@ -9,11 +9,11 @@
 | Tarea | Estado |
 |---|---|
 | Fase Fable — análisis + diseño (D1-D11) | ✅ Completada |
-| T1 Backend core (migraciones, enum, matriz, validaciones, CI_INCLUDE) | ⏳ Pendiente |
-| T2 Reporte inventory (columna + filtro installedIn) | ⏳ Pendiente |
-| T3 Frontend (mirror, CIDetailModal, InstallInEnclosureModal, inventario) | ⏳ Pendiente |
-| T4 i18n ×6 | ⏳ Pendiente |
-| T5 Docs + bump 3.4.4 | ⏳ Pendiente |
+| T1 Backend core (migraciones, enum, matriz, validaciones, CI_INCLUDE) | ✅ Completada (`28bb9d4`) |
+| T2 Reporte inventory (columna + filtro installedIn) | ✅ Completada (`f5043bc`) |
+| T3 Frontend (mirror, CIDetailModal, InstallInEnclosureModal, inventario) | ✅ Completada (`9e34512`, combinado con T4) |
+| T4 i18n ×6 | ✅ Completada (`9e34512`, combinado con T3 por carrera de índice) |
+| T5 Docs + bump 3.4.4 | 🔄 En progreso |
 | T6 Despliegue + smoke + merge develop | ⏳ Pendiente |
 
 ## Decisiones clave (resumen)

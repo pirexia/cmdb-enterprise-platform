@@ -1322,3 +1322,49 @@ The `eol_source` field propagates to the frontend via `flattenCI()` in `index.ts
 | Translations embedded in email-builder.ts | JSON files on disk | No disk I/O at send time; bundle independent of frontend |
 | SHA-256 dedup fingerprint | Unordered ID hash | Stable sort (`.sort()`) guarantees idempotence across reorderings |
 | `emailService.ts` kept as empty shim | Deleting the file | Prevents breaking imports on branches pending merge |
+
+## 17. Staff Schedule Module (v3.5.0)
+
+**Core module** (not Plugin Engine) for weekly, per-department shift/attendance planning. Full technical documentation in `docs/STAFF_SCHEDULE.md` (Spanish); DPIA in `docs/DPIA_STAFF_SCHEDULE.md` (Spanish).
+
+### 17.1 Module structure
+
+```
+backend/src/modules/staff-schedule/
+  schemas.ts           — TEXT+Zod allowlists (SCHEDULE_STATUS, ALERT_TYPE, ALERT_SEVERITY, SCHEDULE_STATE) + body validation
+  middleware.ts         — requireScheduleAccess (blocks VIEWER), requireAdmin, requireDeptEditAccess(prisma), requireUuidParam
+  authz.ts              — canUserEditDepartment() shared between middleware and service
+  queries.ts            — loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers
+  audit.ts               — auditStaffSchedule() (AuditLog insert)
+  validationEngine.ts   — computeNetHours, detectSummer, validate (V1-V7, pure/synchronous)
+  service.ts            — CRUD, publish/unpublish/clone, maskEntryForViewer (Art.9), buildScheduleView
+  router.ts             — createStaffScheduleRouter(prisma), mounted in index.ts as /api/staff-schedule
+  export.ts             — exportScheduleCsv/Xlsx (always operates on an already-masked ScheduleView)
+```
+
+Mount point (`index.ts`, next to DCIM): `app.use('/api/staff-schedule', authenticateToken, requireScheduleAccess, createStaffScheduleRouter(prisma))`.
+
+### 17.2 Data model
+
+`Department`, `DepartmentManager` (row-level authorization), `DepartmentScheduleConfig`, `SummerSchedule` (global period only — hours live on `DepartmentScheduleConfig`), `StaffSchedule`, `ScheduleEntry` (PII + Art.9 subset), `ScheduleAlert`. `User.departmentId` nullable, FK `ON DELETE SET NULL`. Manual migration `20260709120000_staff_schedule` (`CREATE TABLE IF NOT EXISTS` ×6 + `ALTER TABLE users ADD COLUMN`).
+
+Status/severity/type fields are **TEXT + Zod allowlist**, not PostgreSQL enums (avoids the enum-migration friction hit in v3.4.4).
+
+### 17.3 GDPR Art. 9 — health-data masking
+
+`BAJA_MEDICA`/`BAJA_PATERNIDAD` are special-category data. `maskEntryForViewer()` replaces the real status with a generic `AUSENTE` (+ `healthMasked:true`) for any viewer who is neither `ADMIN` nor the entry's own owner, applied server-side before any serialization (view, export, monthly summary). `maskAlertForViewer()` hides the `userId` of `BAJA_CONFLICT` alerts; `getMonthlySummary()` omits the `healthLeaveDays` field entirely for unauthorized viewers (rather than sending `0`). See §7 of `docs/STAFF_SCHEDULE.md` and `docs/DPIA_STAFF_SCHEDULE.md` for compliance detail.
+
+### 17.4 Row-level authorization
+
+`DepartmentManager` lets a non-ADMIN user edit/validate/publish/clone schedules for the departments they manage, without needing a global `ADMIN` role. `canUserEditDepartment()` (`authz.ts`) is the single source of truth, used by both the middleware (`requireDeptEditAccess`) and the `canEdit` field computed for the frontend.
+
+### 17.5 Implementation decisions
+
+| Decision | Discarded alternative | Reason |
+|----------|------------------------|--------|
+| Core module (DCIM pattern) | Plugin Engine | 6 tables + a FK coupled to core `User` + a validation engine don't fit the engine's sandbox |
+| Row-level authorization (`DepartmentManager`) | ADMIN-only editing | Avoids granting a global ADMIN role to team leads for the sole purpose of editing their own department's schedules |
+| Server-side health masking | Collapse BAJA_MEDICA/PATERNIDAD into generic AUSENTE | HR still needs the real breakdown; masking on read protects without losing the data for those who need it |
+| `GUARDIA_COVERAGE`/`BAJA_CONFLICT` at week granularity | "Same day" (original spec) | `ScheduleEntry` has a single `status` per `(schedule,user,date)` — the literal rule would be dead code |
+| `ON DELETE CASCADE` FKs to `User` | `Restrict` (Prisma default) | The existing GDPR erasure endpoint (`DELETE /api/admin/users/:id`) hard-deletes; without cascade it would fail |
+| `SummerSchedule` holds only the global period | Summer hours also on `SummerSchedule` (original spec, duplicated) | Single source of truth; hours already live on `DepartmentScheduleConfig` |

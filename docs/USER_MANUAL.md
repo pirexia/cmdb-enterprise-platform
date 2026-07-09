@@ -39,6 +39,7 @@
 30. [Registro de Eventos — Mejoras](#30-registro-de-eventos--mejoras-v270)
 31. [Gestión de Plugins — solo ADMIN](#31-gestión-de-plugins-v280--solo-admin)
 32. [Módulo Decomisionado — Planes de Baja](#32-módulo-decomisionado--planes-de-baja-v285)
+34. [Horarios del Personal](#34-horarios-del-personal-v350)
 
 ---
 
@@ -1753,3 +1754,44 @@ Las fechas relacionadas se dibujan con marcas **punteadas** para distinguirlas d
 - La vista es **solo lectura**: no permite modificar fechas desde este módulo.
 - Los elementos se limitan a 200 por consulta (ajustable con los filtros). Para conjuntos mayores, usa los filtros de tipo o búsqueda para acotar.
 - En pantallas de menos de 1024px la vista muestra un aviso de optimización para escritorio.
+
+## 34. Horarios del Personal (v3.5.0)
+
+Planificación semanal de horarios por departamento. **No es un sistema de fichajes** — es una herramienta de planificación, no registra la hora real de entrada/salida.
+
+### 34.1 Acceso
+
+Disponible para roles `ADMIN` y `AUDITOR` en el menú lateral ("Horarios del personal"). Los `VIEWER` no tienen acceso al módulo.
+
+### 34.2 El calendario semanal
+
+- **Filas**: personas del departamento seleccionado. **Columnas**: los días de la semana (lunes a viernes).
+- Cada celda muestra el estado del día (Presencial, Teletrabajo, Vacaciones, Baja médica, Baja de paternidad, Guardia, Intensivo, Viaje, Ausente) y el horario si está definido.
+- Usa el selector de departamento y el selector de semana (con botones anterior/siguiente y un selector de fecha) para navegar.
+- Si no existe planificación para la semana seleccionada, puedes crear una desde cero — se generan automáticamente entradas base "Presencial" para todo el personal del departamento.
+
+### 34.3 Editar un día (solo si tienes permiso)
+
+Haz clic en una celda para abrir el editor: elige el estado, y si aplica, la hora de entrada y salida, y una nota opcional. Solo puedes editar mientras la planificación esté en estado **Borrador** y seas responsable de ese departamento (o ADMIN).
+
+### 34.4 Validar y publicar
+
+- **Validar**: ejecuta las comprobaciones automáticas de la planificación (horas diarias/semanales, cuota de teletrabajo, cobertura de guardias, presencialidad mínima, ventana horaria flexible) y muestra las alertas en el panel lateral.
+- Las alertas se clasifican en **Error** (bloquean la publicación) y **Aviso** (no bloquean, mismo se recomienda revisarlas).
+- **Publicar** solo es posible si no quedan alertas de tipo Error sin resolver. Para "resolver" una alerta, corrige las entradas del calendario correspondientes y vuelve a pulsar Validar — no existe un botón para marcar una alerta como resuelta manualmente.
+- Una vez publicada, la planificación queda protegida frente a ediciones. Solo un ADMIN puede despublicarla si necesita corregirse.
+- **Clonar** copia toda la planificación de la semana a la semana siguiente, como borrador nuevo.
+- **Exportar** genera un CSV o XLSX de la semana visible.
+
+### 34.5 Protección de datos de salud (importante)
+
+Los estados **Baja médica** y **Baja de paternidad** son datos de salud especialmente protegidos. Si no eres ni la persona administradora del sistema ni la persona afectada, verás esos días mostrados de forma genérica como "Ausente" (con un pequeño icono de candado) — el sistema no revela el motivo real de la ausencia a compañeros ni a responsables no autorizados. Esto es intencionado y no es un error.
+
+### 34.6 Configuración (solo ADMIN)
+
+Desde el botón "Configuración" puedes:
+- Crear y editar departamentos (nombre, código, horario de servicio, horario de presencialidad, % mínimo de presencialidad).
+- Configurar la jornada de cada departamento: horas efectivas de invierno/verano, descanso de comida, horas del viernes intensivo, objetivo semanal (40h por defecto), cuota mensual de teletrabajo, y la ventana horaria flexible.
+- Configurar el periodo de horario de verano del año (fecha de inicio y fin).
+- Asignar y quitar responsables de departamento (personas que podrán editar horarios de ese departamento sin ser ADMIN).
+- Asignar el departamento de cada usuario.

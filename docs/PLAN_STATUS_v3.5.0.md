@@ -17,7 +17,7 @@
 | T6 Frontend calendario | ✅ Completada (`77c5b35`) |
 | T7 Frontend config admin | ✅ Completada (`77c5b35`) |
 | T8 Despliegue local + smoke tests | ✅ Completada |
-| T9 Docs + DPIA + bump versión | 🔄 En progreso |
+| T9 Docs + DPIA + bump versión | ✅ Completada |
 | T10 Merge a develop | ⏳ Pendiente |
 
 ## T8 — Resultado de verificación (2026-07-09)

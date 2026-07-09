@@ -2,6 +2,23 @@
 
 ---
 
+# v3.5.0 — Staff Schedule (gestión de horarios del personal) · 🔄 EN PROGRESO · 2026-07-09
+
+**Rama:** `feature/v3.5.0-staff-schedule` → `develop` (NO main). Plan: `docs/PLAN_v3.5.0.md`
+
+## Análisis (Fable) — 2026-07-09
+- Grounding: no existe `Department` (Branch/CostCenter/Location/SupportArea no son unidad organizativa de personas); `req.user={id,username,email,role,mfa_enabled}`; patrón módulo core = DCIM; erasure GDPR (`DELETE /api/admin/users/:id`) hace hard-delete raw SQL — con FK requerida a `User` sin cascade, fallaría; Plugin Engine descartado (sandbox no encaja con dominio acoplado a User).
+- 3 preguntas de diseño planteadas al usuario (AskUserQuestion), las 3 resueltas hacia la opción de mayor rigor: **D2** 9 estados con controles Art.9 (no colapsar a AUSENTE genérico), **D3** autorización por departamento (no solo ADMIN), **D1** módulo core (no plugin).
+- **Desviación crítica añadida por Fable (no en el spec)**: **D4 masking de salud en lectura** — un calendario de equipo con D2 expondría BAJA_MEDICA a compañeros → violación Art.9. `maskEntryForViewer()`: solo ADMIN y el propio interesado ven el estado preciso; el resto ve `AUSENTE` genérico + `healthMasked:true`.
+- Otras decisiones: D5 TEXT+Zod (no enum PG, lección v3.4.4), D6 FKs Cascade a User (erasure), D7 SummerSchedule solo periodo global (horas en DepartmentScheduleConfig), D8 EPS=0.01 para floats, D14 DPIA obligatoria antes de merge.
+- Plan completo en `docs/PLAN_v3.5.0.md` (10 tareas, pseudocódigo motor V1-V7, shapes de 15+ endpoints). Parada tras diseño (usuario cambió modelo manualmente a Sonnet).
+
+## Ejecución (Sonnet)
+- **T1 Schema+migración ✅** (commit `f4534be`, hecho por el orquestador directamente — raíz de la que dependen T2-T4/T6-T7): 6 modelos nuevos (`Department`, `DepartmentManager`, `DepartmentScheduleConfig`, `SummerSchedule`, `StaffSchedule`, `ScheduleEntry`, `ScheduleAlert`) + `User.departmentId`; migración manual `20260709120000_staff_schedule` (`CREATE TABLE IF NOT EXISTS` ×6, `ALTER TABLE users ADD COLUMN`, FKs con `ON DELETE CASCADE` a User en `schedule_entries`/`department_managers`, `SET NULL` en `users.department_id`); nota de erasure extendida en `index.ts` (comentario, sin cambio funcional — el cascade ya lo garantiza). Validado con `prisma validate` dentro del contenedor (sin ejecutar migración).
+- **T2-T4 Backend 🔄 + T5 i18n 🔄**: 2 subagentes en paralelo, cada uno con instrucción explícita de completar TODO su trabajo y verificar `git status` limpio de archivos ajenos antes de un único commit final (mitigación de la lección `[[feedback_parallel_subagent_commits]]` de v3.4.4, en vez de dejar que colisionen).
+
+---
+
 # v3.4.4 — Relación INSTALLED_IN (Blade Enclosure / Convergentes) · 🔄 EN PROGRESO · 2026-07-08
 
 **Rama:** `feature/v3.4.4-blade-enclosure-relation` → `develop` (NO main). Plan: `docs/PLAN_v3.4.4.md` · Estado: `docs/PLAN_STATUS_v3.4.4.md`

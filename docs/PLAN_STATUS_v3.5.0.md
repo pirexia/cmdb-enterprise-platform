@@ -1,6 +1,6 @@
 # PLAN STATUS v3.5.0 — Staff Schedule (gestión de horarios del personal)
 
-**Estado final:** ✅ Mergeada a `develop` (merge no-ff `790b685`, 2026-07-09). Rama feature (solo local, sin commits propios pendientes) eliminada. **NO mergeada a `main`** — pendiente de decisión del usuario para release.
+**Estado final:** ✅ LIBERADA (tag `v3.5.0`, PR #173 develop→main mergeado `fc0005c`, desplegada y verificada en producción, 2026-07-09). Merge a develop previo `790b685`; rama feature eliminada. Verificación de despliegue: 7 tablas presentes, migración registrada, `/api/health` OK, `/staff-schedule` 200, router responde con cuenta AUDITOR.
 **Rama:** `feature/v3.5.0-staff-schedule` → `develop`
 **Plan completo:** `docs/PLAN_v3.5.0.md`
 **Inicio:** 2026-07-09

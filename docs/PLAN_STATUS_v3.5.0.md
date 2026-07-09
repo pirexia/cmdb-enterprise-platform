@@ -14,8 +14,8 @@
 | T3 Motor de validaciones + service + masking Art.9 | ✅ Completada (`2a79397`) |
 | T4 Router+export+montaje | ✅ Completada (`2a79397`) |
 | T5 i18n ×6 staffSchedule.* | ✅ Completada (`b9006f6`) |
-| T6 Frontend calendario | 🔄 En progreso (subagente) |
-| T7 Frontend config admin | 🔄 En progreso (subagente) |
+| T6 Frontend calendario | ✅ Completada (`77c5b35`) |
+| T7 Frontend config admin | ✅ Completada (`77c5b35`) |
 | T8 Despliegue local + smoke tests | ⏳ Pendiente |
 | T9 Docs + DPIA + bump versión | ⏳ Pendiente |
 | T10 Merge a develop | ⏳ Pendiente |

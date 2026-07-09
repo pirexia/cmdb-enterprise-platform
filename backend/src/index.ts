@@ -44,6 +44,8 @@ import { createAiRouter }                     from './modules/ai/router';
 import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
+import { createStaffScheduleRouter } from './modules/staff-schedule/router';
+import { requireScheduleAccess } from './modules/staff-schedule/middleware';
 import { createDecommissionRouter } from './modules/decommission/router';
 import { createCatalogRouter } from './modules/catalog/router';
 import { createAlertsRouter } from './modules/alerts/router';
@@ -297,6 +299,9 @@ app.use('/api/documents', createDocumentsRouter(
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
+
+// Staff Schedule module (v3.5.0) — VIEWER role blocked via requireScheduleAccess
+app.use('/api/staff-schedule', authenticateToken, requireScheduleAccess, createStaffScheduleRouter(prisma));
 
 // Decommission module — VIEWER role gets read-only; writes require ADMIN (enforced in router)
 app.use('/api/decommission', authenticateToken, createDecommissionRouter(prisma, {

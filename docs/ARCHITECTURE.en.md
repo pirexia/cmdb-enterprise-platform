@@ -1080,13 +1080,21 @@ app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
 ### 13.3 Relation type module (T8)
 
 `backend/src/relationTypes.ts` — authoritative source:
-- `VALID_RELATION_TYPES`: allowlist of all 17 types.
+- `VALID_RELATION_TYPES`: allowlist of all 18 types.
 - `RELATION_TYPE_MATRIX`: constraints by CI type at each end.
 - `validateRelationCiTypes()`: validation applied before any INSERT on `/api/relations`.
 
 `frontend/lib/relationTypes.ts` — frontend mirror with UI additions:
 - `CATEGORY_COLORS`: `{ structural: #6366f1, network: #0d9488, power: #f59e0b, logical: #f97316 }`
 - `relationAllowed()`: option filtering in `AddRelationModal`.
+
+**v3.4.4 — `INSTALLED_IN` (Blade Enclosure / Converged containment):**
+- Semantics: `source → INSTALLED_IN → target` = "source is physically installed inside target". Category `structural`.
+- Matrix: source ∈ `PHYSICAL_SERVER | STORAGE | NETWORK`; target ∈ `BLADE_SYSTEM___BLADE_ENCLOSURE | CONVERGED_INFRASTRUCTURE`.
+- **Single container per source**, enforced in two layers: application check (`validateInstalledIn()` in `index.ts` → 409 naming the current chassis) + partial unique index `ci_relations_installed_in_source_unique` in the DB (`WHERE relation_type = 'INSTALLED_IN'`, migration `20260708090100`).
+- Target chassis with `status = RETIRADO` → 422 on creation. Retiring the chassis afterwards does **not** propagate status; the contained CI's detail shows a warning badge (`GET /api/cis/:id/relations` now exposes `source_status`/`target_status`).
+- `CI_INCLUDE` includes `relationsFrom` filtered to `INSTALLED_IN`; `flattenCI` exposes `installedInRelationId/installedInId/installedInName/installedInStatus` on `/api/cis` (inventory view column+filter, and the `installedIn` column+filter of the `inventory` report).
+- Enum migration: `ALTER TYPE ... ADD VALUE IF NOT EXISTS` (`20260708090000`), kept separate from the index because PostgreSQL cannot use a new enum value in the transaction that creates it.
 
 ### 13.4 Cascade in bulk import (T7)
 

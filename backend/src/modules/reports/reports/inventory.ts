@@ -114,6 +114,12 @@ const SPECS: Record<string, ColSpec> = {
   rackUnit:           scalar('rackUnit', 'string', 'location'),
   assignedUser:       scalar('assignedUser', 'string', 'location'),
   userDni:            scalar('userDni', 'string', 'location'),
+  // v3.4.4 — INSTALLED_IN containment (blade/module → enclosure/converged); not sortable (1:N relation filter)
+  installedIn: {
+    col: { key: 'installedIn', labelKey: 'reports.col.installedIn', type: 'string', group: 'location', configurable: true, sortable: false },
+    select: { relationsFrom: { where: { relationType: 'INSTALLED_IN' as any }, select: { targetCI: { select: { name: true } } } } } as Prisma.CISelect, // v3.4.4: enum value added by migration; client regenerated at container build
+    extract: (ci) => (ci as AnyCI).relationsFrom?.[0]?.targetCI?.name ?? '',
+  },
   // network
   adminIp:            scalar('adminIp', 'string', 'network'),
   mgmtIp:             scalar('mgmtIp', 'string', 'network'),
@@ -206,11 +212,21 @@ registerReport({
         { value: 'MISSION_CRITICAL', labelKey: 'ci.criticality.MISSION_CRITICAL' },
       ],
     },
+    { key: 'installedIn',  type: 'multi-select', labelKey: 'reports.filter.installedIn' },
     { key: 'search', type: 'search', labelKey: 'reports.filter.search' },
   ],
   async loadFilterOptions(prisma: PrismaClient) {
     const types = await prisma.cIType.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } });
-    return { ciType: types.map((t) => ({ value: t.id, label: t.name })) };
+    // v3.4.4 — containers eligible as INSTALLED_IN target (blade enclosures / converged infra)
+    const enclosures = await prisma.cI.findMany({
+      where: { ciTypeDef: { code: { in: ['BLADE_SYSTEM___BLADE_ENCLOSURE', 'CONVERGED_INFRASTRUCTURE'] } } },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return {
+      ciType: types.map((t) => ({ value: t.id, label: t.name })),
+      installedIn: enclosures.map((e) => ({ value: e.id, label: e.name })),
+    };
   },
   async query(prisma: PrismaClient, filters: ReportFilters): Promise<ReportResult> {
     // resolve requested columns (validate against registry; fall back to defaults)
@@ -226,12 +242,14 @@ registerReport({
     const statusFilter      = asArray(filters['status']);
     const criticalityFilter = asArray(filters['criticality']);
     const ciTypeFilter      = asArray(filters['ciType']);
+    const installedInFilter = asArray(filters['installedIn']);
     const search = filters.search?.trim();
 
     const where = {
       ...(statusFilter ? { status: { in: statusFilter as ('ACTIVO' | 'INACTIVO' | 'RETIRADO')[] } } : {}),
       ...(criticalityFilter ? { criticality: { in: criticalityFilter as ('LOW' | 'MEDIUM' | 'HIGH' | 'MISSION_CRITICAL')[] } } : {}),
       ...(ciTypeFilter ? { ciTypeId: { in: ciTypeFilter } } : {}),
+      ...(installedInFilter ? { relationsFrom: { some: { relationType: 'INSTALLED_IN' as any, targetCiId: { in: installedInFilter } } } } : {}),
       ...(search ? {
         OR: [
           { name: { contains: escapeLike(search), mode: 'insensitive' as const } },

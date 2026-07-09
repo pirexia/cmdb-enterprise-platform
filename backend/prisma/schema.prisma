@@ -85,6 +85,8 @@ enum RelationType {
   QUERIES            // Source queries target (e.g., App queries Database)
   LICENSES           // Source (license) licenses target
   MANAGES            // Source manages target
+  // ── v3.4.4 — Containment ──
+  INSTALLED_IN       // Source is installed inside target (e.g., Blade Server → Blade Enclosure)
 }
 
 // ─── NIS2 / GDPR Enums (stored as TEXT in DB) ─────────────────────────────────

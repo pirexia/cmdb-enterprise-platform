@@ -482,6 +482,26 @@ Las relaciones permiten modelar cómo están conectados los activos entre sí: q
 | **CONNECTED_TO** | El activo origen está conectado al activo destino | Servidor conectado a un switch de red |
 | **PROVIDES_SERVICE** | El activo origen provee un servicio al activo destino | Servidor DNS presta servicio a los clientes |
 | **BACKED_UP_BY** | El activo origen está respaldado por el activo destino | Servidor de producción respaldado por sistema de backup |
+| **INSTALLED_IN** | El activo origen está instalado físicamente dentro del destino | Servidor blade instalado en un blade enclosure |
+
+> El mapa de relaciones incluye además 12 tipos estructurales/red/eléctrica/lógica adicionales (ver sección 29).
+
+### Instalar un activo en un chasis (Blade Enclosure / Convergentes) — v3.4.4
+
+La relación **INSTALLED_IN** modela el contenido de un chasis: qué blades y módulos viven dentro de un *Blade system / blade enclosure* o de una *Converged Infrastructure*.
+
+**Reglas:**
+- Solo pueden instalarse activos de tipo **Servidor Físico**, **Almacenamiento** o **Red / Networking**.
+- Solo pueden actuar como chasis los activos de tipo **Blade system / blade enclosure** o **Converged Infrastructure**.
+- Un activo solo puede estar instalado en **un** chasis a la vez. Para moverlo, usa "Cambiar de chasis" (o desinstala primero).
+- No se puede instalar en un chasis **Retirado**. Si el chasis se retira después, el detalle del activo instalado muestra una advertencia ámbar para su revisión.
+
+**Cómo instalar (solo ADMIN):**
+1. Abre el detalle del activo (clic en su nombre en el Inventario).
+2. En la sección **"Chasis / Contenido"**, pulsa **"Instalar en chasis"**.
+3. Busca y selecciona el chasis (solo se listan chasis activos) y confirma.
+
+En el detalle de un chasis, la misma sección muestra la lista de activos instalados dentro, con opción de quitarlos. En el Inventario, la columna opcional **"Chasis / Enclosure"** (grupo Ubicación del selector de columnas) muestra dónde está instalado cada activo y permite filtrar por chasis. El reporte de Inventario incluye la misma columna y filtro.
 
 ### Crear una nueva relación (solo ADMIN)
 

@@ -482,6 +482,26 @@ Relationships let you model how assets are connected to each other: which server
 | **CONNECTED_TO** | The source asset is connected to the target asset | Server connected to a network switch |
 | **PROVIDES_SERVICE** | The source asset provides a service to the target asset | DNS server provides a service to clients |
 | **BACKED_UP_BY** | The source asset is backed up by the target asset | Production server backed up by backup system |
+| **INSTALLED_IN** | The source asset is physically installed inside the target | Blade server installed in a blade enclosure |
+
+> The relation map also offers 12 additional structural/network/power/logical types (see section 29).
+
+### Installing an asset into a chassis (Blade Enclosure / Converged) — v3.4.4
+
+The **INSTALLED_IN** relationship models chassis containment: which blades and modules live inside a *Blade system / blade enclosure* or a *Converged Infrastructure*.
+
+**Rules:**
+- Only assets of type **Physical Server**, **Storage** or **Network** can be installed.
+- Only assets of type **Blade system / blade enclosure** or **Converged Infrastructure** can act as chassis.
+- An asset can be installed in **one** chassis at a time. To move it, use "Change chassis" (or uninstall first).
+- You cannot install into a **Retired** chassis. If the chassis is retired later, the installed asset's detail shows an amber warning for review.
+
+**How to install (ADMIN only):**
+1. Open the asset's detail (click its name in the Inventory).
+2. In the **"Chassis / Contents"** section, click **"Install in chassis"**.
+3. Search and select the chassis (only active chassis are listed) and confirm.
+
+On a chassis' detail, the same section lists the assets installed inside it, with the option to remove them. In the Inventory, the optional **"Chassis / Enclosure"** column (Location group in the column picker) shows where each asset is installed and allows filtering by chassis. The Inventory report includes the same column and filter.
 
 ### Creating a new relationship (ADMIN only)
 

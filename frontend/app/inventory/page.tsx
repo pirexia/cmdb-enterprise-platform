@@ -124,6 +124,11 @@ interface CI {
   createdAt?:         string | null;
   updatedAt?:         string | null;
   lifecycleDates?:    { dateValue: string; dateType: { code: string } }[] | null;
+  // v3.4.4 — INSTALLED_IN containment (blade/module → enclosure)
+  installedInRelationId?: string | null;
+  installedInId?:         string | null;
+  installedInName?:       string | null;
+  installedInStatus?:     string | null;
 }
 
 // ─── Support status badge ─────────────────────────────────────────────────────
@@ -356,7 +361,7 @@ export default function InventoryPage() {
     cell: (ci: CI) => React.ReactNode;
   }
   const [sort, setSort] = useState<{ col: SortCol; dir: SortDir }>({ col: null, dir: "asc" });
-  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" });
+  const [filters, setFilters] = useState({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "", installedIn: "" });
   const { pageSize, setPageSize } = usePageSize();
   const [page, setPage] = useState(1);
 
@@ -368,7 +373,7 @@ export default function InventoryPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
 
-  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "" }); setSort({ col: null, dir: "asc" }); };
+  const clearFilters = () => { setFilters({ name: "", ciType: "", environment: "", criticality: "", status: "", vulns: "", agent: "", installedIn: "" }); setSort({ col: null, dir: "asc" }); };
 
   useEffect(() => { setPage(1); }, [filters, sort]);
 
@@ -484,6 +489,7 @@ export default function InventoryPage() {
       if (filters.environment && ci.environment !== filters.environment) return false;
       if (filters.criticality && ci.criticality !== filters.criticality) return false;
       if (filters.status && (ci.status ?? "ACTIVO") !== filters.status) return false;
+      if (filters.installedIn && ci.installedInName !== filters.installedIn) return false;
       if (filters.vulns) {
         if (filters.vulns === "no_data" && ci.vulnerabilities !== null) return false;
         if (filters.vulns === "clean" && (ci.vulnerabilities === null || openVulns.length > 0)) return false;
@@ -519,6 +525,13 @@ export default function InventoryPage() {
 
   const totalPages  = Math.max(1, Math.ceil(filtered.length / pageSize));
   const displayed   = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  // v3.4.4 — unique enclosure names present in the loaded CIs, for the installedIn filter
+  const installedInOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const ci of cis) if (ci.installedInName) names.add(ci.installedInName);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [cis]);
 
   // ─── v3.4.3 — configurable columns ──────────────────────────────────────────
   const filterSelectCls = (active: string) =>
@@ -569,6 +582,9 @@ export default function InventoryPage() {
       // location
       { key: "location",   labelKey: "reports.col.location",   group: "location", cell: (ci) => txt(ci.location?.name) },
       { key: "branch",     labelKey: "reports.col.branch",     group: "location", cell: (ci) => txt(ci.branch?.name) },
+      { key: "installedIn", labelKey: "reports.col.installedIn", group: "location",
+        filterCell: <select value={filters.installedIn} onChange={(e) => setFilter("installedIn", e.target.value)} className={filterSelectCls(filters.installedIn)}><option value="">Todos</option>{installedInOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select>,
+        cell: (ci) => txt(ci.installedInName) },
       { key: "costCenter", labelKey: "reports.col.costCenter", group: "location", cell: (ci) => txt(ci.costCenter?.name) },
       { key: "floor",      labelKey: "reports.col.floor",      group: "location", cell: (ci) => txt(ci.floor) },
       { key: "room",       labelKey: "reports.col.room",       group: "location", cell: (ci) => txt(ci.room) },
@@ -620,7 +636,7 @@ export default function InventoryPage() {
       { key: "decommissionDate", labelKey: "reports.col.decommissionDate", group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "decommission-date")) },
       { key: "reviewDate",       labelKey: "reports.col.reviewDate",       group: "lifecycle", cell: (ci) => dateCell(lifeDate(ci, "review-date")) },
     ];
-  }, [t, filters, ciTypeCategories]);
+  }, [t, filters, ciTypeCategories, installedInOptions]);
 
   const DEFAULT_COL_KEYS = useMemo(() => ALL_COLS.filter((c) => c.defaultVisible).map((c) => c.key), [ALL_COLS]);
   const colByKey = useMemo(() => Object.fromEntries(ALL_COLS.map((c) => [c.key, c])), [ALL_COLS]);

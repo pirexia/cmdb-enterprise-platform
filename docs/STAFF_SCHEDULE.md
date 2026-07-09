@@ -87,6 +87,8 @@ Ver `backend/src/modules/staff-schedule/router.ts` para el listado completo (dep
 
 `frontend/app/staff-schedule/page.tsx` + `frontend/components/staff-schedule/*`. Calendario semanal (filas=personas, columnas=días), popover de edición de entry, panel de alertas (con botón "Re-validar", no "resolver" — ver §5), selector de semana/departamento, paneles de configuración ADMIN (departamentos, jornada, verano, managers).
 
+**Decisión de diseño — la gestión de departamentos vive DENTRO del módulo (no en Datos Maestros).** Los CRUD de `Department`/config/managers/asignación de usuarios están en `ScheduleConfigPanel.tsx`, accesible desde el botón "Configuración" de `/staff-schedule` (solo ADMIN), NO en `/admin/masters`. Es intencionado (el módulo posee su propia configuración, igual que DCIM con edificios/salas) — **no reubicar a Datos Maestros sin decisión explícita**. Contrapartida conocida: menor descubribilidad (un usuario que busca "departamentos" tiende a mirar primero en Datos Maestros); mitigado con notas cruzadas en `docs/USER_MANUAL.md` §18 y §34.6. Si en el futuro se decide exponerlo también en Datos Maestros, hacerlo como enlace/atajo a la misma UI, sin duplicar lógica.
+
 ## 11. Retención
 
 Recomendado (no automatizado en v3.5.0): purgar `StaffSchedule` `PUBLISHED` con antigüedad superior a 18 meses. Ver DPIA (`docs/DPIA_STAFF_SCHEDULE.md`) para el razonamiento de minimización de datos.

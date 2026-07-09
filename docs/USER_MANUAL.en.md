@@ -1021,6 +1021,8 @@ All changes are recorded in the Audit Log.
 
 > This section is only available to users with the **ADMIN** role.
 
+> **Note:** the **departments** used by the Staff Schedule module are **not** managed here. They are created from `Staff Schedule` → **⚙ Configure** (see [section 34.6](#34-staff-schedule-v350)).
+
 ### Accessing
 
 Click **"Master Data"** in the sidebar. In the left navigation bar, select **"CI Types"**.
@@ -1771,10 +1773,14 @@ Click a cell to open the editor: choose the status and, if applicable, start/end
 
 **Sick Leave** and **Parental Leave** statuses are specially protected health data. Unless you are a system administrator or the affected person themselves, you will see those days shown generically as "Absent" (with a small lock icon) — the system does not reveal the real reason for the absence to colleagues or unauthorized managers. This is intentional, not a bug.
 
-### 34.6 Configuration (ADMIN only)
+### 34.6 Configuration and creating departments (ADMIN only)
+
+> **Where are departments created?** Not under **Master Data** (where Branches, Cost Centers and CI Types live). Staff-schedule departments are managed **from this module**: `Staff Schedule` → **⚙ Configure** button (top right, ADMIN only). The calendar's department selector stays empty until you create at least one here.
+
+**Recommended order:** create the department → assign users to the department → (optional) assign managers → then create the weekly schedule.
 
 From the "Configure" button you can:
-- Create and edit departments (name, code, service hours, onsite-presence hours, minimum onsite percentage).
+- Create and edit departments (name, code, service hours, onsite-presence hours, minimum onsite percentage). Creating a department automatically generates its working-hours configuration with default values.
 - Configure each department's working hours: winter/summer net hours, lunch break, intensive-Friday hours, weekly target (40h by default), monthly telework cap, and the flexible time window.
 - Configure the yearly summer-schedule period (start and end date).
 - Assign and remove department managers (people who can edit that department's schedules without being ADMIN).

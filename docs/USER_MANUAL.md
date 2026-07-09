@@ -1021,6 +1021,8 @@ Todos los cambios quedan registrados en el Registro de Auditoría.
 
 > Esta sección solo está disponible para usuarios con rol **ADMIN**.
 
+> **Nota:** los **departamentos** del módulo de Horarios del personal **no** se gestionan aquí. Se crean desde `Horarios del personal` → **⚙ Configuración** (ver [sección 34.6](#34-horarios-del-personal-v350)).
+
 ### Acceder
 
 Haz clic en **"Datos Maestros"** en el menú lateral. En la barra de navegación izquierda, selecciona **"Tipos de CI"**.
@@ -1787,10 +1789,14 @@ Haz clic en una celda para abrir el editor: elige el estado, y si aplica, la hor
 
 Los estados **Baja médica** y **Baja de paternidad** son datos de salud especialmente protegidos. Si no eres ni la persona administradora del sistema ni la persona afectada, verás esos días mostrados de forma genérica como "Ausente" (con un pequeño icono de candado) — el sistema no revela el motivo real de la ausencia a compañeros ni a responsables no autorizados. Esto es intencionado y no es un error.
 
-### 34.6 Configuración (solo ADMIN)
+### 34.6 Configuración y alta de departamentos (solo ADMIN)
+
+> **¿Dónde se crean los departamentos?** No están en **Datos Maestros** (donde viven Sucursales, Centros de Coste o Tipos de CI). Los departamentos de horarios se gestionan **desde este módulo**: `Horarios del personal` → botón **⚙ Configuración** (arriba a la derecha, solo ADMIN). El selector de departamento del calendario aparecerá vacío hasta que crees al menos uno aquí.
+
+**Orden recomendado de alta:** crear el departamento → asignar usuarios al departamento → (opcional) asignar responsables → ya puedes crear la planificación semanal.
 
 Desde el botón "Configuración" puedes:
-- Crear y editar departamentos (nombre, código, horario de servicio, horario de presencialidad, % mínimo de presencialidad).
+- Crear y editar departamentos (nombre, código, horario de servicio, horario de presencialidad, % mínimo de presencialidad). Al crear un departamento se genera automáticamente su configuración de jornada con valores por defecto.
 - Configurar la jornada de cada departamento: horas efectivas de invierno/verano, descanso de comida, horas del viernes intensivo, objetivo semanal (40h por defecto), cuota mensual de teletrabajo, y la ventana horaria flexible.
 - Configurar el periodo de horario de verano del año (fecha de inicio y fin).
 - Asignar y quitar responsables de departamento (personas que podrán editar horarios de ese departamento sin ser ADMIN).

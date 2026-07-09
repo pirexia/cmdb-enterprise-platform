@@ -60,9 +60,9 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       const department = await prisma.$transaction(async (tx) => {
         const dept = await tx.department.create({ data: parsed.data });
         await tx.departmentScheduleConfig.create({ data: { departmentId: dept.id } });
+        await auditStaffSchedule(tx, { action: 'CREATE_DEPARTMENT', entity: 'DEPARTMENT', entityId: dept.id, userEmail: req.user!.email });
         return dept;
       });
-      await auditStaffSchedule(prisma, { action: 'CREATE_DEPARTMENT', entity: 'DEPARTMENT', entityId: department.id, userEmail: req.user!.email });
       res.status(201).json(department);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Department code already exists' }); return; }
@@ -76,8 +76,11 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = DepartmentUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const department = await prisma.department.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await auditStaffSchedule(prisma, { action: 'UPDATE_DEPARTMENT', entity: 'DEPARTMENT', entityId: department.id, userEmail: req.user!.email });
+      const department = await prisma.$transaction(async (tx) => {
+        const d = await tx.department.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await auditStaffSchedule(tx, { action: 'UPDATE_DEPARTMENT', entity: 'DEPARTMENT', entityId: d.id, userEmail: req.user!.email });
+        return d;
+      });
       res.json(department);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Department not found' }); return; }
@@ -106,12 +109,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = DeptConfigSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const config = await prisma.departmentScheduleConfig.upsert({
-        where: { departmentId: req.params.id as string },
-        create: { departmentId: req.params.id as string, ...parsed.data },
-        update: parsed.data,
+      const config = await prisma.$transaction(async (tx) => {
+        const c = await tx.departmentScheduleConfig.upsert({
+          where: { departmentId: req.params.id as string },
+          create: { departmentId: req.params.id as string, ...parsed.data },
+          update: parsed.data,
+        });
+        await auditStaffSchedule(tx, { action: 'UPDATE_DEPARTMENT_CONFIG', entity: 'DEPARTMENT', entityId: req.params.id as string, userEmail: req.user!.email });
+        return c;
       });
-      await auditStaffSchedule(prisma, { action: 'UPDATE_DEPARTMENT_CONFIG', entity: 'DEPARTMENT', entityId: req.params.id as string, userEmail: req.user!.email });
       res.json(config);
     } catch (err: any) {
       if (err?.code === 'P2003') { res.status(400).json({ error: 'Department not found' }); return; }
@@ -127,10 +133,13 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = ManagerAssignSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const manager = await prisma.departmentManager.create({
-        data: { departmentId: req.params.id as string, userId: parsed.data.userId },
+      const manager = await prisma.$transaction(async (tx) => {
+        const m = await tx.departmentManager.create({
+          data: { departmentId: req.params.id as string, userId: parsed.data.userId },
+        });
+        await auditStaffSchedule(tx, { action: 'ASSIGN_DEPARTMENT_MANAGER', entity: 'DEPARTMENT_MANAGER', entityId: m.id, userEmail: req.user!.email });
+        return m;
       });
-      await auditStaffSchedule(prisma, { action: 'ASSIGN_DEPARTMENT_MANAGER', entity: 'DEPARTMENT_MANAGER', entityId: manager.id, userEmail: req.user!.email });
       res.status(201).json(manager);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'User is already a manager of this department' }); return; }
@@ -143,11 +152,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // DELETE /api/staff-schedule/departments/:id/managers/:userId  (ADMIN)
   router.delete('/departments/:id/managers/:userId', requireAdmin, requireUuidParam('id'), requireUuidParam('userId'), async (req: Request, res: Response) => {
     try {
-      const result = await prisma.departmentManager.deleteMany({
-        where: { departmentId: req.params.id as string, userId: req.params.userId as string },
+      const removed = await prisma.$transaction(async (tx) => {
+        const result = await tx.departmentManager.deleteMany({
+          where: { departmentId: req.params.id as string, userId: req.params.userId as string },
+        });
+        if (result.count === 0) return 0;
+        await auditStaffSchedule(tx, { action: 'REMOVE_DEPARTMENT_MANAGER', entity: 'DEPARTMENT_MANAGER', entityId: req.params.id as string, userEmail: req.user!.email });
+        return result.count;
       });
-      if (result.count === 0) { res.status(404).json({ error: 'Manager assignment not found' }); return; }
-      await auditStaffSchedule(prisma, { action: 'REMOVE_DEPARTMENT_MANAGER', entity: 'DEPARTMENT_MANAGER', entityId: req.params.id as string, userEmail: req.user!.email });
+      if (removed === 0) { res.status(404).json({ error: 'Manager assignment not found' }); return; }
       res.status(204).end();
     } catch (err) {
       console.error('[StaffSchedule] manager remove error:', err);
@@ -162,12 +175,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = UserDeptAssignSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const user = await prisma.user.update({
-        where: { id: req.params.userId as string },
-        data: { departmentId: parsed.data.departmentId },
-        select: { id: true, username: true, departmentId: true },
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: req.params.userId as string },
+          data: { departmentId: parsed.data.departmentId },
+          select: { id: true, username: true, departmentId: true },
+        });
+        await auditStaffSchedule(tx, { action: 'ASSIGN_USER_DEPARTMENT', entity: 'DEPARTMENT', entityId: u.departmentId ?? (req.params.userId as string), userEmail: req.user!.email });
+        return u;
       });
-      await auditStaffSchedule(prisma, { action: 'ASSIGN_USER_DEPARTMENT', entity: 'DEPARTMENT', entityId: user.departmentId ?? (req.params.userId as string), userEmail: req.user!.email });
       res.json(user);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
@@ -198,12 +214,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
       const { year, startDate, endDate } = parsed.data;
-      const summer = await prisma.summerSchedule.upsert({
-        where: { year },
-        create: { year, startDate: new Date(startDate), endDate: new Date(endDate) },
-        update: { startDate: new Date(startDate), endDate: new Date(endDate) },
+      const summer = await prisma.$transaction(async (tx) => {
+        const s = await tx.summerSchedule.upsert({
+          where: { year },
+          create: { year, startDate: new Date(startDate), endDate: new Date(endDate) },
+          update: { startDate: new Date(startDate), endDate: new Date(endDate) },
+        });
+        await auditStaffSchedule(tx, { action: 'UPSERT_SUMMER_SCHEDULE', entity: 'DEPARTMENT', entityId: s.id, userEmail: req.user!.email });
+        return s;
       });
-      await auditStaffSchedule(prisma, { action: 'UPSERT_SUMMER_SCHEDULE', entity: 'DEPARTMENT', entityId: summer.id, userEmail: req.user!.email });
       res.json(summer);
     } catch (err) {
       console.error('[StaffSchedule] summer upsert error:', err);
@@ -251,12 +270,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = ScheduleCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const schedule = await createSchedule(prisma, {
-        departmentId: parsed.data.departmentId,
-        weekStart: parsed.data.weekStart,
-        createdBy: req.user!.email,
-      });
-      await auditStaffSchedule(prisma, { action: 'CREATE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: schedule.id, userEmail: req.user!.email });
+      const schedule = await prisma.$transaction(async (tx) => {
+        const s = await createSchedule(tx, {
+          departmentId: parsed.data.departmentId,
+          weekStart: parsed.data.weekStart,
+          createdBy: req.user!.email,
+        });
+        await auditStaffSchedule(tx, { action: 'CREATE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: s.id, userEmail: req.user!.email });
+        return s;
+      }, { timeout: 20000 });
       res.status(201).json(schedule);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'A schedule already exists for this department and week' }); return; }
@@ -271,8 +293,10 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = EntriesUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      await updateEntries(prisma, req.params.id as string, parsed.data.entries);
-      await auditStaffSchedule(prisma, { action: 'UPDATE_SCHEDULE_ENTRIES', entity: 'SCHEDULE_ENTRY', entityId: req.params.id as string, userEmail: req.user!.email });
+      await prisma.$transaction(async (tx) => {
+        await updateEntries(tx, req.params.id as string, parsed.data.entries);
+        await auditStaffSchedule(tx, { action: 'UPDATE_SCHEDULE_ENTRIES', entity: 'SCHEDULE_ENTRY', entityId: req.params.id as string, userEmail: req.user!.email });
+      }, { timeout: 20000 });
       res.status(204).end();
     } catch (err) {
       handleServiceError(err, res, 'entries update');
@@ -282,8 +306,11 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // POST /api/staff-schedule/:id/validate  (deptEdit)
   router.post('/:id/validate', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
-      const alerts = await runValidation(prisma, req.params.id as string);
-      await auditStaffSchedule(prisma, { action: 'VALIDATE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+      const alerts = await prisma.$transaction(async (tx) => {
+        const a = await runValidation(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'VALIDATE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+        return a;
+      }, { timeout: 20000 });
       res.json({ alerts });
     } catch (err) {
       handleServiceError(err, res, 'validate');
@@ -293,8 +320,11 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // POST /api/staff-schedule/:id/publish  (deptEdit) — rejects 409 if unresolved ERROR alerts (D10)
   router.post('/:id/publish', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
-      const schedule = await publish(prisma, req.params.id as string);
-      await auditStaffSchedule(prisma, { action: 'PUBLISH_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: schedule.id, userEmail: req.user!.email });
+      const schedule = await prisma.$transaction(async (tx) => {
+        const s = await publish(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'PUBLISH_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: s.id, userEmail: req.user!.email });
+        return s;
+      });
       res.json(schedule);
     } catch (err) {
       handleServiceError(err, res, 'publish');
@@ -304,8 +334,11 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // POST /api/staff-schedule/:id/unpublish  (ADMIN only, D10)
   router.post('/:id/unpublish', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      const schedule = await unpublish(prisma, req.params.id as string);
-      await auditStaffSchedule(prisma, { action: 'UNPUBLISH_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: schedule.id, userEmail: req.user!.email });
+      const schedule = await prisma.$transaction(async (tx) => {
+        const s = await unpublish(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'UNPUBLISH_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: s.id, userEmail: req.user!.email });
+        return s;
+      });
       res.json(schedule);
     } catch (err) {
       handleServiceError(err, res, 'unpublish');
@@ -315,8 +348,11 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // POST /api/staff-schedule/:id/clone  (deptEdit) — clones entries to next week
   router.post('/:id/clone', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
-      const created = await cloneToNextWeek(prisma, req.params.id as string, req.user!.email);
-      await auditStaffSchedule(prisma, { action: 'CLONE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: created.id, userEmail: req.user!.email });
+      const created = await prisma.$transaction(async (tx) => {
+        const c = await cloneToNextWeek(tx, req.params.id as string, req.user!.email);
+        await auditStaffSchedule(tx, { action: 'CLONE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: c.id, userEmail: req.user!.email });
+        return c;
+      }, { timeout: 20000 });
       res.status(201).json(created);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'A schedule already exists for the next week' }); return; }

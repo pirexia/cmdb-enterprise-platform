@@ -2104,5 +2104,104 @@
       "COMPLETED": "Concluído",
       "CANCELLED": "Cancelado"
     }
+  },
+  "staffSchedule": {
+    "title": "Planeamento de Horários da Equipa",
+    "subtitle": "Calendário semanal de jornada por departamento",
+    "weekSelector": {
+      "prev": "Semana anterior",
+      "next": "Semana seguinte",
+      "today": "Hoje"
+    },
+    "filter": {
+      "department": "Departamento",
+      "allDepartments": "Todos os departamentos"
+    },
+    "status": {
+      "PRESENCIAL": "Presencial",
+      "TELETRABAJO": "Teletrabalho",
+      "VACACIONES": "Férias",
+      "BAJA_MEDICA": "Baixa médica",
+      "BAJA_PATERNIDAD": "Licença parental",
+      "GUARDIA": "Sobreaviso",
+      "INTENSIVO": "Horário reduzido",
+      "VIAJE": "Viagem",
+      "AUSENTE": "Ausente",
+      "masked": "Ausente",
+      "DRAFT": "Rascunho",
+      "PUBLISHED": "Publicado"
+    },
+    "alert": {
+      "title": "Alertas",
+      "TELEWORK_QUOTA": "Cota de teletrabalho excedida",
+      "WEEKLY_HOURS": "Horas semanais não cumpridas",
+      "DAILY_HOURS": "Horas diárias excedidas",
+      "PRESENCE_PCT": "Presença insuficiente",
+      "FLEX_RANGE": "Fora do horário flexível",
+      "GUARDIA_COVERAGE": "Conflito de cobertura de sobreaviso",
+      "BAJA_CONFLICT": "Conflito com baixa médica/licença parental",
+      "severity": {
+        "WARNING": "Aviso",
+        "ERROR": "Erro"
+      },
+      "resolve": "Marcar como resolvida",
+      "resolved": "Resolvida"
+    },
+    "action": {
+      "save": "Guardar",
+      "validate": "Validar",
+      "publish": "Publicar",
+      "clone": "Duplicar",
+      "export": "Exportar",
+      "unpublish": "Despublicar",
+      "addManager": "Adicionar responsável",
+      "removeManager": "Remover",
+      "assignDepartment": "Atribuir departamento"
+    },
+    "config": {
+      "title": "Configuração de horário",
+      "department": "Departamento",
+      "serviceHours": "Horário de serviço",
+      "presenceHours": "Horário de presença",
+      "flexibleHours": "Horário flexível",
+      "summerSchedule": "Horário de verão",
+      "summerStart": "Início do verão",
+      "summerEnd": "Fim do verão",
+      "minPresencePct": "% mínima de presença",
+      "winterHours": "Jornada de inverno",
+      "summerHours": "Jornada de verão",
+      "monthlyTeleworkCap": "Cota mensal de teletrabalho (dias)",
+      "dailyNetHours": "Horas efetivas (segunda-quinta)",
+      "maxDailyNetHours": "Máximo de horas efetivas (segunda-quinta)",
+      "breakMinutes": "Pausa para almoço (min)",
+      "fridayNetHours": "Horas de sexta-feira reduzida",
+      "newDepartment": "Novo departamento"
+    },
+    "summary": {
+      "weeklyHours": "Horas semanais",
+      "teleworkDays": "Dias de teletrabalho",
+      "travelDays": "Dias de viagem"
+    },
+    "entry": {
+      "startTime": "Hora de entrada",
+      "endTime": "Hora de saída",
+      "notes": "Notas"
+    },
+    "canEdit": {
+      "readonly": "Apenas leitura — não gere este departamento"
+    },
+    "publish": {
+      "blockedByErrors": "Não é possível publicar: existem alertas de erro por resolver"
+    },
+    "manager": {
+      "title": "Responsáveis de departamento"
+    },
+    "gdpr": {
+      "maskedNotice": "Alguns estados são apresentados de forma genérica para proteger dados de saúde"
+    },
+    "empty": {
+      "noSchedule": "Não há planeamento para esta semana",
+      "createSchedule": "Criar planeamento"
+    }
   }
 }

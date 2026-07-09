@@ -2104,5 +2104,104 @@
       "COMPLETED": "Abgeschlossen",
       "CANCELLED": "Abgebrochen"
     }
+  },
+  "staffSchedule": {
+    "title": "Personaleinsatzplanung",
+    "subtitle": "Wöchentlicher Dienstplan nach Abteilung",
+    "weekSelector": {
+      "prev": "Vorherige Woche",
+      "next": "Nächste Woche",
+      "today": "Heute"
+    },
+    "filter": {
+      "department": "Abteilung",
+      "allDepartments": "Alle Abteilungen"
+    },
+    "status": {
+      "PRESENCIAL": "Vor Ort",
+      "TELETRABAJO": "Homeoffice",
+      "VACACIONES": "Urlaub",
+      "BAJA_MEDICA": "Krankheitsurlaub",
+      "BAJA_PATERNIDAD": "Elternzeit",
+      "GUARDIA": "Bereitschaftsdienst",
+      "INTENSIVO": "Verkürzte Arbeitszeit",
+      "VIAJE": "Dienstreise",
+      "AUSENTE": "Abwesend",
+      "masked": "Abwesend",
+      "DRAFT": "Entwurf",
+      "PUBLISHED": "Veröffentlicht"
+    },
+    "alert": {
+      "title": "Warnungen",
+      "TELEWORK_QUOTA": "Homeoffice-Kontingent überschritten",
+      "WEEKLY_HOURS": "Wochenstunden nicht erreicht",
+      "DAILY_HOURS": "Tägliche Stunden überschritten",
+      "PRESENCE_PCT": "Unzureichende Präsenz vor Ort",
+      "FLEX_RANGE": "Außerhalb der Gleitzeit",
+      "GUARDIA_COVERAGE": "Konflikt bei Bereitschaftsabdeckung",
+      "BAJA_CONFLICT": "Konflikt mit Krankheits-/Elternzeit",
+      "severity": {
+        "WARNING": "Warnung",
+        "ERROR": "Fehler"
+      },
+      "resolve": "Als gelöst markieren",
+      "resolved": "Gelöst"
+    },
+    "action": {
+      "save": "Speichern",
+      "validate": "Validieren",
+      "publish": "Veröffentlichen",
+      "clone": "Duplizieren",
+      "export": "Exportieren",
+      "unpublish": "Veröffentlichung zurückziehen",
+      "addManager": "Verantwortlichen hinzufügen",
+      "removeManager": "Entfernen",
+      "assignDepartment": "Abteilung zuweisen"
+    },
+    "config": {
+      "title": "Dienstplankonfiguration",
+      "department": "Abteilung",
+      "serviceHours": "Servicezeiten",
+      "presenceHours": "Kernanwesenheitszeit",
+      "flexibleHours": "Gleitzeit",
+      "summerSchedule": "Sommerzeitplan",
+      "summerStart": "Beginn Sommerzeit",
+      "summerEnd": "Ende Sommerzeit",
+      "minPresencePct": "Mindestanwesenheit vor Ort (%)",
+      "winterHours": "Arbeitszeit Winter",
+      "summerHours": "Arbeitszeit Sommer",
+      "monthlyTeleworkCap": "Monatliches Homeoffice-Kontingent (Tage)",
+      "dailyNetHours": "Effektive Stunden (Mo-Do)",
+      "maxDailyNetHours": "Maximale effektive Stunden (Mo-Do)",
+      "breakMinutes": "Mittagspause (Min.)",
+      "fridayNetHours": "Effektive Stunden Freitag (verkürzt)",
+      "newDepartment": "Neue Abteilung"
+    },
+    "summary": {
+      "weeklyHours": "Wochenstunden",
+      "teleworkDays": "Homeoffice-Tage",
+      "travelDays": "Reisetage"
+    },
+    "entry": {
+      "startTime": "Startzeit",
+      "endTime": "Endzeit",
+      "notes": "Notizen"
+    },
+    "canEdit": {
+      "readonly": "Nur Lesezugriff — Sie verwalten diese Abteilung nicht"
+    },
+    "publish": {
+      "blockedByErrors": "Veröffentlichung nicht möglich: es gibt ungelöste Fehlerwarnungen"
+    },
+    "manager": {
+      "title": "Abteilungsverantwortliche"
+    },
+    "gdpr": {
+      "maskedNotice": "Einige Status werden aus Gründen des Gesundheitsdatenschutzes allgemein angezeigt"
+    },
+    "empty": {
+      "noSchedule": "Kein Dienstplan für diese Woche",
+      "createSchedule": "Dienstplan erstellen"
+    }
   }
 }

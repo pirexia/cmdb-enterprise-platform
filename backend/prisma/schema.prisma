@@ -125,6 +125,12 @@ model User {
   mfaPromptedAt    DateTime?       @map("mfa_prompted_at")
   mfaPendingSecret String?         @map("mfa_pending_secret") @db.VarChar(255)
 
+  // v3.5.0 — Staff Schedule
+  departmentId    String?          @db.Uuid @map("department_id")
+  department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  managedDepartments DepartmentManager[]
+  scheduleEntries ScheduleEntry[]
+
   ownedCIs         CI[]             @relation("BusinessOwner")
   technicalLedCIs  CI[]             @relation("TechnicalLead")
   trustedDevices   TrustedDevice[]
@@ -134,6 +140,7 @@ model User {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
+  @@index([departmentId])
   @@map("users")
 }
 
@@ -1458,4 +1465,156 @@ model DecommissionPlanLicense {
   @@unique([planId, licenseId])
   @@index([planId])
   @@map("decommission_plan_license")
+}
+
+// ─── v3.5.0 — Staff Schedule ───────────────────────────────────────────────────
+// Status/severity/type fields are TEXT + Zod allowlists (not PG enums) by design —
+// see docs/PLAN_v3.5.0.md D5 (avoids enum-migration friction, lesson from v3.4.4).
+
+model Department {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String
+  code           String   @unique
+  serviceStart   String   @map("service_start")   // "09:00"
+  serviceEnd     String   @map("service_end")     // "19:00"
+  presenceStart  String   @map("presence_start")  // "10:00"
+  presenceEnd    String   @map("presence_end")    // "14:00"
+  minPresencePct Int      @default(50) @map("min_presence_pct")
+
+  users          User[]
+  managers       DepartmentManager[]
+  schedules      StaffSchedule[]
+  config         DepartmentScheduleConfig?
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("departments")
+}
+
+// Row-level authorization: a non-ADMIN user who manages a department may
+// read/write StaffSchedule/ScheduleEntry rows scoped to that department only.
+model DepartmentManager {
+  id           String @id @default(uuid()) @db.Uuid
+  departmentId String @db.Uuid @map("department_id")
+  userId       String @db.Uuid @map("user_id")
+
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([departmentId, userId])
+  @@index([userId])
+  @@map("department_managers")
+}
+
+model DepartmentScheduleConfig {
+  id                     String @id @default(uuid()) @db.Uuid
+  departmentId           String @unique @db.Uuid @map("department_id")
+
+  winterDailyNetHours    Float  @default(8.0)  @map("winter_daily_net_hours")
+  winterMaxDailyNetHours Float  @default(9.0)  @map("winter_max_daily_net_hours")
+  winterBreakMinutes     Int    @default(60)   @map("winter_break_minutes")
+  winterFridayNetHours   Float  @default(6.0)  @map("winter_friday_net_hours")
+
+  summerDailyNetHours    Float  @default(8.0)  @map("summer_daily_net_hours")
+  summerMaxDailyNetHours Float  @default(9.0)  @map("summer_max_daily_net_hours")
+  summerBreakMinutes     Int    @default(30)   @map("summer_break_minutes")
+  summerFridayNetHours   Float  @default(6.0)  @map("summer_friday_net_hours")
+
+  weeklyTargetNetHours   Float  @default(40.0) @map("weekly_target_net_hours")
+  monthlyTeleworkCap     Int    @default(10)   @map("monthly_telework_cap")
+
+  flexEntryStart         String @default("07:00") @map("flex_entry_start")
+  flexEntryEnd           String @default("10:30") @map("flex_entry_end")
+  flexExitStart          String @default("16:00") @map("flex_exit_start")
+  flexExitEnd            String @default("19:00") @map("flex_exit_end")
+
+  department             Department @relation(fields: [departmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@map("department_schedule_configs")
+}
+
+// Global summer period per year. Hours live on DepartmentScheduleConfig (D7) —
+// this table only marks *when* summer schedule applies.
+model SummerSchedule {
+  id        String   @id @default(uuid()) @db.Uuid
+  year      Int      @unique
+  startDate DateTime @db.Date @map("start_date")
+  endDate   DateTime @db.Date @map("end_date")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("summer_schedules")
+}
+
+model StaffSchedule {
+  id           String   @id @default(uuid()) @db.Uuid
+  departmentId String   @db.Uuid @map("department_id")
+  weekStart    DateTime @db.Date @map("week_start")  // Monday
+  weekEnd      DateTime @db.Date @map("week_end")    // Friday/Saturday
+  status       String   @default("DRAFT")            // DRAFT | PUBLISHED
+  year         Int
+  isSummerWeek Boolean  @default(false) @map("is_summer_week")
+  createdBy    String   @map("created_by")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  department   Department      @relation(fields: [departmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  entries      ScheduleEntry[]
+  alerts       ScheduleAlert[]
+
+  @@unique([departmentId, weekStart])
+  @@index([departmentId])
+  @@index([weekStart])
+  @@map("staff_schedules")
+}
+
+// PII: daily whereabouts of a named employee. BAJA_MEDICA/BAJA_PATERNIDAD
+// statuses are GDPR Art. 9 special-category data — masked on read for
+// non-ADMIN/non-owner viewers by the service layer (D4), never by the client.
+// onDelete: Cascade on `user` so GDPR erasure (DELETE /api/admin/users/:id)
+// can hard-delete the user row without violating a FK (D6).
+model ScheduleEntry {
+  id         String    @id @default(uuid()) @db.Uuid
+  scheduleId String    @db.Uuid @map("schedule_id")
+  userId     String    @db.Uuid @map("user_id")
+  date       DateTime  @db.Date
+  status     String                                  // 9 statuses, see SCHEDULE_STATUS allowlist
+  startTime  String?   @map("start_time")             // "09:00"
+  endTime    String?   @map("end_time")
+  notes      String?
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  schedule   StaffSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([scheduleId, userId, date])
+  @@index([scheduleId])
+  @@index([userId])
+  @@index([date])
+  @@map("schedule_entries")
+}
+
+model ScheduleAlert {
+  id         String    @id @default(uuid()) @db.Uuid
+  scheduleId String    @db.Uuid @map("schedule_id")
+  type       String                                  // ALERT_TYPE allowlist
+  severity   String                                  // WARNING | ERROR
+  message    String
+  userId     String?   @db.Uuid @map("user_id")
+  date       DateTime? @db.Date
+  resolved   Boolean   @default(false)
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  schedule   StaffSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([scheduleId])
+  @@index([type])
+  @@map("schedule_alerts")
 }

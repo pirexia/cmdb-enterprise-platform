@@ -16,9 +16,28 @@
 | T5 i18n ×6 staffSchedule.* | ✅ Completada (`b9006f6`) |
 | T6 Frontend calendario | ✅ Completada (`77c5b35`) |
 | T7 Frontend config admin | ✅ Completada (`77c5b35`) |
-| T8 Despliegue local + smoke tests | ⏳ Pendiente |
-| T9 Docs + DPIA + bump versión | ⏳ Pendiente |
+| T8 Despliegue local + smoke tests | ✅ Completada |
+| T9 Docs + DPIA + bump versión | 🔄 En progreso |
 | T10 Merge a develop | ⏳ Pendiente |
+
+## T8 — Resultado de verificación (2026-07-09)
+- Rebuild `--no-cache` backend+frontend; recreate backend→frontend→nginx (orden por `depends_on`).
+- `prisma migrate deploy` aplicó `20260709120000_staff_schedule`: 7 tablas nuevas + `users.department_id` con FK `SET NULL`; resto de FKs `CASCADE` a `users`/`departments` verificadas en `\d`.
+- **Smoke funcional end-to-end** (departamento de prueba real, admin temporal MFA + `claude@cmdb.local` como manager no-admin):
+  - Crear departamento → config por defecto auto-creada (winter/summer/flex correctos) ✅
+  - Asignar 2 usuarios al departamento + 1 manager no-admin ✅
+  - Crear schedule semanal → 5×2 entries base PRESENCIAL auto-creadas ✅
+  - Editar entries (BAJA_MEDICA para un usuario + semana <40h con viernes intensivo para otro) ✅
+  - Validar → 4 alertas correctas: `WEEKLY_HOURS` ERROR (38h<40h), `BAJA_CONFLICT` WARNING, `FLEX_RANGE` WARNING, `PRESENCE_PCT` WARNING ✅
+  - Publicar con ERROR pendiente → **409** ✅
+  - Corregir a 40h exactas → re-validar → `WEEKLY_HOURS` desaparece, quedan solo WARNINGs ✅
+  - Publicar → **200 PUBLISHED** ✅
+  - Export CSV/XLSX como ADMIN → `BAJA_MEDICA` visible sin enmascarar (correcto, exporter autorizado), horas=40 exactas ✅
+  - **Masking Art.9 verificado como viewer no autorizado real** (login `claude@cmdb.local`, manager pero no dueño): `GET /:id` → entry del compañero con baja médica llega como `{status:"AUSENTE", healthMasked:true, startTime:null,...}`; alerta `BAJA_CONFLICT` con `userId:null` ✅
+  - Resumen mensual (`/user/:userId/monthly`): ADMIN ve `healthLeaveDays:2`; el manager no autorizado recibe el JSON **sin el campo** (no `0`, ausente del todo) ✅
+  - Clone → nuevo DRAFT semana siguiente ✅
+- Limpieza: `DELETE FROM departments` (cascade completo verificado: 0 schedules, 0 departments, `users.department_id` vuelto a NULL); admin temporal eliminado de BD.
+- `/staff-schedule` 200, `/api/health` OK.
 
 ## Decisiones clave (resumen)
 - **D1** módulo core (no plugin) — confirmado por usuario.

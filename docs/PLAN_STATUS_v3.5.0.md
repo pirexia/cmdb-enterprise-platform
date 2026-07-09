@@ -10,12 +10,12 @@
 |---|---|
 | Fase Fable — análisis + diseño (D1-D14) | ✅ Completada |
 | T1 Schema+migración+erasure cascade | ✅ Completada (`f4534be`) |
-| T2 Módulo backend: schemas+middleware+queries+audit | 🔄 En progreso (subagente, junto con T3/T4) |
-| T3 Motor de validaciones + service + masking Art.9 | 🔄 En progreso (subagente) |
-| T4 Router+export+montaje | 🔄 En progreso (subagente) |
-| T5 i18n ×6 staffSchedule.* | 🔄 En progreso (subagente, en paralelo) |
-| T6 Frontend calendario | ⏳ Pendiente (bloqueada por T4) |
-| T7 Frontend config admin | ⏳ Pendiente (bloqueada por T4) |
+| T2 Módulo backend: schemas+middleware+queries+audit | ✅ Completada (`2a79397`) |
+| T3 Motor de validaciones + service + masking Art.9 | ✅ Completada (`2a79397`) |
+| T4 Router+export+montaje | ✅ Completada (`2a79397`) |
+| T5 i18n ×6 staffSchedule.* | ✅ Completada (`b9006f6`) |
+| T6 Frontend calendario | 🔄 En progreso (subagente) |
+| T7 Frontend config admin | 🔄 En progreso (subagente) |
 | T8 Despliegue local + smoke tests | ⏳ Pendiente |
 | T9 Docs + DPIA + bump versión | ⏳ Pendiente |
 | T10 Merge a develop | ⏳ Pendiente |

@@ -28,7 +28,8 @@
     "dcim": "Technical Rooms & DCs",
     "plugins": "Plugins",
     "decommission": "Decommission",
-    "timeline": "Timeline"
+    "timeline": "Timeline",
+    "staffSchedule": "Staff Schedule"
   },
   "actions": {
     "create": "Create",
@@ -2222,6 +2223,124 @@
       "IN_PROGRESS": "In progress",
       "COMPLETED": "Completed",
       "CANCELLED": "Cancelled"
+    }
+  },
+  "staffSchedule": {
+    "title": "Staff Schedule Planning",
+    "subtitle": "Weekly work schedule by department",
+    "weekSelector": {
+      "prev": "Previous week",
+      "next": "Next week",
+      "today": "Today"
+    },
+    "filter": {
+      "department": "Department",
+      "allDepartments": "All departments"
+    },
+    "status": {
+      "PRESENCIAL": "Onsite",
+      "TELETRABAJO": "Remote work",
+      "VACACIONES": "Vacation",
+      "BAJA_MEDICA": "Sick leave",
+      "BAJA_PATERNIDAD": "Parental leave",
+      "GUARDIA": "On-call",
+      "INTENSIVO": "Reduced hours",
+      "VIAJE": "Business travel",
+      "AUSENTE": "Absent",
+      "masked": "Absent",
+      "DRAFT": "Draft",
+      "PUBLISHED": "Published"
+    },
+    "alert": {
+      "title": "Alerts",
+      "TELEWORK_QUOTA": "Telework quota exceeded",
+      "WEEKLY_HOURS": "Weekly hours not met",
+      "DAILY_HOURS": "Daily hours exceeded",
+      "PRESENCE_PCT": "Insufficient onsite presence",
+      "FLEX_RANGE": "Outside flexible hours",
+      "GUARDIA_COVERAGE": "On-call coverage conflict",
+      "BAJA_CONFLICT": "Conflict with sick/parental leave",
+      "severity": {
+        "WARNING": "Warning",
+        "ERROR": "Error"
+      }
+    },
+    "action": {
+      "save": "Save",
+      "validate": "Validate",
+      "publish": "Publish",
+      "clone": "Clone",
+      "export": "Export",
+      "unpublish": "Unpublish",
+      "addManager": "Add manager",
+      "removeManager": "Remove",
+      "assignDepartment": "Assign department",
+      "configure": "Configure"
+    },
+    "config": {
+      "title": "Schedule configuration",
+      "department": "Department",
+      "serviceHours": "Service hours",
+      "presenceHours": "Onsite presence hours",
+      "flexibleHours": "Flexible hours",
+      "summerSchedule": "Summer schedule",
+      "summerStart": "Summer start",
+      "summerEnd": "Summer end",
+      "minPresencePct": "Minimum onsite presence %",
+      "winterHours": "Winter working hours",
+      "summerHours": "Summer working hours",
+      "monthlyTeleworkCap": "Monthly telework cap (days)",
+      "dailyNetHours": "Net hours (Mon-Thu)",
+      "maxDailyNetHours": "Maximum net hours (Mon-Thu)",
+      "breakMinutes": "Lunch break (min)",
+      "fridayNetHours": "Friday reduced-hours net time",
+      "newDepartment": "New department"
+    },
+    "summary": {
+      "weeklyHours": "Weekly hours",
+      "teleworkDays": "Telework days",
+      "travelDays": "Travel days",
+      "guardDays": "On-call days"
+    },
+    "entry": {
+      "startTime": "Start time",
+      "endTime": "End time",
+      "notes": "Notes",
+      "status": "Status"
+    },
+    "canEdit": {
+      "readonly": "Read-only — you do not manage this department"
+    },
+    "publish": {
+      "blockedByErrors": "Cannot publish: there are unresolved error alerts"
+    },
+    "manager": {
+      "title": "Department managers",
+      "selectUser": "Select user"
+    },
+    "gdpr": {
+      "maskedNotice": "Some statuses are shown generically to protect health data"
+    },
+    "empty": {
+      "noSchedule": "No schedule for this week",
+      "createSchedule": "Create schedule"
+    },
+    "calendar": {
+      "person": "Person"
+    },
+    "department": {
+      "title": "Department",
+      "code": "Code",
+      "create": "Create department",
+      "edit": "Save changes",
+      "none": "No department",
+      "serviceStart": "Service start",
+      "serviceEnd": "Service end",
+      "presenceStart": "Presence start",
+      "presenceEnd": "Presence end"
+    },
+    "summer": {
+      "year": "Year"
     }
   }
 }

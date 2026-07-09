@@ -44,6 +44,8 @@ import { createAiRouter }                     from './modules/ai/router';
 import { createDcimRouter } from './modules/dcim/router';
 import { requireDcimAccess } from './modules/dcim/middleware';
 import { CIPlacementSchema } from './modules/dcim/schemas';
+import { createStaffScheduleRouter } from './modules/staff-schedule/router';
+import { requireScheduleAccess } from './modules/staff-schedule/middleware';
 import { createDecommissionRouter } from './modules/decommission/router';
 import { createCatalogRouter } from './modules/catalog/router';
 import { createAlertsRouter } from './modules/alerts/router';
@@ -297,6 +299,9 @@ app.use('/api/documents', createDocumentsRouter(
 
 // DCIM module — VIEWER role blocked at router level via requireDcimAccess
 app.use('/api/dcim', authenticateToken, requireDcimAccess, createDcimRouter(prisma));
+
+// Staff Schedule module (v3.5.0) — VIEWER role blocked via requireScheduleAccess
+app.use('/api/staff-schedule', authenticateToken, requireScheduleAccess, createStaffScheduleRouter(prisma));
 
 // Decommission module — VIEWER role gets read-only; writes require ADMIN (enforced in router)
 app.use('/api/decommission', authenticateToken, createDecommissionRouter(prisma, {
@@ -1255,11 +1260,17 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
  * Performs structured erasure:
  *   1. Pseudonymises audit_logs entries (replaces email with a stable hash)
  *   2. Clears all PII fields on the user record (email, password, MFA secrets, SSO id)
- *   3. Hard-deletes trusted_devices and password_history (cascade from user delete)
+ *   3. Hard-deletes trusted_devices, password_history, and (v3.5.0) schedule_entries +
+ *      department_managers — all cascade from the user delete below (ON DELETE CASCADE)
  *   4. Hard-deletes the user row
  *
  * The audit trail sequence is preserved (action/entity/timestamps intact).
  * The requesting admin cannot erase their own account.
+ *
+ * v3.5.0: schedule_entries carries daily whereabouts + a special-category
+ * subset (BAJA_MEDICA/BAJA_PATERNIDAD) as Art.9 health data — its FK to
+ * users is ON DELETE CASCADE precisely so this endpoint keeps working
+ * without a separate erasure branch (docs/PLAN_v3.5.0.md D6).
  */
 app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const targetId = req.params.id as string;
@@ -1290,7 +1301,8 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: 
       UPDATE "audit_logs" SET user_email = ${pseudoToken} WHERE user_email = ${email}
     `;
 
-    // 3. Hard-delete the user (trusted_devices + password_history cascade automatically)
+    // 3. Hard-delete the user (trusted_devices, password_history, schedule_entries,
+    //    department_managers cascade automatically — see FK comments in schema.prisma)
     await prisma.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
 
     // 4. Record the erasure in the audit log under the admin's email

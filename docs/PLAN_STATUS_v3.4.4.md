@@ -1,6 +1,7 @@
 # PLAN STATUS v3.4.4 — Relación INSTALLED_IN (Blade Enclosure / Convergentes)
 
-**Rama:** `feature/v3.4.4-blade-enclosure-relation` → `develop` (NO main)
+**Estado final:** ✅ LIBERADA (tag `v3.4.4`, PR #171 develop→main mergeado `d00f494`, desplegada y verificada en producción 2026-07-09)
+**Rama:** `feature/v3.4.4-blade-enclosure-relation` → `develop` → `main`
 **Plan completo:** `docs/PLAN_v3.4.4.md`
 **Inicio:** 2026-07-08
 
@@ -15,6 +16,13 @@
 | T4 i18n ×6 | ✅ Completada (`9e34512`, combinado con T3 por carrera de índice) |
 | T5 Docs + bump 3.4.4 | ✅ Completada (`35bfafd`, `cdd8c7a`) |
 | T6 Despliegue + smoke + merge develop | ✅ Completada |
+
+## Despliegue en producción (2026-07-09)
+- `main` local actualizado desde `origin/main` (commit merge `d00f494`, incluye v3.4.4 completa).
+- Rebuild `--no-cache` backend+frontend desde `main`; recreate backend→frontend→nginx (orden por `depends_on`).
+- Verificado en el contenedor de producción: `_prisma_migrations` con ambas migraciones, enum 18 valores, índice parcial presente, `/api/health` OK, `/inventory` 200, login funcional.
+- Smoke funcional end-to-end sobre el código de `main` (admin temporal MFA, creado y eliminado tras la prueba): crear relación INSTALLED_IN (201), `/api/cis` aplanado con `installedInName`, filtro `installedIn` del reporte inventory (devolvió el CI correcto), DELETE relación (200), CI de prueba borrado.
+- Sin incidencias. Producción en v3.4.4.
 
 ## T6 — Resultado de verificación (2026-07-09)
 - Rebuild `--no-cache` backend+frontend (podman-compose), recreate backend/frontend/nginx (en orden por dependencias).

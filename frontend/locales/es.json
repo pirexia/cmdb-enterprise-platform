@@ -28,7 +28,8 @@
     "dcim": "Salas técnicas y CPD",
     "plugins": "Plugins",
     "decommission": "Decomisado",
-    "timeline": "Línea de Tiempo"
+    "timeline": "Línea de Tiempo",
+    "staffSchedule": "Horarios del personal"
   },
   "actions": {
     "create": "Crear",
@@ -2222,6 +2223,124 @@
       "IN_PROGRESS": "En progreso",
       "COMPLETED": "Completado",
       "CANCELLED": "Cancelado"
+    }
+  },
+  "staffSchedule": {
+    "title": "Planificación de Horarios del Personal",
+    "subtitle": "Calendario semanal de jornada por departamento",
+    "weekSelector": {
+      "prev": "Semana anterior",
+      "next": "Semana siguiente",
+      "today": "Hoy"
+    },
+    "filter": {
+      "department": "Departamento",
+      "allDepartments": "Todos los departamentos"
+    },
+    "status": {
+      "PRESENCIAL": "Presencial",
+      "TELETRABAJO": "Teletrabajo",
+      "VACACIONES": "Vacaciones",
+      "BAJA_MEDICA": "Baja médica",
+      "BAJA_PATERNIDAD": "Baja por paternidad/maternidad",
+      "GUARDIA": "Guardia",
+      "INTENSIVO": "Jornada intensiva",
+      "VIAJE": "Viaje",
+      "AUSENTE": "Ausente",
+      "masked": "Ausente",
+      "DRAFT": "Borrador",
+      "PUBLISHED": "Publicado"
+    },
+    "alert": {
+      "title": "Alertas",
+      "TELEWORK_QUOTA": "Cuota de teletrabajo superada",
+      "WEEKLY_HOURS": "Horas semanales incumplidas",
+      "DAILY_HOURS": "Horas diarias excedidas",
+      "PRESENCE_PCT": "Presencialidad insuficiente",
+      "FLEX_RANGE": "Fuera del horario flexible",
+      "GUARDIA_COVERAGE": "Conflicto de cobertura de guardia",
+      "BAJA_CONFLICT": "Conflicto con baja médica/paternidad",
+      "severity": {
+        "WARNING": "Advertencia",
+        "ERROR": "Error"
+      }
+    },
+    "action": {
+      "save": "Guardar",
+      "validate": "Validar",
+      "publish": "Publicar",
+      "clone": "Clonar",
+      "export": "Exportar",
+      "unpublish": "Despublicar",
+      "addManager": "Añadir responsable",
+      "removeManager": "Quitar",
+      "assignDepartment": "Asignar departamento",
+      "configure": "Configurar"
+    },
+    "config": {
+      "title": "Configuración de horario",
+      "department": "Departamento",
+      "serviceHours": "Horario de servicio",
+      "presenceHours": "Horario de presencialidad",
+      "flexibleHours": "Horario flexible",
+      "summerSchedule": "Horario de verano",
+      "summerStart": "Inicio de verano",
+      "summerEnd": "Fin de verano",
+      "minPresencePct": "% mínimo de presencialidad",
+      "winterHours": "Jornada invierno",
+      "summerHours": "Jornada verano",
+      "monthlyTeleworkCap": "Cuota mensual de teletrabajo (días)",
+      "dailyNetHours": "Horas efectivas (lunes-jueves)",
+      "maxDailyNetHours": "Máximo horas efectivas (lunes-jueves)",
+      "breakMinutes": "Descanso comida (min)",
+      "fridayNetHours": "Horas viernes intensivo",
+      "newDepartment": "Nuevo departamento"
+    },
+    "summary": {
+      "weeklyHours": "Horas semanales",
+      "teleworkDays": "Días de teletrabajo",
+      "travelDays": "Días de viaje",
+      "guardDays": "Días de guardia"
+    },
+    "entry": {
+      "startTime": "Hora de entrada",
+      "endTime": "Hora de salida",
+      "notes": "Notas",
+      "status": "Estado"
+    },
+    "canEdit": {
+      "readonly": "Solo lectura — no gestionas este departamento"
+    },
+    "publish": {
+      "blockedByErrors": "No se puede publicar: hay alertas de error sin resolver"
+    },
+    "manager": {
+      "title": "Responsables de departamento",
+      "selectUser": "Seleccionar usuario"
+    },
+    "gdpr": {
+      "maskedNotice": "Algunos estados se muestran de forma genérica por protección de datos de salud"
+    },
+    "empty": {
+      "noSchedule": "No hay planificación para esta semana",
+      "createSchedule": "Crear planificación"
+    },
+    "calendar": {
+      "person": "Persona"
+    },
+    "department": {
+      "title": "Departamento",
+      "code": "Código",
+      "create": "Crear departamento",
+      "edit": "Guardar cambios",
+      "none": "Sin departamento",
+      "serviceStart": "Inicio de servicio",
+      "serviceEnd": "Fin de servicio",
+      "presenceStart": "Inicio presencialidad",
+      "presenceEnd": "Fin presencialidad"
+    },
+    "summer": {
+      "year": "Año"
     }
   }
 }

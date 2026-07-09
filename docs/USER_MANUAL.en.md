@@ -39,6 +39,7 @@
 30. [Event Log — Improvements](#30-event-log--improvements-v270)
 31. [Plugin Management — ADMIN only](#31-plugin-management-v280--admin-only)
 32. [Decommission Module — Retirement Plans](#32-decommission-module--retirement-plans-v285)
+34. [Staff Schedule](#34-staff-schedule-v350)
 
 ---
 
@@ -1020,6 +1021,8 @@ All changes are recorded in the Audit Log.
 
 > This section is only available to users with the **ADMIN** role.
 
+> **Note:** the **departments** used by the Staff Schedule module are **not** managed here. They are created from `Staff Schedule` → **⚙ Configure** (see [section 34.6](#34-staff-schedule-v350)).
+
 ### Accessing
 
 Click **"Master Data"** in the sidebar. In the left navigation bar, select **"CI Types"**.
@@ -1737,3 +1740,48 @@ Related dates are drawn with **dashed** marks to distinguish them from the CI's 
 - This view is **read-only**: dates cannot be modified here.
 - Results are capped at 200 items per query — use the type and search filters to narrow down larger datasets.
 - On screens narrower than 1024px, a desktop-optimized notice is shown instead of the Gantt.
+
+## 34. Staff Schedule (v3.5.0)
+
+Weekly, per-department shift planning. **This is not a clock-in/time-tracking system** — it's a planning tool; it does not record actual clock-in/clock-out times.
+
+### 34.1 Access
+
+Available to `ADMIN` and `AUDITOR` roles from the sidebar ("Staff Schedule"). `VIEWER` users have no access to this module.
+
+### 34.2 The weekly calendar
+
+- **Rows**: people in the selected department. **Columns**: the days of the week (Monday to Friday).
+- Each cell shows the day's status (Onsite, Remote Work, Vacation, Sick Leave, Parental Leave, On-call, Reduced Hours/intensive Friday, Business Travel, Absent) and the planned schedule, if set.
+- Use the department filter and the week selector (previous/next buttons plus a date picker) to navigate.
+- If no schedule exists yet for the selected week, you can create one from scratch — base "Onsite" entries are auto-generated for every person in the department.
+
+### 34.3 Editing a day (if you have permission)
+
+Click a cell to open the editor: choose the status and, if applicable, start/end time and an optional note. You can only edit while the schedule is in **Draft** status and you manage that department (or are ADMIN).
+
+### 34.4 Validate and publish
+
+- **Validate** runs the automatic checks (daily/weekly hours, telework quota, on-call coverage, minimum onsite presence, flexible time window) and shows the resulting alerts in the side panel.
+- Alerts are classified as **Error** (block publishing) or **Warning** (non-blocking, but worth reviewing).
+- **Publish** is only possible once no unresolved Error alerts remain. To "resolve" an alert, fix the underlying calendar entries and click Validate again — there is no button to manually mark an alert as resolved.
+- Once published, a schedule is protected from further edits. Only an ADMIN can unpublish it if it needs correcting.
+- **Clone** copies the entire week's schedule to the following week as a new draft.
+- **Export** produces a CSV or XLSX of the visible week.
+
+### 34.5 Health data protection (important)
+
+**Sick Leave** and **Parental Leave** statuses are specially protected health data. Unless you are a system administrator or the affected person themselves, you will see those days shown generically as "Absent" (with a small lock icon) — the system does not reveal the real reason for the absence to colleagues or unauthorized managers. This is intentional, not a bug.
+
+### 34.6 Configuration and creating departments (ADMIN only)
+
+> **Where are departments created?** Not under **Master Data** (where Branches, Cost Centers and CI Types live). Staff-schedule departments are managed **from this module**: `Staff Schedule` → **⚙ Configure** button (top right, ADMIN only). The calendar's department selector stays empty until you create at least one here.
+
+**Recommended order:** create the department → assign users to the department → (optional) assign managers → then create the weekly schedule.
+
+From the "Configure" button you can:
+- Create and edit departments (name, code, service hours, onsite-presence hours, minimum onsite percentage). Creating a department automatically generates its working-hours configuration with default values.
+- Configure each department's working hours: winter/summer net hours, lunch break, intensive-Friday hours, weekly target (40h by default), monthly telework cap, and the flexible time window.
+- Configure the yearly summer-schedule period (start and end date).
+- Assign and remove department managers (people who can edit that department's schedules without being ADMIN).
+- Assign each user's department.

@@ -28,7 +28,8 @@
     "dcim": "Salles Techniques & DC",
     "plugins": "Plugins",
     "decommission": "Décommissionnement",
-    "timeline": "Chronologie"
+    "timeline": "Chronologie",
+    "staffSchedule": "Horaires du personnel"
   },
   "actions": {
     "create": "Créer",
@@ -2103,6 +2104,124 @@
       "IN_PROGRESS": "En cours",
       "COMPLETED": "Terminé",
       "CANCELLED": "Annulé"
+    }
+  },
+  "staffSchedule": {
+    "title": "Planification des horaires du personnel",
+    "subtitle": "Calendrier hebdomadaire des horaires par service",
+    "weekSelector": {
+      "prev": "Semaine précédente",
+      "next": "Semaine suivante",
+      "today": "Aujourd'hui"
+    },
+    "filter": {
+      "department": "Service",
+      "allDepartments": "Tous les services"
+    },
+    "status": {
+      "PRESENCIAL": "Sur site",
+      "TELETRABAJO": "Télétravail",
+      "VACACIONES": "Congés",
+      "BAJA_MEDICA": "Arrêt maladie",
+      "BAJA_PATERNIDAD": "Congé parental",
+      "GUARDIA": "Astreinte",
+      "INTENSIVO": "Horaire réduit",
+      "VIAJE": "Déplacement professionnel",
+      "AUSENTE": "Absent",
+      "masked": "Absent",
+      "DRAFT": "Brouillon",
+      "PUBLISHED": "Publié"
+    },
+    "alert": {
+      "title": "Alertes",
+      "TELEWORK_QUOTA": "Quota de télétravail dépassé",
+      "WEEKLY_HOURS": "Heures hebdomadaires non atteintes",
+      "DAILY_HOURS": "Heures quotidiennes dépassées",
+      "PRESENCE_PCT": "Présence sur site insuffisante",
+      "FLEX_RANGE": "Hors plage d'horaires flexibles",
+      "GUARDIA_COVERAGE": "Conflit de couverture d'astreinte",
+      "BAJA_CONFLICT": "Conflit avec un arrêt maladie/congé parental",
+      "severity": {
+        "WARNING": "Avertissement",
+        "ERROR": "Erreur"
+      }
+    },
+    "action": {
+      "save": "Enregistrer",
+      "validate": "Valider",
+      "publish": "Publier",
+      "clone": "Dupliquer",
+      "export": "Exporter",
+      "unpublish": "Dépublier",
+      "addManager": "Ajouter un responsable",
+      "removeManager": "Retirer",
+      "assignDepartment": "Attribuer un service",
+      "configure": "Configurer"
+    },
+    "config": {
+      "title": "Configuration des horaires",
+      "department": "Service",
+      "serviceHours": "Horaires de service",
+      "presenceHours": "Plage de présence obligatoire",
+      "flexibleHours": "Horaires flexibles",
+      "summerSchedule": "Horaire d'été",
+      "summerStart": "Début de l'été",
+      "summerEnd": "Fin de l'été",
+      "minPresencePct": "% minimum de présence sur site",
+      "winterHours": "Horaire d'hiver",
+      "summerHours": "Horaire d'été",
+      "monthlyTeleworkCap": "Quota mensuel de télétravail (jours)",
+      "dailyNetHours": "Heures effectives (lundi-jeudi)",
+      "maxDailyNetHours": "Heures effectives maximales (lundi-jeudi)",
+      "breakMinutes": "Pause déjeuner (min)",
+      "fridayNetHours": "Heures effectives du vendredi réduit",
+      "newDepartment": "Nouveau service"
+    },
+    "summary": {
+      "weeklyHours": "Heures hebdomadaires",
+      "teleworkDays": "Jours de télétravail",
+      "travelDays": "Jours de déplacement",
+      "guardDays": "Jours d'astreinte"
+    },
+    "entry": {
+      "startTime": "Heure d'entrée",
+      "endTime": "Heure de sortie",
+      "notes": "Notes",
+      "status": "Statut"
+    },
+    "canEdit": {
+      "readonly": "Lecture seule — vous ne gérez pas ce service"
+    },
+    "publish": {
+      "blockedByErrors": "Publication impossible : des alertes d'erreur ne sont pas résolues"
+    },
+    "manager": {
+      "title": "Responsables de service",
+      "selectUser": "Sélectionner un utilisateur"
+    },
+    "gdpr": {
+      "maskedNotice": "Certains statuts sont affichés de manière générique pour protéger les données de santé"
+    },
+    "empty": {
+      "noSchedule": "Aucune planification pour cette semaine",
+      "createSchedule": "Créer une planification"
+    },
+    "calendar": {
+      "person": "Personne"
+    },
+    "department": {
+      "title": "Service",
+      "code": "Code",
+      "create": "Créer le service",
+      "edit": "Enregistrer les modifications",
+      "none": "Aucun service",
+      "serviceStart": "Début de service",
+      "serviceEnd": "Fin de service",
+      "presenceStart": "Début de présence",
+      "presenceEnd": "Fin de présence"
+    },
+    "summer": {
+      "year": "Année"
     }
   }
 }

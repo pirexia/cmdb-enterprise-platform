@@ -28,7 +28,8 @@
     "dcim": "Sale Tecniche e DC",
     "plugins": "Plugins",
     "decommission": "Dismissione",
-    "timeline": "Cronologia"
+    "timeline": "Cronologia",
+    "staffSchedule": "Orari del personale"
   },
   "actions": {
     "create": "Crea",
@@ -2103,6 +2104,124 @@
       "IN_PROGRESS": "In corso",
       "COMPLETED": "Completato",
       "CANCELLED": "Annullato"
+    }
+  },
+  "staffSchedule": {
+    "title": "Pianificazione degli orari del personale",
+    "subtitle": "Calendario settimanale dell'orario per reparto",
+    "weekSelector": {
+      "prev": "Settimana precedente",
+      "next": "Settimana successiva",
+      "today": "Oggi"
+    },
+    "filter": {
+      "department": "Reparto",
+      "allDepartments": "Tutti i reparti"
+    },
+    "status": {
+      "PRESENCIAL": "In sede",
+      "TELETRABAJO": "Lavoro da remoto",
+      "VACACIONES": "Ferie",
+      "BAJA_MEDICA": "Malattia",
+      "BAJA_PATERNIDAD": "Congedo parentale",
+      "GUARDIA": "Reperibilità",
+      "INTENSIVO": "Orario ridotto",
+      "VIAJE": "Trasferta",
+      "AUSENTE": "Assente",
+      "masked": "Assente",
+      "DRAFT": "Bozza",
+      "PUBLISHED": "Pubblicato"
+    },
+    "alert": {
+      "title": "Avvisi",
+      "TELEWORK_QUOTA": "Quota di lavoro da remoto superata",
+      "WEEKLY_HOURS": "Ore settimanali non raggiunte",
+      "DAILY_HOURS": "Ore giornaliere superate",
+      "PRESENCE_PCT": "Presenza in sede insufficiente",
+      "FLEX_RANGE": "Fuori dall'orario flessibile",
+      "GUARDIA_COVERAGE": "Conflitto di copertura reperibilità",
+      "BAJA_CONFLICT": "Conflitto con malattia/congedo parentale",
+      "severity": {
+        "WARNING": "Avviso",
+        "ERROR": "Errore"
+      }
+    },
+    "action": {
+      "save": "Salva",
+      "validate": "Valida",
+      "publish": "Pubblica",
+      "clone": "Duplica",
+      "export": "Esporta",
+      "unpublish": "Annulla pubblicazione",
+      "addManager": "Aggiungi responsabile",
+      "removeManager": "Rimuovi",
+      "assignDepartment": "Assegna reparto",
+      "configure": "Configura"
+    },
+    "config": {
+      "title": "Configurazione orario",
+      "department": "Reparto",
+      "serviceHours": "Orario di servizio",
+      "presenceHours": "Fascia di presenza obbligatoria",
+      "flexibleHours": "Orario flessibile",
+      "summerSchedule": "Orario estivo",
+      "summerStart": "Inizio estate",
+      "summerEnd": "Fine estate",
+      "minPresencePct": "% minima di presenza in sede",
+      "winterHours": "Orario invernale",
+      "summerHours": "Orario estivo",
+      "monthlyTeleworkCap": "Quota mensile di lavoro da remoto (giorni)",
+      "dailyNetHours": "Ore effettive (lunedì-giovedì)",
+      "maxDailyNetHours": "Ore effettive massime (lunedì-giovedì)",
+      "breakMinutes": "Pausa pranzo (min)",
+      "fridayNetHours": "Ore effettive venerdì ridotto",
+      "newDepartment": "Nuovo reparto"
+    },
+    "summary": {
+      "weeklyHours": "Ore settimanali",
+      "teleworkDays": "Giorni di lavoro da remoto",
+      "travelDays": "Giorni di trasferta",
+      "guardDays": "Giorni di reperibilità"
+    },
+    "entry": {
+      "startTime": "Ora di entrata",
+      "endTime": "Ora di uscita",
+      "notes": "Note",
+      "status": "Stato"
+    },
+    "canEdit": {
+      "readonly": "Sola lettura — non gestisci questo reparto"
+    },
+    "publish": {
+      "blockedByErrors": "Impossibile pubblicare: sono presenti avvisi di errore non risolti"
+    },
+    "manager": {
+      "title": "Responsabili di reparto",
+      "selectUser": "Seleziona utente"
+    },
+    "gdpr": {
+      "maskedNotice": "Alcuni stati vengono mostrati in forma generica per la protezione dei dati sanitari"
+    },
+    "empty": {
+      "noSchedule": "Nessuna pianificazione per questa settimana",
+      "createSchedule": "Crea pianificazione"
+    },
+    "calendar": {
+      "person": "Persona"
+    },
+    "department": {
+      "title": "Reparto",
+      "code": "Codice",
+      "create": "Crea reparto",
+      "edit": "Salva modifiche",
+      "none": "Nessun reparto",
+      "serviceStart": "Inizio servizio",
+      "serviceEnd": "Fine servizio",
+      "presenceStart": "Inizio presenza",
+      "presenceEnd": "Fine presenza"
+    },
+    "summer": {
+      "year": "Anno"
     }
   }
 }

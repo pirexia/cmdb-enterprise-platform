@@ -1,0 +1,61 @@
+import ExcelJS from 'exceljs';
+import type { ScheduleView } from './service.js';
+
+// Both export functions take an ALREADY-MASKED ScheduleView (produced by
+// service.buildScheduleView(prisma, id, viewer)). Never pass raw/unmasked
+// data here — the whole point of GDPR Art. 9 masking is that it happens once,
+// server-side, before any serialization path (view, CSV, XLSX).
+
+function cellText(entry: ScheduleView['rows'][number]['entries'][string] | undefined): string {
+  if (!entry) return '';
+  if (entry.startTime && entry.endTime) return `${entry.status} ${entry.startTime}-${entry.endTime}`;
+  return entry.status;
+}
+
+function escapeCsv(v: string): string {
+  return `"${v.replace(/"/g, '""')}"`;
+}
+
+export function exportScheduleCsv(view: ScheduleView): string {
+  const header = ['Username', ...view.days, 'WeeklyNetHours', 'TeleworkDaysMonth', 'TravelDays', 'GuardDays'];
+  const lines = view.rows.map((row) => {
+    const cells = [
+      row.username,
+      ...view.days.map((d) => cellText(row.entries[d])),
+      String(row.summary.weeklyNetHours),
+      String(row.summary.teleworkDaysMonth),
+      String(row.summary.travelDays),
+      String(row.summary.guardDays),
+    ];
+    return cells.map(escapeCsv).join(',');
+  });
+  return [header.map(escapeCsv).join(','), ...lines].join('\r\n');
+}
+
+export async function exportScheduleXlsx(view: ScheduleView): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Schedule');
+
+  ws.columns = [
+    { header: 'Username', key: 'username', width: 24 },
+    ...view.days.map((d) => ({ header: d, key: d, width: 20 })),
+    { header: 'WeeklyNetHours', key: 'weeklyNetHours', width: 16 },
+    { header: 'TeleworkDaysMonth', key: 'teleworkDaysMonth', width: 18 },
+    { header: 'TravelDays', key: 'travelDays', width: 12 },
+    { header: 'GuardDays', key: 'guardDays', width: 12 },
+  ];
+  ws.getRow(1).font = { bold: true };
+
+  for (const row of view.rows) {
+    const wsRow: Record<string, unknown> = { username: row.username };
+    for (const d of view.days) wsRow[d] = cellText(row.entries[d]);
+    wsRow.weeklyNetHours = row.summary.weeklyNetHours;
+    wsRow.teleworkDaysMonth = row.summary.teleworkDaysMonth;
+    wsRow.travelDays = row.summary.travelDays;
+    wsRow.guardDays = row.summary.guardDays;
+    ws.addRow(wsRow);
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf);
+}

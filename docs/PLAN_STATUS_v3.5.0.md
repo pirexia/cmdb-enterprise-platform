@@ -1,6 +1,7 @@
 # PLAN STATUS v3.5.0 — Staff Schedule (gestión de horarios del personal)
 
-**Rama:** `feature/v3.5.0-staff-schedule` → `develop` (NO main)
+**Estado final:** ✅ Mergeada a `develop` (merge no-ff `790b685`, 2026-07-09). Rama feature (solo local, sin commits propios pendientes) eliminada. **NO mergeada a `main`** — pendiente de decisión del usuario para release.
+**Rama:** `feature/v3.5.0-staff-schedule` → `develop`
 **Plan completo:** `docs/PLAN_v3.5.0.md`
 **Inicio:** 2026-07-09
 
@@ -18,7 +19,7 @@
 | T7 Frontend config admin | ✅ Completada (`77c5b35`) |
 | T8 Despliegue local + smoke tests | ✅ Completada |
 | T9 Docs + DPIA + bump versión | ✅ Completada |
-| T10 Merge a develop | ⏳ Pendiente |
+| T10 Merge a develop | ✅ Completada (`790b685`, pusheado, rama feature eliminada) |
 
 ## T8 — Resultado de verificación (2026-07-09)
 - Rebuild `--no-cache` backend+frontend; recreate backend→frontend→nginx (orden por `depends_on`).

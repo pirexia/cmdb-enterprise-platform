@@ -28,7 +28,8 @@
     "dcim": "Salas Técnicas e DCs",
     "plugins": "Plugins",
     "decommission": "Desativação",
-    "timeline": "Linha do Tempo"
+    "timeline": "Linha do Tempo",
+    "staffSchedule": "Horários da Equipa"
   },
   "actions": {
     "create": "Criar",
@@ -2143,9 +2144,7 @@
       "severity": {
         "WARNING": "Aviso",
         "ERROR": "Erro"
-      },
-      "resolve": "Marcar como resolvida",
-      "resolved": "Resolvida"
+      }
     },
     "action": {
       "save": "Guardar",
@@ -2156,7 +2155,8 @@
       "unpublish": "Despublicar",
       "addManager": "Adicionar responsável",
       "removeManager": "Remover",
-      "assignDepartment": "Atribuir departamento"
+      "assignDepartment": "Atribuir departamento",
+      "configure": "Configurar"
     },
     "config": {
       "title": "Configuração de horário",
@@ -2180,12 +2180,14 @@
     "summary": {
       "weeklyHours": "Horas semanais",
       "teleworkDays": "Dias de teletrabalho",
-      "travelDays": "Dias de viagem"
+      "travelDays": "Dias de viagem",
+      "guardDays": "Dias de sobreaviso"
     },
     "entry": {
       "startTime": "Hora de entrada",
       "endTime": "Hora de saída",
-      "notes": "Notas"
+      "notes": "Notas",
+      "status": "Estado"
     },
     "canEdit": {
       "readonly": "Apenas leitura — não gere este departamento"
@@ -2194,7 +2196,8 @@
       "blockedByErrors": "Não é possível publicar: existem alertas de erro por resolver"
     },
     "manager": {
-      "title": "Responsáveis de departamento"
+      "title": "Responsáveis de departamento",
+      "selectUser": "Selecionar utilizador"
     },
     "gdpr": {
       "maskedNotice": "Alguns estados são apresentados de forma genérica para proteger dados de saúde"
@@ -2202,6 +2205,23 @@
     "empty": {
       "noSchedule": "Não há planeamento para esta semana",
       "createSchedule": "Criar planeamento"
+    },
+    "calendar": {
+      "person": "Pessoa"
+    },
+    "department": {
+      "title": "Departamento",
+      "code": "Código",
+      "create": "Criar departamento",
+      "edit": "Guardar alterações",
+      "none": "Sem departamento",
+      "serviceStart": "Início de serviço",
+      "serviceEnd": "Fim de serviço",
+      "presenceStart": "Início da presença",
+      "presenceEnd": "Fim da presença"
+    },
+    "summer": {
+      "year": "Ano"
     }
   }
 }

@@ -28,7 +28,8 @@
     "dcim": "Salles Techniques & DC",
     "plugins": "Plugins",
     "decommission": "Décommissionnement",
-    "timeline": "Chronologie"
+    "timeline": "Chronologie",
+    "staffSchedule": "Horaires du personnel"
   },
   "actions": {
     "create": "Créer",
@@ -2143,9 +2144,7 @@
       "severity": {
         "WARNING": "Avertissement",
         "ERROR": "Erreur"
-      },
-      "resolve": "Marquer comme résolue",
-      "resolved": "Résolue"
+      }
     },
     "action": {
       "save": "Enregistrer",
@@ -2156,7 +2155,8 @@
       "unpublish": "Dépublier",
       "addManager": "Ajouter un responsable",
       "removeManager": "Retirer",
-      "assignDepartment": "Attribuer un service"
+      "assignDepartment": "Attribuer un service",
+      "configure": "Configurer"
     },
     "config": {
       "title": "Configuration des horaires",
@@ -2180,12 +2180,14 @@
     "summary": {
       "weeklyHours": "Heures hebdomadaires",
       "teleworkDays": "Jours de télétravail",
-      "travelDays": "Jours de déplacement"
+      "travelDays": "Jours de déplacement",
+      "guardDays": "Jours d'astreinte"
     },
     "entry": {
       "startTime": "Heure d'entrée",
       "endTime": "Heure de sortie",
-      "notes": "Notes"
+      "notes": "Notes",
+      "status": "Statut"
     },
     "canEdit": {
       "readonly": "Lecture seule — vous ne gérez pas ce service"
@@ -2194,7 +2196,8 @@
       "blockedByErrors": "Publication impossible : des alertes d'erreur ne sont pas résolues"
     },
     "manager": {
-      "title": "Responsables de service"
+      "title": "Responsables de service",
+      "selectUser": "Sélectionner un utilisateur"
     },
     "gdpr": {
       "maskedNotice": "Certains statuts sont affichés de manière générique pour protéger les données de santé"
@@ -2202,6 +2205,23 @@
     "empty": {
       "noSchedule": "Aucune planification pour cette semaine",
       "createSchedule": "Créer une planification"
+    },
+    "calendar": {
+      "person": "Personne"
+    },
+    "department": {
+      "title": "Service",
+      "code": "Code",
+      "create": "Créer le service",
+      "edit": "Enregistrer les modifications",
+      "none": "Aucun service",
+      "serviceStart": "Début de service",
+      "serviceEnd": "Fin de service",
+      "presenceStart": "Début de présence",
+      "presenceEnd": "Fin de présence"
+    },
+    "summer": {
+      "year": "Année"
     }
   }
 }

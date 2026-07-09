@@ -28,7 +28,8 @@
     "dcim": "Technical Rooms & DCs",
     "plugins": "Plugins",
     "decommission": "Decommission",
-    "timeline": "Timeline"
+    "timeline": "Timeline",
+    "staffSchedule": "Staff Schedule"
   },
   "actions": {
     "create": "Create",
@@ -2262,9 +2263,7 @@
       "severity": {
         "WARNING": "Warning",
         "ERROR": "Error"
-      },
-      "resolve": "Mark as resolved",
-      "resolved": "Resolved"
+      }
     },
     "action": {
       "save": "Save",
@@ -2275,7 +2274,8 @@
       "unpublish": "Unpublish",
       "addManager": "Add manager",
       "removeManager": "Remove",
-      "assignDepartment": "Assign department"
+      "assignDepartment": "Assign department",
+      "configure": "Configure"
     },
     "config": {
       "title": "Schedule configuration",
@@ -2299,12 +2299,14 @@
     "summary": {
       "weeklyHours": "Weekly hours",
       "teleworkDays": "Telework days",
-      "travelDays": "Travel days"
+      "travelDays": "Travel days",
+      "guardDays": "On-call days"
     },
     "entry": {
       "startTime": "Start time",
       "endTime": "End time",
-      "notes": "Notes"
+      "notes": "Notes",
+      "status": "Status"
     },
     "canEdit": {
       "readonly": "Read-only — you do not manage this department"
@@ -2313,7 +2315,8 @@
       "blockedByErrors": "Cannot publish: there are unresolved error alerts"
     },
     "manager": {
-      "title": "Department managers"
+      "title": "Department managers",
+      "selectUser": "Select user"
     },
     "gdpr": {
       "maskedNotice": "Some statuses are shown generically to protect health data"
@@ -2321,6 +2324,23 @@
     "empty": {
       "noSchedule": "No schedule for this week",
       "createSchedule": "Create schedule"
+    },
+    "calendar": {
+      "person": "Person"
+    },
+    "department": {
+      "title": "Department",
+      "code": "Code",
+      "create": "Create department",
+      "edit": "Save changes",
+      "none": "No department",
+      "serviceStart": "Service start",
+      "serviceEnd": "Service end",
+      "presenceStart": "Presence start",
+      "presenceEnd": "Presence end"
+    },
+    "summer": {
+      "year": "Year"
     }
   }
 }

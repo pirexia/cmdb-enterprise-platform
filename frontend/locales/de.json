@@ -28,7 +28,8 @@
     "dcim": "Technikräume & RZ",
     "plugins": "Plugins",
     "decommission": "Außerbetriebnahme",
-    "timeline": "Zeitstrahl"
+    "timeline": "Zeitstrahl",
+    "staffSchedule": "Personaleinsatzplanung"
   },
   "actions": {
     "create": "Erstellen",
@@ -2143,9 +2144,7 @@
       "severity": {
         "WARNING": "Warnung",
         "ERROR": "Fehler"
-      },
-      "resolve": "Als gelöst markieren",
-      "resolved": "Gelöst"
+      }
     },
     "action": {
       "save": "Speichern",
@@ -2156,7 +2155,8 @@
       "unpublish": "Veröffentlichung zurückziehen",
       "addManager": "Verantwortlichen hinzufügen",
       "removeManager": "Entfernen",
-      "assignDepartment": "Abteilung zuweisen"
+      "assignDepartment": "Abteilung zuweisen",
+      "configure": "Konfigurieren"
     },
     "config": {
       "title": "Dienstplankonfiguration",
@@ -2180,12 +2180,14 @@
     "summary": {
       "weeklyHours": "Wochenstunden",
       "teleworkDays": "Homeoffice-Tage",
-      "travelDays": "Reisetage"
+      "travelDays": "Reisetage",
+      "guardDays": "Bereitschaftstage"
     },
     "entry": {
       "startTime": "Startzeit",
       "endTime": "Endzeit",
-      "notes": "Notizen"
+      "notes": "Notizen",
+      "status": "Status"
     },
     "canEdit": {
       "readonly": "Nur Lesezugriff — Sie verwalten diese Abteilung nicht"
@@ -2194,7 +2196,8 @@
       "blockedByErrors": "Veröffentlichung nicht möglich: es gibt ungelöste Fehlerwarnungen"
     },
     "manager": {
-      "title": "Abteilungsverantwortliche"
+      "title": "Abteilungsverantwortliche",
+      "selectUser": "Benutzer auswählen"
     },
     "gdpr": {
       "maskedNotice": "Einige Status werden aus Gründen des Gesundheitsdatenschutzes allgemein angezeigt"
@@ -2202,6 +2205,23 @@
     "empty": {
       "noSchedule": "Kein Dienstplan für diese Woche",
       "createSchedule": "Dienstplan erstellen"
+    },
+    "calendar": {
+      "person": "Person"
+    },
+    "department": {
+      "title": "Abteilung",
+      "code": "Code",
+      "create": "Abteilung erstellen",
+      "edit": "Änderungen speichern",
+      "none": "Keine Abteilung",
+      "serviceStart": "Dienstbeginn",
+      "serviceEnd": "Dienstende",
+      "presenceStart": "Beginn Anwesenheit",
+      "presenceEnd": "Ende Anwesenheit"
+    },
+    "summer": {
+      "year": "Jahr"
     }
   }
 }

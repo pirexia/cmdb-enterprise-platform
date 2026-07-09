@@ -28,7 +28,8 @@
     "dcim": "Sale Tecniche e DC",
     "plugins": "Plugins",
     "decommission": "Dismissione",
-    "timeline": "Cronologia"
+    "timeline": "Cronologia",
+    "staffSchedule": "Orari del personale"
   },
   "actions": {
     "create": "Crea",
@@ -2143,9 +2144,7 @@
       "severity": {
         "WARNING": "Avviso",
         "ERROR": "Errore"
-      },
-      "resolve": "Segna come risolto",
-      "resolved": "Risolto"
+      }
     },
     "action": {
       "save": "Salva",
@@ -2156,7 +2155,8 @@
       "unpublish": "Annulla pubblicazione",
       "addManager": "Aggiungi responsabile",
       "removeManager": "Rimuovi",
-      "assignDepartment": "Assegna reparto"
+      "assignDepartment": "Assegna reparto",
+      "configure": "Configura"
     },
     "config": {
       "title": "Configurazione orario",
@@ -2180,12 +2180,14 @@
     "summary": {
       "weeklyHours": "Ore settimanali",
       "teleworkDays": "Giorni di lavoro da remoto",
-      "travelDays": "Giorni di trasferta"
+      "travelDays": "Giorni di trasferta",
+      "guardDays": "Giorni di reperibilità"
     },
     "entry": {
       "startTime": "Ora di entrata",
       "endTime": "Ora di uscita",
-      "notes": "Note"
+      "notes": "Note",
+      "status": "Stato"
     },
     "canEdit": {
       "readonly": "Sola lettura — non gestisci questo reparto"
@@ -2194,7 +2196,8 @@
       "blockedByErrors": "Impossibile pubblicare: sono presenti avvisi di errore non risolti"
     },
     "manager": {
-      "title": "Responsabili di reparto"
+      "title": "Responsabili di reparto",
+      "selectUser": "Seleziona utente"
     },
     "gdpr": {
       "maskedNotice": "Alcuni stati vengono mostrati in forma generica per la protezione dei dati sanitari"
@@ -2202,6 +2205,23 @@
     "empty": {
       "noSchedule": "Nessuna pianificazione per questa settimana",
       "createSchedule": "Crea pianificazione"
+    },
+    "calendar": {
+      "person": "Persona"
+    },
+    "department": {
+      "title": "Reparto",
+      "code": "Codice",
+      "create": "Crea reparto",
+      "edit": "Salva modifiche",
+      "none": "Nessun reparto",
+      "serviceStart": "Inizio servizio",
+      "serviceEnd": "Fine servizio",
+      "presenceStart": "Inizio presenza",
+      "presenceEnd": "Fine presenza"
+    },
+    "summer": {
+      "year": "Anno"
     }
   }
 }

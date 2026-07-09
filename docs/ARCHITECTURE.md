@@ -1252,13 +1252,21 @@ app.use('/api/catalog', authenticateToken, createCatalogRouter(prisma));
 ### 13.3 Módulo de tipos de relación (T8)
 
 `backend/src/relationTypes.ts` — fuente autoritativa:
-- `VALID_RELATION_TYPES`: allowlist de los 17 tipos.
+- `VALID_RELATION_TYPES`: allowlist de los 18 tipos.
 - `RELATION_TYPE_MATRIX`: restricciones por tipo de CI en cada extremo (source/target).
 - `validateRelationCiTypes()`: validación aplicada antes de cualquier INSERT en `/api/relations`.
 
 `frontend/lib/relationTypes.ts` — espejo del backend con adiciones UI:
 - `CATEGORY_COLORS`: `{ structural: #6366f1, network: #0d9488, power: #f59e0b, logical: #f97316 }`
 - `relationAllowed()`: filtrado de opciones en `AddRelationModal`.
+
+**v3.4.4 — `INSTALLED_IN` (contención Blade Enclosure / Convergentes):**
+- Semántica: `source → INSTALLED_IN → target` = "source está instalado físicamente dentro de target". Categoría `structural`.
+- Matriz: source ∈ `PHYSICAL_SERVER | STORAGE | NETWORK`; target ∈ `BLADE_SYSTEM___BLADE_ENCLOSURE | CONVERGED_INFRASTRUCTURE`.
+- **Unicidad por source** en doble capa: check de aplicación (`validateInstalledIn()` en `index.ts` → 409 con el nombre del chasis actual) + índice único parcial `ci_relations_installed_in_source_unique` en BD (`WHERE relation_type = 'INSTALLED_IN'`, migración `20260708090100`).
+- Chasis destino con `status = RETIRADO` → 422 al crear. El retiro posterior del chasis **no** propaga estado; el detalle del CI contenido muestra un badge de advertencia (los endpoints de `GET /api/cis/:id/relations` exponen `source_status`/`target_status`).
+- `CI_INCLUDE` incluye `relationsFrom` filtrado a `INSTALLED_IN` y `flattenCI` expone `installedInRelationId/installedInId/installedInName/installedInStatus` en `/api/cis` (columna y filtro de inventario, y columna+filtro `installedIn` del reporte `inventory`).
+- Migración del enum: `ALTER TYPE ... ADD VALUE IF NOT EXISTS` (`20260708090000`), separada del índice porque PostgreSQL no permite usar un valor de enum nuevo en la misma transacción que lo crea.
 
 ### 13.4 Cascada en alta masiva (T7)
 

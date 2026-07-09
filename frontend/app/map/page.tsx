@@ -90,6 +90,7 @@ const RELATION_COLORS: Record<string, { stroke: string; label: string; bg: strin
     "CONNECTS_TO","UPLINKS_TO",
     "POWERS","PROTECTS",
     "REPLICATES_TO","RUNS_ON","QUERIES","LICENSES","MANAGES",
+    "INSTALLED_IN",
   ].map((k) => [k, { label: k, ...colorForType(k) }])
 ) as Record<string, { stroke: string; label: string; bg: string; text: string }>;
 

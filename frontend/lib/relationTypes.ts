@@ -12,6 +12,8 @@ export const RELATION_TYPES = [
   "POWERS", "PROTECTS",
   // Logical
   "REPLICATES_TO", "RUNS_ON", "QUERIES", "LICENSES", "MANAGES",
+  // v3.4.4 — Containment
+  "INSTALLED_IN",
 ] as const;
 
 export type RelationTypeValue = typeof RELATION_TYPES[number];
@@ -23,6 +25,7 @@ export const RELATION_CATEGORIES: Record<RelationTypeValue, RelationCategory> = 
   POWERS: "power", PROTECTS: "power",
   DEPENDS_ON: "logical", PROVIDES_SERVICE: "logical", BACKED_UP_BY: "logical",
   REPLICATES_TO: "logical", RUNS_ON: "logical", QUERIES: "logical", LICENSES: "logical", MANAGES: "logical",
+  INSTALLED_IN: "structural",
 };
 
 export const CATEGORY_COLORS: Record<RelationCategory, { stroke: string; bg: string }> = {
@@ -51,7 +54,11 @@ export const RELATION_TYPE_MATRIX: Record<RelationTypeValue, { source: string[];
   QUERIES:          { source: ["SOFTWARE", "APPLICATION"], target: ["DATABASE", "STORAGE", "CLOUD_STORAGE"] },
   LICENSES:         { source: ["LICENSE"], target: [] },
   MANAGES:          { source: [], target: [] },
+  // v3.4.4 — Containment
+  INSTALLED_IN:     { source: ["PHYSICAL_SERVER", "STORAGE", "NETWORK"], target: ["BLADE_SYSTEM___BLADE_ENCLOSURE", "CONVERGED_INFRASTRUCTURE"] },
 };
+
+export const INSTALLED_IN_TARGET_TYPES = RELATION_TYPE_MATRIX.INSTALLED_IN.target;
 
 /** True when the relation type admits the given endpoint type codes (null = legacy CI, always passes). */
 export function relationAllowed(

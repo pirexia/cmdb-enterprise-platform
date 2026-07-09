@@ -2,6 +2,28 @@
 
 ---
 
+# v3.4.4 — Relación INSTALLED_IN (Blade Enclosure / Convergentes) · 🔄 EN PROGRESO · 2026-07-08
+
+**Rama:** `feature/v3.4.4-blade-enclosure-relation` → `develop` (NO main). Plan: `docs/PLAN_v3.4.4.md` · Estado: `docs/PLAN_STATUS_v3.4.4.md`
+
+## Análisis (Fable) — 2026-07-08
+- Exploración con 2 agentes (backend relaciones+reportes, frontend relaciones+inventario) + API `/api/masters/ci-types` (cuenta test AUDITOR; lectura directa a BD prod denegada por clasificador).
+- **Hallazgos:** relaciones sin Zod — validación manual vía `VALID_RELATION_TYPES` + `RELATION_TYPE_MATRIX` espejada backend/frontend (`backend/src/relationTypes.ts` ↔ `frontend/lib/relationTypes.ts`); handlers genéricos `index.ts:2802-3096`; `CIDetailModal` NO muestra relaciones CI-CI hoy; `CI_INCLUDE` sin relaciones; patrón migración enum probado (`20260612170000_relation_types_extended`); `RELATION_COLORS` hardcodeado en `map/page.tsx`.
+- **Códigos CIType (BD):** contenedores `BLADE_SYSTEM___BLADE_ENCLOSURE`, `CONVERGED_INFRASTRUCTURE`; instalables (decisión usuario): `PHYSICAL_SERVER`, `STORAGE`, `NETWORK`.
+- **Decisiones D1-D11** en el plan; destacadas: matriz hardcodeada (no campo CIType), 2 migraciones (ADD VALUE + índice único parcial), sin endpoints nuevos, Blade Slots diferido, sin propagación de estado (badge advertencia).
+- Rama y tracking (#1-#6 con dependencias) creados.
+
+## Ejecución (Sonnet, subagentes)
+- **T1 Backend core ✅** (commit `28bb9d4`): 2 migraciones (`20260708090000` ADD VALUE, `20260708090100` índice único parcial `ci_relations_installed_in_source_unique`); enum en schema.prisma; `relationTypes.ts` (+INSTALLED_IN en VALID/CATEGORIES/MATRIX + exports SOURCE/TARGET_TYPES); `validateInstalledIn()` compartido por ambos POST (409 ya-instalado con nombre de chasis / 422 chasis RETIRADO); 23505 → "Relación duplicada o CI ya instalado"; GET relations + `source_status`/`target_status` (depth=1 y CTE); `CI_INCLUDE.relationsFrom` filtrado + `flattenCI` → `installedInRelationId/Id/Name/Status`. Nota: `as any`/`as never` puntuales porque el cliente Prisma local no conoce aún el valor (se regenera en build del contenedor). tsc: solo pre-existentes. Diff revisado y aprobado por el orquestador.
+- **T2 Reporte inventory ✅** (commit `f5043bc`): ColSpec `installedIn` (grupo location, no sortable), filtro multi-select registrado, `loadFilterOptions` con enclosures dinámicos (`ciTypeDef.code IN (BLADE_SYSTEM___BLADE_ENCLOSURE, CONVERGED_INFRASTRUCTURE)`), `where.relationsFrom.some` vía `asArray`. Sin test nuevo (suite mockea Prisma sin cubrir el registro SPECS; jest no ejecutable en host — se valida en T6). tsc: solo pre-existentes. Diff revisado y aprobado.
+- **T4 i18n ✅ con incidencia** (commit `68f0ab0`): 14 claves ×6 locales (84/84, JSON válido). **Incidencia:** condición de carrera en el índice compartido — el commit de T4 arrastró los archivos frontend de T3 (staged en paralelo). Árbol limpio tras el commit; pendiente confirmar con el informe de T3 si la instantánea capturada es su estado final verificado (si no, T3 commiteará los arreglos encima). Lección: no paralelizar commits de subagentes en un mismo checkout — serializar commits o usar worktrees.
+- **T3 Frontend ✅** (dentro de `9e34512`, amend del combinado T3+T4): mirror `relationTypes.ts` + `INSTALLED_IN_TARGET_TYPES`; `RELATION_COLORS` en mapa; `InstallInEnclosureModal.tsx` nuevo (select buscable de enclosures ACTIVO, cambio de chasis = DELETE+POST, banner de error 409/422, desinstalar con confirm); `CIDetailModal` sección "Chasis / Contenido" (instalado-en con badge RETIRADO amber, lista de contenidos con quitar, gating `isAdmin` existente); inventario: interfaz CI +`installedIn*`, `InvCol` con filterCell select (opciones únicas derivadas), filtro exacto en `filtered`. tsc verificado por el subagente dentro del contenedor (stage deps del Dockerfile) — exit 0. Diff revisado y aprobado; "Todos" hardcodeado en filterCell aceptado por consistencia con filtros vecinos (deuda pre-existente de la página).
+- **Mensaje de commit corregido:** `68f0ab0` → amend → `9e34512` `feat(ui+i18n): INSTALLED_IN — ...` reflejando el contenido real (T3+T4).
+- **T5 Docs ✅** (`35bfafd` docs, `cdd8c7a` bump): ARCHITECTURE .md/.en (§13.3 → 18 tipos + bloque v3.4.4), USER_MANUAL .md/.en (§9: fila INSTALLED_IN + subsección "Instalar en chasis"), CLAUDE.md (Plan Activo + release v3.4.4 en curso), package.json → 3.4.4.
+- **T6 Despliegue + smoke + merge ✅** (2026-07-09): rebuild `--no-cache` backend+frontend con podman-compose; recreate en orden (nginx depends_on frontend/backend, hubo que parar/eliminar los 3 en cascada); `prisma migrate deploy` aplicó ambas migraciones (verificado: enum 18 valores, índice parcial presente). 8 smoke tests con admin temporal MFA (procedimiento CLAUDE.md, creado y luego eliminado de BD): 201 crear / 409 duplicado con nombre de chasis / 422 tipo source inválido / 422 tipo target inválido / GET relations con status / `/api/cis` aplanado / reporte columna+filtro / 422 target RETIRADO / 200 DELETE — todos correctos. UI: `/inventory` 200, login AUDITOR OK. 3 CIs de prueba y admin temporal eliminados. **Merge no-ff a `develop`** (NO main).
+
+---
+
 # v3.4.3 — Column picker en la vista /inventory · ✅ COMPLETADA · 2026-06-28
 
 **Rama:** `feature/v3.4.3-inventory-column-picker` → `develop`. Decisión usuario: paridad total + especiales ocultables.

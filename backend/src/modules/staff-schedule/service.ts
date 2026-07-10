@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { HEALTH_STATUSES } from './schemas.js';
 import {
   computeNetHours,
@@ -90,7 +90,7 @@ function parseDateOnly(v: string | Date): Date {
 
 // Merge Department + DepartmentScheduleConfig into the shape validationEngine
 // expects (see ValidationConfig doc comment for why these live on two models).
-async function loadValidationConfig(prisma: PrismaClient, departmentId: string): Promise<ValidationConfig> {
+async function loadValidationConfig(prisma: Prisma.TransactionClient, departmentId: string): Promise<ValidationConfig> {
   const [department, config] = await Promise.all([
     prisma.department.findUnique({ where: { id: departmentId } }),
     prisma.departmentScheduleConfig.findUnique({ where: { departmentId } }),
@@ -118,7 +118,7 @@ async function loadValidationConfig(prisma: PrismaClient, departmentId: string):
   };
 }
 
-async function loadSummerForYear(prisma: PrismaClient, year: number): Promise<SummerPeriodLike | null> {
+async function loadSummerForYear(prisma: Prisma.TransactionClient, year: number): Promise<SummerPeriodLike | null> {
   const summer = await prisma.summerSchedule.findUnique({ where: { year } });
   if (!summer) return null;
   return { year: summer.year, startDate: isoDate(summer.startDate), endDate: isoDate(summer.endDate) };
@@ -127,7 +127,7 @@ async function loadSummerForYear(prisma: PrismaClient, year: number): Promise<Su
 // createSchedule — auto-creates base PRESENCIAL entries (Mon-Fri) for every
 // active user in the department.
 export async function createSchedule(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   params: { departmentId: string; weekStart: string; createdBy: string },
 ) {
   const weekStartDate = parseDateOnly(params.weekStart);
@@ -173,7 +173,7 @@ export interface EntryInput {
 }
 
 // updateEntries — only allowed while the schedule is DRAFT (D10).
-export async function updateEntries(prisma: PrismaClient, scheduleId: string, entries: EntryInput[]) {
+export async function updateEntries(prisma: Prisma.TransactionClient, scheduleId: string, entries: EntryInput[]) {
   const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { status: true } });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
   if (schedule.status !== 'DRAFT') {
@@ -204,7 +204,7 @@ export async function updateEntries(prisma: PrismaClient, scheduleId: string, en
 }
 
 // runValidation — computes V1-V7, wipes previous alerts, persists new ones.
-export async function runValidation(prisma: PrismaClient, scheduleId: string): Promise<GeneratedAlert[]> {
+export async function runValidation(prisma: Prisma.TransactionClient, scheduleId: string): Promise<GeneratedAlert[]> {
   const schedule = await loadScheduleWithEntries(prisma, scheduleId);
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
 
@@ -246,7 +246,7 @@ export async function runValidation(prisma: PrismaClient, scheduleId: string): P
 }
 
 // publish — DRAFT -> PUBLISHED. Rejects if unresolved ERROR alerts remain (D10).
-export async function publish(prisma: PrismaClient, scheduleId: string) {
+export async function publish(prisma: Prisma.TransactionClient, scheduleId: string) {
   const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { id: true } });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
 
@@ -260,14 +260,14 @@ export async function publish(prisma: PrismaClient, scheduleId: string) {
 }
 
 // unpublish — PUBLISHED -> DRAFT. Router must have already enforced ADMIN (D10).
-export async function unpublish(prisma: PrismaClient, scheduleId: string) {
+export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: string) {
   const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { id: true } });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
 // cloneToNextWeek — copies all entries verbatim to a new DRAFT schedule one week later.
-export async function cloneToNextWeek(prisma: PrismaClient, scheduleId: string, createdBy: string) {
+export async function cloneToNextWeek(prisma: Prisma.TransactionClient, scheduleId: string, createdBy: string) {
   const origin = await loadScheduleWithEntries(prisma, scheduleId);
   if (!origin) throw new ScheduleServiceError(404, 'Schedule not found');
 
@@ -336,7 +336,7 @@ export interface ScheduleView {
 // buildScheduleView — the GET /:id shape (masked per viewer, D4). Also the
 // backbone reused by export.ts (which must always receive an already-masked view).
 export async function buildScheduleView(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   scheduleId: string,
   viewer: Viewer,
 ): Promise<ScheduleView | null> {
@@ -442,7 +442,7 @@ export interface MonthlySummary {
 // than a masked/zeroed one) — the mere existence of the metric would signal
 // health-leave activity, so it's omitted outright for unauthorized viewers.
 export async function getMonthlySummary(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   userId: string,
   year: number,
   month: number,

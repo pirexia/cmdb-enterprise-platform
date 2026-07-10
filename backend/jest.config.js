@@ -28,7 +28,13 @@ module.exports = {
           ],
         },
         diagnostics: {
-          ignoreCodes: [2307, 2304, 2582, 2580, 2339],
+          // Test-time type diagnostics suppressed here; the authoritative
+          // type gate is `tsc --noEmit` (project tsconfig), run separately.
+          // 2322/2345 added for router imports: ts-jest's relaxed tsconfig
+          // (strict:false, moduleResolution:node) mis-infers Zod `.default()`
+          // output types as all-optional, which the real compiler resolves
+          // correctly. See modules/staff-schedule/__tests__/auditTransaction.
+          ignoreCodes: [2307, 2304, 2582, 2580, 2339, 2322, 2345],
         },
       },
     ],

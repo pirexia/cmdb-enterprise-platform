@@ -245,3 +245,38 @@ describe('POST /api/integrations/crowdstrike — processing', () => {
     expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // only audit log
   });
 });
+
+// ── GET /status — integration state ────────────────────────────────────────────
+
+describe('GET /api/integrations/status', () => {
+  const OLD_ENV = { ...process.env };
+  afterEach(() => {
+    process.env.USE_LDAP  = OLD_ENV.USE_LDAP;
+    process.env.SMTP_HOST = OLD_ENV.SMTP_HOST;
+  });
+
+  it('returns 401 without token', async () => {
+    const res = await buildApp().get('/api/integrations/status');
+    expect(res.status).toBe(401);
+  });
+
+  it('allows any authenticated role (AUDITOR) and reflects env flags', async () => {
+    process.env.USE_LDAP  = 'true';
+    process.env.SMTP_HOST = 'smtp.corp.local';
+    const res = await buildApp()
+      .get('/api/integrations/status')
+      .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ldap: true, smtp: true });
+  });
+
+  it('reports disabled integrations when env is unset', async () => {
+    delete process.env.USE_LDAP;
+    delete process.env.SMTP_HOST;
+    const res = await buildApp()
+      .get('/api/integrations/status')
+      .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ldap: false, smtp: false });
+  });
+});

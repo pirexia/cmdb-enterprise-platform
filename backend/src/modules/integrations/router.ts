@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
 import { requireAdmin }            from '../../shared/middleware/requireAdmin.js';
 import { vulnUuid }                from '../../services/entitySerializer.js';
+import { smtpConfigured }          from '../alerts/smtp-transport.js';
 import { Vulnerability, VulnSeverity, VulnStatus } from './types.js';
 
 export function createIntegrationsRouter(
@@ -11,6 +12,19 @@ export function createIntegrationsRouter(
 ): Router {
   const router = Router();
   const authenticateToken = createAuthenticateToken(prisma);
+
+  /**
+   * GET /api/integrations/status
+   * Reports live backend integration state so the frontend badges reflect the
+   * actual server configuration (not a build-time NEXT_PUBLIC_* bake).
+   * Any authenticated user may read these non-sensitive boolean flags.
+   */
+  router.get('/status', authenticateToken, (_req: Request, res: Response) => {
+    res.json({
+      ldap: process.env.USE_LDAP === 'true',
+      smtp: smtpConfigured(),
+    });
+  });
 
   /**
    * POST /api/integrations/greenbone

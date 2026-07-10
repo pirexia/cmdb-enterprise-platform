@@ -92,3 +92,11 @@ Ver `backend/src/modules/staff-schedule/router.ts` para el listado completo (dep
 ## 11. Retención
 
 Recomendado (no automatizado en v3.5.0): purgar `StaffSchedule` `PUBLISHED` con antigüedad superior a 18 meses. Ver DPIA (`docs/DPIA_STAFF_SCHEDULE.md`) para el razonamiento de minimización de datos.
+
+## 12. Auditoría (issue #172)
+
+Toda mutación (13 endpoints de escritura) inserta un registro en `audit_logs` **dentro de la misma transacción** que el cambio de negocio: el router envuelve `mutación + auditStaffSchedule(tx, …)` en un único `prisma.$transaction(async (tx) => { … })`. Si el insert de auditoría falla, la mutación revierte — no puede quedar una escritura sin registrar (ISO 27001 A.8.15). `auditStaffSchedule` acepta un `Prisma.TransactionClient`; los helpers de `queries.ts`/`service.ts`/`authz.ts` se ampliaron al mismo tipo para poder ejecutarse con el `tx`. El endpoint `EXPORT_STAFF_SCHEDULE` audita un **acceso de lectura** (no una escritura de negocio), por lo que se registra fuera de transacción. Test de rollback: `__tests__/auditTransaction.test.ts`.
+
+**Deuda aceptada (problema secundario del issue #172):** los registros guardan `action`+`entity`+`entity_id`+`user_email`+`created_at` — suficiente para A.8.15 (quién, qué acción, sobre qué entidad, cuándo) y la secuencia se preserva (tabla insert-only). NO se usa la columna `details` (jsonb) para el "antes/después", y `UPDATE_SCHEDULE_ENTRIES` registra el `scheduleId` (no una fila por día/persona modificada). Es una **decisión consciente**: la reconstrucción forense fina (diff por entrada) es un *nice-to-have*, no un requisito de cumplimiento, y añadirla ahora ampliaría el volumen de `audit_logs` sin necesidad clara. Si en el futuro se requiere trazabilidad por entrada, poblar `details` con el diff es una extensión aislada de bajo riesgo.
+
+> **Alcance:** el fix de #172 se aplicó a este módulo (el más nuevo y con datos de salud). Los dominios legacy de `index.ts` (relaciones, etc.) siguen el patrón antiguo (mutación + auditoría en pasos separados) — misma deuda preexistente, tratada como trabajo de seguimiento en el issue.

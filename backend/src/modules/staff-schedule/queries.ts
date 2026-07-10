@@ -1,8 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+// Client type accepted by every query helper: the base PrismaClient OR an
+// interactive transaction client. Read helpers can run inside a transaction
+// alongside a write + its audit insert (issue #172), so they must accept `tx`.
+type Db = Prisma.TransactionClient;
 
 // Load a schedule with its entries (incl. user id/username) and alerts.
 // Returns null if the schedule does not exist.
-export async function loadScheduleWithEntries(prisma: PrismaClient, scheduleId: string) {
+export async function loadScheduleWithEntries(prisma: Db, scheduleId: string) {
   return prisma.staffSchedule.findUnique({
     where: { id: scheduleId },
     include: {
@@ -19,7 +24,7 @@ export async function loadScheduleWithEntries(prisma: PrismaClient, scheduleId: 
 // A user belongs to exactly one department, so we can filter directly on
 // userId + date range without needing to join back through the department.
 export async function countTeleworkThisMonth(
-  prisma: PrismaClient,
+  prisma: Db,
   userId: string,
   year: number,
   month: number, // 1-12
@@ -37,7 +42,7 @@ export async function countTeleworkThisMonth(
 
 // All active users belonging to a department (used to auto-populate a new
 // weekly schedule's base entries).
-export async function loadDepartmentUsers(prisma: PrismaClient, departmentId: string) {
+export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
   return prisma.user.findMany({
     where: { departmentId, active: true },
     select: { id: true, username: true },

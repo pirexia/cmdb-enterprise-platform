@@ -337,8 +337,22 @@ export default function SettingsPage() {
   // We show placeholder status; real check comes from the backend health endpoint
   const [healthData, setHealthData] = useState<{ status: string } | null>(null);
   useEffect(() => {
-    apiFetch("/health").then((r) => r.json()).then(setHealthData).catch(() => null);
+    apiFetch("/api/health")
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setHealthData)
+      .catch(() => setHealthData(null));
   }, []);
+
+  // Live backend integration state (LDAP/SMTP) — reflects the server's runtime
+  // config rather than a build-time NEXT_PUBLIC_* bake.
+  const [intStatus, setIntStatus] = useState<{ ldap: boolean; smtp: boolean } | null>(null);
+  useEffect(() => {
+    if (tab !== "integrations" || intStatus !== null) return;
+    apiFetch("/api/integrations/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ldap: boolean; smtp: boolean } | null) => d && setIntStatus(d))
+      .catch(() => null);
+  }, [tab, intStatus]);
 
   useEffect(() => {
     if (tab !== 'integrations' || sysInfo !== null) return;
@@ -601,8 +615,8 @@ export default function SettingsPage() {
                     <p className="text-sm font-semibold text-slate-700">LDAP / Active Directory</p>
                   </div>
                   <StatusPill
-                    ok={process.env.NEXT_PUBLIC_USE_LDAP === "true"}
-                    label={process.env.NEXT_PUBLIC_USE_LDAP === "true" ? "Habilitado" : "Deshabilitado"}
+                    ok={intStatus?.ldap === true}
+                    label={intStatus?.ldap === true ? "Habilitado" : "Deshabilitado"}
                   />
                   <p className="text-xs text-slate-500">
                     Autenticación corporativa via LDAP/AD.
@@ -616,7 +630,10 @@ export default function SettingsPage() {
                     <Mail className="h-5 w-5 text-green-500" />
                     <p className="text-sm font-semibold text-slate-700">SMTP / Alertas</p>
                   </div>
-                  <StatusPill ok={true} label="Configurado" />
+                  <StatusPill
+                    ok={intStatus?.smtp === true}
+                    label={intStatus?.smtp === true ? "Configurado" : "Sin configurar"}
+                  />
                   <p className="text-xs text-slate-500 mb-2">
                     Motor de alertas diarias activo. Horario: 08:30 AM (Europe/Madrid).
                   </p>

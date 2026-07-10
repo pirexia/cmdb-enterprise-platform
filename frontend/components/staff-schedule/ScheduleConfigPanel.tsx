@@ -330,7 +330,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 {numField("monthlyTeleworkCap", t("staffSchedule.config.monthlyTeleworkCap"), "1")}
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexibleHours")} ({t("staffSchedule.entry.startTime")})</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexEntryFrom")}</label>
                   <input
                     type="time"
                     value={cfgForm.flexEntryStart ?? ""}
@@ -339,7 +339,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexibleHours")} ({t("staffSchedule.entry.endTime")})</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexEntryTo")}</label>
                   <input
                     type="time"
                     value={cfgForm.flexEntryEnd ?? ""}
@@ -348,7 +348,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexibleHours")} ({t("staffSchedule.entry.startTime")})</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexExitFrom")}</label>
                   <input
                     type="time"
                     value={cfgForm.flexExitStart ?? ""}
@@ -357,7 +357,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexibleHours")} ({t("staffSchedule.entry.endTime")})</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexExitTo")}</label>
                   <input
                     type="time"
                     value={cfgForm.flexExitEnd ?? ""}

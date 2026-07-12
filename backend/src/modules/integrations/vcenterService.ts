@@ -103,7 +103,11 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
               ram: mapped.physicalFields.ram,
               adminIp: mapped.physicalFields.adminIp,
               hostName: mapped.physicalFields.hostName,
-              clusterName: mapped.physicalFields.clusterName,
+              // clusterName is currently always null from the connector (esxiHost/cluster
+              // gap — see docs/INTEGRATIONS.md §"Open risks"); only write it when the
+              // connector actually resolves a value, so a null here never wipes out
+              // whatever an operator may have set manually.
+              ...(mapped.physicalFields.clusterName ? { clusterName: mapped.physicalFields.clusterName } : {}),
               vcenterSync: mapped.physicalFields.vcenterSync as unknown as Prisma.InputJsonValue,
               ...(operatingSystemId ? { operatingSystemId } : {}),
             },

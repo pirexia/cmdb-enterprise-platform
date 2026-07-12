@@ -62,6 +62,20 @@ model CIType {
   @@map("ci_types")
 }
 
+model Hypervisor {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  isSystem  Boolean  @default(false) @map("is_system")
+
+  cis       CI[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("hypervisors")
+}
+
 enum RelationType {
   // ── Legacy (kept for compat) ──
   HOSTS              // Source hosts/contains target (e.g., Physical Server hosts VM)
@@ -345,6 +359,9 @@ model CI {
   operatingSystem   OperatingSystem? @relation(fields: [operatingSystemId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   firmwareVersion   String?          @map("firmware_version") @db.VarChar(100)
   dns               String?          @map("dns") @db.VarChar(255)
+  hypervisorId      String?      @db.Uuid @map("hypervisor_id")
+  hypervisor        Hypervisor?  @relation(fields: [hypervisorId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  powerState        String?      @map("power_state") @db.VarChar(20)
 
   // Network
   vlan            String?      @map("vlan") @db.VarChar(20)
@@ -377,7 +394,6 @@ model CI {
 
   vulnerabilities Json?        @map("vulnerabilities")
   agentStatus     Json?        @map("agent_status")
-  vcenterSync     Json?        @map("vcenter_sync")
 
   // ─── NIS2 / ISO 22301 / GDPR ──────────────────────────────────────────────
   businessImpact     BusinessImpact?     @map("business_impact")
@@ -409,6 +425,7 @@ model CI {
   @@index([costCenterId])
   @@index([branchId])
   @@index([ciModelId])
+  @@index([hypervisorId])
   @@index([parentCIId])
   @@index([status])
   @@index([criticality])

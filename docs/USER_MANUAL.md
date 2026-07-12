@@ -992,6 +992,19 @@ El panel de **Información del Sistema** muestra el stack tecnológico completo 
 - **Sin soporte** (rojo): fecha de fin de soporte superada
 - **Comunidad** (gris): mantenido por la comunidad sin política de EOL formal
 
+### Tarjeta vCenter (Conector de virtualización, v3.5.3)
+
+Dentro de la pestaña **Integraciones y Sistema**, la tarjeta **vCenter** permite sincronizar automáticamente las máquinas virtuales de un servidor VMware vCenter como activos (CIs) de tipo **Servidor Virtual** en el inventario.
+
+- **Estado**: indica si el conector está configurado (variables de entorno rellenas por el administrador de sistemas) y si la sincronización periódica está activada. Si no está configurado, la tarjeta lo muestra claramente y los botones quedan deshabilitados.
+- **Probar conexión**: verifica que las credenciales y la URL configuradas permiten iniciar sesión en vCenter, sin realizar ningún cambio en el inventario. Muestra un resultado de éxito o error.
+- **Sincronizar ahora**: lanza manualmente una sincronización completa — descubre las VMs de vCenter y crea, actualiza o retira los CIs correspondientes. Muestra un resumen (creados/actualizados/retirados/errores) al finalizar.
+- **Historial de sincronizaciones**: una tabla con las últimas ejecuciones (fecha, resultado, contadores), tanto las lanzadas manualmente como las programadas automáticamente (cada 6 horas por defecto).
+
+Ambos botones (**Probar conexión** y **Sincronizar ahora**) están disponibles **solo para el rol ADMIN**; los usuarios AUDITOR pueden ver el estado y el historial, pero no disparar acciones.
+
+Las VMs sincronizadas aparecen en `/inventory` como CIs de tipo **Servidor Virtual**. La sincronización nunca modifica el estado de gobernanza (Activo/Inactivo/Retirado) de un CI existente tras su creación inicial — ese campo queda siempre bajo control del operador. Si una VM desaparece de vCenter, su CI pasa automáticamente a estado **Retirado** en la siguiente sincronización.
+
 ### Pestaña: Apariencia (solo ADMIN)
 
 La pestaña **Apariencia** permite personalizar el aspecto de la plataforma sin necesidad de reiniciar la aplicación.

@@ -1,0 +1,51 @@
+# PLAN STATUS v3.5.3 — Conector vCenter (sincronización VM → CMDB)
+
+**Estado final:** 🚧 EN DEVELOP (rama `feature/v3.5.3-vcenter-connector`, no fusionada a `develop` todavía — esta tarea es la última de 6, la fusión y el tag son un paso posterior a este documento)
+**Rama:** `feature/v3.5.3-vcenter-connector` (cortada de `develop`)
+**Plan completo:** `docs/PLAN_v3.5.3.md`
+**Inicio:** 2026-07-12
+
+## Estado de tareas
+
+| Tarea | Estado |
+|---|---|
+| Fase de diseño (Opus) — plan D1–D5 | ✅ Completada (`6b0f303`) |
+| Task A — Migración `vcenter_sync` column | ✅ Completada (`add9b68`) |
+| Task B — Connector core (types, base, client, mapper) | ✅ Completada (`25e78b5`, `9344a13`, `86bd1b7`, fix `1bbd745`) |
+| Task C — Sync service + rutas (ADMIN + internal) | ✅ Completada (`f30c39e`, fix `b8dc294`) |
+| Task D — Workflow n8n plantilla en código | ✅ Completada (`37ebcca`, fix `a9c1192`) |
+| Task E — Frontend vCenter card | ✅ Completada (`d398ac2`, fix `6491def`) |
+| Task F — Compose/install wiring + docs + verificación | ✅ Completada (este commit) |
+
+## Resumen de lo entregado
+
+Conector genérico de sincronización externa (`BaseConnector` → `VCenterConnector` → `VCenterClient` → `VCenterMapper`) bajo `backend/src/modules/integrations/connectors/`, primera implementación concreta: **vCenter → CMDB**, sincronización unidireccional de VMs como CIs `VIRTUAL_SERVER`.
+
+- **Task A**: columna aditiva `vcenter_sync jsonb` en `configuration_items` (migración `20260712100000_ci_vcenter_sync_column`, `CI.vcenterSync Json?`). Sin tabla nueva, sin cambio de esquema relacional.
+- **Task B**: `connectors/types.ts` (`IHypervisorConnector`, `DiscoveredVM`, `SyncResult`); `VCenterMapper.toCI()` puro, TDD (7/7 tests: apagada, suspendida, IP guest ausente, `guest_OS` desconocido, redondeo MiB→GB); `vcenterConfig.ts` (env→config tipada, `toPublicConfig()` sin secretos); `VCenterClient` sobre **`https` nativo de Node** (desviación: el plan original mencionaba `undici`, mantenido fuera de las dependencias del proyecto — no rompe ningún requisito, la sesión/TLS/self-signed se implementan igual); `VCenterConnector` orquesta el descubrimiento normalizando `power_state` desconocido a `POWERED_OFF`.
+- **Task C**: `runVCenterSync()` — lock en proceso, upsert de campos D5 (`vCpus`/`ram`/`adminIp`/`hostName`/`clusterName`/`operatingSystem`/`vcenter_sync`), retiro de VMs huérfanas fenced por `ciType=VCENTER_CI_TYPE AND vcenter_sync IS NOT NULL` (nunca toca CIs creados manualmente), auditoría `SYNC_VCENTER` en `audit_logs` incluso en fallo catastrófico (fix `b8dc294`, con sanitización de mensajes de error por-VM para no filtrar internals de Prisma en la respuesta). 4 rutas ADMIN/AUDITOR bajo `/api/integrations/vcenter/*` + 1 ruta interna M2M `/api/internal/vcenter/sync`.
+- **Task D**: plantilla de workflow n8n `"vCenter Sync"` (`n8n-provisioning/templates/vcenter-sync.ts`) — Schedule Trigger (`VCENTER_SYNC_CRON`) → HTTP Request a `/api/internal/vcenter/sync` (header `X-CMDB-Service-Token`) → IF 200 → NoOp / notificar fallo. Nueva clave `ActivateWhen: 'vcenter'` gobernada por `VCENTER_SYNC_ENABLED`. Fix `a9c1192`: el nodo de notificación de fallo no incluía `channel`, por lo que ni el gate de Teams ni el de Slack disparaban — corregido a `channel:"both"`.
+- **Task E**: `VCenterCard.tsx` + `SyncLogTable.tsx` en Configuración → Integraciones — badge de estado (configurado/no configurado/error), botones **Probar conexión** / **Sincronizar ahora** (ADMIN only), última sincronización relativa, tabla de historial. Hooks `useVCenterStatus`/`useVCenterTest`/`useSyncNow`/`useSyncLog`. i18n ×6 completo (`settings.integrations.vcenter_*`). Fix `6491def`: tiempo relativo y badge de estado del log no traducían pese a recibir `t()`.
+- **Task F** (este documento): wiring de las 10 variables `VCENTER_*` en `docker-compose.yml` y `docker-compose.prod.yml` (backend `environment:`, estilo `${VAR:-default}` — todas opcionales, ninguna usa `:?` porque el feature viene apagado por defecto); `.env.example` (nueva sección junto a LDAP Sync); `scripts/update.sh` `check_new_env_vars()` (10 vars en `NEW_VARS` + defaults en el `case`, **no** tocado `ensure_required_env_vars()`); `docs/INTEGRATIONS.md` nuevo (arquitectura del patrón de conector, cómo añadir un futuro conector, referencia de env vars, D1–D5, riesgo self-signed, prueba manual, tabla de 5 endpoints); `docs/ARCHITECTURE.md`/`.en.md` (subsección "Conector vCenter" bajo `## 8. Módulos Funcionales`/`## 8. Functional Modules`); `docs/USER_MANUAL.md`/`.en.md` (subsección de la tarjeta vCenter en la pestaña Integraciones); `CLAUDE.md` (nota de patrón de conector + D1–D5 bajo la convención de módulos, y entrada 🚧 EN DEVELOP en "Releases recientes"); `docs/EXECUTION_LOG.md` nuevo (log retrospectivo Tasks A–F).
+
+## Decisiones clave (D1–D5, resumen)
+
+- **D1**: credenciales/config solo por env vars — sin tabla `integration_configs`, sin cifrado AES en BD.
+- **D2**: `power_state` nunca sobrescribe `status` — VMs nuevas se crean `ACTIVO`; ausencia en vCenter ⇒ `RETIRADO`.
+- **D3**: workflow n8n como plantilla de código auto-aprovisionada (patrón desde v3.2.0), no JSON importable manualmente.
+- **D4**: historial de sync en `audit_logs` (`action='SYNC_VCENTER'`) — sin tabla `sync_logs` nueva.
+- **D5**: vCenter posee hechos físicos (specs, IPs, hostname); el operador posee la gobernanza (criticidad, entorno, owners) — nunca se sobrescribe tras la creación.
+
+## Desviaciones respecto al plan original
+
+- **HTTP client**: `VCenterClient` usa el módulo `https` nativo de Node en vez de `undici` (mencionado en `docs/PLAN_v3.5.3.md`) — `undici` no es una dependencia de este proyecto; la funcionalidad (sesión, TLS self-signed, timeouts) es equivalente.
+- **`esxiHost`/`cluster`**: los endpoints de vm-detail/guest-identity usados por `VCenterConnector` no exponen estos campos directamente; quedan documentados como `null` (gap conocido, no bloqueante — el CI se crea/actualiza igualmente sin la relación `HOSTS` al host ESXi).
+
+## Verificación de Task F (file-level, sin contenedores en ejecución)
+
+- `python3 -c "import yaml; yaml.safe_load(open('docker-compose.yml'))"` y lo mismo para `docker-compose.prod.yml` → parseo OK.
+- `podman-compose -f docker-compose.yml config` y `podman-compose -f docker-compose.prod.yml config` → resuelven sin error (exit 0 en ambos), confirmando que las 10 vars nuevas no rompen la interpolación de compose.
+- `bash -n scripts/update.sh` → sin errores de sintaxis tras añadir los 10 nombres a `NEW_VARS` y sus ramas `case`.
+- Revisión manual de los Markdown nuevos/editados: cabeceras `##`/`###` consistentes, sin fences sin cerrar.
+
+**Pendiente (fuera del alcance de Task F, responsabilidad del controlador):** rebuild de contenedores, `curl /api/health` end-to-end, smoke test de la UI, `npx tsc --noEmit` sobre el árbol completo, merge a `develop` y tag.

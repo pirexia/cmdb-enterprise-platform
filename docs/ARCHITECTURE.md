@@ -644,6 +644,12 @@ El módulo de licencias extiende el modelo de asociaciones con las siguientes re
 
 Los catálogos de referencia (métricas y tipos) se gestionan a través de los endpoints `/api/masters/license-*` y están precargados en el seed con 6 categorías de métrica, 25 métricas, 3 categorías de tipo y 14 tipos estándar.
 
+### Conector vCenter (v3.5.3)
+
+Sincronización unidireccional vCenter → CMDB de máquinas virtuales, orquestada por un workflow n8n programado (cron por defecto cada 6h). El backend implementa un patrón de conector genérico en `backend/src/modules/integrations/connectors/` — `BaseConnector` (abstracto) → `VCenterConnector` (implementación concreta) → `VCenterClient` (HTTP con el módulo `https` nativo de Node, sesión vCenter, TLS self-signed opcional) → `VCenterMapper` (mapeo puro y unit-testeado de VM vCenter a payload de CI). El servicio `runVCenterSync()` (`vcenterService.ts`) crea/actualiza CIs `VIRTUAL_SERVER` y retira (nunca elimina) los que desaparecen de vCenter, protegido por un lock en proceso y con cada corrida auditada en `audit_logs` (`action='SYNC_VCENTER'`) — sin tabla de configuración nueva ni módulo de cifrado: todo el config/credenciales vienen de variables de entorno, siguiendo el patrón ya establecido para LDAP/SMTP/n8n.
+
+Dos rutas delgadas invocan el mismo servicio: `POST /api/integrations/vcenter/sync` (JWT ADMIN, botón "Sincronizar ahora" en Configuración → Integraciones) y `POST /api/internal/vcenter/sync` (M2M `X-CMDB-Service-Token`, disparada por el workflow n8n). El conector está deshabilitado por defecto (`VCENTER_SYNC_ENABLED=false`) y nunca sobrescribe el campo `status` gobernado por el operador tras la creación (D2). Ver `docs/INTEGRATIONS.md` para la arquitectura completa, la referencia de variables de entorno, las 5 decisiones de diseño (D1–D5) y la guía de prueba manual contra un vCenter real.
+
 ---
 
 ## 9. Seguridad

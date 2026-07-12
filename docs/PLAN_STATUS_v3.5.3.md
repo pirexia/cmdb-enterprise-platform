@@ -79,4 +79,31 @@ Stack reconstruido por completo (`podman-compose -f docker-compose.prod.yml down
 - **Smoke test visual de la UI**: **no realizado** — este entorno no tiene el binario de Chrome instalado para Playwright (`Chromium distribution 'chrome' is not found`). Sustituido por la verificación de bundle + endpoints de arriba, que cubre la misma superficie de riesgo (código presente, correctamente compilado, endpoints correctos) sin la confirmación visual pixel-a-pixel.
 - **n8n / aprovisionamiento del workflow "vCenter Sync"**: **no verificable en este stack** — `provisionOnBoot()` falla con `401 unauthorized` al llamar a la API de n8n (`N8N_API_KEY` en `.env` no coincide con la clave real de esta instancia de n8n). Confirmado que es un problema de **infraestructura preexistente, no relacionado con el conector vCenter**: afecta igual al resync de cualquiera de los 5 workflows ya activados (Alertas, Backup, Bulk Import, Mantenimiento, RAG), no solo al nuevo. La plantilla `vcenter-sync.ts` en sí está completamente cubierta por tests unitarios (Task D, revisados) que verifican su estructura, `activateWhen` y sustitución de placeholders — lo que no se pudo confirmar en vivo es el aprovisionamiento real vía API, por esta causa externa a la feature. **Acción recomendada para el usuario**: regenerar `N8N_API_KEY` (`ensure_n8n_api_key()` en `scripts/update.sh`, o manualmente desde la UI de n8n) y volver a lanzar el resync — no se ha tocado esta configuración aquí para no mutar infraestructura compartida sin autorización explícita para ese cambio concreto.
 
+## Verificación en vivo del rediseño Hypervisor (Tasks G1-G4, controlador, post-rebuild)
+
+Stack reconstruido de nuevo por completo (`down && up -d --build`) para incorporar el código de
+las Tasks G1-G4 sobre lo ya verificado de F. El build de Docker (que compila TypeScript) terminó
+sin errores, certificando `tsc --noEmit` limpio en todo el árbol sin necesidad de ejecutarlo en el
+contenedor runtime (que no lleva `tsconfig.json`/`src/`).
+
+- **Migraciones**: `62 migrations found ... No pending migrations to apply` — confirma que las
+  migraciones de G1 (tabla `hypervisors` + `CI.hypervisorId`/`powerState`, drop de `vcenter_sync`)
+  quedaron correctamente incorporadas en la imagen reconstruida, sin drift respecto a lo aplicado
+  manualmente durante la Task G1.
+- **`GET /api/masters/hypervisors`** (AUDITOR) → `200 [{"code":"VMWARE","name":"VMware vSphere / vCenter","isSystem":true,...}]` — exactamente la fila sembrada, ninguna más.
+- **`GET /api/integrations/vcenter/status`** sigue funcionando tras el rework del conector (`200 {"configured":false,...}`) — el endpoint no dependía de `vcenter_sync` directamente y no se rompió por el cambio de esquema subyacente.
+- **La pregunta original del usuario, verificada directamente contra la BD real**: de los **208 CIs
+  `VIRTUAL_SERVER` ya existentes** en esta instancia (datos reales, no de prueba — mezcla plausible
+  de VMware/OLVM/Solaris/entradas manuales), **el 100% tiene `hypervisor_id IS NULL`** ahora mismo.
+  Ninguno fue tocado por la migración (columna aditiva, sin backfill) y, con el nuevo fencing por
+  igualdad exacta, **ninguno de ellos podría ser retirado jamás** por una sincronización de vCenter
+  — activarla o no (`VCENTER_SYNC_ENABLED`) es irrelevante para estos 208 CIs mientras no se les
+  asigne explícitamente el hipervisor VMware (vía sync real o edición manual).
+- **Smoke del resto de la app**: `GET /api/cis?limit=1` → `200` (inventario core intacto);
+  `GET /settings` → `200`; el bundle de Next.js reconstruido contiene el código del nuevo campo
+  "Hipervisor" (`grep -rl "hypervisor_label|requiresHypervisor" /app/.next` → coincide en varios
+  chunks, incluido el de `/inventory`).
+- **Smoke visual de la UI**: no realizado (mismo motivo que en Task F — sin binario de Chrome para
+  Playwright en este entorno); sustituido por la verificación de bundle + endpoints de arriba.
+
 **Estado final de Task F: completada.** Único punto pendiente de verificación (aprovisionamiento n8n) es un problema operativo preexistente, documentado, fuera del alcance de esta feature — no bloquea el merge del código.

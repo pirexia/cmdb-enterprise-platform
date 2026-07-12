@@ -1053,6 +1053,8 @@
     "admin_ip_label": "IP d'administration",
     "mgmt_ip_label": "IP de gestion",
     "os_label": "Système d'exploitation",
+    "hypervisor_label": "Hyperviseur",
+    "hypervisor_required_error": "L'hyperviseur est obligatoire pour un serveur virtuel",
     "firmware_label": "Version du firmware",
     "dns_label": "DNS",
     "nis2_section": "NIS2 · Résilience · RGPD",

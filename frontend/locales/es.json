@@ -1098,6 +1098,8 @@
     "admin_ip_label": "IP de administración",
     "mgmt_ip_label": "IP de gestión",
     "os_label": "Sistema operativo",
+    "hypervisor_label": "Hipervisor",
+    "hypervisor_required_error": "El hipervisor es obligatorio para un Servidor Virtual",
     "firmware_label": "Versión de firmware",
     "dns_label": "DNS",
     "nis2_section": "NIS2 · Resiliencia · GDPR",

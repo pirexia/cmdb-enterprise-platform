@@ -31,15 +31,6 @@ export interface OsHint {
   family: 'LINUX' | 'WINDOWS' | 'OTHER';
 }
 
-// vcenter_sync JSON column shape (Task A's new CI.vcenterSync field)
-export interface VCenterSyncMeta {
-  moref: string;
-  powerState: PowerState;
-  esxiHost: string | null;
-  cluster: string | null;
-  lastSyncAt: string; // ISO timestamp
-}
-
 // Fields the mapper sets on CREATE only (never touched again — operator-owned afterwards per D5/D2)
 export interface CICreateFields {
   apiSlug: string; // `vm-${moref}`
@@ -59,7 +50,7 @@ export interface CIPhysicalFields {
   adminIp: string | null;
   hostName: string | null;
   clusterName: string | null;
-  vcenterSync: VCenterSyncMeta;
+  powerState: PowerState;
 }
 
 export interface MappedVM {

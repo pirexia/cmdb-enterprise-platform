@@ -43,12 +43,7 @@ describe('VCenterMapper.toCI', () => {
     expect(result.physicalFields.adminIp).toBe('10.0.0.5');
     expect(result.physicalFields.hostName).toBe('app-server-01.example.com');
     expect(result.physicalFields.clusterName).toBe('Cluster-A');
-    expect(result.physicalFields.vcenterSync.moref).toBe('vm-1234');
-    expect(result.physicalFields.vcenterSync.powerState).toBe('POWERED_ON');
-    expect(result.physicalFields.vcenterSync.esxiHost).toBe('esxi-01.example.com');
-    expect(result.physicalFields.vcenterSync.cluster).toBe('Cluster-A');
-    expect(typeof result.physicalFields.vcenterSync.lastSyncAt).toBe('string');
-    expect(() => new Date(result.physicalFields.vcenterSync.lastSyncAt).toISOString()).not.toThrow();
+    expect(result.physicalFields.powerState).toBe('POWERED_ON');
 
     expect(result.osHint).toEqual({
       code: 'RHEL_9_64',
@@ -57,11 +52,11 @@ describe('VCenterMapper.toCI', () => {
     });
   });
 
-  it('2. powered-off VM: vcenterSync reflects it, but createFields.status is still ACTIVO (D2)', () => {
+  it('2. powered-off VM: physicalFields.powerState reflects it, but createFields.status is still ACTIVO (D2)', () => {
     const vm = baseVM({ powerState: 'POWERED_OFF' });
     const result = toCI(vm, defaults);
 
-    expect(result.physicalFields.vcenterSync.powerState).toBe('POWERED_OFF');
+    expect(result.physicalFields.powerState).toBe('POWERED_OFF');
     expect(result.createFields.status).toBe('ACTIVO');
   });
 

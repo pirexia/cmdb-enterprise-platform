@@ -5,13 +5,14 @@
 // 'ACTIVO' (baked into VCenterMapper.toCI()'s createFields.status); on UPDATE this
 // service never touches `status` at all; the only place `status` is ever written
 // post-creation is the "retire" step below, and only to 'RETIRADO'.
-// D5: on UPDATE, only vCpus/ram/adminIp/hostName/clusterName/vcenterSync (and,
+// D5: on UPDATE, only vCpus/ram/adminIp/hostName/clusterName/powerState (and,
 // best-effort, operatingSystemId) are touched — never criticality/environment/
-// businessOwnerId/technicalLeadId/etc.
+// businessOwnerId/technicalLeadId/hypervisorId/etc. hypervisorId is set ONLY on
+// CREATE (classification, once assigned, is never re-touched by sync).
 // D4: no sync_logs table — sync-run history goes to audit_logs with
 // action='SYNC_VCENTER', entity='SYSTEM', entity_id=<fixed nil UUID>.
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { toCI } from './connectors/vcenter/VCenterMapper.js';
 import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
 import { VCenterConnector } from './connectors/vcenter/VCenterConnector.js';
@@ -19,6 +20,11 @@ import type { VCenterConfig } from './vcenterConfig.js';
 import type { IHypervisorConnector, SyncDefaults, SyncResult } from './connectors/types.js';
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+
+// This connector only ever syncs VMware vCenter — 'VMWARE' is fixed, not configurable.
+// A future OLVM/Solaris connector would resolve its OWN hypervisor code the same way,
+// via its own hypervisorId equality check, never this constant.
+const VMWARE_HYPERVISOR_CODE = 'VMWARE';
 
 export class SyncLockedError extends Error {}
 
@@ -67,6 +73,15 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
   const seenSlugs = new Set<string>();
 
   try {
+    const vmwareHypervisor = await deps.prisma.hypervisor.findUnique({
+      where: { code: VMWARE_HYPERVISOR_CODE },
+    });
+    if (!vmwareHypervisor) {
+      throw new Error(
+        `Hypervisor "${VMWARE_HYPERVISOR_CODE}" not found — was the hypervisor_master migration applied?`,
+      );
+    }
+
     await deps.connector.connect();
     const vms = await deps.connector.discover();
 
@@ -108,7 +123,7 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
               // connector actually resolves a value, so a null here never wipes out
               // whatever an operator may have set manually.
               ...(mapped.physicalFields.clusterName ? { clusterName: mapped.physicalFields.clusterName } : {}),
-              vcenterSync: mapped.physicalFields.vcenterSync as unknown as Prisma.InputJsonValue,
+              powerState: mapped.physicalFields.powerState,
               ...(operatingSystemId ? { operatingSystemId } : {}),
             },
           });
@@ -137,7 +152,8 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
               adminIp: mapped.physicalFields.adminIp,
               hostName: mapped.physicalFields.hostName,
               clusterName: mapped.physicalFields.clusterName,
-              vcenterSync: mapped.physicalFields.vcenterSync as unknown as Prisma.InputJsonValue,
+              powerState:   mapped.physicalFields.powerState,
+              hypervisorId: vmwareHypervisor.id,
               operatingSystemId,
             },
           });
@@ -156,15 +172,22 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
     }
 
     // Retire CIs this connector created that vanished from vCenter's VM list.
-    // Fenced to ciType=defaults.ciTypeCode AND vcenterSync IS NOT NULL AND not already
-    // RETIRADO — this can NEVER touch a manually-entered CI (safety guarantee, open
-    // risk #3 from the plan).
+    // Fenced to ciType=defaults.ciTypeCode AND hypervisorId === vmwareHypervisor.id (exact-id
+    // equality, NOT a null-check) AND not already RETIRADO — this can NEVER touch a
+    // manually-entered CI (hypervisorId === null) NOR a CI owned by a different hypervisor
+    // (e.g. a future OLVM/Solaris connector's VMs, which would have their own non-null
+    // hypervisorId pointing at a different row) (safety guarantee, open risk #3 from the plan).
     const candidates = await deps.prisma.cI.findMany({
       where: { ciTypeDef: { code: deps.defaults.ciTypeCode }, status: { not: 'RETIRADO' } },
-      select: { id: true, apiSlug: true, vcenterSync: true },
+      select: { id: true, apiSlug: true, hypervisorId: true },
     });
     for (const c of candidates) {
-      if (c.vcenterSync == null) continue; // not one of ours — never touch
+      // Exact-id equality, NOT a null-check — a future OLVM/Solaris connector's CIs will
+      // also have a non-null hypervisorId (pointing at THEIR OWN hypervisor row), so only
+      // an id match against the hypervisor THIS connector owns is a safe fence. A CI with
+      // hypervisorId === null (never classified/manually entered) OR pointing at any OTHER
+      // hypervisor is never touched by this loop.
+      if (c.hypervisorId !== vmwareHypervisor.id) continue;
       if (seenSlugs.has(c.apiSlug)) continue; // still present in vCenter
       await deps.prisma.cI.update({ where: { id: c.id }, data: { status: 'RETIRADO' } });
       await insertAuditRow(deps.prisma, 'CI_RETIRE', c.id, deps.userEmail, {

@@ -33,6 +33,7 @@ const prisma = new PrismaClient() as any;
 const mockQueue = jest.fn();
 
 const USER_ID = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+const VMWARE_HYPERVISOR = { id: 'hyp-vmware-fixture-id', code: 'VMWARE', name: 'VMware vSphere / vCenter', isSystem: true };
 
 function makeToken(role: 'ADMIN' | 'AUDITOR' | 'VIEWER'): string {
   return jwt.sign(
@@ -169,6 +170,9 @@ function makeFakePrisma(overrides: Record<string, any> = {}) {
     cIType: {
       findUnique: jest.fn().mockResolvedValue({ id: 'citype-1', code: 'VIRTUAL_SERVER' }),
     },
+    hypervisor: {
+      findUnique: jest.fn().mockResolvedValue(VMWARE_HYPERVISOR),
+    },
     $executeRaw: jest.fn().mockResolvedValue(1),
     ...overrides,
   } as any;
@@ -215,6 +219,8 @@ describe('runVCenterSync — create', () => {
     expect(createArgs.data.apiSlug).toBe('vm-vm-1');
     expect(createArgs.data.vCpus).toBe(4);
     expect(createArgs.data.ram).toBe('8 GB');
+    expect(createArgs.data.hypervisorId).toBe(VMWARE_HYPERVISOR.id);
+    expect(createArgs.data.powerState).toBe('POWERED_ON');
 
     // one CI_CREATE audit row + one SYNC_VCENTER audit row = 2 $executeRaw calls
     expect(fakePrisma.$executeRaw).toHaveBeenCalledTimes(2);
@@ -263,6 +269,7 @@ describe('runVCenterSync — update', () => {
     expect(updateArgs.data).not.toHaveProperty('status');
     expect(updateArgs.data).not.toHaveProperty('criticality');
     expect(updateArgs.data).not.toHaveProperty('environment');
+    expect(updateArgs.data).not.toHaveProperty('hypervisorId');
     expect(updateArgs.data).toMatchObject({
       vCpus: 4,
       ram: '8 GB',
@@ -270,19 +277,19 @@ describe('runVCenterSync — update', () => {
       hostName: 'test-vm.local',
       clusterName: 'cluster-a',
     });
-    expect(updateArgs.data).toHaveProperty('vcenterSync');
+    expect(updateArgs.data).toHaveProperty('powerState', 'POWERED_OFF');
   });
 });
 
 describe('runVCenterSync — retire', () => {
-  it('retires a CI that vanished from the vCenter VM list (fenced: ciType + vcenterSync not null)', async () => {
+  it('retires a CI that vanished from the vCenter VM list (fenced: ciType + hypervisorId === vmwareHypervisor.id)', async () => {
     const fakePrisma = makeFakePrisma({
       cI: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
         update: jest.fn().mockResolvedValue({ id: 'ci-vanished-1' }),
         findMany: jest.fn().mockResolvedValue([
-          { id: 'ci-vanished-1', apiSlug: 'vm-vm-999', vcenterSync: { moref: 'vm-999' } },
+          { id: 'ci-vanished-1', apiSlug: 'vm-vm-999', hypervisorId: VMWARE_HYPERVISOR.id },
         ]),
       },
     });
@@ -302,14 +309,14 @@ describe('runVCenterSync — retire', () => {
     });
   });
 
-  it('does NOT retire a manually-entered CI with vcenterSync=null even if absent from discover() (safety fence)', async () => {
+  it('does NOT retire a manually-entered CI with hypervisorId=null even if absent from discover() (safety fence)', async () => {
     const fakePrisma = makeFakePrisma({
       cI: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
         update: jest.fn().mockResolvedValue({}),
         findMany: jest.fn().mockResolvedValue([
-          { id: 'ci-manual-1', apiSlug: 'vm-does-not-match-anything', vcenterSync: null },
+          { id: 'ci-manual-1', apiSlug: 'vm-does-not-match-anything', hypervisorId: null },
         ]),
       },
     });
@@ -329,6 +336,43 @@ describe('runVCenterSync — retire', () => {
       (args: any[]) => args[0]?.where?.id === 'ci-manual-1',
     );
     expect(updateCallsForManualCi).toHaveLength(0);
+  });
+
+  it('never retires a CI owned by a different hypervisor (e.g. a future OLVM connector)', async () => {
+    // Simulates the exact scenario the user asked about: an OLVM VM using the same
+    // ciType (VIRTUAL_SERVER) as vCenter VMs, but classified under a DIFFERENT
+    // hypervisor row. A null-check alone would not protect this CI once a second
+    // hypervisor exists — only exact-id equality against THIS connector's hypervisor does.
+    const OLVM_HYPERVISOR_ID = 'hyp-olvm-fixture-id';
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'ci-olvm-owned-1', apiSlug: 'vm-does-not-match-anything-either', hypervisorId: OLVM_HYPERVISOR_ID },
+        ]),
+      },
+      // hypervisor.findUnique still resolves the VMware row this connector owns —
+      // only the candidate CI belongs to a different hypervisor.
+      hypervisor: {
+        findUnique: jest.fn().mockResolvedValue(VMWARE_HYPERVISOR),
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]), // vm-1 only — the OLVM VM is (correctly) absent
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.retired).toBe(0);
+    const updateCallsForOlvmCi = fakePrisma.cI.update.mock.calls.filter(
+      (args: any[]) => args[0]?.where?.id === 'ci-olvm-owned-1',
+    );
+    expect(updateCallsForOlvmCi).toHaveLength(0);
   });
 });
 
@@ -439,5 +483,44 @@ describe('runVCenterSync — catastrophic failure still produces an audit row', 
 
     // the connector's close() must still be called (finally block runs regardless)
     expect(failingConnector.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('inserts a SYNC_VCENTER ERROR audit row and rejects when the VMWARE hypervisor row is missing', async () => {
+    const fakePrisma = makeFakePrisma({
+      hypervisor: {
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+    });
+    const connector = makeFakeConnector([vm()]);
+
+    await expect(
+      runVCenterSync({
+        prisma: fakePrisma,
+        connector,
+        defaults: DEFAULTS,
+        queueForIndexing: jest.fn(),
+        userEmail: 'admin@test.local',
+      }),
+    ).rejects.toThrow(/Hypervisor/);
+
+    // connect()/discover() must never even be attempted — the hypervisor lookup happens first
+    expect(connector.connect).not.toHaveBeenCalled();
+    expect(connector.discover).not.toHaveBeenCalled();
+
+    const syncAuditCall = fakePrisma.$executeRaw.mock.calls.find((args: any[]) =>
+      args.some((a: any) => typeof a === 'string' && a === 'SYNC_VCENTER'),
+    );
+    expect(syncAuditCall).toBeDefined();
+    const detailsArg = syncAuditCall.find((a: any) => {
+      if (typeof a !== 'string') return false;
+      try {
+        const parsed = JSON.parse(a);
+        return typeof parsed === 'object' && 'status' in parsed;
+      } catch {
+        return false;
+      }
+    });
+    const details = JSON.parse(detailsArg);
+    expect(details.status).toBe('ERROR');
   });
 });

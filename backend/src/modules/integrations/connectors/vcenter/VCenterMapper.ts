@@ -62,13 +62,7 @@ export function toCI(vm: DiscoveredVM, defaults: SyncDefaults): MappedVM {
       adminIp: vm.ipAddress,
       hostName: vm.hostName,
       clusterName: vm.cluster,
-      vcenterSync: {
-        moref: vm.moref,
-        powerState: vm.powerState,
-        esxiHost: vm.esxiHost,
-        cluster: vm.cluster,
-        lastSyncAt: new Date().toISOString(),
-      },
+      powerState: vm.powerState,
     },
     osHint: resolveOsHint(vm),
   };

@@ -48,4 +48,19 @@ Conector genérico de sincronización externa (`BaseConnector` → `VCenterConne
 - `bash -n scripts/update.sh` → sin errores de sintaxis tras añadir los 10 nombres a `NEW_VARS` y sus ramas `case`.
 - Revisión manual de los Markdown nuevos/editados: cabeceras `##`/`###` consistentes, sin fences sin cerrar.
 
-**Pendiente (fuera del alcance de Task F, responsabilidad del controlador):** rebuild de contenedores, `curl /api/health` end-to-end, smoke test de la UI, `npx tsc --noEmit` sobre el árbol completo, merge a `develop` y tag.
+## Verificación en vivo (controlador, post-rebuild)
+
+Stack reconstruido por completo (`podman-compose -f docker-compose.prod.yml down && up -d --build`) para incorporar el código de las 6 tareas. Resultados:
+
+- **Backend**: arranque limpio — `60 migrations found ... No pending migrations to apply` (confirma que la migración de Task A ya estaba aplicada y el schema es consistente), seed ya presente, `🚀 CMDB API running`. `curl -sk https://localhost/api/health` → `{"status":"ok",...}`.
+- **Endpoints vCenter** (probados con la cuenta de test `claude@cmdb.local`, rol AUDITOR, más una petición sin token):
+  - `GET /api/integrations/vcenter/status` sin token → `401`.
+  - `GET /api/integrations/vcenter/status` con AUDITOR → `200 {"configured":false,"host":null,"sslVerify":false,"syncEnabled":false,"lastSyncAt":null,"lastSyncResult":null}` — sin secretos, tal como exige D1.
+  - `GET /api/integrations/vcenter/sync-log` con AUDITOR → `200 []` (sin ejecuciones todavía, correcto).
+  - `POST /api/integrations/vcenter/sync` con AUDITOR → `403 {"error":"Admin role required..."}` — RBAC confirmado en vivo, no solo en tests.
+- **`tsc --noEmit`**: no ejecutable directamente en el contenedor de producción (imagen runtime sin `tsconfig.json`/`src/`, solo `dist/` compilado — comportamiento esperado). El propio éxito del build Docker (que compila TypeScript como parte del build) ya certifica 0 errores; además cada una de las Tareas A-E ya verificó `tsc --noEmit` limpio de forma independiente durante su propia implementación/revisión.
+- **Frontend**: `GET /settings` → `200`. Confirmado que el bundle Next.js compilado contiene el nuevo código (`grep -rl "vcenter_sync_now|VCenterCard" /app/.next` → varios chunks coinciden), es decir, la tarjeta se compiló e incluyó correctamente en el build de producción.
+- **Smoke test visual de la UI**: **no realizado** — este entorno no tiene el binario de Chrome instalado para Playwright (`Chromium distribution 'chrome' is not found`). Sustituido por la verificación de bundle + endpoints de arriba, que cubre la misma superficie de riesgo (código presente, correctamente compilado, endpoints correctos) sin la confirmación visual pixel-a-pixel.
+- **n8n / aprovisionamiento del workflow "vCenter Sync"**: **no verificable en este stack** — `provisionOnBoot()` falla con `401 unauthorized` al llamar a la API de n8n (`N8N_API_KEY` en `.env` no coincide con la clave real de esta instancia de n8n). Confirmado que es un problema de **infraestructura preexistente, no relacionado con el conector vCenter**: afecta igual al resync de cualquiera de los 5 workflows ya activados (Alertas, Backup, Bulk Import, Mantenimiento, RAG), no solo al nuevo. La plantilla `vcenter-sync.ts` en sí está completamente cubierta por tests unitarios (Task D, revisados) que verifican su estructura, `activateWhen` y sustitución de placeholders — lo que no se pudo confirmar en vivo es el aprovisionamiento real vía API, por esta causa externa a la feature. **Acción recomendada para el usuario**: regenerar `N8N_API_KEY` (`ensure_n8n_api_key()` en `scripts/update.sh`, o manualmente desde la UI de n8n) y volver a lanzar el resync — no se ha tocado esta configuración aquí para no mutar infraestructura compartida sin autorización explícita para ese cambio concreto.
+
+**Estado final de Task F: completada.** Único punto pendiente de verificación (aprovisionamiento n8n) es un problema operativo preexistente, documentado, fuera del alcance de esta feature — no bloquea el merge del código.

@@ -41,6 +41,29 @@ export class VCenterConnector extends BaseConnector {
         this.client.vmDetail(summary.vm),
       ]);
 
+      // Best-effort ESXi host resolution. `summary.host` (a MoRef) and the shape of
+      // GET /api/vcenter/host/{host} (Host.Info's `name` field) come from general
+      // knowledge of the vSphere Automation REST API and are NOT independently
+      // verified against a live vCenter in this session (no live vCenter/API
+      // reference available here — see task report). ANY failure here — missing
+      // `summary.host`, a thrown error, a null result, or a missing `.name` — must
+      // fall back to today's behavior (`esxiHost: null`) and must NEVER abort
+      // discovery of this VM's other fields or the rest of the VM list.
+      let esxiHost: string | null = null;
+      if (summary.host) {
+        try {
+          const hostSummary = await this.client.hostSummary(summary.host);
+          if (hostSummary?.name) {
+            esxiHost = hostSummary.name;
+          }
+        } catch (e) {
+          console.warn(
+            `[VCenterConnector] Could not resolve ESXi host name for VM moref=${summary.vm}, host=${summary.host}:`,
+            e,
+          );
+        }
+      }
+
       results.push({
         moref: summary.vm,
         name: summary.name,
@@ -51,13 +74,11 @@ export class VCenterConnector extends BaseConnector {
         guestFamily: identity?.family ?? null,
         ipAddress: identity?.ip_address ?? null,
         hostName: identity?.host_name ?? null,
-        // Not directly exposed by /api/vcenter/vm/{vm} or the guest identity endpoint
-        // in the vSphere Automation REST API — resolving these requires additional
-        // calls (e.g. /api/vcenter/vm/{vm} host summary + /api/vcenter/cluster
-        // cross-reference) that are out of scope for this connector-core task.
-        // Left null; flagged in the task report as best-effort per the plan.
+        // cluster resolution is explicitly out of scope for this task (Task H2) — it
+        // would require an additional /api/vcenter/cluster cross-reference call.
+        // Left null, same as before.
         cluster: null,
-        esxiHost: null,
+        esxiHost,
       });
     }
 

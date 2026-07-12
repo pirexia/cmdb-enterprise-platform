@@ -173,6 +173,9 @@ function makeFakePrisma(overrides: Record<string, any> = {}) {
     hypervisor: {
       findUnique: jest.fn().mockResolvedValue(VMWARE_HYPERVISOR),
     },
+    cIRelation: {
+      upsert: jest.fn().mockResolvedValue({}),
+    },
     $executeRaw: jest.fn().mockResolvedValue(1),
     ...overrides,
   } as any;
@@ -192,7 +195,13 @@ function vm(overrides: Partial<DiscoveredVM> = {}): DiscoveredVM {
     ipAddress: '10.0.0.1',
     hostName: 'test-vm.local',
     cluster: 'cluster-a',
-    esxiHost: 'esxi-1',
+    // Defaults to null (not 'esxi-1') deliberately: most existing tests in this file
+    // sequence cI.findMany() mocks by call order (adoption-candidates, then retire-query).
+    // The Task H2 HOSTS-relation lookup is a THIRD cI.findMany() call site that only fires
+    // when esxiHost is truthy — keeping the shared default null preserves every pre-existing
+    // test's call-order assumptions untouched. Tests exercising the HOSTS-relation step
+    // explicitly opt in via vm({ esxiHost: '...' }).
+    esxiHost: null,
     ...overrides,
   };
 }
@@ -696,5 +705,174 @@ describe('runVCenterSync — catastrophic failure still produces an audit row', 
     });
     const details = JSON.parse(detailsArg);
     expect(details.status).toBe('ERROR');
+  });
+});
+
+// ── Task H2 — best-effort HOSTS relation to the ESXi host's physical-server CI ──
+
+describe('runVCenterSync — HOSTS relation (Task H2)', () => {
+  it('esxiHost set, exactly one matching PHYSICAL_SERVER CI found — creates the HOSTS relation', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // H1 adoption-candidates query (no match)
+          .mockResolvedValueOnce([{ id: 'ci-physical-host-1' }]) // H2 host-CI lookup (exactly one)
+          .mockResolvedValueOnce([]), // G4 retire query
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi01.midominio.local' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cI.findMany).toHaveBeenCalledTimes(3);
+
+    const hostLookupArgs = fakePrisma.cI.findMany.mock.calls[1][0];
+    expect(hostLookupArgs).toMatchObject({
+      where: {
+        ciTypeDef: { code: 'PHYSICAL_SERVER' },
+        status: { not: 'RETIRADO' },
+        OR: [
+          { name: { equals: 'esxi01.midominio.local', mode: 'insensitive' } },
+          { hostName: { equals: 'esxi01.midominio.local', mode: 'insensitive' } },
+        ],
+      },
+    });
+
+    expect(fakePrisma.cIRelation.upsert).toHaveBeenCalledTimes(1);
+    const upsertArgs = fakePrisma.cIRelation.upsert.mock.calls[0][0];
+    expect(upsertArgs.create).toMatchObject({
+      sourceCiId: 'ci-physical-host-1',
+      targetCiId: 'ci-new-1',
+      relationType: 'HOSTS',
+      createdBy: 'admin@test.local',
+    });
+    expect(upsertArgs.where).toEqual({
+      sourceCiId_targetCiId_relationType: {
+        sourceCiId: 'ci-physical-host-1',
+        targetCiId: 'ci-new-1',
+        relationType: 'HOSTS',
+      },
+    });
+  });
+
+  it('esxiHost set, zero matching physical-server CIs — no relation created, CI sync still succeeds', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // adoption-candidates
+          .mockResolvedValueOnce([]) // host-CI lookup: no match
+          .mockResolvedValueOnce([]), // retire
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi-nowhere' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cIRelation.upsert).not.toHaveBeenCalled();
+  });
+
+  it('esxiHost set, TWO+ matching physical-server CIs (ambiguous) — no relation created, CI sync still succeeds', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // adoption-candidates
+          .mockResolvedValueOnce([{ id: 'host-a' }, { id: 'host-b' }]) // host-CI lookup: ambiguous
+          .mockResolvedValueOnce([]), // retire
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi-dup' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cIRelation.upsert).not.toHaveBeenCalled();
+  });
+
+  it('esxiHost === null — the host-relation step is skipped entirely (no extra findMany call)', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // adoption-candidates
+          .mockResolvedValueOnce([]), // retire — only 2 calls total, no host lookup
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: null })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(fakePrisma.cI.findMany).toHaveBeenCalledTimes(2);
+    expect(fakePrisma.cIRelation.upsert).not.toHaveBeenCalled();
+  });
+
+  it('the relation step throwing an error does NOT affect the VM own sync result (isolated by its own try/catch)', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // adoption-candidates
+          .mockRejectedValueOnce(new Error('boom: host lookup DB error')) // host-CI lookup throws
+          .mockResolvedValueOnce([]), // retire
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi-broken' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    // The VM's own CI create must still succeed — the host-relation failure must never be
+    // counted against errors/errorDetails.
+    expect(result.created).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(result.errorDetails).toBeUndefined();
+    expect(fakePrisma.cIRelation.upsert).not.toHaveBeenCalled();
   });
 });

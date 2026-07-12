@@ -140,7 +140,9 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
           }
         }
 
+        let ciId: string;
         if (existingCi) {
+          ciId = existingCi.id;
           await deps.prisma.cI.update({
             where: { id: existingCi.id },
             data: {
@@ -202,6 +204,53 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
           });
           void deps.queueForIndexing('ci', createdCi.id);
           created++;
+          ciId = createdCi.id;
+        }
+
+        // Best-effort HOSTS relation to the ESXi host's physical-server CI, if one exists in
+        // the inventory and vCenter reported a resolvable host name for this VM. Never fails
+        // the VM's own CI sync — this is enrichment, not a required step. Known limitation:
+        // if a VM moves to a different ESXi host between syncs, the old HOSTS relation is not
+        // removed — not handled in this pass.
+        if (vm.esxiHost) {
+          try {
+            const hostCi = await deps.prisma.cI.findMany({
+              where: {
+                ciTypeDef: { code: 'PHYSICAL_SERVER' },
+                status: { not: 'RETIRADO' },
+                OR: [
+                  { name: { equals: vm.esxiHost, mode: 'insensitive' } },
+                  { hostName: { equals: vm.esxiHost, mode: 'insensitive' } },
+                ],
+              },
+              select: { id: true },
+            });
+            if (hostCi.length === 1) {
+              // Idempotent: the (sourceCiId, targetCiId, relationType) unique constraint means
+              // a duplicate create attempt on a later sync just needs to be tolerated, not
+              // treated as an error.
+              await deps.prisma.cIRelation.upsert({
+                where: {
+                  sourceCiId_targetCiId_relationType: {
+                    sourceCiId: hostCi[0].id,
+                    targetCiId: ciId,
+                    relationType: 'HOSTS',
+                  },
+                },
+                update: {},
+                create: {
+                  sourceCiId: hostCi[0].id,
+                  targetCiId: ciId,
+                  relationType: 'HOSTS',
+                  createdBy: deps.userEmail,
+                },
+              });
+            }
+            // 0 or 2+ matching physical-server CIs: ambiguous or no match, skip silently —
+            // this is best-effort enrichment, not a required relation.
+          } catch (relErr) {
+            console.warn(`[vcenterService] Could not create HOSTS relation for VM moref=${vm.moref}:`, relErr);
+          }
         }
       } catch (e) {
         errors++;

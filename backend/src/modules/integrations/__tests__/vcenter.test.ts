@@ -876,3 +876,72 @@ describe('runVCenterSync — HOSTS relation (Task H2)', () => {
     expect(fakePrisma.cIRelation.upsert).not.toHaveBeenCalled();
   });
 });
+
+// ── Combined coverage: H1 adoption + H2 HOSTS relation in the SAME sync run ─────
+// Every H2 test above mocks the H1 adoption-candidates query to resolve `[]` (no adoption
+// happens), and every H1 adoption test has `esxiHost: null` (no host-relation step runs).
+// The composition is correct by code inspection (vcenterService.ts sets `ciId` from either
+// the create or the update branch before the H2 block runs, unconditionally on that same
+// `ciId`), but nothing proves it end-to-end. This test exercises both in one call.
+
+describe('runVCenterSync — H1 adoption + H2 host relation combined (regression)', () => {
+  it('adopts a pre-existing CI by name AND creates the HOSTS relation against that SAME adopted CI', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null), // no apiSlug match
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }), // must NOT be used — adoption wins
+        update: jest.fn().mockResolvedValue({ id: 'ci-manual-adopt-1' }),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: 'ci-manual-adopt-1' }]) // H1: exactly one name-match candidate
+          .mockResolvedValueOnce([{ id: 'ci-physical-host-1' }]) // H2: exactly one matching PHYSICAL_SERVER
+          .mockResolvedValueOnce([]), // G4: retire query
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi01.midominio.local' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cI.create).not.toHaveBeenCalled();
+    expect(fakePrisma.cI.findMany).toHaveBeenCalledTimes(3);
+
+    // 1) The adoption update targets the adopted CI's id and sets apiSlug + hypervisorId
+    //    alongside the normal physical fields.
+    expect(fakePrisma.cI.update).toHaveBeenCalledTimes(1);
+    const updateArgs = fakePrisma.cI.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 'ci-manual-adopt-1' });
+    expect(updateArgs.data).toMatchObject({
+      apiSlug: 'vm-vm-1',
+      hypervisorId: VMWARE_HYPERVISOR.id,
+      vCpus: 4,
+      ram: '8 GB',
+      adminIp: '10.0.0.1',
+      hostName: 'test-vm.local',
+    });
+
+    // 2) The HOSTS relation is created against the SAME adopted CI id (not a fresh/created one).
+    expect(fakePrisma.cIRelation.upsert).toHaveBeenCalledTimes(1);
+    const upsertArgs = fakePrisma.cIRelation.upsert.mock.calls[0][0];
+    expect(upsertArgs.create).toMatchObject({
+      sourceCiId: 'ci-physical-host-1',
+      targetCiId: 'ci-manual-adopt-1',
+      relationType: 'HOSTS',
+      createdBy: 'admin@test.local',
+    });
+    expect(upsertArgs.where).toEqual({
+      sourceCiId_targetCiId_relationType: {
+        sourceCiId: 'ci-physical-host-1',
+        targetCiId: 'ci-manual-adopt-1',
+        relationType: 'HOSTS',
+      },
+    });
+  });
+});

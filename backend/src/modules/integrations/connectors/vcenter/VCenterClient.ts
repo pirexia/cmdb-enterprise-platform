@@ -170,7 +170,10 @@ export class VCenterClient {
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw new Error(`vCenter vmDetail failed with status ${res.statusCode}`);
     }
-    return this.parseJson<VCenterVmDetail>(res);
+    // Guard against an empty 2xx body (parseJson returns `undefined` in that case),
+    // mirroring listVMs()'s `|| []` pattern — callers can always safely optional-chain
+    // into `.hardware` without checking for a missing detail object first.
+    return this.parseJson<VCenterVmDetail>(res) || {};
   }
 
   async logout(): Promise<void> {

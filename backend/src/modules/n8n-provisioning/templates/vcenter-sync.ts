@@ -97,7 +97,7 @@ const vcenter_sync = {
         "url": "http://n8n-main:5678/webhook/notify",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ {\"severity\":\"critical\",\"subject\":\"vCenter sync failed\",\"message\":\"El workflow vCenter Sync no pudo completar la sincronización con el backend CMDB. Revisar logs de n8n y del backend.\"} }}",
+        "jsonBody": "={{ {\"severity\":\"critical\",\"subject\":\"vCenter sync failed\",\"message\":\"El workflow vCenter Sync no pudo completar la sincronización con el backend CMDB. Revisar logs de n8n y del backend.\",\"channel\":\"both\"} }}",
         "options": {}
       },
       "id": "f6a7b8c9-d0e1-42f3-d4a5-b6c7d8e9f0a1",

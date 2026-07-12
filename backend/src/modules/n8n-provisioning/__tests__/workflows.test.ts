@@ -65,6 +65,12 @@ describe('renderWorkflows', () => {
     expect(http.credentials.httpHeaderAuth.name).toBe(CRED_NAMES.headerAuth);
   });
 
+  it('el nodo "Notify sync failure" de vCenter Sync incluye channel:"both" para que IF Teams? / IF Slack? disparen', () => {
+    const vcenter = findWf(renderWorkflows(cfg()), 'vCenter Sync');
+    const notify = vcenter.nodes.find((n: any) => n.name === 'Notify sync failure') as any;
+    expect(notify.parameters.jsonBody).toContain('"channel":"both"');
+  });
+
   it('inyecta el binding httpHeaderAuth (por nombre) en los nodos HTTP', () => {
     const alertas = findWf(renderWorkflows(cfg()), 'Alertas CMDB');
     const http = alertas.nodes.find((n: any) => n.name === 'Scan alerts') as any;

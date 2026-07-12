@@ -10,6 +10,7 @@ const CFG: N8nProvisioningConfig = {
   serviceToken: 'tok',
   smtp: null,
   ldap: null,
+  vcenter: null,
 };
 
 function mockFetchOnce(status: number, body: unknown) {

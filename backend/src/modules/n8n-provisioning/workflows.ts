@@ -10,7 +10,7 @@ import { TEMPLATES } from './templates/index.js';
 import { CRED_NAMES } from './credentials.js';
 import type { N8nProvisioningConfig } from './config.js';
 
-export type ActivateWhen = 'smtp' | 'ldap' | 'always';
+export type ActivateWhen = 'smtp' | 'ldap' | 'always' | 'vcenter';
 
 export interface RenderedWorkflow {
   name: string;
@@ -23,6 +23,7 @@ export interface RenderedWorkflow {
 const ACTIVATE_POLICY: Record<string, ActivateWhen> = {
   'Alertas CMDB': 'smtp',
   'LDAP/AD Sync': 'ldap',
+  'vCenter Sync': 'vcenter',
 };
 
 /** Inyecta el binding de credencial (por nombre, id vacío) según el tipo de nodo. */
@@ -48,6 +49,7 @@ export function renderWorkflows(cfg: N8nProvisioningConfig): RenderedWorkflow[] 
     LDAP_BASE_DN:       cfg.ldap?.baseDN ?? '',
     LDAP_SYNC_GROUP_DN: cfg.ldap?.groupDN ?? '',
     LDAP_SYNC_DOMAIN:   cfg.ldap?.syncDomain ?? '',
+    VCENTER_SYNC_CRON:  cfg.vcenter?.cron ?? '0 */6 * * *',
   };
 
   return TEMPLATES.map((tpl) => {

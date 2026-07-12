@@ -11,6 +11,7 @@ function cfg(over: Partial<N8nProvisioningConfig> = {}): N8nProvisioningConfig {
     smtp: { host: 's', port: 25, secure: false, from: 'cmdb-alerts@acme.com' },
     ldap: { useLdap: true, url: 'ldap://dc.acme.com:389', baseDN: 'DC=acme,DC=com',
             groupDN: 'CN=CMDB-Users,DC=acme,DC=com', syncDomain: 'acme.com' },
+    vcenter: null,
     ...over,
   };
 }
@@ -20,11 +21,11 @@ function findWf(wfs: ReturnType<typeof renderWorkflows>, name: string) {
 }
 
 describe('renderWorkflows', () => {
-  it('devuelve las 7 plantillas con nombres estables', () => {
+  it('devuelve las 8 plantillas con nombres estables', () => {
     const names = renderWorkflows(cfg()).map((w) => w.name).sort();
     expect(names).toEqual([
       'Alertas CMDB', 'Backup CMDB', 'Bulk Import CIs', 'LDAP/AD Sync',
-      'Mantenimiento CMDB', 'Notificaciones CMDB', 'RAG Indexing',
+      'Mantenimiento CMDB', 'Notificaciones CMDB', 'RAG Indexing', 'vCenter Sync',
     ]);
   });
 
@@ -41,11 +42,27 @@ describe('renderWorkflows', () => {
     expect(node.parameters.filter).toContain('memberOf=CN=CMDB-Users,DC=acme,DC=com');
   });
 
-  it('activateWhen por workflow (smtp / ldap / always)', () => {
+  it('activateWhen por workflow (smtp / ldap / always / vcenter)', () => {
     const wfs = renderWorkflows(cfg());
     expect(findWf(wfs, 'Alertas CMDB').activateWhen).toBe('smtp');
     expect(findWf(wfs, 'LDAP/AD Sync').activateWhen).toBe('ldap');
     expect(findWf(wfs, 'RAG Indexing').activateWhen).toBe('always');
+    expect(findWf(wfs, 'vCenter Sync').activateWhen).toBe('vcenter');
+  });
+
+  it('sustituye VCENTER_SYNC_CRON en el nodo Schedule de vCenter Sync', () => {
+    const vcenter = findWf(
+      renderWorkflows(cfg({ vcenter: { enabled: true, cron: '0 2 * * *' } })),
+      'vCenter Sync',
+    );
+    const schedule = vcenter.nodes.find((n: any) => n.type === 'n8n-nodes-base.scheduleTrigger') as any;
+    expect(schedule.parameters.rule.interval[0].expression).toBe('0 2 * * *');
+  });
+
+  it('inyecta el binding httpHeaderAuth en el nodo HTTP de vCenter Sync', () => {
+    const vcenter = findWf(renderWorkflows(cfg()), 'vCenter Sync');
+    const http = vcenter.nodes.find((n: any) => n.name === 'Trigger vCenter sync') as any;
+    expect(http.credentials.httpHeaderAuth.name).toBe(CRED_NAMES.headerAuth);
   });
 
   it('inyecta el binding httpHeaderAuth (por nombre) en los nodos HTTP', () => {

@@ -377,6 +377,7 @@ model CI {
 
   vulnerabilities Json?        @map("vulnerabilities")
   agentStatus     Json?        @map("agent_status")
+  vcenterSync     Json?        @map("vcenter_sync")
 
   // ─── NIS2 / ISO 22301 / GDPR ──────────────────────────────────────────────
   businessImpact     BusinessImpact?     @map("business_impact")

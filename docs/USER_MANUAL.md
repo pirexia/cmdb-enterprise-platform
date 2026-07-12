@@ -1005,6 +1005,8 @@ Ambos botones (**Probar conexión** y **Sincronizar ahora**) están disponibles 
 
 Las VMs sincronizadas aparecen en `/inventory` como CIs de tipo **Servidor Virtual**. La sincronización nunca modifica el estado de gobernanza (Activo/Inactivo/Retirado) de un CI existente tras su creación inicial — ese campo queda siempre bajo control del operador. Si una VM desaparece de vCenter, su CI pasa automáticamente a estado **Retirado** en la siguiente sincronización.
 
+> **Nota:** desde esta versión, crear o editar manualmente un CI de tipo **Servidor Virtual** (en `/inventory`, tanto si viene de vCenter como si se da de alta a mano) exige seleccionar un **Hipervisor** en un nuevo desplegable del formulario — por ejemplo "VMware vSphere / vCenter" para VMs sincronizadas o gestionadas desde vCenter. Este campo es obligatorio y es lo que permite a la plataforma distinguir de forma fiable qué CIs pertenecen a cada conector de virtualización.
+
 ### Pestaña: Apariencia (solo ADMIN)
 
 La pestaña **Apariencia** permite personalizar el aspecto de la plataforma sin necesidad de reiniciar la aplicación.

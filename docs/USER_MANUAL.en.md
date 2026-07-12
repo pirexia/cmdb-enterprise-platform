@@ -1005,6 +1005,8 @@ Both buttons (**Test connection** and **Sync now**) are available **only to the 
 
 Synced VMs show up in `/inventory` as **Virtual Server** CIs. The sync never changes the governance status (Active/Inactive/Retired) of an existing CI after its initial creation — that field always stays under operator control. If a VM disappears from vCenter, its CI is automatically set to **Retired** status on the next sync.
 
+> **Note:** as of this release, creating or manually editing a **Virtual Server** CI (in `/inventory`, whether it comes from vCenter or is entered by hand) requires selecting a **Hypervisor** from a new dropdown in the form — e.g. "VMware vSphere / vCenter" for VMs synced from or manually tracked as vCenter-managed. This field is mandatory and is what lets the platform reliably tell apart which CIs belong to which virtualization connector.
+
 ### Tab: Appearance (ADMIN only)
 
 The **Appearance** tab lets you customise the platform's look and feel without restarting the application.

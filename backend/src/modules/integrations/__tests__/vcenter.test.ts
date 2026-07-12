@@ -364,3 +364,80 @@ describe('runVCenterSync — audit summary', () => {
     expect(details).toMatchObject({ created: 1, updated: 0, retired: 0, errors: 0 });
   });
 });
+
+describe('runVCenterSync — error sanitization (per-VM failure)', () => {
+  it('records a generic message in errorDetails, never the raw thrown error message', async () => {
+    const rawMessage = 'P2002 Unique constraint failed on the fields: (`api_slug`)';
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockRejectedValue(new Error(rawMessage)),
+        update: jest.fn().mockResolvedValue({ id: 'ci-updated-1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.errors).toBe(1);
+    expect(result.errorDetails).toBeDefined();
+    expect(result.errorDetails![0].moref).toBe('vm-1');
+    expect(result.errorDetails![0].message).not.toContain('P2002');
+    expect(result.errorDetails![0].message).not.toContain(rawMessage);
+    expect(result.errorDetails![0].message).toBe('Failed to sync this VM — see server logs for details');
+  });
+});
+
+describe('runVCenterSync — catastrophic failure still produces an audit row', () => {
+  it('inserts a SYNC_VCENTER audit row and re-throws the original error when discover() rejects', async () => {
+    const originalError = new Error('vCenter unreachable: ECONNREFUSED');
+    const failingConnector: IHypervisorConnector = {
+      connect: jest.fn().mockResolvedValue(undefined),
+      discover: jest.fn().mockRejectedValue(originalError),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    const fakePrisma = makeFakePrisma();
+
+    await expect(
+      runVCenterSync({
+        prisma: fakePrisma,
+        connector: failingConnector,
+        defaults: DEFAULTS,
+        queueForIndexing: jest.fn(),
+        userEmail: 'admin@test.local',
+      }),
+    ).rejects.toBe(originalError);
+
+    const syncAuditCall = fakePrisma.$executeRaw.mock.calls.find((args: any[]) =>
+      args.some((a: any) => typeof a === 'string' && a === 'SYNC_VCENTER'),
+    );
+    expect(syncAuditCall).toBeDefined();
+
+    const detailsArg = syncAuditCall.find((a: any) => {
+      if (typeof a !== 'string') return false;
+      try {
+        const parsed = JSON.parse(a);
+        return typeof parsed === 'object' && 'status' in parsed;
+      } catch {
+        return false;
+      }
+    });
+    expect(detailsArg).toBeDefined();
+    const details = JSON.parse(detailsArg);
+    expect(details.status).toBe('ERROR');
+    expect(details.errorDetails.some((d: any) =>
+      typeof d.message === 'string' && d.message.includes('Sync run failed before completion'),
+    )).toBe(true);
+    // never leaks the raw connection error message into the audited details
+    expect(JSON.stringify(details)).not.toContain('ECONNREFUSED');
+
+    // the connector's close() must still be called (finally block runs regardless)
+    expect(failingConnector.close).toHaveBeenCalledTimes(1);
+  });
+});

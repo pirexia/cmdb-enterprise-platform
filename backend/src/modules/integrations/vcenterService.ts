@@ -146,7 +146,8 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
         }
       } catch (e) {
         errors++;
-        errorDetails.push({ moref: vm.moref, message: (e as Error).message });
+        console.error(`[vcenterService] Failed to sync VM moref=${vm.moref}:`, e);
+        errorDetails.push({ moref: vm.moref, message: 'Failed to sync this VM — see server logs for details' });
       }
     }
 
@@ -184,6 +185,37 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
 
     await insertAuditRow(deps.prisma, 'SYNC_VCENTER', null, deps.userEmail, result as unknown as Record<string, unknown>);
     return result;
+  } catch (e) {
+    // The whole sync run failed catastrophically (connect/discover/retire-query threw).
+    // D4 requires sync-run history to live in audit_logs — write a best-effort audit row
+    // reflecting partial progress before re-throwing the original error unchanged, so the
+    // router-level catch blocks (SyncLockedError -> 409, else -> 500) keep working exactly
+    // as before.
+    console.error('[vcenterService] vCenter sync run failed:', e);
+    const failedResult: SyncResult = {
+      status: 'ERROR',
+      created,
+      updated,
+      retired,
+      errors,
+      durationMs: Date.now() - startedAt,
+      errorDetails: [
+        ...errorDetails,
+        { message: 'Sync run failed before completion — see server logs for details' },
+      ],
+    };
+    try {
+      await insertAuditRow(
+        deps.prisma,
+        'SYNC_VCENTER',
+        null,
+        deps.userEmail,
+        failedResult as unknown as Record<string, unknown>,
+      );
+    } catch (auditError) {
+      console.error('[vcenterService] Failed to insert SYNC_VCENTER audit row for failed run:', auditError);
+    }
+    throw e;
   } finally {
     try {
       await deps.connector.close();

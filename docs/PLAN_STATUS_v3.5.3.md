@@ -20,6 +20,8 @@
 | Task G2 — Backend: masters CRUD `Hypervisor` + validación obligatoria en CI `VIRTUAL_SERVER` | ✅ Completada (`d290356`) |
 | Task G3 — Frontend: campo "Hipervisor" en `AddCIModal`/`EditCIModal` | ✅ Completada (`112789b`) |
 | Task G4 — Rework conector vCenter: fencing por `hypervisorId` exacto + `powerState` | ✅ Completada (`eaa0a11`) |
+| Task H1 — Adopción de CIs manuales pre-existentes en el primer sync (match por nombre) | ✅ Completada (`24cef18`) |
+| Task H2 — Resolución best-effort de `esxiHost` + relación `HOSTS` idempotente | ✅ Completada (`7570d62`) |
 
 ## Resumen de lo entregado
 
@@ -40,6 +42,12 @@ Las cuatro tareas G1-G4 sustituyen `CI.vcenterSync jsonb` por un diseño de prop
 
 El resultado final: `hypervisorId` se fija solo en la creación del CI (nunca se refresca — es un marcador de clasificación, no un hecho físico) y es la base de la propiedad; `powerState` sigue el patrón D5 original (hecho físico, refrescado en cada sync). Ver `docs/INTEGRATIONS.md` § "Modelo de propiedad tras el rediseño Hypervisor" para el detalle completo, incluyendo la receta actualizada para futuros conectores (OLVM/Solaris).
 
+## Resumen Tasks H1-H2 (adopción + relación HOSTS)
+
+**Task H1** (`24cef18`) resuelve un problema práctico dejado abierto por el rediseño Hypervisor: el conector solo matcheaba VMs a CIs por `apiSlug === "vm-{moref}"`, lo que nunca reconoce los 208 CIs `VIRTUAL_SERVER` pre-existentes, introducidos manualmente antes de que este conector existiera (su `apiSlug` es el que le asignó un admin o una importación). Sin esto, el primer sync habría creado un CI duplicado por cada VM ya inventariada. La solución: cuando no hay match por `apiSlug`, se busca un CI **sin clasificar** (`hypervisorId IS NULL`) cuyo nombre coincida (case-insensitive) con el de la VM; si el match es inequívoco (exactamente uno), se "adopta" — se le fija `apiSlug` al valor canónico y `hypervisorId` al del hipervisor VMware, además de los campos físicos habituales — de modo que los siguientes syncs ya lo reconocen directamente por `apiSlug`. Cero o dos-o-más candidatos caen al camino normal de creación; nunca se adivina. La valla de seguridad reutiliza la misma propiedad que ya protegía la valla de retiro (G1-G4): `hypervisorId IS NULL` excluye a nivel de BD cualquier CI ya clasificado por otro hipervisor (este u otro futuro, p. ej. OLVM), así que la adopción nunca reclasifica un CI ajeno.
+
+**Task H2** (`7570d62`) añade resolución best-effort del host ESXi de cada VM (`VCenterClient.hostSummary()` + `VCenterConnector.discover()`, según los esquemas vSphere `VM.Summary`/`Host.Info`) y, cuando existe exactamente un CI `PHYSICAL_SERVER` cuyo `name`/`hostName` coincide (case-insensitive) con ese host, crea una relación `CIRelation` `HOSTS` idempotente hacia él en `vcenterService.ts`. **Caveat documentado**: los nombres de campo de la API vSphere usados no se verificaron contra un vCenter real en esta sesión — el código está defensivamente envuelto para que cualquier suposición incorrecta degrade con seguridad a `esxiHost: null`/sin relación creada, sin afectar el resto del sync de la VM. La resolución de `cluster` sigue genuinamente fuera de alcance (no tocada por H1 ni H2).
+
 ## Decisiones clave (D1–D5, resumen)
 
 - **D1**: credenciales/config solo por env vars — sin tabla `integration_configs`, sin cifrado AES en BD.
@@ -51,7 +59,8 @@ El resultado final: `hypervisorId` se fija solo en la creación del CI (nunca se
 ## Desviaciones respecto al plan original
 
 - **HTTP client**: `VCenterClient` usa el módulo `https` nativo de Node en vez de `undici` (mencionado en `docs/PLAN_v3.5.3.md`) — `undici` no es una dependencia de este proyecto; la funcionalidad (sesión, TLS self-signed, timeouts) es equivalente.
-- **`esxiHost`/`cluster`**: los endpoints de vm-detail/guest-identity usados por `VCenterConnector` no exponen estos campos directamente; quedan documentados como `null` (gap conocido, no bloqueante — el CI se crea/actualiza igualmente sin la relación `HOSTS` al host ESXi). Fix aplicado tras la revisión final de rama: como el conector siempre resuelve `clusterName=null` por este gap, escribirlo incondicionalmente en cada update borraba cualquier valor que un operador hubiera fijado a mano — ahora solo se escribe cuando el conector resuelve un valor real (commit `3504ec1`).
+- **`cluster`**: los endpoints de vm-detail/guest-identity usados por `VCenterConnector` no exponen este campo directamente; queda documentado como `null` (gap conocido, no bloqueante). Fix aplicado tras la revisión final de rama: como el conector siempre resuelve `clusterName=null` por este gap, escribirlo incondicionalmente en cada update borraba cualquier valor que un operador hubiera fijado a mano — ahora solo se escribe cuando el conector resuelve un valor real (commit `3504ec1`).
+- **`esxiHost`**: inicialmente documentado como `null` por el mismo gap que `cluster` (Task B/G4). La Task H2 (`7570d62`, posterior a esta revisión final) añadió su resolución best-effort vía `VCenterClient.hostSummary()` y, cuando resuelve a un valor y existe exactamente un CI `PHYSICAL_SERVER` que coincide por nombre/hostname, crea una relación `HOSTS` idempotente hacia él — ver detalle en el resumen de H1/H2 más abajo. Esta corrección documental (revisión final de rama) sustituye la afirmación anterior, ya obsoleta, de que el CI se sincroniza "sin la relación `HOSTS`".
 
 ## Deuda aceptada (revisión final de rama)
 

@@ -332,7 +332,7 @@ app.use('/api/internal', createInternalRouter(prisma, {
   processRagQueue,
   processBulkImportQueue: createBulkQueueProcessor(prisma),
   processCIBulkImportQueue,
-}));
+}, (t, id) => queueEntityForIndexing(t as RagEntityType, id)));
 
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 

@@ -403,6 +403,22 @@ async function validateInfraFieldsForType(
   return null;
 }
 
+// G2 (v3.5.3): hypervisorId is mandatory for VIRTUAL_SERVER CIs (NOT CLOUD_INSTANCE — scoped narrowly by design).
+const REQUIRES_HYPERVISOR_CI_TYPES = ['VIRTUAL_SERVER'];
+
+async function validateHypervisorRequired(
+  ciTypeId: string | null | undefined,
+  hypervisorId: string | null | undefined,
+): Promise<string | null> {
+  if (!ciTypeId) return null;
+  const t = await prisma.cIType.findUnique({ where: { id: ciTypeId }, select: { code: true } });
+  if (!t) return null;
+  if (REQUIRES_HYPERVISOR_CI_TYPES.includes(t.code) && !hypervisorId) {
+    return `hypervisorId es obligatorio para un CI de tipo ${t.code} (Servidor Virtual)`;
+  }
+  return null;
+}
+
 // ─── Password Policy ──────────────────────────────────────────────────────────
 
 /** Common/weak passwords dictionary (case-insensitive check). */
@@ -1370,7 +1386,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
       cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
-      operatingSystemId, firmwareVersion, dns,
+      operatingSystemId, firmwareVersion, dns, hypervisorId, powerState,
     } = req.body as {
       name: string; apiSlug: string;
       criticality: Criticality; environment: Environment;
@@ -1385,6 +1401,7 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
       adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
       operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
+      hypervisorId?: string | null; powerState?: string | null;
     };
 
     if (!name || !apiSlug || !criticality || !environment) {
@@ -1401,6 +1418,10 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
     // D3: physical/virtual infra field exclusion
     const infraErr = await validateInfraFieldsForType(ciTypeId, cpuModel, vCpus);
     if (infraErr) { res.status(400).json({ error: infraErr }); return; }
+
+    // G2: hypervisorId mandatory for VIRTUAL_SERVER
+    const hypervisorErr = await validateHypervisorRequired(ciTypeId, hypervisorId);
+    if (hypervisorErr) { res.status(400).json({ error: hypervisorErr }); return; }
 
     // Plugin pre-hook — may cancel creation
     const preCreateCI = await emitHook('preCreateCI', { body: req.body, user: req.user }, 'pre');
@@ -1456,6 +1477,8 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
         operatingSystemId:  operatingSystemId  || null,
         firmwareVersion:    firmwareVersion    || null,
         dns:                dns                || null,
+        hypervisorId:       hypervisorId       || null,
+        powerState:         powerState         || null,
         ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
         ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
       } as Parameters<typeof prisma.cI.create>[0]['data'],
@@ -1601,7 +1624,7 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       eolDate: eolDateRaw, eosDate: eosDateRaw,
       businessImpact, recoveryPriority, rto, rpo, spofRisk, containsPii, dataClassification,
       cpuModel, vCpus, ram, disk, adminIp, mgmtIp, hostName, clusterName,
-      operatingSystemId, firmwareVersion, dns,
+      operatingSystemId, firmwareVersion, dns, hypervisorId, powerState,
     } = req.body as {
       name?: string; criticality?: Criticality; environment?: Environment;
       ciTypeId?: string | null; status?: string; inventoryNumber?: string;
@@ -1613,11 +1636,12 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       cpuModel?: string | null; vCpus?: number | null; ram?: string | null; disk?: string | null;
       adminIp?: string | null; mgmtIp?: string | null; hostName?: string | null; clusterName?: string | null;
       operatingSystemId?: string | null; firmwareVersion?: string | null; dns?: string | null;
+      hypervisorId?: string | null; powerState?: string | null;
     };
 
     // Reject any FK field that is a non-null, non-empty string but not a valid UUID
     // (prevents P2023 "invalid UUID" from Prisma when callers send "null"/garbage strings)
-    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId, operatingSystemId })) {
+    for (const [field, val] of Object.entries({ ciTypeId, branchId, ciModelId, businessOwnerId, technicalLeadId, operatingSystemId, hypervisorId })) {
       if (val !== undefined && val !== null && !UUID_RE.test(val)) {
         res.status(400).json({ error: `El campo ${field} contiene un valor inválido.` });
         return;
@@ -1634,6 +1658,18 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       const effVCpus    = vCpus    !== undefined ? vCpus    : current?.vCpus    ?? null;
       const infraErr = await validateInfraFieldsForType(effectiveTypeId, effCpuModel, effVCpus);
       if (infraErr) { res.status(400).json({ error: infraErr }); return; }
+    }
+
+    // G2: hypervisorId mandatory for VIRTUAL_SERVER (resolve effective ciTypeId/hypervisorId if not changing them)
+    if (ciTypeId !== undefined || hypervisorId !== undefined) {
+      const effectiveTypeId = ciTypeId !== undefined
+        ? ciTypeId
+        : (await prisma.cI.findUnique({ where: { id }, select: { ciTypeId: true } }))?.ciTypeId ?? null;
+      const effHypervisorId = hypervisorId !== undefined
+        ? hypervisorId
+        : (await prisma.cI.findUnique({ where: { id }, select: { hypervisorId: true } }))?.hypervisorId ?? null;
+      const hypervisorErr = await validateHypervisorRequired(effectiveTypeId, effHypervisorId);
+      if (hypervisorErr) { res.status(400).json({ error: hypervisorErr }); return; }
     }
 
     const updateData: Record<string, unknown> = {};
@@ -1667,6 +1703,8 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
     if (operatingSystemId  !== undefined) updateData.operatingSystemId  = operatingSystemId  || null;
     if (firmwareVersion    !== undefined) updateData.firmwareVersion    = firmwareVersion    || null;
     if (dns                !== undefined) updateData.dns                = dns                || null;
+    if (hypervisorId       !== undefined) updateData.hypervisorId       = hypervisorId       || null;
+    if (powerState         !== undefined) updateData.powerState         = powerState         || null;
 
     // Plugin pre-hook — may cancel update
     const preUpdateCI = await emitHook('preUpdateCI', { id, body: req.body, user: req.user }, 'pre');

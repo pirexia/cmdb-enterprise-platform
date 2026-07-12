@@ -9,6 +9,10 @@
 // best-effort, operatingSystemId) are touched — never criticality/environment/
 // businessOwnerId/technicalLeadId/hypervisorId/etc. hypervisorId is set ONLY on
 // CREATE (classification, once assigned, is never re-touched by sync).
+// H1 exception to D5: when no CI matches this connector's canonical apiSlug, an
+// unambiguous (exactly one) name-match against an UNCLASSIFIED (hypervisorId IS NULL)
+// CI is "adopted" — apiSlug and hypervisorId are set once, so every future sync then
+// matches it directly by apiSlug and this adoption branch never runs again for it.
 // D4: no sync_logs table — sync-run history goes to audit_logs with
 // action='SYNC_VCENTER', entity='SYSTEM', entity_id=<fixed nil UUID>.
 
@@ -105,10 +109,36 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
               ).id;
         }
 
-        const existingCi = await deps.prisma.cI.findUnique({
+        let existingCi = await deps.prisma.cI.findUnique({
           where: { apiSlug: mapped.createFields.apiSlug },
           select: { id: true },
         });
+
+        // H1: no CI owns this connector's canonical apiSlug yet. Before creating a brand
+        // new CI, check whether an existing, UNCLASSIFIED CI (entered manually before this
+        // connector existed — this CMDB has 208 such pre-existing VIRTUAL_SERVER CIs)
+        // represents the same real VM, by exact case-insensitive name match. Adopt ONLY on
+        // an unambiguous match (exactly one candidate) — 0 or 2+ candidates fall through to
+        // create-new, never guess which record to merge into.
+        // hypervisorId: null is the safety fence (same property Task G4 tests for the
+        // retire path): a CI already classified by ANY hypervisor — this one or a future
+        // OLVM/Solaris connector's — must never be silently reclassified here.
+        let adopted = false;
+        if (!existingCi) {
+          const candidates = await deps.prisma.cI.findMany({
+            where: {
+              ciTypeDef: { code: mapped.createFields.ciTypeCode },
+              hypervisorId: null,
+              status: { not: 'RETIRADO' },
+              name: { equals: mapped.createFields.name, mode: 'insensitive' },
+            },
+            select: { id: true },
+          });
+          if (candidates.length === 1) {
+            existingCi = candidates[0];
+            adopted = true;
+          }
+        }
 
         if (existingCi) {
           await deps.prisma.cI.update({
@@ -125,11 +155,20 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
               ...(mapped.physicalFields.clusterName ? { clusterName: mapped.physicalFields.clusterName } : {}),
               powerState: mapped.physicalFields.powerState,
               ...(operatingSystemId ? { operatingSystemId } : {}),
+              // H1 adoption: the ONE-TIME exception to "hypervisorId is create-only" (D5) —
+              // this is the moment a pre-existing, never-classified CI is first recognized
+              // as vCenter-owned. apiSlug is fixed to the canonical `vm-{moref}` slug too,
+              // so every future sync matches this CI directly and this branch never
+              // re-executes for it again.
+              ...(adopted
+                ? { apiSlug: mapped.createFields.apiSlug, hypervisorId: vmwareHypervisor.id }
+                : {}),
             },
           });
           await insertAuditRow(deps.prisma, 'CI_UPDATE', existingCi.id, deps.userEmail, {
             source: 'vcenter',
             moref: vm.moref,
+            ...(adopted ? { adopted: true, matchedBy: 'name' } : {}),
           });
           void deps.queueForIndexing('ci', existingCi.id);
           updated++;

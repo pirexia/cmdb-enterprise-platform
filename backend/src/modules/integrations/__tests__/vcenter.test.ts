@@ -281,6 +281,164 @@ describe('runVCenterSync — update', () => {
   });
 });
 
+describe('runVCenterSync — H1 adoption of pre-existing manually-entered CIs', () => {
+  it('no apiSlug match, no name-match candidates (0) — creates a new CI (regression, unaffected)', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        // First call: name-match candidate query (0 results). Second call: retire query.
+        findMany: jest.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([]),
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(fakePrisma.cI.create).toHaveBeenCalledTimes(1);
+    expect(fakePrisma.cI.update).not.toHaveBeenCalled();
+  });
+
+  it('no apiSlug match, exactly ONE name-match candidate with hypervisorId=null — adopts it', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn().mockResolvedValue({ id: 'ci-manual-adopt-1' }),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: 'ci-manual-adopt-1' }]) // name-match candidates
+          .mockResolvedValueOnce([]), // retire query
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(fakePrisma.cI.create).not.toHaveBeenCalled();
+    expect(fakePrisma.cI.update).toHaveBeenCalledTimes(1);
+
+    const updateArgs = fakePrisma.cI.update.mock.calls[0][0];
+    expect(updateArgs.where).toEqual({ id: 'ci-manual-adopt-1' });
+    expect(updateArgs.data).toMatchObject({
+      apiSlug: 'vm-vm-1',
+      hypervisorId: VMWARE_HYPERVISOR.id,
+      vCpus: 4,
+      ram: '8 GB',
+      adminIp: '10.0.0.1',
+      hostName: 'test-vm.local',
+    });
+
+    // Assert the candidate query itself was built correctly (case-insensitive name match,
+    // fenced to unclassified CIs of the right CI type, excluding RETIRADO).
+    const candidateQueryArgs = fakePrisma.cI.findMany.mock.calls[0][0];
+    expect(candidateQueryArgs).toMatchObject({
+      where: {
+        ciTypeDef: { code: 'VIRTUAL_SERVER' },
+        hypervisorId: null,
+        status: { not: 'RETIRADO' },
+        name: { equals: 'test-vm', mode: 'insensitive' },
+      },
+    });
+
+    const auditCall = fakePrisma.$executeRaw.mock.calls.find((args: any[]) =>
+      args.some((a: any) => typeof a === 'string' && a === 'CI_UPDATE'),
+    );
+    expect(auditCall).toBeDefined();
+    const auditDetails = auditCall.find((a: any) => {
+      if (typeof a !== 'string') return false;
+      try {
+        return JSON.parse(a).adopted === true;
+      } catch {
+        return false;
+      }
+    });
+    expect(auditDetails).toBeDefined();
+  });
+
+  it('SAFETY-CRITICAL: a name-matching CI already owned by a different hypervisor is never adopted or touched (DB-level hypervisorId:null filter excludes it — mock returns empty)', async () => {
+    // A real Postgres query with `hypervisorId: null` in the WHERE clause would never
+    // return a row already owned by another hypervisor (e.g. a future OLVM connector's
+    // CI) — so the candidate mock reflects that by returning an empty array, proving the
+    // VM correctly falls through to CREATE rather than touching the OLVM-owned CI at all.
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([]) // name-match candidates: excluded at DB level by hypervisorId:null
+          .mockResolvedValueOnce([]), // retire query
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(fakePrisma.cI.create).toHaveBeenCalledTimes(1);
+    const updateCallsForOlvmCi = fakePrisma.cI.update.mock.calls.filter(
+      (args: any[]) => args[0]?.where?.id === 'ci-olvm-owned-1',
+    );
+    expect(updateCallsForOlvmCi).toHaveLength(0);
+    expect(fakePrisma.cI.update).not.toHaveBeenCalled();
+
+    // Confirm the query that would run against a real DB does filter hypervisorId: null,
+    // which is the actual mechanism guaranteeing the OLVM-owned CI can never come back.
+    const candidateQueryArgs = fakePrisma.cI.findMany.mock.calls[0][0];
+    expect(candidateQueryArgs.where.hypervisorId).toBeNull();
+  });
+
+  it('ambiguous match — 2+ name-match candidates — falls through to create new CI', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([{ id: 'ci-manual-a' }, { id: 'ci-manual-b' }]) // ambiguous
+          .mockResolvedValueOnce([]), // retire query
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm()]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.created).toBe(1);
+    expect(result.updated).toBe(0);
+    expect(fakePrisma.cI.create).toHaveBeenCalledTimes(1);
+    expect(fakePrisma.cI.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('runVCenterSync — retire', () => {
   it('retires a CI that vanished from the vCenter VM list (fenced: ciType + hypervisorId === vmwareHypervisor.id)', async () => {
     const fakePrisma = makeFakePrisma({
@@ -288,9 +446,14 @@ describe('runVCenterSync — retire', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
         update: jest.fn().mockResolvedValue({ id: 'ci-vanished-1' }),
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'ci-vanished-1', apiSlug: 'vm-vm-999', hypervisorId: VMWARE_HYPERVISOR.id },
-        ]),
+        // First call: H1 name-match candidate query for the current VM (empty — no adoption
+        // candidate here). Second call: the retire query, returning the vanished CI.
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { id: 'ci-vanished-1', apiSlug: 'vm-vm-999', hypervisorId: VMWARE_HYPERVISOR.id },
+          ]),
       },
     });
 
@@ -315,9 +478,15 @@ describe('runVCenterSync — retire', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
         update: jest.fn().mockResolvedValue({}),
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'ci-manual-1', apiSlug: 'vm-does-not-match-anything', hypervisorId: null },
-        ]),
+        // First call: H1 name-match candidate query for the current VM (empty — a real DB
+        // query wouldn't match this fixture by name anyway). Second call: the retire query,
+        // returning the manually-entered, unclassified CI that must NOT be retired.
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { id: 'ci-manual-1', apiSlug: 'vm-does-not-match-anything', hypervisorId: null },
+          ]),
       },
     });
 
@@ -349,9 +518,14 @@ describe('runVCenterSync — retire', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 'ci-new-1' }),
         update: jest.fn().mockResolvedValue({}),
-        findMany: jest.fn().mockResolvedValue([
-          { id: 'ci-olvm-owned-1', apiSlug: 'vm-does-not-match-anything-either', hypervisorId: OLVM_HYPERVISOR_ID },
-        ]),
+        // First call: H1 name-match candidate query for the current VM (empty). Second call:
+        // the retire query, returning the OLVM-owned CI that must NOT be retired.
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])
+          .mockResolvedValueOnce([
+            { id: 'ci-olvm-owned-1', apiSlug: 'vm-does-not-match-anything-either', hypervisorId: OLVM_HYPERVISOR_ID },
+          ]),
       },
       // hypervisor.findUnique still resolves the VMware row this connector owns —
       // only the candidate CI belongs to a different hypervisor.

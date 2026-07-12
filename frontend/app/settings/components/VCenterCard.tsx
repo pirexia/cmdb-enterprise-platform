@@ -16,13 +16,13 @@ function formatRelativeTime(iso: string, t: TFunc): string {
   if (Number.isNaN(then)) return "—";
   const diffMs = Date.now() - then;
   const diffSec = Math.max(0, Math.floor(diffMs / 1000));
-  if (diffSec < 60) return `${diffSec}s`;
+  if (diffSec < 60) return t("settings.integrations.vcenter_time_seconds_ago", { n: diffSec });
   const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin} min`;
+  if (diffMin < 60) return t("settings.integrations.vcenter_time_minutes_ago", { n: diffMin });
   const diffHour = Math.floor(diffMin / 60);
-  if (diffHour < 24) return `${diffHour} h`;
+  if (diffHour < 24) return t("settings.integrations.vcenter_time_hours_ago", { n: diffHour });
   const diffDay = Math.floor(diffHour / 24);
-  return `${diffDay} d`;
+  return t("settings.integrations.vcenter_time_days_ago", { n: diffDay });
 }
 
 export default function VCenterCard() {

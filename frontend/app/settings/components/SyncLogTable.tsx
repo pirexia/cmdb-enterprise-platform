@@ -3,13 +3,18 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import type { SyncLogEntry } from "../types/vcenter";
 
 function LogStatusBadge({ status }: { status: SyncLogEntry["status"] }) {
+  const { t } = useLanguage();
   const cls =
     status === "SUCCESS" ? "bg-green-100 text-green-700"
     : status === "PARTIAL" ? "bg-amber-100 text-amber-700"
     : "bg-red-100 text-red-600";
+  const label =
+    status === "SUCCESS" ? t("settings.integrations.vcenter_sync_result_success")
+    : status === "PARTIAL" ? t("settings.integrations.vcenter_sync_result_partial")
+    : t("settings.integrations.vcenter_sync_result_error");
   return (
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${cls}`}>
-      {status}
+      {label}
     </span>
   );
 }

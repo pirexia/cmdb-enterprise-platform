@@ -39,7 +39,11 @@ Conector genérico de sincronización externa (`BaseConnector` → `VCenterConne
 ## Desviaciones respecto al plan original
 
 - **HTTP client**: `VCenterClient` usa el módulo `https` nativo de Node en vez de `undici` (mencionado en `docs/PLAN_v3.5.3.md`) — `undici` no es una dependencia de este proyecto; la funcionalidad (sesión, TLS self-signed, timeouts) es equivalente.
-- **`esxiHost`/`cluster`**: los endpoints de vm-detail/guest-identity usados por `VCenterConnector` no exponen estos campos directamente; quedan documentados como `null` (gap conocido, no bloqueante — el CI se crea/actualiza igualmente sin la relación `HOSTS` al host ESXi).
+- **`esxiHost`/`cluster`**: los endpoints de vm-detail/guest-identity usados por `VCenterConnector` no exponen estos campos directamente; quedan documentados como `null` (gap conocido, no bloqueante — el CI se crea/actualiza igualmente sin la relación `HOSTS` al host ESXi). Fix aplicado tras la revisión final de rama: como el conector siempre resuelve `clusterName=null` por este gap, escribirlo incondicionalmente en cada update borraba cualquier valor que un operador hubiera fijado a mano — ahora solo se escribe cuando el conector resuelve un valor real (commit `3504ec1`).
+
+## Deuda aceptada (revisión final de rama)
+
+- **Auditoría por-CI no transaccional**: cada `cI.create`/`update`/`retire` y su `insertAuditRow()` correspondiente en `runVCenterSync()` son awaits independientes, no envueltos en `prisma.$transaction` — si el insert de auditoría fallara tras confirmar la mutación, quedaría un CI escrito/retirado sin su fila de auditoría individual (el mismo patrón que motivó la auditoría transaccional de Staff Schedule, issue #172). **Mitigación existente**: coincide con el patrón ya usado por las integraciones hermanas Greenbone/CrowdStrike (tampoco transaccionales) y la corrida completa SIEMPRE deja un resumen `SYNC_VCENTER` auditado — incluso en fallo catastrófico — así que la ejecución nunca queda invisible, solo el detalle por-CI en el caso límite de fallo del propio insert de auditoría. Se deja como deuda documentada, no como bloqueante de este merge; seguimiento recomendado alineado con el mismo esfuerzo de auditoría transaccional que #172 abrió para `index.ts` legacy.
 
 ## Verificación de Task F (file-level, sin contenedores en ejecución)
 

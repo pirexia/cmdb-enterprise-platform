@@ -711,7 +711,15 @@
       "empty": "Nessun tipo di data in questa categoria.",
       "system": "Sistema"
     },
-    "dates_section": "Date del ciclo di vita"
+    "dates_section": "Date del ciclo di vita",
+    "hypervisors": "Hypervisor",
+    "hv": {
+      "new": "Nuovo Hypervisor",
+      "name_placeholder": "Nome (es: Proxmox VE)",
+      "name_required": "Inserisci il nome",
+      "empty": "Nessun hypervisor registrato.",
+      "system_note": "Hypervisor di sistema — non può essere modificato né eliminato"
+    }
   },
   "settings": {
     "title": "Impostazioni",

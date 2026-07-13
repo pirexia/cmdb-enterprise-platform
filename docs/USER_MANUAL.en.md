@@ -992,6 +992,21 @@ The **System Information** panel shows the platform's full technology stack with
 - **No Support** (red): end-of-life date has passed
 - **Community** (grey): maintained by community without a formal EOL policy
 
+### vCenter Card (Virtualization Connector, v3.5.3)
+
+Inside the **Integrations and System** tab, the **vCenter** card lets you automatically sync virtual machines from a VMware vCenter server as **Virtual Server** assets (CIs) in the inventory.
+
+- **Status**: shows whether the connector is configured (environment variables filled in by the system administrator) and whether periodic sync is enabled. If not configured, the card states this clearly and the action buttons are disabled.
+- **Test connection**: verifies that the configured credentials and URL can log in to vCenter, without making any change to the inventory. Shows a success or error result.
+- **Sync now**: manually triggers a full sync — discovers vCenter VMs and creates, updates, or retires the corresponding CIs. Shows a summary (created/updated/retired/errors) when done.
+- **Sync history**: a table of the most recent runs (date, result, counters), including both manually triggered runs and automatically scheduled ones (every 6 hours by default).
+
+Both buttons (**Test connection** and **Sync now**) are available **only to the ADMIN role**; AUDITOR users can view the status and history but cannot trigger actions.
+
+Synced VMs show up in `/inventory` as **Virtual Server** CIs. The sync never changes the governance status (Active/Inactive/Retired) of an existing CI after its initial creation — that field always stays under operator control. If a VM disappears from vCenter, its CI is automatically set to **Retired** status on the next sync.
+
+> **Note:** as of this release, creating or manually editing a **Virtual Server** CI (in `/inventory`, whether it comes from vCenter or is entered by hand) requires selecting a **Hypervisor** from a new dropdown in the form — e.g. "VMware vSphere / vCenter" for VMs synced from or manually tracked as vCenter-managed. This field is mandatory and is what lets the platform reliably tell apart which CIs belong to which virtualization connector.
+
 ### Tab: Appearance (ADMIN only)
 
 The **Appearance** tab lets you customise the platform's look and feel without restarting the application.

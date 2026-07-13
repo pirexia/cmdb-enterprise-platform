@@ -474,6 +474,17 @@ check_new_env_vars() {
     "LDAP_SEARCH_BASE"
     "LDAP_SYNC_GROUP_DN"
     "LDAP_SYNC_DOMAIN"
+    # v3.5.3 — vCenter connector (optional)
+    "VCENTER_URL"
+    "VCENTER_USER"
+    "VCENTER_PASSWORD"
+    "VCENTER_SSL_VERIFY"
+    "VCENTER_CA_CERT"
+    "VCENTER_SYNC_ENABLED"
+    "VCENTER_CI_TYPE"
+    "VCENTER_DEFAULT_ENVIRONMENT"
+    "VCENTER_DEFAULT_CRITICALITY"
+    "VCENTER_SYNC_CRON"
   )
 
   local missing=()
@@ -523,6 +534,17 @@ check_new_env_vars() {
           echo "LDAP_SEARCH_BASE=${_base}" ;;
         LDAP_SYNC_GROUP_DN) echo "LDAP_SYNC_GROUP_DN=" ;;
         LDAP_SYNC_DOMAIN)   echo "LDAP_SYNC_DOMAIN=" ;;
+        # v3.5.3 — vCenter connector (optional)
+        VCENTER_URL)                 echo "VCENTER_URL=" ;;
+        VCENTER_USER)                echo "VCENTER_USER=" ;;
+        VCENTER_PASSWORD)            echo "VCENTER_PASSWORD=" ;;
+        VCENTER_SSL_VERIFY)          echo "VCENTER_SSL_VERIFY=false" ;;
+        VCENTER_CA_CERT)             echo "VCENTER_CA_CERT=" ;;
+        VCENTER_SYNC_ENABLED)        echo "VCENTER_SYNC_ENABLED=false" ;;
+        VCENTER_CI_TYPE)             echo "VCENTER_CI_TYPE=VIRTUAL_SERVER" ;;
+        VCENTER_DEFAULT_ENVIRONMENT) echo "VCENTER_DEFAULT_ENVIRONMENT=PRODUCTION" ;;
+        VCENTER_DEFAULT_CRITICALITY) echo "VCENTER_DEFAULT_CRITICALITY=MEDIUM" ;;
+        VCENTER_SYNC_CRON)           echo "VCENTER_SYNC_CRON=0 */6 * * *" ;;
       esac
     done
   } >> "${env_file}"

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import AlertsSettings from "@/components/AlertsSettings";
 import N8nResyncCard from "@/components/admin/N8nResyncCard";
+import VCenterCard from "./components/VCenterCard";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -727,6 +728,9 @@ export default function SettingsPage() {
                 </div>
               )}
             </div>
+
+            {/* vCenter connector */}
+            <VCenterCard />
           </div>
         )}
 

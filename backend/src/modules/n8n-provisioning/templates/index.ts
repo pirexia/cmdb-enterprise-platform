@@ -10,6 +10,7 @@ import ldap           from './ldap-ad-sync.js';
 import mantenimiento  from './mantenimiento-cmdb.js';
 import notificaciones from './notificaciones-cmdb.js';
 import rag            from './rag-indexing.js';
+import vcenterSync    from './vcenter-sync.js';
 
 export interface WorkflowTemplate {
   name: string;
@@ -19,5 +20,5 @@ export interface WorkflowTemplate {
 }
 
 export const TEMPLATES: WorkflowTemplate[] = [
-  alertas, backup, bulk, ldap, mantenimiento, notificaciones, rag,
+  alertas, backup, bulk, ldap, mantenimiento, notificaciones, rag, vcenterSync,
 ] as unknown as WorkflowTemplate[];

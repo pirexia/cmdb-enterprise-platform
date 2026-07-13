@@ -513,6 +513,91 @@ export function createMastersRouter(prisma: PrismaClient, rag?: RagOps): Router 
     }
   });
 
+  // ── Hypervisors CRUD ──────────────────────────────────────────────────────────
+
+  router.get('/hypervisors', authenticateToken, async (_req, res) => {
+    try {
+      const rows = await prisma.hypervisor.findMany({
+        orderBy: { name: 'asc' },
+        select: { id: true, code: true, name: true, isSystem: true },
+      });
+      res.json(rows);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  });
+
+  router.post('/hypervisors', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+    const { code, name } = req.body as { code?: string; name?: string };
+    if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+    try {
+      let finalCode: string;
+      if (code?.trim()) {
+        finalCode = code.trim().toUpperCase();
+      } else {
+        const baseCode = name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+        const existing = await prisma.hypervisor.findMany({
+          where: { code: { startsWith: baseCode } },
+          select: { code: true },
+        });
+        const existingCodes = new Set(existing.map(r => r.code));
+        finalCode = baseCode;
+        let suffix = 1;
+        while (existingCodes.has(finalCode)) { finalCode = `${baseCode}_${suffix++}`; }
+      }
+      const row = await prisma.hypervisor.create({
+        data: { code: finalCode, name: name.trim(), isSystem: false },
+        select: { id: true, code: true, name: true, isSystem: true },
+      });
+      await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CREATE_MASTER','Hypervisor',${row.id}::uuid,${req.user!.email},now())`;
+      res.status(201).json(row);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('unique') || msg.includes('Unique')) { res.status(409).json({ error: 'El código ya existe' }); return; }
+      console.error(e);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  router.patch('/hypervisors/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+    const { name } = req.body as { name?: string };
+    if (!name?.trim()) { res.status(400).json({ error: 'name is required' }); return; }
+    const id = String(req.params.id);
+    try {
+      const existing = await prisma.hypervisor.findUnique({ where: { id }, select: { isSystem: true } });
+      if (!existing) { res.status(404).json({ error: 'Hipervisor no encontrado' }); return; }
+      if (existing.isSystem) {
+        res.status(409).json({ error: 'No se puede modificar un hipervisor gestionado por el sistema' });
+        return;
+      }
+      const row = await prisma.hypervisor.update({
+        where: { id },
+        data: { name: name.trim() },
+        select: { id: true, code: true, name: true, isSystem: true },
+      });
+      await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'UPDATE_MASTER','Hypervisor',${row.id}::uuid,${req.user!.email},now())`;
+      res.json(row);
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  });
+
+  router.delete('/hypervisors/:id', authenticateToken, requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    try {
+      const existing = await prisma.hypervisor.findUnique({ where: { id }, select: { isSystem: true } });
+      if (!existing) { res.status(404).json({ error: 'Hipervisor no encontrado' }); return; }
+      if (existing.isSystem) {
+        res.status(409).json({ error: 'No se puede eliminar un hipervisor gestionado por el sistema' });
+        return;
+      }
+      const ciCount = await prisma.cI.count({ where: { hypervisorId: id } });
+      if (ciCount > 0) {
+        res.status(409).json({ error: `No se puede eliminar: ${ciCount} CI${ciCount > 1 ? 's' : ''} tienen este hipervisor asignado` });
+        return;
+      }
+      await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'DELETE_MASTER','Hypervisor',${id}::uuid,${req.user!.email},now())`;
+      await prisma.hypervisor.delete({ where: { id } });
+      res.json({ ok: true });
+    } catch (e) { console.error(e); res.status(500).json({ error: 'Internal server error' }); }
+  });
+
   // ── Document Types ────────────────────────────────────────────────────────────
 
   router.get('/document-types', authenticateToken, async (_req, res) => {

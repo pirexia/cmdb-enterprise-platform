@@ -29,6 +29,7 @@ function shouldActivate(policy: ActivateWhen, cfg: N8nProvisioningConfig): boole
   if (policy === 'always') return true;
   if (policy === 'smtp')   return cfg.smtp !== null;
   if (policy === 'ldap')   return cfg.ldap?.useLdap === true;
+  if (policy === 'vcenter') return cfg.vcenter?.enabled === true;
   return false;
 }
 

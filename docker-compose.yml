@@ -128,6 +128,17 @@ services:
       # ── n8n Provisioning ──────────────────────────────────────────────────────
       N8N_API_KEY:       ${N8N_API_KEY:-}
       N8N_INTERNAL_URL:  ${N8N_INTERNAL_URL:-http://n8n-main:5678}
+      # ── vCenter Connector (v3.5.3, optional — VCENTER_SYNC_ENABLED=false disables) ──────
+      VCENTER_URL:                 ${VCENTER_URL:-}
+      VCENTER_USER:                ${VCENTER_USER:-}
+      VCENTER_PASSWORD:            ${VCENTER_PASSWORD:-}
+      VCENTER_SSL_VERIFY:          ${VCENTER_SSL_VERIFY:-false}
+      VCENTER_CA_CERT:             ${VCENTER_CA_CERT:-}
+      VCENTER_SYNC_ENABLED:        ${VCENTER_SYNC_ENABLED:-false}
+      VCENTER_CI_TYPE:             ${VCENTER_CI_TYPE:-VIRTUAL_SERVER}
+      VCENTER_DEFAULT_ENVIRONMENT: ${VCENTER_DEFAULT_ENVIRONMENT:-PRODUCTION}
+      VCENTER_DEFAULT_CRITICALITY: ${VCENTER_DEFAULT_CRITICALITY:-MEDIUM}
+      VCENTER_SYNC_CRON:           ${VCENTER_SYNC_CRON:-0 */6 * * *}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - ./certs:/app/certs:Z

@@ -8,6 +8,7 @@ import { createInternalBulkRouter }  from './bulk.js';
 import { createInternalUsersRouter }  from './users.js';
 import { createInternalBackupRouter }  from './backup.js';
 import { createInternalNotifyRouter }  from './notify.js';
+import { createInternalVCenterRouter } from './vcenter.js';
 
 /**
  * Router para /api/internal/*
@@ -23,7 +24,11 @@ import { createInternalNotifyRouter }  from './notify.js';
  * Los endpoints de dominio (alerts, rag, users, notify, backup) se añaden
  * en Tareas 3-8 como sub-routers montados aquí.
  */
-export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunctions): Router {
+export function createInternalRouter(
+  prisma: PrismaClient,
+  ragFns?: RagQueueFunctions,
+  queueForIndexing?: (entityType: string, entityId: string) => void | Promise<void>,
+): Router {
   const router = Router();
 
   // ── GET /api/internal/health — sin auth, para healthchecks internos ──────────
@@ -104,6 +109,11 @@ export function createInternalRouter(prisma: PrismaClient, ragFns?: RagQueueFunc
 
   // Configuración de canales Teams/Slack para el workflow n8n "Notificaciones" (T8)
   router.use('/notify', authenticateService, createInternalNotifyRouter(prisma));
+
+  // Sincronización de máquinas virtuales vCenter (Task C, n8n scheduled workflow)
+  if (queueForIndexing) {
+    router.use('/vcenter', authenticateService, createInternalVCenterRouter(prisma, queueForIndexing));
+  }
 
   return router;
 }

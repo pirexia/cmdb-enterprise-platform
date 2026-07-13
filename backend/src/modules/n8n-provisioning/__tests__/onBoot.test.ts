@@ -26,7 +26,7 @@ import type { N8nProvisioningConfig } from '../config.js';
 function makeCfg(over: Partial<N8nProvisioningConfig> = {}): N8nProvisioningConfig {
   return {
     apiBaseUrl: 'http://n8n:5678', apiKey: 'key', serviceToken: 'tok',
-    smtp: null, ldap: null, ...over,
+    smtp: null, ldap: null, vcenter: null, ...over,
   };
 }
 

@@ -27,6 +27,11 @@ export interface N8nProvisioningLdap {
   useLdap: boolean;
 }
 
+export interface N8nProvisioningVCenter {
+  enabled: boolean;
+  cron:    string;
+}
+
 export interface N8nProvisioningConfig {
   /** Base URL interna de la API de n8n (red `cmdb-internal`). */
   apiBaseUrl: string;
@@ -38,6 +43,8 @@ export interface N8nProvisioningConfig {
   smtp: N8nProvisioningSmtp | null;
   /** LDAP para la credencial del nodo LDAP Search; `null` si no aplica. */
   ldap: N8nProvisioningLdap | null;
+  /** Workflow "vCenter Sync"; `null` cuando VCENTER_SYNC_ENABLED !== 'true'. */
+  vcenter: N8nProvisioningVCenter | null;
 }
 
 /** Devuelve `undefined` si la variable está ausente o vacía; el valor en otro caso. */
@@ -73,11 +80,17 @@ export function loadN8nProvisioningConfig(): N8nProvisioningConfig {
       }
     : null;
 
+  const vcenterEnabled = process.env.VCENTER_SYNC_ENABLED === 'true';
+  const vcenter: N8nProvisioningVCenter | null = vcenterEnabled
+    ? { enabled: true, cron: process.env.VCENTER_SYNC_CRON ?? '0 */6 * * *' }
+    : null;
+
   return {
     apiBaseUrl:   process.env.N8N_INTERNAL_URL ?? 'http://n8n-main:5678',
     apiKey:       envOrUndef('N8N_API_KEY') ?? null,
     serviceToken: process.env.CMDB_SERVICE_TOKEN ?? '',
     smtp,
     ldap,
+    vcenter,
   };
 }

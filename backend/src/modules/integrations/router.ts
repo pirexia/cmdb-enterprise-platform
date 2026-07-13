@@ -2,9 +2,13 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
 import { requireAdmin }            from '../../shared/middleware/requireAdmin.js';
+import { requireAudit }            from '../../shared/middleware/requireAudit.js';
 import { vulnUuid }                from '../../services/entitySerializer.js';
 import { smtpConfigured }          from '../alerts/smtp-transport.js';
 import { Vulnerability, VulnSeverity, VulnStatus } from './types.js';
+import { loadVCenterConfig, isConfigured, toPublicConfig } from './vcenterConfig.js';
+import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
+import { runVCenterSync, buildVCenterConnector, SyncLockedError } from './vcenterService.js';
 
 export function createIntegrationsRouter(
   prisma: PrismaClient,
@@ -196,6 +200,114 @@ export function createIntegrationsRouter(
       });
     } catch (error) {
       console.error('[POST /api/integrations/crowdstrike] Error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/integrations/vcenter/status
+   * Reports vCenter connector config (secret-free) + last sync info. ADMIN/AUDITOR.
+   */
+  router.get('/vcenter/status', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
+    try {
+      const cfg = loadVCenterConfig();
+      const pub = toPublicConfig(cfg);
+
+      const lastRows = await prisma.$queryRaw<{ details: unknown; created_at: Date }[]>`
+        SELECT details, created_at FROM "audit_logs"
+        WHERE action = 'SYNC_VCENTER' ORDER BY created_at DESC LIMIT 1`;
+
+      res.json({
+        ...pub,
+        lastSyncAt: lastRows[0]?.created_at ?? null,
+        lastSyncResult: lastRows[0]?.details ?? null,
+      });
+    } catch (error) {
+      console.error('[GET /api/integrations/vcenter/status] Error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/integrations/vcenter/test
+   * Verifies vCenter connectivity/credentials without running a full sync. ADMIN only.
+   */
+  router.post('/vcenter/test', authenticateToken, requireAdmin, async (_req: Request, res: Response) => {
+    const cfg = loadVCenterConfig();
+    if (!isConfigured(cfg)) {
+      res.status(400).json({ error: 'VCENTER_NOT_CONFIGURED' });
+      return;
+    }
+
+    const client = new VCenterClient({
+      url: cfg.url,
+      username: cfg.username,
+      password: cfg.password,
+      rejectUnauthorized: cfg.sslVerify,
+      caCertPath: cfg.caCertPath,
+    });
+
+    try {
+      await client.session();
+      await client.logout();
+      res.json({ ok: true, message: 'Connected successfully' });
+    } catch (error) {
+      console.error('[POST /api/integrations/vcenter/test] Error:', error);
+      res.json({ ok: false, message: 'Connection failed' });
+    }
+  });
+
+  /**
+   * POST /api/integrations/vcenter/sync
+   * Runs a manual vCenter sync (discover VMs → create/update/retire CIs). ADMIN only.
+   */
+  router.post('/vcenter/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+    const cfg = loadVCenterConfig();
+    if (!isConfigured(cfg)) {
+      res.status(409).json({ error: 'VCENTER_NOT_CONFIGURED' });
+      return;
+    }
+    if (!cfg.syncEnabled) {
+      res.status(409).json({ error: 'VCENTER_SYNC_DISABLED' });
+      return;
+    }
+
+    try {
+      const result = await runVCenterSync({
+        prisma,
+        connector: buildVCenterConnector(cfg),
+        defaults: {
+          ciTypeCode: cfg.ciTypeCode,
+          environment: cfg.defaultEnvironment,
+          criticality: cfg.defaultCriticality,
+        },
+        queueForIndexing,
+        userEmail: req.user!.email,
+      });
+      res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof SyncLockedError) {
+        res.status(409).json({ error: 'SYNC_IN_PROGRESS' });
+        return;
+      }
+      console.error('[POST /api/integrations/vcenter/sync] Error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/integrations/vcenter/sync-log
+   * Last 20 vCenter sync runs (from audit_logs). ADMIN/AUDITOR.
+   */
+  router.get('/vcenter/sync-log', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
+    try {
+      const rows = await prisma.$queryRaw<{ details: unknown; created_at: Date }[]>`
+        SELECT details, created_at FROM "audit_logs"
+        WHERE action = 'SYNC_VCENTER' ORDER BY created_at DESC LIMIT 20`;
+
+      res.json(rows.map((r) => ({ date: r.created_at, ...(r.details as object) })));
+    } catch (error) {
+      console.error('[GET /api/integrations/vcenter/sync-log] Error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

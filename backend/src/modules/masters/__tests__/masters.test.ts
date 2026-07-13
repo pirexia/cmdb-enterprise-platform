@@ -18,6 +18,13 @@ const mockCITypeUpdate           = jest.fn();
 const mockCITypeDelete           = jest.fn();
 const mockCICount                = jest.fn();
 
+// Hypervisor model
+const mockHypervisorFindMany   = jest.fn();
+const mockHypervisorCreate     = jest.fn();
+const mockHypervisorFindUnique = jest.fn();
+const mockHypervisorUpdate     = jest.fn();
+const mockHypervisorDelete     = jest.fn();
+
 // EOL service
 const mockLookupEolWithFallbacks = jest.fn();
 const mockFetchProductCycles     = jest.fn();
@@ -36,6 +43,13 @@ jest.mock('@prisma/client', () => ({
       delete:     mockCITypeDelete,
     },
     cI: { count: mockCICount },
+    hypervisor: {
+      findMany:   mockHypervisorFindMany,
+      create:     mockHypervisorCreate,
+      findUnique: mockHypervisorFindUnique,
+      update:     mockHypervisorUpdate,
+      delete:     mockHypervisorDelete,
+    },
   })),
 }));
 
@@ -62,6 +76,8 @@ const CITYPE_ID= 'dddddddd-1111-2222-3333-444444444444';
 const METRIC_ID= 'eeeeeeee-1111-2222-3333-444444444444';
 const TYPE_ID  = 'ffffffff-1111-2222-3333-444444444444';
 const USER_ID  = '11111111-2222-3333-4444-555555555555';
+const HYPER_ID = '99999999-1111-2222-3333-444444444444';
+const VMWARE_ID= '88888888-1111-2222-3333-444444444444';
 
 function makeToken(role: 'ADMIN' | 'AUDITOR' | 'VIEWER'): string {
   return jwt.sign(
@@ -409,6 +425,140 @@ describe('DELETE /api/masters/ci-types/:id', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // audit log
+  });
+});
+
+// ── Hypervisors ───────────────────────────────────────────────────────────────
+
+describe('GET /api/masters/hypervisors', () => {
+  it('returns list including seeded VMWARE row', async () => {
+    mockHypervisorFindMany.mockResolvedValue([
+      { id: VMWARE_ID, code: 'VMWARE', name: 'VMware vSphere / vCenter', isSystem: true },
+    ]);
+    const res = await buildApp()
+      .get('/api/masters/hypervisors')
+      .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+    expect(res.status).toBe(200);
+    expect(res.body[0].code).toBe('VMWARE');
+    expect(res.body[0].isSystem).toBe(true);
+  });
+});
+
+describe('POST /api/masters/hypervisors', () => {
+  it('returns 400 when name is missing', async () => {
+    const res = await buildApp()
+      .post('/api/masters/hypervisors')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 403 for VIEWER', async () => {
+    const res = await buildApp()
+      .post('/api/masters/hypervisors')
+      .set('Authorization', `Bearer ${makeToken('VIEWER')}`)
+      .send({ name: 'Proxmox VE' });
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 401 without token', async () => {
+    const res = await buildApp()
+      .post('/api/masters/hypervisors')
+      .send({ name: 'Proxmox VE' });
+    expect(res.status).toBe(401);
+  });
+
+  it('creates a non-system hypervisor with a derived code and inserts audit log', async () => {
+    mockHypervisorFindMany.mockResolvedValue([]);
+    mockHypervisorCreate.mockResolvedValue({ id: HYPER_ID, code: 'PROXMOX_VE', name: 'Proxmox VE', isSystem: false });
+    const res = await buildApp()
+      .post('/api/masters/hypervisors')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ name: 'Proxmox VE' });
+    expect(res.status).toBe(201);
+    expect(res.body.code).toBe('PROXMOX_VE');
+    expect(res.body.isSystem).toBe(false);
+    expect(mockHypervisorCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ isSystem: false }),
+    }));
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PATCH /api/masters/hypervisors/:id', () => {
+  it('updates a non-system hypervisor', async () => {
+    mockHypervisorFindUnique.mockResolvedValue({ isSystem: false });
+    mockHypervisorUpdate.mockResolvedValue({ id: HYPER_ID, code: 'PROXMOX_VE', name: 'Proxmox VE Updated', isSystem: false });
+    const res = await buildApp()
+      .patch(`/api/masters/hypervisors/${HYPER_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ name: 'Proxmox VE Updated' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Proxmox VE Updated');
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 409 when hypervisor is isSystem (VMWARE seed row)', async () => {
+    mockHypervisorFindUnique.mockResolvedValue({ isSystem: true });
+    const res = await buildApp()
+      .patch(`/api/masters/hypervisors/${VMWARE_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ name: 'Hacked name' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/gestionado por el sistema/);
+    expect(mockHypervisorUpdate).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when hypervisor not found', async () => {
+    mockHypervisorFindUnique.mockResolvedValue(null);
+    const res = await buildApp()
+      .patch(`/api/masters/hypervisors/${HYPER_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ name: 'X' });
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/masters/hypervisors/:id', () => {
+  it('deletes a non-system, unused hypervisor', async () => {
+    mockHypervisorFindUnique.mockResolvedValue({ isSystem: false });
+    mockCICount.mockResolvedValue(0);
+    mockHypervisorDelete.mockResolvedValue({ id: HYPER_ID });
+    const res = await buildApp()
+      .delete(`/api/masters/hypervisors/${HYPER_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // audit log
+  });
+
+  it('returns 409 when hypervisor is isSystem (VMWARE seed row)', async () => {
+    mockHypervisorFindUnique.mockResolvedValue({ isSystem: true });
+    const res = await buildApp()
+      .delete(`/api/masters/hypervisors/${VMWARE_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/gestionado por el sistema/);
+    expect(mockHypervisorDelete).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when CIs are assigned to this hypervisor', async () => {
+    mockHypervisorFindUnique.mockResolvedValue({ isSystem: false });
+    mockCICount.mockResolvedValue(4);
+    const res = await buildApp()
+      .delete(`/api/masters/hypervisors/${HYPER_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/4 CIs/);
+    expect(mockHypervisorDelete).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when hypervisor not found', async () => {
+    mockHypervisorFindUnique.mockResolvedValue(null);
+    const res = await buildApp()
+      .delete(`/api/masters/hypervisors/${HYPER_ID}`)
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+    expect(res.status).toBe(404);
   });
 });
 

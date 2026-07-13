@@ -79,7 +79,12 @@ beforeEach(() => {
   mockLicenseFindMany.mockResolvedValue([]);
   mockCITypeFindMany.mockResolvedValue([]);
   mockDateTypeFindMany.mockResolvedValue([]);
-  mockQueryRaw.mockResolvedValue([]);
+  // authenticateToken's active-user check runs prisma.$queryRaw directly (not
+  // prisma.user.findUnique) — an empty result here reads as "deactivated" and the
+  // middleware 403s every request before it ever reaches the timeline router.
+  // This mock is timeline-router-agnostic (the router itself never calls $queryRaw),
+  // so a blanket "active" default is safe for every test in this file.
+  mockQueryRaw.mockResolvedValue([{ active: true }]);
   mockCIFindUnique.mockResolvedValue(null);
 });
 
@@ -91,11 +96,14 @@ describe('GET /api/timeline/items — auth', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 401 with a bad token', async () => {
+  it('returns 403 with a bad token', async () => {
+    // authenticateToken's 401/403 split is intentional: 401 = no credentials
+    // presented at all, 403 = credentials presented but invalid/expired
+    // (jwt.verify failure) — see shared/middleware/authenticate.ts.
     const res = await supertest(buildApp())
       .get('/api/timeline/items')
       .set('Authorization', 'Bearer bad.token.here');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it('allows VIEWER role', async () => {

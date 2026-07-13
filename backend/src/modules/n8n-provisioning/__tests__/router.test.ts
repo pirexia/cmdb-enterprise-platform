@@ -24,13 +24,26 @@ function makeApp(role: 'ADMIN' | 'AUDITOR' | null) {
   const app    = express();
   app.use(express.json());
 
-  // Inyecta usuario simulado (sin JWT real)
-  if (role) {
-    app.use((req: any, _res: any, next: any) => {
-      req.user = { email: 'test@test.com', role, id: 'uid-1' };
-      next();
-    });
-  }
+  // Inyecta usuario simulado (sin JWT real) e imita la cadena real de
+  // authenticateToken + requireAdmin que index.ts aplica en el mount
+  // (el router en sí no hace RBAC — ver router.ts). Sin esto, un role=null
+  // hace explotar req.user.email dentro del handler (500 en vez de 401) y
+  // un AUDITOR pasa sin bloqueo (200 en vez de 403).
+  app.use((req: any, res: any, next: any) => {
+    if (!role) {
+      res.status(401).json({ error: 'Authentication required. Please login.' });
+      return;
+    }
+    req.user = { email: 'test@test.com', role, id: 'uid-1' };
+    next();
+  });
+  app.use((req: any, res: any, next: any) => {
+    if (req.user.role !== 'ADMIN') {
+      res.status(403).json({ error: 'Admin role required for this operation.' });
+      return;
+    }
+    next();
+  });
 
   app.use('/api/admin/n8n', createN8nProvisioningRouter(prisma));
   return app;

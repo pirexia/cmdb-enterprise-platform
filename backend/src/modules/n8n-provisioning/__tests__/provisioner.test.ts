@@ -71,6 +71,7 @@ function cfg(over: Partial<N8nProvisioningConfig> = {}): N8nProvisioningConfig {
     serviceToken: 'svc-tok',
     smtp: { host: 'smtp.test', port: 25, secure: false, from: 'alerts@test.com' },
     ldap: null,
+    vcenter: null,
     ...over,
   };
 }

@@ -168,7 +168,16 @@ function requireUuidParam(paramName: string) {
 // ── Multer upload (ZIP only, UUID filename in staging/) ───────────────────────
 
 const pluginStorage = multer.diskStorage({
-  destination: path.join(PLUGIN_STORAGE_PATH, 'staging'),
+  // A function destination (vs. a plain string) makes multer create the dir lazily on
+  // first upload via this callback, instead of multer's own DiskStorage constructor
+  // calling fs.mkdirSync() synchronously at module-import time — which fails hard (and
+  // breaks unrelated test suites that merely import this router) in any environment
+  // where /var/lib/cmdb/plugins isn't pre-created (that only happens via the Docker
+  // image build + volume mount, not via jest running the module directly).
+  destination: (_req, _file, cb) => {
+    const dir = path.join(PLUGIN_STORAGE_PATH, 'staging');
+    fs.mkdir(dir, { recursive: true }, (err) => cb(err, dir));
+  },
   filename: (_req, _file, cb) => cb(null, `${crypto.randomUUID()}.zip`),
 });
 

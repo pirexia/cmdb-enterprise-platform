@@ -559,6 +559,12 @@ The licence module extends the association model with the following relationship
 
 The reference catalogues (metrics and types) are managed through the `/api/masters/license-*` endpoints and are pre-loaded in the seed with 6 metric categories, 25 metrics, 3 type categories, and 14 standard types.
 
+### vCenter Connector (v3.5.3)
+
+Unidirectional vCenter → CMDB sync of virtual machines, orchestrated by a scheduled n8n workflow (default cron every 6h). The backend implements a generic connector pattern under `backend/src/modules/integrations/connectors/` — `BaseConnector` (abstract) → `VCenterConnector` (concrete implementation) → `VCenterClient` (HTTP using Node's built-in `https` module, vCenter session handling, optional self-signed TLS) → `VCenterMapper` (pure, unit-tested mapping from a vCenter VM to a CI payload). The `runVCenterSync()` service (`vcenterService.ts`) creates/updates `VIRTUAL_SERVER` CIs and retires (never deletes) VMs that disappear from vCenter, guarded by an in-process lock, with every run audited in `audit_logs` (`action='SYNC_VCENTER'`) — no new config table, no crypto module: all configuration/credentials come from environment variables, following the pattern already established for LDAP/SMTP/n8n.
+
+Two thin routes invoke the same service: `POST /api/integrations/vcenter/sync` (ADMIN JWT, the "Sync now" button in Settings → Integrations) and `POST /api/internal/vcenter/sync` (M2M `X-CMDB-Service-Token`, triggered by the n8n workflow). The connector is disabled by default (`VCENTER_SYNC_ENABLED=false`) and never overwrites the operator-owned `status` field after creation (D2). Ownership of a CI by the connector is resolved through the new master-data table **`Hypervisor`** (analogous to `CIType`): a CI belongs to vCenter if and only if `CI.hypervisorId` exactly equals the seeded `VMWARE` row's id — a plain "not null" check would stop being safe as soon as a second connector (e.g. OLVM) exists; `CI.powerState` (a scalar column) stores the power state, refreshed on every sync. See `docs/INTEGRATIONS.md` for the full architecture, the environment variable reference, the 5 design decisions (D1–D5), and the manual test guide against a real vCenter.
+
 ---
 
 ## 9. Security

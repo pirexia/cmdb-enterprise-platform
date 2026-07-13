@@ -14,6 +14,7 @@ interface DeviceModel  { id: string; name: string; manufacturer_id: string; manu
 interface CITypeItem   { id: string; code: string; name: string; isSystem: boolean }
 interface CITypeCategory { code: string; name: string; ciTypes: CITypeItem[] }
 interface OsOption     { id: string; name: string; version: string | null }
+interface HypervisorOption { id: string; code: string; name: string; isSystem: boolean }
 
 type Criticality = "LOW" | "MEDIUM" | "HIGH" | "MISSION_CRITICAL";
 type Environment  = "DEVELOPMENT" | "TESTING" | "STAGING" | "PRODUCTION";
@@ -47,6 +48,7 @@ interface FormState {
   cpuModel: string; vCpus: string; ram: string; disk: string;
   adminIp: string; mgmtIp: string; hostName: string; clusterName: string;
   operatingSystemId: string; firmwareVersion: string; dns: string;
+  hypervisorId: string;
   // NIS2 / ISO 22301 / GDPR
   businessImpact: BusinessImpact | ""; recoveryPriority: string; rto: string; rpo: string;
   spofRisk: boolean; containsPii: boolean; dataClassification: DataClassification | "";
@@ -66,6 +68,7 @@ const INITIAL_FORM: FormState = {
   cpuModel: "", vCpus: "", ram: "", disk: "",
   adminIp: "", mgmtIp: "", hostName: "", clusterName: "",
   operatingSystemId: "", firmwareVersion: "", dns: "",
+  hypervisorId: "",
   businessImpact: "", recoveryPriority: "", rto: "", rpo: "",
   spofRisk: false, containsPii: false, dataClassification: "",
 };
@@ -95,6 +98,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
   const [allModels,        setAllModels]        = useState<DeviceModel[]>([]);
   const [ciTypeCategories, setCiTypeCategories] = useState<CITypeCategory[]>([]);
   const [operatingSystems, setOperatingSystems] = useState<OsOption[]>([]);
+  const [hypervisors,      setHypervisors]      = useState<HypervisorOption[]>([]);
   const [submitting,       setSubmitting]       = useState(false);
   const [error,            setError]            = useState<string | null>(null);
 
@@ -110,13 +114,15 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       apiFetch("/api/masters/device-models").then((r) => r.json()).catch(() => []),
       apiFetch("/api/masters/ci-type-categories").then((r) => r.json()).catch(() => []),
       apiFetch("/api/catalog/operating-systems").then((r) => r.json()).catch(() => []),
-    ]).then(([u, b, m, dm, cats, os]) => {
+      apiFetch("/api/masters/hypervisors").then((r) => r.json()).catch(() => []),
+    ]).then(([u, b, m, dm, cats, os, hv]) => {
       setUsers(safe(u) as User[]);
       setBranches(safe(b) as Branch[]);
       setManufacturers(safe(m) as MasterItem[]);
       setAllModels(safe(dm) as DeviceModel[]);
       setCiTypeCategories(safe(cats) as CITypeCategory[]);
       setOperatingSystems(safe(os) as OsOption[]);
+      setHypervisors(safe(hv) as HypervisorOption[]);
     });
   }, []);
 
@@ -131,6 +137,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
   const showInfraSpecs = selectedCategoryCode === "INFRASTRUCTURE" || selectedCategoryCode === "CLOUD";
   const isPhysicalSrv  = selectedTypeInfo?.code === "PHYSICAL_SERVER";
   const isVirtualSrv   = selectedTypeInfo?.code === "VIRTUAL_SERVER" || selectedTypeInfo?.code === "CLOUD_INSTANCE";
+  const requiresHypervisor = selectedTypeInfo?.code === "VIRTUAL_SERVER";
 
   // Filter models by selected manufacturer
   const filteredModels = form.manufacturerId
@@ -174,6 +181,7 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
       operatingSystemId: form.operatingSystemId || undefined,
       firmwareVersion:   form.firmwareVersion   || undefined,
       dns:               form.dns               || undefined,
+      hypervisorId:      form.hypervisorId      || undefined,
     };
 
     // Hardware categories get hardware details
@@ -410,6 +418,19 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
                 <div><Label>{t("add_ci_modal.firmware_label")}</Label><Input placeholder="2.15.1" value={form.firmwareVersion} onChange={(e) => set("firmwareVersion", e.target.value)} /></div>
                 <div><Label>{t("add_ci_modal.dns_label")}</Label><Input placeholder="srv-app-01.example.com" value={form.dns} onChange={(e) => set("dns", e.target.value)} /></div>
               </div>
+              {requiresHypervisor && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>{t("add_ci_modal.hypervisor_label")} *</Label>
+                    <Select required value={form.hypervisorId} onChange={(e) => set("hypervisorId", e.target.value)}>
+                      <option value="">{t("add_ci_modal.no_selection")}</option>
+                      {hypervisors.map((h) => (
+                        <option key={h.id} value={h.id}>{h.name}</option>
+                      ))}
+                    </Select>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

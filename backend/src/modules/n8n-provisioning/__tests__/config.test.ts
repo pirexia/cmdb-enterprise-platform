@@ -8,6 +8,7 @@ const PROV_KEYS = [
   'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'ALERT_FROM_EMAIL',
   'USE_LDAP', 'LDAP_URL', 'LDAP_BASE_DN', 'LDAP_BIND_DN', 'LDAP_BIND_PASSWORD',
   'LDAP_SYNC_GROUP_DN', 'LDAP_SYNC_DOMAIN',
+  'VCENTER_SYNC_ENABLED', 'VCENTER_SYNC_CRON',
 ];
 
 const SAVED: Record<string, string | undefined> = {};
@@ -94,5 +95,25 @@ describe('loadN8nProvisioningConfig', () => {
   it('serviceToken: refleja CMDB_SERVICE_TOKEN', () => {
     process.env.CMDB_SERVICE_TOKEN = 'a'.repeat(32);
     expect(loadN8nProvisioningConfig().serviceToken).toBe('a'.repeat(32));
+  });
+
+  it('vcenter: null cuando VCENTER_SYNC_ENABLED ausente o != "true"', () => {
+    expect(loadN8nProvisioningConfig().vcenter).toBeNull();
+    process.env.VCENTER_SYNC_ENABLED = 'false';
+    expect(loadN8nProvisioningConfig().vcenter).toBeNull();
+  });
+
+  it('vcenter: objeto con cron por defecto cuando VCENTER_SYNC_ENABLED=true y sin VCENTER_SYNC_CRON', () => {
+    process.env.VCENTER_SYNC_ENABLED = 'true';
+    const vcenter = loadN8nProvisioningConfig().vcenter!;
+    expect(vcenter.enabled).toBe(true);
+    expect(vcenter.cron).toBe('0 */6 * * *');
+  });
+
+  it('vcenter: respeta VCENTER_SYNC_CRON cuando está definido', () => {
+    process.env.VCENTER_SYNC_ENABLED = 'true';
+    process.env.VCENTER_SYNC_CRON = '0 2 * * *';
+    const vcenter = loadN8nProvisioningConfig().vcenter!;
+    expect(vcenter.cron).toBe('0 2 * * *');
   });
 });

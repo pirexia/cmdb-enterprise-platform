@@ -7,7 +7,7 @@ import type { N8nProvisioningConfig } from '../config.js';
 function cfg(over: Partial<N8nProvisioningConfig>): N8nProvisioningConfig {
   return {
     apiBaseUrl: 'http://n8n-main:5678', apiKey: 'k', serviceToken: 'service-token-123',
-    smtp: null, ldap: null, ...over,
+    smtp: null, ldap: null, vcenter: null, ...over,
   };
 }
 

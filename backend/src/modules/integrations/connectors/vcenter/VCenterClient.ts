@@ -24,21 +24,17 @@ export interface VCenterVmSummary {
   power_state: string;
   cpu_count?: number;
   memory_size_MiB?: number;
-  // MoRef of the ESXi host running this VM (e.g. "host-21"), per the vSphere
-  // Automation API's documented VM.Summary schema. NOT independently verified
-  // against a live vCenter in this session — optional, and every consumer of
-  // this field must degrade gracefully if it's absent or wrong. See
-  // VCenterConnector.discover() for the defensive handling.
-  host?: string;
 }
 
-// Per the vSphere Automation API's documented Host.Info schema, returned by
-// GET /api/vcenter/host/{host}. NOT independently verified against a live
-// vCenter in this session — treat `name` as possibly absent or the whole
-// endpoint as possibly shaped differently; callers must fail safe (see
-// VCenterClient.hostSummary() and VCenterConnector.discover()).
-export interface VCenterHostSummary {
-  name?: string; // ESXi host's display name/hostname, e.g. "esxi01.midominio.local"
+// Item shape of GET /api/vcenter/host — verified against a live vCenter (8.x):
+// [{ host: "host-632034", name: "esx-sy1-01.azkar.com", connection_state, power_state }].
+// The ESXi host that runs a given VM is NOT exposed on the VM summary/detail in this
+// vCenter version, so VM→host is resolved by the reverse mapping: list hosts, then
+// list the VMs on each host (GET /api/vcenter/vm?hosts={host}). See
+// VCenterConnector.buildEsxiHostMap().
+export interface VCenterHostInfo {
+  host: string;  // ESXi host MoRef, e.g. "host-632034"
+  name?: string; // display name / FQDN, e.g. "esx-sy1-01.azkar.com"
 }
 
 export interface VCenterGuestIdentity {
@@ -196,17 +192,26 @@ export class VCenterClient {
     return this.parseJson<VCenterVmDetail>(res) || {};
   }
 
-  async hostSummary(hostId: string): Promise<VCenterHostSummary | null> {
+  /** All ESXi hosts in the vCenter — GET /api/vcenter/host (MoRef → display name). */
+  async listHosts(): Promise<VCenterHostInfo[]> {
+    const res = await this.request({ method: 'GET', path: '/api/vcenter/host' });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw new Error(`vCenter listHosts failed with status ${res.statusCode}`);
+    }
+    return this.parseJson<VCenterHostInfo[]>(res) || [];
+  }
+
+  /** VM MoRefs running on a given ESXi host — GET /api/vcenter/vm?hosts={host}. */
+  async listVmIdsOnHost(hostId: string): Promise<string[]> {
     const res = await this.request({
       method: 'GET',
-      path: `/api/vcenter/host/${encodeURIComponent(hostId)}`,
+      path: `/api/vcenter/vm?hosts=${encodeURIComponent(hostId)}`,
     });
-    // 404 (host removed/renamed since the VM summary was fetched) is a normal case, not an error.
-    if (res.statusCode === 404) return null;
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw new Error(`vCenter hostSummary failed with status ${res.statusCode}`);
+      throw new Error(`vCenter listVmIdsOnHost failed with status ${res.statusCode}`);
     }
-    return this.parseJson<VCenterHostSummary>(res) ?? null;
+    const vms = this.parseJson<VCenterVmSummary[]>(res) || [];
+    return vms.map((v) => v.vm).filter(Boolean);
   }
 
   async logout(): Promise<void> {

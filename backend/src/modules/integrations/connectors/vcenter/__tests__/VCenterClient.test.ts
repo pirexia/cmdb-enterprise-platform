@@ -36,7 +36,7 @@ describe('VCenterClient', () => {
     await expect(client.session()).rejects.toBeDefined();
   });
 
-  it('hostSummary() rejects when the connection fails, mirroring vmDetail/listVMs (caller must handle)', async () => {
+  it('listHosts() rejects when the connection fails, mirroring vmDetail/listVMs (caller must handle)', async () => {
     const client = new VCenterClient({
       url: 'https://127.0.0.1:1',
       username: 'svc-cmdb',
@@ -44,6 +44,17 @@ describe('VCenterClient', () => {
       rejectUnauthorized: false,
     });
 
-    await expect(client.hostSummary('host-21')).rejects.toBeDefined();
+    await expect(client.listHosts()).rejects.toBeDefined();
+  });
+
+  it('listVmIdsOnHost() rejects when the connection fails (caller must handle)', async () => {
+    const client = new VCenterClient({
+      url: 'https://127.0.0.1:1',
+      username: 'svc-cmdb',
+      password: 'super-secret',
+      rejectUnauthorized: false,
+    });
+
+    await expect(client.listVmIdsOnHost('host-21')).rejects.toBeDefined();
   });
 });

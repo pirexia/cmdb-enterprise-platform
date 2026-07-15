@@ -148,8 +148,14 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
             data: {
               vCpus: mapped.physicalFields.vCpus,
               ram: mapped.physicalFields.ram,
-              adminIp: mapped.physicalFields.adminIp,
-              hostName: mapped.physicalFields.hostName,
+              // adminIp / hostName come from vCenter's guest identity, which is null
+              // whenever VMware Tools isn't running (404/503). On UPDATE, only overwrite
+              // them when the connector actually has a value — otherwise a tools-less VM
+              // would wipe the IP/hostname an operator curated manually (or a previous
+              // sync captured). Same guard rationale as clusterName below. (On CREATE they
+              // are written unconditionally — a new record starts empty anyway.)
+              ...(mapped.physicalFields.adminIp ? { adminIp: mapped.physicalFields.adminIp } : {}),
+              ...(mapped.physicalFields.hostName ? { hostName: mapped.physicalFields.hostName } : {}),
               // clusterName is currently always null from the connector (esxiHost/cluster
               // gap — see docs/INTEGRATIONS.md §"Open risks"); only write it when the
               // connector actually resolves a value, so a null here never wipes out

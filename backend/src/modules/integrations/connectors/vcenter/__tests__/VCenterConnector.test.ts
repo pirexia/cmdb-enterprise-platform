@@ -73,6 +73,39 @@ describe('VCenterConnector.discover()', () => {
     expect(result[0].cpuCount).toBeNull();
     expect(result[0].memoryMiB).toBeNull();
   });
+
+  it('does NOT abort the whole run when one VM guest-identity/detail call rejects — that VM degrades to summary-only, the rest are still discovered', async () => {
+    // Regression for the live 500: a single VM returning 503 on guest/identity was
+    // rejecting Promise.all and aborting discover() entirely. Now each per-VM call
+    // degrades independently and the batch completes.
+    const vmGuestIdentity = jest.fn()
+      .mockRejectedValueOnce(new Error('vCenter vmGuestIdentity failed with status 503')) // vm-1
+      .mockResolvedValueOnce({ ip_address: '10.0.0.2', host_name: 'good.local', family: 'LINUX' }); // vm-2
+    const fakeClient = {
+      session: jest.fn().mockResolvedValue(undefined),
+      listVMs: jest.fn().mockResolvedValue([
+        baseSummary({ vm: 'vm-1', name: 'tools-less-vm' }),
+        baseSummary({ vm: 'vm-2', name: 'healthy-vm' }),
+      ]),
+      vmGuestIdentity,
+      vmDetail: jest.fn().mockResolvedValue({ hardware: { cpu: { count: 4 }, memory: { size_MiB: 8192 } } }),
+      logout: jest.fn().mockResolvedValue(undefined),
+    } as unknown as VCenterClient;
+
+    const connector = new VCenterConnector(fakeClient, defaults);
+    const result = await connector.discover();
+
+    expect(result).toHaveLength(2);
+    // vm-1: guest identity failed → degraded to null ip/hostname, but still discovered
+    expect(result[0].moref).toBe('vm-1');
+    expect(result[0].ipAddress).toBeNull();
+    expect(result[0].hostName).toBeNull();
+    expect(result[0].cpuCount).toBe(4); // detail still succeeded for vm-1
+    // vm-2: fully enriched, unaffected by vm-1's failure
+    expect(result[1].moref).toBe('vm-2');
+    expect(result[1].ipAddress).toBe('10.0.0.2');
+    expect(result[1].hostName).toBe('good.local');
+  });
 });
 
 // ── Task H2 — best-effort ESXi host resolution ───────────────────────────────

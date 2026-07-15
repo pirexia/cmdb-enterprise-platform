@@ -4,7 +4,7 @@
 
 import { BaseConnector } from '../base/BaseConnector.js';
 import type { DiscoveredVM, PowerState, SyncDefaults } from '../types.js';
-import type { VCenterClient } from './VCenterClient.js';
+import type { VCenterClient, VCenterGuestIdentity, VCenterVmDetail } from './VCenterClient.js';
 
 function normalizePowerState(raw: string): PowerState {
   if (raw === 'POWERED_ON' || raw === 'POWERED_OFF' || raw === 'SUSPENDED') {
@@ -36,10 +36,24 @@ export class VCenterConnector extends BaseConnector {
     const results: DiscoveredVM[] = [];
 
     for (const summary of summaries) {
-      const [identity, detail] = await Promise.all([
-        this.client.vmGuestIdentity(summary.vm),
-        this.client.vmDetail(summary.vm),
-      ]);
+      // Per-VM enrichment (guest identity + hardware detail) is best-effort: a single
+      // VM's failure must NEVER abort discovery of the rest of the list. Each call
+      // degrades independently to a safe default (null identity / empty detail) so we
+      // still sync that VM from its summary fields. vmGuestIdentity already treats the
+      // common tools-not-running 404/503 as a silent null; this catch covers any other
+      // unexpected per-VM failure (transient 5xx on detail, network blip, etc.).
+      const identity: VCenterGuestIdentity | null = await this.client
+        .vmGuestIdentity(summary.vm)
+        .catch((e) => {
+          console.warn(`[VCenterConnector] guest identity fetch failed for VM moref=${summary.vm}; continuing with summary-only fields:`, e);
+          return null;
+        });
+      const detail: VCenterVmDetail = await this.client
+        .vmDetail(summary.vm)
+        .catch((e) => {
+          console.warn(`[VCenterConnector] vm detail fetch failed for VM moref=${summary.vm}; continuing with summary-only fields:`, e);
+          return {} as VCenterVmDetail;
+        });
 
       // Best-effort ESXi host resolution. `summary.host` (a MoRef) and the shape of
       // GET /api/vcenter/host/{host} (Host.Info's `name` field) come from general

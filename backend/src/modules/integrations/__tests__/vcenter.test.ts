@@ -288,6 +288,36 @@ describe('runVCenterSync — update', () => {
     });
     expect(updateArgs.data).toHaveProperty('powerState', 'POWERED_OFF');
   });
+
+  it('does NOT wipe adminIp/hostName on update when the VM has no guest info (VMware Tools off → null) — preserves manually-curated values', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'ci-existing-1' }),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'ci-existing-1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    // A tools-less VM: guest identity unavailable → mapper produces null adminIp/hostName.
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ ipAddress: null, hostName: null })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.updated).toBe(1);
+    const updateArgs = fakePrisma.cI.update.mock.calls[0][0];
+    // Guard: null guest-identity fields are OMITTED from the update payload so Prisma
+    // never overwrites an existing IP/hostname with null.
+    expect(updateArgs.data).not.toHaveProperty('adminIp');
+    expect(updateArgs.data).not.toHaveProperty('hostName');
+    // Reliable summary-derived facts are still refreshed.
+    expect(updateArgs.data).toHaveProperty('vCpus', 4);
+    expect(updateArgs.data).toHaveProperty('powerState');
+  });
 });
 
 describe('runVCenterSync — H1 adoption of pre-existing manually-entered CIs', () => {

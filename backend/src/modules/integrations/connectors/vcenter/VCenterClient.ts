@@ -169,8 +169,13 @@ export class VCenterClient {
       path: `/api/vcenter/vm/${encodeURIComponent(vmId)}/guest/identity`,
     });
 
-    // 404 is a normal case: VM without VMware Tools running. Not an error.
-    if (res.statusCode === 404) return null;
+    // 404 and 503 are both normal "no guest info for this VM" cases, not errors:
+    // vSphere returns 404 (no guest identity) or 503 (ServiceUnavailable — VMware
+    // Tools not running / guest not ready yet) for a VM whose guest can't be read.
+    // Guest identity (ip/hostname/family) is optional enrichment; degrade to null
+    // for this VM rather than failing — a single tools-less VM must never abort the
+    // whole sync.
+    if (res.statusCode === 404 || res.statusCode === 503) return null;
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw new Error(`vCenter vmGuestIdentity failed with status ${res.statusCode}`);
     }

@@ -22,6 +22,7 @@ jest.mock('@prisma/client', () => ({
 
 import { provisionOnBoot } from '../onBoot.js';
 import type { N8nProvisioningConfig } from '../config.js';
+import { N8nApiError } from '../errors.js';
 
 function makeCfg(over: Partial<N8nProvisioningConfig> = {}): N8nProvisioningConfig {
   return {
@@ -82,6 +83,22 @@ describe('provisionOnBoot', () => {
     mockListWorkflows.mockRejectedValue(new Error('always fail'));
     provisionOnBoot(/* retryDelayMs= */ 5, /* maxRetries= */ 3);
     await drainAsync(200);
+    expect(mockListWorkflows).toHaveBeenCalledTimes(3);
+    expect(mockProvisionAll).not.toHaveBeenCalled();
+  });
+
+  it('aborta de inmediato (sin reintentar) si n8n devuelve 401', async () => {
+    mockListWorkflows.mockRejectedValue(new N8nApiError(401, 'GET', '/api/v1/workflows'));
+    provisionOnBoot(/* retryDelayMs= */ 5, /* maxRetries= */ 10);
+    await drainAsync(100);
+    expect(mockListWorkflows).toHaveBeenCalledTimes(1); // no reintenta
+    expect(mockProvisionAll).not.toHaveBeenCalled();
+  });
+
+  it('reintenta ante errores no-auth (ej. 503) hasta agotar', async () => {
+    mockListWorkflows.mockRejectedValue(new N8nApiError(503, 'GET', '/api/v1/workflows'));
+    provisionOnBoot(/* retryDelayMs= */ 5, /* maxRetries= */ 3);
+    await drainAsync(100);
     expect(mockListWorkflows).toHaveBeenCalledTimes(3);
     expect(mockProvisionAll).not.toHaveBeenCalled();
   });

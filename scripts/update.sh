@@ -642,9 +642,12 @@ ensure_n8n_api_key() {
   local current_key; current_key="$(grep -E '^N8N_API_KEY=' "${env_file}" | cut -d= -f2-)"
   if [ -n "${current_key}" ]; then
     # Validar que la key presente sigue siendo aceptada por n8n (cierra #178).
+    # timeout=5s + tries=2 (~10s peor caso): evita que un arranque en frío de
+    # n8n (ver #179 — ventana de 60-120s) se malinterprete como key inválida
+    # y dispare un re-mint innecesario de una key que en realidad es válida.
     local _code
     _code="$(podman exec cmdb-backend-prod sh -c \
-      "wget -qS -O /dev/null --header='X-N8N-API-KEY: ${current_key}' \
+      "wget -qS -O /dev/null --timeout=5 --tries=2 --header='X-N8N-API-KEY: ${current_key}' \
        http://n8n-main:5678/api/v1/workflows?limit=1 2>&1 | awk '/HTTP\\//{print \$2; exit}'" 2>/dev/null || echo '')"
     if [ "${_code}" = "200" ]; then
       success "N8N_API_KEY válida — aprovisionamiento automático activo."

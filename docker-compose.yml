@@ -280,6 +280,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5678/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   # ── n8n Worker 1 ─────────────────────────────────────────────────────────────
   n8n-worker-1:

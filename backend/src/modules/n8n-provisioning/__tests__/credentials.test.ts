@@ -54,7 +54,7 @@ describe('buildLdapCredential', () => {
     expect(buildLdapCredential(cfg({ ldap: { useLdap: false, url: 'ldap://x:389' } }))).toBeNull();
   });
 
-  it('ldap:// → connectionSecurity none, port 389, baseDn/bindDN mapeados', () => {
+  it('ldap:// → connectionSecurity none, port "389" (string), sin baseDn', () => {
     const c = buildLdapCredential(cfg({ ldap: {
       useLdap: true, url: 'ldap://dc.example.com:389', baseDN: 'DC=example,DC=com',
       bindDN: 'CN=svc,DC=example,DC=com', bindPassword: 'secret',
@@ -62,18 +62,18 @@ describe('buildLdapCredential', () => {
     expect(c.name).toBe(CRED_NAMES.ldap);
     expect(c.type).toBe('ldap');
     expect(c.data.hostname).toBe('dc.example.com');
-    expect(c.data.port).toBe(389);
+    expect(c.data.port).toBe('389');                 // n8n ldap schema: port is a string
     expect(c.data.connectionSecurity).toBe('none');
-    expect(c.data.baseDn).toBe('DC=example,DC=com');
+    expect(c.data).not.toHaveProperty('baseDn');     // schema: additionalProperties:false
     expect(c.data.bindDN).toBe('CN=svc,DC=example,DC=com');
     expect(c.data.bindPassword).toBe('secret');
   });
 
-  it('ldaps:// → connectionSecurity tls, port 636', () => {
+  it('ldaps:// → connectionSecurity tls, port "636" (string)', () => {
     const c = buildLdapCredential(cfg({ ldap: {
       useLdap: true, url: 'ldaps://dc.example.com:636', baseDN: 'DC=example,DC=com',
     } }))!;
     expect(c.data.connectionSecurity).toBe('tls');
-    expect(c.data.port).toBe(636);
+    expect(c.data.port).toBe('636');
   });
 });

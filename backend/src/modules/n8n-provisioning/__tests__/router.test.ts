@@ -5,6 +5,7 @@
  */
 import express from 'express';
 import request from 'supertest';
+import { N8nApiError } from '../errors.js';
 
 const mockProvisionAll  = jest.fn();
 const mockLoadConfig    = jest.fn();
@@ -102,5 +103,15 @@ describe('POST /api/admin/n8n/resync', () => {
     const res = await request(makeApp('ADMIN')).post('/api/admin/n8n/resync');
     expect(res.status).toBe(200);
     expect(res.body.report.errors).toEqual(['cred fail']);
+  });
+
+  it('devuelve 502 accionable si provisionAll falla por 401', async () => {
+    // Arrange: provisionAll rechaza con credencial inválida.
+    mockProvisionAll.mockRejectedValue(new N8nApiError(401, 'GET', '/api/v1/workflows'));
+
+    const res = await request(makeApp('ADMIN')).post('/api/admin/n8n/resync');
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toMatch(/API key|credencial/i);
   });
 });

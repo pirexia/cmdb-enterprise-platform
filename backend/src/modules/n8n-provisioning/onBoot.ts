@@ -9,13 +9,14 @@ import { PrismaClient } from '@prisma/client';
 import { loadN8nProvisioningConfig } from './config.js';
 import { makeN8nApiClient } from './apiClient.js';
 import { provisionAll } from './provisioner.js';
+import { N8nApiError } from './errors.js';
 
 const LOG_PREFIX = '[n8n-provisioning]';
 
 /** Espera `ms` milisegundos (usable como mock en tests). */
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-export function provisionOnBoot(retryDelayMs = 6000, maxRetries = 10): void {
+export function provisionOnBoot(retryDelayMs = 8000, maxRetries = 15): void {
   void (async () => {
     try {
       const cfg = loadN8nProvisioningConfig();
@@ -33,11 +34,21 @@ export function provisionOnBoot(retryDelayMs = 6000, maxRetries = 10): void {
         try {
           await client.listWorkflows();
           break; // n8n listo
-        } catch {
+        } catch (err) {
+          // #178 — credencial inválida: no reintentar, fallar rápido y avisar.
+          if (err instanceof N8nApiError && err.isAuthError) {
+            console.error(
+              `${LOG_PREFIX} n8n rechazó la API key (HTTP ${err.status}). ` +
+              `N8N_API_KEY desincronizada: regenerar la clave y reiniciar el backend. ` +
+              `Aprovisionamiento cancelado.`
+            );
+            return;
+          }
           attempt++;
           if (attempt >= maxRetries) {
+            const windowSecs = Math.round((maxRetries * retryDelayMs) / 1000);
             console.error(
-              `${LOG_PREFIX} n8n no disponible tras ${maxRetries} intentos; aprovisionamiento cancelado.`
+              `${LOG_PREFIX} n8n no disponible tras ${maxRetries} intentos (~${windowSecs}s); aprovisionamiento cancelado.`
             );
             return;
           }

@@ -641,8 +641,17 @@ ensure_n8n_api_key() {
   # Solo actuar si la var existe pero está vacía
   local current_key; current_key="$(grep -E '^N8N_API_KEY=' "${env_file}" | cut -d= -f2-)"
   if [ -n "${current_key}" ]; then
-    success "N8N_API_KEY ya configurada — aprovisionamiento automático activo."
-    return 0
+    # Validar que la key presente sigue siendo aceptada por n8n (cierra #178).
+    local _code
+    _code="$(podman exec cmdb-backend-prod sh -c \
+      "wget -qS -O /dev/null --header='X-N8N-API-KEY: ${current_key}' \
+       http://n8n-main:5678/api/v1/workflows?limit=1 2>&1 | awk '/HTTP\\//{print \$2; exit}'" 2>/dev/null || echo '')"
+    if [ "${_code}" = "200" ]; then
+      success "N8N_API_KEY válida — aprovisionamiento automático activo."
+      return 0
+    fi
+    warn "N8N_API_KEY presente pero rechazada por n8n (HTTP ${_code:-sin-respuesta}); re-generando."
+    # cae al bloque de bootstrap de abajo para re-mint + sed
   fi
 
   # La var no está en .env aún (instalación muy antigua) o está vacía

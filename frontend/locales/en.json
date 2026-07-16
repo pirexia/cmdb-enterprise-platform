@@ -756,7 +756,15 @@
       "empty": "No date types in this category.",
       "system": "System"
     },
-    "dates_section": "Lifecycle Dates"
+    "dates_section": "Lifecycle Dates",
+    "hypervisors": "Hypervisors",
+    "hv": {
+      "new": "New Hypervisor",
+      "name_placeholder": "Name (e.g.: Proxmox VE)",
+      "name_required": "Enter the name",
+      "empty": "No hypervisors registered.",
+      "system_note": "System hypervisor — cannot be edited or deleted"
+    }
   },
   "settings": {
     "title": "Settings",

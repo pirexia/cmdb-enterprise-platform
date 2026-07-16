@@ -175,6 +175,8 @@ function makeFakePrisma(overrides: Record<string, any> = {}) {
     },
     cIRelation: {
       upsert: jest.fn().mockResolvedValue({}),
+      findMany: jest.fn().mockResolvedValue([]), // default: no stale HOSTS relations
+      delete: jest.fn().mockResolvedValue({}),
     },
     $executeRaw: jest.fn().mockResolvedValue(1),
     ...overrides,
@@ -287,6 +289,36 @@ describe('runVCenterSync — update', () => {
       clusterName: 'cluster-a',
     });
     expect(updateArgs.data).toHaveProperty('powerState', 'POWERED_OFF');
+  });
+
+  it('does NOT wipe adminIp/hostName on update when the VM has no guest info (VMware Tools off → null) — preserves manually-curated values', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'ci-existing-1' }),
+        create: jest.fn(),
+        update: jest.fn().mockResolvedValue({ id: 'ci-existing-1' }),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    // A tools-less VM: guest identity unavailable → mapper produces null adminIp/hostName.
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ ipAddress: null, hostName: null })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.updated).toBe(1);
+    const updateArgs = fakePrisma.cI.update.mock.calls[0][0];
+    // Guard: null guest-identity fields are OMITTED from the update payload so Prisma
+    // never overwrites an existing IP/hostname with null.
+    expect(updateArgs.data).not.toHaveProperty('adminIp');
+    expect(updateArgs.data).not.toHaveProperty('hostName');
+    // Reliable summary-derived facts are still refreshed.
+    expect(updateArgs.data).toHaveProperty('vCpus', 4);
+    expect(updateArgs.data).toHaveProperty('powerState');
   });
 });
 
@@ -764,6 +796,117 @@ describe('runVCenterSync — HOSTS relation (Task H2)', () => {
         relationType: 'HOSTS',
       },
     });
+  });
+
+  it('DRS move — a stale HOSTS relation to a DIFFERENT physical host is deleted + audited, new one upserted', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-vm-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])                        // H1 adoption-candidates (none)
+          .mockResolvedValueOnce([{ id: 'ci-new-host' }])   // H2 current-host lookup (new ESXi)
+          .mockResolvedValueOnce([]),                       // G4 retire query
+      },
+      cIRelation: {
+        upsert: jest.fn().mockResolvedValue({}),
+        // one stale HOSTS relation pointing at the OLD host
+        findMany: jest.fn().mockResolvedValue([{ id: 'rel-stale-1', sourceCiId: 'ci-old-host' }]),
+        delete: jest.fn().mockResolvedValue({}),
+      },
+    });
+
+    const queue = jest.fn();
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi-new.local' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: queue,
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.errors).toBe(0);
+
+    // current-host relation upserted (unchanged behavior)
+    expect(fakePrisma.cIRelation.upsert).toHaveBeenCalledTimes(1);
+
+    // stale-relation lookup is correctly fenced
+    const staleArgs = fakePrisma.cIRelation.findMany.mock.calls[0][0];
+    expect(staleArgs).toMatchObject({
+      where: {
+        targetCiId: 'ci-vm-1',
+        relationType: 'HOSTS',
+        sourceCiId: { not: 'ci-new-host' },
+        sourceCI: { ciTypeDef: { code: 'PHYSICAL_SERVER' } },
+      },
+    });
+
+    // stale relation deleted
+    expect(fakePrisma.cIRelation.delete).toHaveBeenCalledWith({ where: { id: 'rel-stale-1' } });
+
+    // A.8.15 — a DELETE_RELATION audit row was written (the action is a LITERAL only in the
+    // reconciliation raw; insertAuditRow passes action as a bound param, so this uniquely matches)
+    const rawSql = fakePrisma.$executeRaw.mock.calls.map((c: any) => c[0].join(''));
+    expect(rawSql.some((sql: string) => sql.includes('DELETE_RELATION'))).toBe(true);
+
+    // old host's relation list changed → re-indexed
+    expect(queue).toHaveBeenCalledWith('ci', 'ci-old-host');
+  });
+
+  it('esxiHost resolved but no stale relations exist — reconciliation deletes nothing', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-vm-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])                      // adoption
+          .mockResolvedValueOnce([{ id: 'ci-host-1' }])   // current-host lookup
+          .mockResolvedValueOnce([]),                     // retire
+      },
+      // cIRelation.findMany uses the factory default → [] (no stale relations)
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: 'esxi01.local' })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cIRelation.upsert).toHaveBeenCalledTimes(1);
+    expect(fakePrisma.cIRelation.delete).not.toHaveBeenCalled();
+  });
+
+  it('esxiHost === null — reconciliation is not reached (no stale-relation lookup, no delete)', async () => {
+    const fakePrisma = makeFakePrisma({
+      cI: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'ci-vm-1' }),
+        update: jest.fn(),
+        findMany: jest
+          .fn()
+          .mockResolvedValueOnce([])  // adoption
+          .mockResolvedValueOnce([]), // retire (host lookup is skipped when esxiHost null)
+      },
+    });
+
+    const result = await runVCenterSync({
+      prisma: fakePrisma,
+      connector: makeFakeConnector([vm({ esxiHost: null })]),
+      defaults: DEFAULTS,
+      queueForIndexing: jest.fn(),
+      userEmail: 'admin@test.local',
+    });
+
+    expect(result.errors).toBe(0);
+    expect(fakePrisma.cIRelation.findMany).not.toHaveBeenCalled();
+    expect(fakePrisma.cIRelation.delete).not.toHaveBeenCalled();
   });
 
   it('esxiHost set, zero matching physical-server CIs — no relation created, CI sync still succeeds', async () => {

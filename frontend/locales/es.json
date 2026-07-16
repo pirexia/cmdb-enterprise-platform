@@ -756,7 +756,15 @@
       "empty": "Sin tipos de fecha en esta categoría.",
       "system": "Sistema"
     },
-    "dates_section": "Fechas de Ciclo de Vida"
+    "dates_section": "Fechas de Ciclo de Vida",
+    "hypervisors": "Hipervisores",
+    "hv": {
+      "new": "Nuevo Hipervisor",
+      "name_placeholder": "Nombre (ej: Proxmox VE)",
+      "name_required": "Introduce el nombre",
+      "empty": "Sin hipervisores registrados.",
+      "system_note": "Hipervisor de sistema — no se puede editar ni eliminar"
+    }
   },
   "settings": {
     "title": "Configuración",

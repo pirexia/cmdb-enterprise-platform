@@ -4,7 +4,7 @@
 
 import { BaseConnector } from '../base/BaseConnector.js';
 import type { DiscoveredVM, PowerState, SyncDefaults } from '../types.js';
-import type { VCenterClient } from './VCenterClient.js';
+import type { VCenterClient, VCenterGuestIdentity, VCenterVmDetail } from './VCenterClient.js';
 
 function normalizePowerState(raw: string): PowerState {
   if (raw === 'POWERED_ON' || raw === 'POWERED_OFF' || raw === 'SUSPENDED') {
@@ -31,38 +31,63 @@ export class VCenterConnector extends BaseConnector {
     await this.client.session();
   }
 
+  /**
+   * Builds a VM-MoRef → ESXi-host-name map. This vCenter version does not expose the
+   * running host on the VM summary/detail, so we resolve it in reverse: list all hosts
+   * (GET /api/vcenter/host), then list the VMs on each host (GET /api/vcenter/vm?hosts=).
+   * Fully best-effort — any failure (a host that errors, or the whole host listing
+   * failing) degrades to a partial/empty map so those VMs get `esxiHost: null`, and it
+   * NEVER aborts discovery.
+   */
+  private async buildEsxiHostMap(): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    let hosts;
+    try {
+      hosts = await this.client.listHosts();
+    } catch (e) {
+      console.warn('[VCenterConnector] could not list ESXi hosts; skipping host relations for this run:', e);
+      return map;
+    }
+    for (const h of hosts) {
+      if (!h.host || !h.name) continue;
+      try {
+        const vmIds = await this.client.listVmIdsOnHost(h.host);
+        for (const vmId of vmIds) map.set(vmId, h.name);
+      } catch (e) {
+        console.warn(`[VCenterConnector] could not list VMs on host ${h.host} (${h.name}); those VMs get no host relation this run:`, e);
+      }
+    }
+    return map;
+  }
+
   async discover(): Promise<DiscoveredVM[]> {
     const summaries = await this.client.listVMs();
+    // Resolve the ESXi host of each VM up front (reverse mapping — best-effort).
+    const esxiHostMap = await this.buildEsxiHostMap();
     const results: DiscoveredVM[] = [];
 
     for (const summary of summaries) {
-      const [identity, detail] = await Promise.all([
-        this.client.vmGuestIdentity(summary.vm),
-        this.client.vmDetail(summary.vm),
-      ]);
+      // Per-VM enrichment (guest identity + hardware detail) is best-effort: a single
+      // VM's failure must NEVER abort discovery of the rest of the list. Each call
+      // degrades independently to a safe default (null identity / empty detail) so we
+      // still sync that VM from its summary fields. vmGuestIdentity already treats the
+      // common tools-not-running 404/503 as a silent null; this catch covers any other
+      // unexpected per-VM failure (transient 5xx on detail, network blip, etc.).
+      const identity: VCenterGuestIdentity | null = await this.client
+        .vmGuestIdentity(summary.vm)
+        .catch((e) => {
+          console.warn(`[VCenterConnector] guest identity fetch failed for VM moref=${summary.vm}; continuing with summary-only fields:`, e);
+          return null;
+        });
+      const detail: VCenterVmDetail = await this.client
+        .vmDetail(summary.vm)
+        .catch((e) => {
+          console.warn(`[VCenterConnector] vm detail fetch failed for VM moref=${summary.vm}; continuing with summary-only fields:`, e);
+          return {} as VCenterVmDetail;
+        });
 
-      // Best-effort ESXi host resolution. `summary.host` (a MoRef) and the shape of
-      // GET /api/vcenter/host/{host} (Host.Info's `name` field) come from general
-      // knowledge of the vSphere Automation REST API and are NOT independently
-      // verified against a live vCenter in this session (no live vCenter/API
-      // reference available here — see task report). ANY failure here — missing
-      // `summary.host`, a thrown error, a null result, or a missing `.name` — must
-      // fall back to today's behavior (`esxiHost: null`) and must NEVER abort
-      // discovery of this VM's other fields or the rest of the VM list.
-      let esxiHost: string | null = null;
-      if (summary.host) {
-        try {
-          const hostSummary = await this.client.hostSummary(summary.host);
-          if (hostSummary?.name) {
-            esxiHost = hostSummary.name;
-          }
-        } catch (e) {
-          console.warn(
-            `[VCenterConnector] Could not resolve ESXi host name for VM moref=${summary.vm}, host=${summary.host}:`,
-            e,
-          );
-        }
-      }
+      // ESXi host from the reverse map built above (null if unresolved / VM not placed).
+      const esxiHost: string | null = esxiHostMap.get(summary.vm) ?? null;
 
       results.push({
         moref: summary.vm,

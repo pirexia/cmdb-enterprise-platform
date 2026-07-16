@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText, Key, Monitor, Calendar,
+  Building2, MapPin, Cpu, Layers, Package, Wallet, Tags, Lock, FileText, Key, Monitor, Calendar, Server,
   Plus, Trash2, RefreshCw, AlertTriangle, ChevronRight, Pencil, Check, X,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
@@ -28,8 +28,9 @@ interface LicenseTypeCategory { code: string; name: string; sortOrder: number; t
 interface OsItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
 interface BswItem { id: string; code: string; name: string; version: string | null; isSystem: boolean; manufacturer: { id: string; name: string } | null }
 interface DateTypeItem { id: string; code: string; name: string; description: string | null; category: "HARDWARE" | "SOFTWARE" | "OS" | "GENERAL"; sortOrder: number; isSystem: boolean }
+interface HypervisorItem { id: string; code: string; name: string; isSystem: boolean }
 
-type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems" | "base-software" | "date-types";
+type TabId = "support-areas" | "branches" | "manufacturers" | "models" | "providers" | "cost-centers" | "ci-types" | "doc-types" | "license-metrics" | "license-types" | "operating-systems" | "base-software" | "date-types" | "hypervisors";
 
 type EditState =
   | { kind: "simple";    path: string; id: string; name: string }
@@ -40,6 +41,7 @@ type EditState =
   | { kind: "licmetric"; id: string; name: string; description: string }
   | { kind: "lictype";   id: string; name: string; description: string }
   | { kind: "datetype";  id: string; code: string; name: string; description: string; category: string; sortOrder: string }
+  | { kind: "hypervisor"; id: string; name: string }
   | null;
 
 // ─── Reusable input components ────────────────────────────────────────────────
@@ -107,6 +109,7 @@ export default function MastersPage() {
   const [operatingSystems,  setOperatingSystems]  = useState<OsItem[]>([]);
   const [baseSoftwares,     setBaseSoftwares]     = useState<BswItem[]>([]);
   const [dateTypes,         setDateTypes]         = useState<DateTypeItem[]>([]);
+  const [hypervisors,       setHypervisors]       = useState<HypervisorItem[]>([]);
 
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState<string | null>(null);
@@ -126,6 +129,7 @@ export default function MastersPage() {
   const [newOs,        setNewOs]        = useState({ name: "", version: "", manufacturerId: "" });
   const [newBsw,       setNewBsw]       = useState({ name: "", version: "", manufacturerId: "" });
   const [newDt,        setNewDt]        = useState({ code: "", name: "", description: "", category: "GENERAL", sortOrder: "0" });
+  const [newHv,        setNewHv]        = useState("");
 
 
   // EOL catalog search state (Models tab)
@@ -151,7 +155,7 @@ export default function MastersPage() {
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes, bswRes, dateTypeRes] = await Promise.all([
+      const [saRes, brRes, mfRes, dmRes, pvRes, ccRes, ctRes, dtRes, lmcRes, ltcRes, osRes, bswRes, dateTypeRes, hvRes] = await Promise.all([
         apiFetch("/api/masters/support-areas"),
         apiFetch("/api/masters/branches"),
         apiFetch("/api/masters/manufacturers"),
@@ -165,6 +169,7 @@ export default function MastersPage() {
         apiFetch("/api/catalog/operating-systems"),
         apiFetch("/api/catalog/base-software"),
         apiFetch("/api/catalog/date-types"),
+        apiFetch("/api/masters/hypervisors"),
       ]);
       const safe = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
       const saData  = await saRes.json();
@@ -180,6 +185,7 @@ export default function MastersPage() {
       const osData  = await osRes.json();
       const bswData      = await bswRes.json();
       const dateTypeData = await dateTypeRes.json();
+      const hvData       = await hvRes.json();
       setSupportAreas(    safe(saData)       as SupportArea[]);
       setBranches(        safe(brData)       as Branch[]);
       setManufacturers(   safe(mfData)       as Manufacturer[]);
@@ -193,6 +199,7 @@ export default function MastersPage() {
       setOperatingSystems( safe(osData)     as OsItem[]);
       setBaseSoftwares(    safe(bswData)    as BswItem[]);
       setDateTypes(        safe(dateTypeData) as DateTypeItem[]);
+      setHypervisors(      safe(hvData)       as HypervisorItem[]);
     } catch (e) { setError(e instanceof Error ? e.message : "Error al cargar maestros"); }
     finally { setLoading(false); }
   }, []);
@@ -263,6 +270,7 @@ export default function MastersPage() {
     { id: "operating-systems",  label: t('masters.operating_systems'),  icon: <Monitor  className="h-4 w-4" />, count: operatingSystems.length },
     { id: "base-software",      label: t('masters.base_software'),      icon: <Package  className="h-4 w-4" />, count: baseSoftwares.length },
     { id: "date-types",         label: t('masters.date_types'),         icon: <Calendar className="h-4 w-4" />, count: dateTypes.length },
+    { id: "hypervisors",        label: t('masters.hypervisors'),        icon: <Server   className="h-4 w-4" />, count: hypervisors.length },
   ];
 
   return (
@@ -1603,6 +1611,119 @@ export default function MastersPage() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Hypervisors ── */}
+        {tab === "hypervisors" && (
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
+            <div className="border-b border-slate-100 px-6 py-4 bg-slate-50">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{t('masters.hv.new')}</p>
+              <div className="flex gap-2 mt-2">
+                <Input
+                  placeholder={t('masters.hv.name_placeholder')}
+                  value={newHv}
+                  onChange={(e) => setNewHv(e.target.value)}
+                />
+                <button
+                  onClick={async () => {
+                    if (!newHv.trim()) { alert(t('masters.hv.name_required')); return; }
+                    try {
+                      await post("/api/masters/hypervisors", { name: newHv.trim() });
+                      setNewHv("");
+                      load();
+                    } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                  }}
+                  className="flex-shrink-0 flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+                >
+                  <Plus className="h-4 w-4" />Añadir
+                </button>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-50">
+              {hypervisors.length === 0 ? (
+                <p className="py-8 text-center text-sm text-slate-400">{t('masters.hv.empty')}</p>
+              ) : (
+                hypervisors.map((hv) => {
+                  const isEditing = editState?.kind === "hypervisor" && editState.id === hv.id;
+                  if (isEditing && editState?.kind === "hypervisor") {
+                    return (
+                      <div key={hv.id} className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)]/5 border-b border-[var(--accent)]/20">
+                        <Input
+                          value={editState.name}
+                          onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              void (async () => {
+                                try { await patch(`/api/masters/hypervisors/${hv.id}`, { name: editState.name }); setEditState(null); load(); }
+                                catch (err) { alert(err instanceof Error ? err.message : "Error"); }
+                              })();
+                            }
+                            if (e.key === "Escape") setEditState(null);
+                          }}
+                          autoFocus
+                          className="flex-1"
+                        />
+                        <button
+                          onClick={async () => {
+                            try { await patch(`/api/masters/hypervisors/${hv.id}`, { name: editState.name }); setEditState(null); load(); }
+                            catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                          }}
+                          className="rounded-lg p-1.5 text-emerald-600 hover:bg-emerald-50 transition-colors"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => setEditState(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 transition-colors">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={hv.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-slate-50 transition-colors group">
+                      <div className="flex items-center gap-3">
+                        {hv.isSystem && (
+                          <span title={t('masters.hv.system_note')}>
+                            <Lock className="h-3 w-3 text-slate-300 flex-shrink-0" />
+                          </span>
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-slate-700">{hv.name}</p>
+                          <p className="text-xs font-mono text-slate-400">{hv.code}</p>
+                        </div>
+                      </div>
+                      {!hv.isSystem && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <button
+                            onClick={() => setEditState({ kind: "hypervisor", id: hv.id, name: hv.name })}
+                            className="rounded-none p-1.5 text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:text-[var(--accent)] transition-colors"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`¿Eliminar el hipervisor "${hv.name}"?`)) return;
+                              try {
+                                const res = await apiFetch(`/api/masters/hypervisors/${hv.id}`, { method: "DELETE" });
+                                if (!res.ok) {
+                                  const d = await res.json().catch(() => ({})) as { error?: string };
+                                  alert(d.error ?? `Error ${res.status}`);
+                                  return;
+                                }
+                                load();
+                              } catch (e) { alert(e instanceof Error ? e.message : "Error"); }
+                            }}
+                            className="rounded-lg p-1.5 text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

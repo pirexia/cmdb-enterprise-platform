@@ -148,8 +148,14 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
             data: {
               vCpus: mapped.physicalFields.vCpus,
               ram: mapped.physicalFields.ram,
-              adminIp: mapped.physicalFields.adminIp,
-              hostName: mapped.physicalFields.hostName,
+              // adminIp / hostName come from vCenter's guest identity, which is null
+              // whenever VMware Tools isn't running (404/503). On UPDATE, only overwrite
+              // them when the connector actually has a value — otherwise a tools-less VM
+              // would wipe the IP/hostname an operator curated manually (or a previous
+              // sync captured). Same guard rationale as clusterName below. (On CREATE they
+              // are written unconditionally — a new record starts empty anyway.)
+              ...(mapped.physicalFields.adminIp ? { adminIp: mapped.physicalFields.adminIp } : {}),
+              ...(mapped.physicalFields.hostName ? { hostName: mapped.physicalFields.hostName } : {}),
               // clusterName is currently always null from the connector (esxiHost/cluster
               // gap — see docs/INTEGRATIONS.md §"Open risks"); only write it when the
               // connector actually resolves a value, so a null here never wipes out
@@ -209,9 +215,9 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
 
         // Best-effort HOSTS relation to the ESXi host's physical-server CI, if one exists in
         // the inventory and vCenter reported a resolvable host name for this VM. Never fails
-        // the VM's own CI sync — this is enrichment, not a required step. Known limitation:
-        // if a VM moves to a different ESXi host between syncs, the old HOSTS relation is not
-        // removed — not handled in this pass.
+        // the VM's own CI sync — this is enrichment, not a required step. DRS host changes are
+        // reconciled below: when the current host is unambiguously resolved, any stale HOSTS
+        // relation to a previous ESXi host is removed (see the reconciliation block).
         if (vm.esxiHost) {
           try {
             const hostCi = await deps.prisma.cI.findMany({
@@ -245,6 +251,36 @@ export async function runVCenterSync(deps: RunVCenterSyncDeps): Promise<SyncResu
                   createdBy: deps.userEmail,
                 },
               });
+
+              // DRS reconciliation: DRS can live-migrate a VM to a different ESXi host between
+              // syncs. The current host now holds the (upserted) HOSTS relation above; remove any
+              // STALE HOSTS relation still pointing at this VM from a DIFFERENT physical-server host
+              // so the VM is never shown as hosted by two ESXi hosts at once. Fenced to
+              // PHYSICAL_SERVER sources (exactly what a previous sync's H2 step created) and to
+              // sourceCiId != current host (never deletes the relation just upserted). This only
+              // runs inside `hostCi.length === 1`, so an unresolved (esxiHost null) or ambiguous
+              // (0 / 2+ host matches) resolution never deletes anything.
+              const staleHostRelations = await deps.prisma.cIRelation.findMany({
+                where: {
+                  targetCiId: ciId,
+                  relationType: 'HOSTS',
+                  sourceCiId: { not: hostCi[0].id },
+                  sourceCI: { ciTypeDef: { code: 'PHYSICAL_SERVER' } },
+                },
+                select: { id: true, sourceCiId: true },
+              });
+              for (const stale of staleHostRelations) {
+                await deps.prisma.cIRelation.delete({ where: { id: stale.id } });
+                // A.8.15: every write logged. Mirror the DELETE_RELATION audit shape used by the
+                // public DELETE /api/relations/:id route (index.ts).
+                await deps.prisma.$executeRaw`
+                  INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+                  VALUES(gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${stale.id}::uuid, ${deps.userEmail},
+                         ${JSON.stringify({ source: 'vcenter', reason: 'stale HOSTS relation removed (VM migrated ESXi host)', targetCiId: ciId })}::jsonb, now())`;
+                // The old host's relation list changed — re-index it. (The VM itself is already
+                // queued by the create/update branch above.)
+                void deps.queueForIndexing('ci', stale.sourceCiId);
+              }
             }
             // 0 or 2+ matching physical-server CIs: ambiguous or no match, skip silently —
             // this is best-effort enrichment, not a required relation.

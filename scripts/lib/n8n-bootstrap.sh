@@ -114,9 +114,13 @@ n8n_ensure_owner_and_key() {
     # #181 — n8n 1.123.x exige que el usuario tenga un "personal project" para crear
     # credenciales vía API. El INSERT directo del usuario (arriba) se salta el hook que
     # normalmente lo crea, así que lo creamos a mano. Idempotente (guard-then-insert).
-    # NOTA: `psql -c "..."` NO sustituye variables `:'var'` (confirmado en vivo contra
-    # esta imagen de postgres) — se alimenta por stdin (heredoc) en su lugar, con `-i`
-    # en el exec para que el contenedor reciba ese stdin.
+    # NOTA: una primera versión de este bloque usaba `psql -c "..."` con `:'var'`;
+    # verificado en vivo contra esta imagen de postgres (15.18 Debian) que esa forma
+    # concreta no sustituía las variables (aislado con `\echo :x` vs `SELECT :x;` — el
+    # primero sí sustituye, el segundo daba "syntax error near :"), mientras que la misma
+    # consulta por stdin sí sustituye correctamente. No se determinó la causa exacta (no
+    # es un límite documentado de psql) — se alimenta por stdin (heredoc) en su lugar,
+    # con `-i` en el exec para que el contenedor reciba ese stdin, forma verificada.
     local _proj_id; _proj_id="$(openssl rand -hex 8)"   # 16 chars, válido para project.id (varchar 36)
     $ctr_exec -i "$pg" psql -U "$du" -d "$dn" -v ON_ERROR_STOP=1 \
       -v pemail="$pe" -v pid="$_proj_id" >/dev/null 2>&1 <<'SQL'

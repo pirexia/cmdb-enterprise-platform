@@ -110,6 +110,38 @@ n8n_ensure_owner_and_key() {
        VALUES (gen_random_uuid(),'$pe','CMDB','Provisioner','$hash','global:admin',false,false)
        ON CONFLICT (email) DO UPDATE SET password=EXCLUDED.password, \"roleSlug\"='global:admin';" >/dev/null 2>&1 \
       || { n8n_bootstrap_log "ERROR: upsert de la identidad de servicio falló"; return 1; }
+
+    # #181 — n8n 1.123.x exige que el usuario tenga un "personal project" para crear
+    # credenciales vía API. El INSERT directo del usuario (arriba) se salta el hook que
+    # normalmente lo crea, así que lo creamos a mano. Idempotente (guard-then-insert).
+    # NOTA: `psql -c "..."` NO sustituye variables `:'var'` (confirmado en vivo contra
+    # esta imagen de postgres) — se alimenta por stdin (heredoc) en su lugar, con `-i`
+    # en el exec para que el contenedor reciba ese stdin.
+    local _proj_id; _proj_id="$(openssl rand -hex 8)"   # 16 chars, válido para project.id (varchar 36)
+    $ctr_exec -i "$pg" psql -U "$du" -d "$dn" -v ON_ERROR_STOP=1 \
+      -v pemail="$pe" -v pid="$_proj_id" >/dev/null 2>&1 <<'SQL'
+WITH u AS (SELECT id FROM n8n_data."user" WHERE email = :'pemail'),
+     existing AS (
+       SELECT pr."projectId" FROM n8n_data.project_relation pr
+       JOIN u ON u.id = pr."userId"
+       WHERE pr.role = 'project:personalOwner'
+     ),
+     new_proj AS (
+       INSERT INTO n8n_data.project (id, name, type, "createdAt", "updatedAt")
+       SELECT :'pid', 'CMDB Provisioner <' || :'pemail' || '>', 'personal', now(), now()
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING id
+     )
+INSERT INTO n8n_data.project_relation ("projectId", "userId", role, "createdAt", "updatedAt")
+SELECT np.id, u.id, 'project:personalOwner', now(), now()
+FROM new_proj np, u
+WHERE NOT EXISTS (SELECT 1 FROM existing);
+SQL
+    if [ $? -ne 0 ]; then
+      n8n_bootstrap_log "ERROR: no se pudo crear el personal project del provisioner (#181)"
+      return 1
+    fi
+    n8n_bootstrap_log "Personal project del provisioner garantizado (#181)"
     _n8n_mint_key login "$pe" "$pp"
   fi
 }

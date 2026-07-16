@@ -642,13 +642,21 @@ ensure_n8n_api_key() {
   local current_key; current_key="$(grep -E '^N8N_API_KEY=' "${env_file}" | cut -d= -f2-)"
   if [ -n "${current_key}" ]; then
     # Validar que la key presente sigue siendo aceptada por n8n (cierra #178).
-    # timeout=5s + tries=2 (~10s peor caso): evita que un arranque en frío de
-    # n8n (ver #179 — ventana de 60-120s) se malinterprete como key inválida
-    # y dispare un re-mint innecesario de una key que en realidad es válida.
+    # node fetch, no wget: confirmado en vivo que busybox wget devuelve un
+    # 403 espurio contra este mismo endpoint con una key genuinamente válida
+    # (n8n 1.123.27) — node fetch, el mismo mecanismo que usa apiClient.ts,
+    # sí obtiene el código real. Timeout de 5s vía AbortController: evita que
+    # un arranque en frío de n8n (ver #179 — ventana de 60-120s) se
+    # malinterprete como key inválida y dispare un re-mint innecesario.
     local _code
-    _code="$(podman exec cmdb-backend-prod sh -c \
-      "wget -qS -O /dev/null --timeout=5 --tries=2 --header='X-N8N-API-KEY: ${current_key}' \
-       http://n8n-main:5678/api/v1/workflows?limit=1 2>&1 | awk '/HTTP\\//{print \$2; exit}'" 2>/dev/null || echo '')"
+    _code="$(podman exec -e N8N_KEY="${current_key}" cmdb-backend-prod node -e '
+      const c = new AbortController();
+      const t = setTimeout(() => c.abort(), 5000);
+      fetch("http://n8n-main:5678/api/v1/workflows?limit=1", {
+        headers: { "X-N8N-API-KEY": process.env.N8N_KEY }, signal: c.signal,
+      }).then((r) => { clearTimeout(t); console.log(r.status); })
+        .catch(() => { clearTimeout(t); console.log("ERR"); });
+    ' 2>/dev/null || echo '')"
     if [ "${_code}" = "200" ]; then
       success "N8N_API_KEY válida — aprovisionamiento automático activo."
       return 0

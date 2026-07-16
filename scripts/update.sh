@@ -648,14 +648,25 @@ ensure_n8n_api_key() {
     # sí obtiene el código real. Timeout de 5s vía AbortController: evita que
     # un arranque en frío de n8n (ver #179 — ventana de 60-120s) se
     # malinterprete como key inválida y dispare un re-mint innecesario.
+    # 2 intentos x 5s (~10s peor caso, igual que el wget --tries=2 anterior):
+    # una sola pasada penalizaría en falso una key válida durante un arranque
+    # en frío de n8n (#179).
     local _code
     _code="$(podman exec -e N8N_KEY="${current_key}" cmdb-backend-prod node -e '
-      const c = new AbortController();
-      const t = setTimeout(() => c.abort(), 5000);
-      fetch("http://n8n-main:5678/api/v1/workflows?limit=1", {
-        headers: { "X-N8N-API-KEY": process.env.N8N_KEY }, signal: c.signal,
-      }).then((r) => { clearTimeout(t); console.log(r.status); })
-        .catch(() => { clearTimeout(t); console.log("ERR"); });
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const probe = () => new Promise((resolve) => {
+        const c = new AbortController();
+        const t = setTimeout(() => c.abort(), 5000);
+        fetch("http://n8n-main:5678/api/v1/workflows?limit=1", {
+          headers: { "X-N8N-API-KEY": process.env.N8N_KEY }, signal: c.signal,
+        }).then((r) => { clearTimeout(t); resolve(String(r.status)); })
+          .catch(() => { clearTimeout(t); resolve(null); });
+      });
+      (async () => {
+        let status = await probe();
+        if (status === null) { await sleep(1000); status = await probe(); }
+        console.log(status === null ? "ERR" : status);
+      })();
     ' 2>/dev/null || echo '')"
     if [ "${_code}" = "200" ]; then
       success "N8N_API_KEY válida — aprovisionamiento automático activo."

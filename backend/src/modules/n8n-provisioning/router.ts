@@ -10,6 +10,7 @@ import type { PrismaClient } from '@prisma/client';
 import { loadN8nProvisioningConfig } from './config.js';
 import { makeN8nApiClient } from './apiClient.js';
 import { provisionAll } from './provisioner.js';
+import { N8nApiError } from './errors.js';
 
 export function createN8nProvisioningRouter(prisma: PrismaClient): Router {
   const router = Router();
@@ -22,7 +23,17 @@ export function createN8nProvisioningRouter(prisma: PrismaClient): Router {
     }
 
     const client = makeN8nApiClient(cfg);
-    const report = await provisionAll(client, cfg, prisma);
+    let report;
+    try {
+      report = await provisionAll(client, cfg, prisma);
+    } catch (err) {
+      if (err instanceof N8nApiError && err.isAuthError) {
+        return res.status(502).json({
+          error: 'n8n rechazó la API key (credencial inválida); regenerar N8N_API_KEY y reintentar.',
+        });
+      }
+      throw err; // resto → manejador de errores genérico
+    }
 
     // AuditLog — inserción obligatoria (ISO 27001 A.8.15)
     const details = JSON.stringify({

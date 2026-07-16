@@ -2,6 +2,7 @@
  * n8n-provisioning · apiClient — tests (global.fetch mockeado).
  */
 import { makeN8nApiClient } from '../apiClient.js';
+import { N8nApiError } from '../errors.js';
 import type { N8nProvisioningConfig } from '../config.js';
 
 const CFG: N8nProvisioningConfig = {
@@ -81,5 +82,19 @@ describe('N8nApiClient', () => {
   it('lanza Error con el status cuando la respuesta no es ok', async () => {
     mockFetchOnce(401, { message: 'unauthorized' });
     await expect(makeN8nApiClient(CFG).listWorkflows()).rejects.toThrow('401');
+  });
+
+  it('lanza N8nApiError con el status en respuestas no-2xx', async () => {
+    const g: any = global;
+    g.fetch = jest.fn().mockResolvedValue({
+      ok: false, status: 401, json: async () => ({}), text: async () => '',
+    });
+    const client = makeN8nApiClient({
+      apiBaseUrl: 'http://n8n:5678', apiKey: 'bad', serviceToken: 't',
+      smtp: null, ldap: null, vcenter: null,
+    } as any);
+
+    await expect(client.listWorkflows()).rejects.toBeInstanceOf(N8nApiError);
+    await expect(client.listWorkflows()).rejects.toMatchObject({ status: 401 });
   });
 });

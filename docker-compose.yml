@@ -280,6 +280,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      # node fetch, not wget: busybox wget's request against this n8n image
+      # gets a spurious 403 even on a genuinely healthy instance (confirmed
+      # live — node fetch gets a clean 200, wget does not, same endpoint).
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5678/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   # ── n8n Worker 1 ─────────────────────────────────────────────────────────────
   n8n-worker-1:

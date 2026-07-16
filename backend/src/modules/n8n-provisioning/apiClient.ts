@@ -2,11 +2,12 @@
  * n8n-provisioning · cliente fino de la API REST pública de n8n (`/api/v1`).
  *
  * Una sola responsabilidad: HTTP + auth por `X-N8N-API-KEY`. No conoce credenciales
- * ni workflows concretos. Errores: lanza `Error` con el status (sin volcar el body
+ * ni workflows concretos. Errores: lanza `N8nApiError` con el status (sin volcar el body
  * completo en logs — A09). La API pública de n8n NO expone list/get de credenciales
  * para el rol disponible (ver docs/n8n/PROVISIONING.md); por eso no hay `listCredentials`.
  */
 import type { N8nProvisioningConfig } from './config.js';
+import { N8nApiError } from './errors.js';
 
 export interface N8nWorkflowSummary { id: string; name: string; active: boolean }
 
@@ -30,7 +31,7 @@ export function makeN8nApiClient(cfg: N8nProvisioningConfig): N8nApiClient {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) {
-      throw new Error(`n8n API ${method} ${path} -> ${res.status}`);
+      throw new N8nApiError(res.status, method, path);
     }
     // DELETE / activate pueden devolver cuerpo vacío
     try { return await res.json(); } catch { return undefined; }

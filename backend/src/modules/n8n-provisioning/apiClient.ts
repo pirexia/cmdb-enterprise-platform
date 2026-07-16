@@ -7,6 +7,7 @@
  * para el rol disponible (ver docs/n8n/PROVISIONING.md); por eso no hay `listCredentials`.
  */
 import type { N8nProvisioningConfig } from './config.js';
+import { N8nApiError } from './errors.js';
 
 export interface N8nWorkflowSummary { id: string; name: string; active: boolean }
 
@@ -30,7 +31,7 @@ export function makeN8nApiClient(cfg: N8nProvisioningConfig): N8nApiClient {
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     if (!res.ok) {
-      throw new Error(`n8n API ${method} ${path} -> ${res.status}`);
+      throw new N8nApiError(res.status, method, path);
     }
     // DELETE / activate pueden devolver cuerpo vacío
     try { return await res.json(); } catch { return undefined; }

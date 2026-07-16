@@ -2,7 +2,7 @@
  * n8n-provisioning · cliente fino de la API REST pública de n8n (`/api/v1`).
  *
  * Una sola responsabilidad: HTTP + auth por `X-N8N-API-KEY`. No conoce credenciales
- * ni workflows concretos. Errores: lanza `Error` con el status (sin volcar el body
+ * ni workflows concretos. Errores: lanza `N8nApiError` con el status (sin volcar el body
  * completo en logs — A09). La API pública de n8n NO expone list/get de credenciales
  * para el rol disponible (ver docs/n8n/PROVISIONING.md); por eso no hay `listCredentials`.
  */

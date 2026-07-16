@@ -122,8 +122,11 @@ n8n_ensure_owner_and_key() {
     # es un límite documentado de psql) — se alimenta por stdin (heredoc) en su lugar,
     # con `-i` en el exec para que el contenedor reciba ese stdin, forma verificada.
     local _proj_id; _proj_id="$(openssl rand -hex 8)"   # 16 chars, válido para project.id (varchar 36)
-    $ctr_exec -i "$pg" psql -U "$du" -d "$dn" -v ON_ERROR_STOP=1 \
-      -v pemail="$pe" -v pid="$_proj_id" >/dev/null 2>&1 <<'SQL'
+    # SQL sin secretos (solo email + project id) — capturamos stderr para diagnóstico:
+    # #181 fue precisamente un fallo silencioso de aprovisionamiento, no repetir el patrón.
+    local _proj_err
+    _proj_err="$($ctr_exec -i "$pg" psql -U "$du" -d "$dn" -v ON_ERROR_STOP=1 \
+      -v pemail="$pe" -v pid="$_proj_id" 2>&1 >/dev/null <<'SQL'
 WITH u AS (SELECT id FROM n8n_data."user" WHERE email = :'pemail'),
      existing AS (
        SELECT pr."projectId" FROM n8n_data.project_relation pr
@@ -141,8 +144,9 @@ SELECT np.id, u.id, 'project:personalOwner', now(), now()
 FROM new_proj np, u
 WHERE NOT EXISTS (SELECT 1 FROM existing);
 SQL
+    )"
     if [ $? -ne 0 ]; then
-      n8n_bootstrap_log "ERROR: no se pudo crear el personal project del provisioner (#181)"
+      n8n_bootstrap_log "ERROR: no se pudo crear el personal project del provisioner (#181): ${_proj_err}"
       return 1
     fi
     n8n_bootstrap_log "Personal project del provisioner garantizado (#181)"

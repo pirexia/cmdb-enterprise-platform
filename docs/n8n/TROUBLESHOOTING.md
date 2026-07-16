@@ -130,14 +130,14 @@ podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
 **Síntoma:** El aprovisionamiento falla al arrancar. Los logs del backend muestran:
 
 ```
-[n8n-provisioning] aborting: n8n rechazó la API key (HTTP 401)
+[n8n-provisioning] n8n rechazó la API key (HTTP 401). N8N_API_KEY desincronizada: regenerar la clave y reiniciar el backend. Aprovisionamiento cancelado.
 ```
 
 O al hacer clic en "Resincronizar n8n" (Configuración → pestaña n8n), el backend retorna:
 
 ```
 502 Bad Gateway
-{"error": "n8n rechazó la API key (HTTP 401)"}
+{"error": "n8n rechazó la API key (credencial inválida); regenerar N8N_API_KEY y reintentar."}
 ```
 
 **Causa raíz:** La variable `N8N_API_KEY` en `.env` está desincronizada respecto a la key activa almacenada en n8n. Esto ocurre cuando:
@@ -150,13 +150,7 @@ O al hacer clic en "Resincronizar n8n" (Configuración → pestaña n8n), el bac
 
 **Solución manual (regenerar la key):**
 
-Sigue **exactamente los pasos de INC-001, "Solución manual (si los workflows no aparecen)"**. El procedimiento `n8n_ensure_owner_and_key` genera una nueva API key alineada con n8n y actualiza `.env`.
-
-```bash
-# Paso 1-4 de INC-001:
-source scripts/lib/n8n-bootstrap.sh
-# ... (seguir instrucciones completas)
-```
+Sigue **exactamente los pasos de la sección INC-001, "Solución manual (si los workflows no aparecen)"**. El procedimiento `n8n_ensure_owner_and_key` genera una nueva API key alineada con n8n y actualiza `.env`.
 
 **Verificación rápida tras la regeneración:**
 
@@ -172,17 +166,17 @@ podman logs cmdb-backend 2>&1 | grep "\[n8n-provisioning\]" | tail -5
 
 ## INC-005 — n8n no disponible tras múltiples reintentos (arranque en frío) (v3.5.4)
 
-**Síntoma:** Al ejecutar `docker compose down && docker compose up -d` (o equivalente en podman), el backend intenta conectar a n8n durante 60s pero falla antes de que n8n esté listo. Los logs muestran:
+**Síntoma:** Al ejecutar `docker compose down && docker compose up -d` (o equivalente en podman), el backend intenta conectar a n8n durante varios segundos pero falla antes de que n8n esté listo. Los logs muestran:
 
 ```
-[n8n-provisioning] n8n no disponible tras 10 intentos. Continuando sin provisioning.
+[n8n-provisioning] n8n no disponible tras 15 intentos (~120s); aprovisionamiento cancelado.
 ```
 
 La aplicación arranca pero n8n no se provisiona (workflows no aparecen).
 
-**Causa raíz:** En un arranque completo en frío, `n8n-main` puede tardar más de 60 segundos en ser saludable. El módulo `n8n-provisioning` usa una ventana de reintento de 10 intentos × 6 segundos = 60s, que puede quedar corta si el stack tiene carga alta o recursos limitados.
+**Causa raíz:** En un arranque completo en frío, `n8n-main` puede tardar más de algunos segundos en ser saludable. El módulo `n8n-provisioning` usa una ventana de reintento de 15 intentos × 8 segundos = **120 segundos**. Un bloque `healthcheck` se añadió al servicio `n8n-main` en ambos `docker-compose.yml` y `docker-compose.prod.yml` (para observabilidad; no se configura como dependencia del backend, por diseño — ver abajo).
 
-**Corrección permanente (v3.5.4):** Commit `...` — la ventana de reintento se amplió a 15 intentos × 8 segundos = **120 segundos**. Un bloque `healthcheck` se añadió al servicio `n8n-main` en ambos `docker-compose.yml` y `docker-compose.prod.yml` (para observabilidad; no se configura como dependencia del backend, por diseño — ver abajo).
+**Corrección permanente (v3.5.4):** Commits `187659e`, `002e6d1`, `dca2109`, `f8cfcda` — ampliado el tiempo de reintento de 60 segundos (10×6) a 120 segundos (15×8) en `onBoot.ts` para dar suficiente margen al stack en arranque en frío.
 
 **Por qué `depends_on: n8n-main` service_healthy NO está configurado:**
 
@@ -206,7 +200,7 @@ Hacer que el backend dependa de que n8n esté healthy violaría la restricción 
 
 ```bash
 # Luego de 120+ segundos, verifica que los workflows están activos:
-podman exec cmdb-backend bash -c 'grep "aprovisionamiento completado" <(podman logs cmdb-backend 2>&1)' || echo "Aún no aprovisionado; espera 30s e intenta el botón Resincronizar"
+podman logs cmdb-backend 2>&1 | grep "aprovisionamiento completado" || echo "Aún no aprovisionado; espera 30s e intenta el botón Resincronizar"
 ```
 
 ---

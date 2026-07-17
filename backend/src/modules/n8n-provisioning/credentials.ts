@@ -51,7 +51,7 @@ export function buildSmtpCredential(cfg: N8nProvisioningConfig): SmtpCredential 
 
 export function buildLdapCredential(cfg: N8nProvisioningConfig): LdapCredential | null {
   if (!cfg.ldap || !cfg.ldap.useLdap || !cfg.ldap.url) return null;
-  const { url, baseDN, bindDN, bindPassword } = cfg.ldap;
+  const { url, bindDN, bindPassword } = cfg.ldap;
   let hostname = '', port = 389, connectionSecurity: 'none' | 'tls' | 'startTls' = 'none';
   try {
     const u = new URL(url);
@@ -67,10 +67,9 @@ export function buildLdapCredential(cfg: N8nProvisioningConfig): LdapCredential 
     type: 'ldap',
     data: {
       hostname,
-      port,
+      port: String(port),
       bindDN: bindDN ?? '',
       bindPassword: bindPassword ?? '',
-      baseDn: baseDN ?? '',
       connectionSecurity,
       // Never skip cert verification — allowUnauthorizedCerts: true disables TLS validation (MITM risk).
       // For self-signed certs in dev, set LDAP_ALLOW_UNAUTHORIZED_CERTS=true explicitly.

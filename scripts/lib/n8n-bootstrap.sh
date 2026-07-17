@@ -110,6 +110,46 @@ n8n_ensure_owner_and_key() {
        VALUES (gen_random_uuid(),'$pe','CMDB','Provisioner','$hash','global:admin',false,false)
        ON CONFLICT (email) DO UPDATE SET password=EXCLUDED.password, \"roleSlug\"='global:admin';" >/dev/null 2>&1 \
       || { n8n_bootstrap_log "ERROR: upsert de la identidad de servicio falló"; return 1; }
+
+    # #181 — n8n 1.123.x exige que el usuario tenga un "personal project" para crear
+    # credenciales vía API. El INSERT directo del usuario (arriba) se salta el hook que
+    # normalmente lo crea, así que lo creamos a mano. Idempotente (guard-then-insert).
+    # NOTA: una primera versión de este bloque usaba `psql -c "..."` con `:'var'`;
+    # verificado en vivo contra esta imagen de postgres (15.18 Debian) que esa forma
+    # concreta no sustituía las variables (aislado con `\echo :x` vs `SELECT :x;` — el
+    # primero sí sustituye, el segundo daba "syntax error near :"), mientras que la misma
+    # consulta por stdin sí sustituye correctamente. No se determinó la causa exacta (no
+    # es un límite documentado de psql) — se alimenta por stdin (heredoc) en su lugar,
+    # con `-i` en el exec para que el contenedor reciba ese stdin, forma verificada.
+    local _proj_id; _proj_id="$(openssl rand -hex 8)"   # 16 chars, válido para project.id (varchar 36)
+    # SQL sin secretos (solo email + project id) — capturamos stderr para diagnóstico:
+    # #181 fue precisamente un fallo silencioso de aprovisionamiento, no repetir el patrón.
+    local _proj_err
+    _proj_err="$($ctr_exec -i "$pg" psql -U "$du" -d "$dn" -v ON_ERROR_STOP=1 \
+      -v pemail="$pe" -v pid="$_proj_id" 2>&1 >/dev/null <<'SQL'
+WITH u AS (SELECT id FROM n8n_data."user" WHERE email = :'pemail'),
+     existing AS (
+       SELECT pr."projectId" FROM n8n_data.project_relation pr
+       JOIN u ON u.id = pr."userId"
+       WHERE pr.role = 'project:personalOwner'
+     ),
+     new_proj AS (
+       INSERT INTO n8n_data.project (id, name, type, "createdAt", "updatedAt")
+       SELECT :'pid', 'CMDB Provisioner <' || :'pemail' || '>', 'personal', now(), now()
+       WHERE NOT EXISTS (SELECT 1 FROM existing)
+       RETURNING id
+     )
+INSERT INTO n8n_data.project_relation ("projectId", "userId", role, "createdAt", "updatedAt")
+SELECT np.id, u.id, 'project:personalOwner', now(), now()
+FROM new_proj np, u
+WHERE NOT EXISTS (SELECT 1 FROM existing);
+SQL
+    )"
+    if [ $? -ne 0 ]; then
+      n8n_bootstrap_log "ERROR: no se pudo crear el personal project del provisioner (#181): ${_proj_err}"
+      return 1
+    fi
+    n8n_bootstrap_log "Personal project del provisioner garantizado (#181)"
     _n8n_mint_key login "$pe" "$pp"
   fi
 }

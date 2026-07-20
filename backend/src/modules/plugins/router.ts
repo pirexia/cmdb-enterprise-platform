@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
@@ -58,8 +58,14 @@ function safeReadHandler(installDir: string, relPath: string): string {
 
 // Parse a plugin's manifest + bundle into PluginHook/PluginCronJob/PluginRoute rows.
 // Throws (→ install fails) if a declared hook/cron/route has no handler file.
+//
+// Takes a Prisma.TransactionClient (issue #172) — both call sites now run it
+// inside the same `prisma.$transaction(async (tx) => {})` as the subsequent
+// status update + audit insert, so the delete/recreate below no longer needs
+// its own nested transaction (a `tx` client does not expose `$transaction`;
+// sequential statements here are still atomic as part of the enclosing one).
 async function parseBundleArtifacts(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   pluginDbId: string,
   installDir: string,
   manifest: {
@@ -99,14 +105,12 @@ async function parseBundleArtifacts(
     requiredRole: r.requiredRole ?? null,
   }));
 
-  await prisma.$transaction([
-    prisma.pluginHook.deleteMany({ where: { pluginId: pluginDbId } }),
-    prisma.pluginCronJob.deleteMany({ where: { pluginId: pluginDbId } }),
-    prisma.pluginRoute.deleteMany({ where: { pluginId: pluginDbId } }),
-    ...hookRows.map((data) => prisma.pluginHook.create({ data })),
-    ...cronRows.map((data) => prisma.pluginCronJob.create({ data })),
-    ...routeRows.map((data) => prisma.pluginRoute.create({ data })),
-  ]);
+  await prisma.pluginHook.deleteMany({ where: { pluginId: pluginDbId } });
+  await prisma.pluginCronJob.deleteMany({ where: { pluginId: pluginDbId } });
+  await prisma.pluginRoute.deleteMany({ where: { pluginId: pluginDbId } });
+  for (const data of hookRows) await prisma.pluginHook.create({ data });
+  for (const data of cronRows) await prisma.pluginCronJob.create({ data });
+  for (const data of routeRows) await prisma.pluginRoute.create({ data });
 
   return { hooks: hookRows.length, cron: cronRows.length, routes: routeRows.length };
 }
@@ -521,34 +525,44 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         return;
       }
 
-      // Register as UPLOADED
-      const plugin = await prisma.pluginRegistry.create({
-        data: {
-          pluginId:    manifest.id,
-          name:        manifest.name,
-          version:     manifest.version,
-          author:      manifest.author,
-          license:     manifest.license,
-          status:      'UPLOADED',
-          manifest:    manifest as any,
-          permissions: manifest.permissions,
+      // Register as UPLOADED. Issue #172 (ISO 27001 A.8.15): the create and its
+      // audit record must be atomic, so both run inside one $transaction.
+      const plugin = await prisma.$transaction(async (tx) => {
+        const created = await tx.pluginRegistry.create({
+          data: {
+            pluginId:    manifest.id,
+            name:        manifest.name,
+            version:     manifest.version,
+            author:      manifest.author,
+            license:     manifest.license,
+            status:      'UPLOADED',
+            manifest:    manifest as any,
+            permissions: manifest.permissions,
+            checksum,
+          },
+        });
+
+        await pluginAudit(tx, 'PLUGIN_MARKETPLACE_INSTALL_STARTED', created.id, userEmail, {
+          marketplacePluginId: pluginId,
+          version: manifest.version,
           checksum,
-        },
+        });
+
+        return created;
       });
 
-      await pluginAudit(prisma, 'PLUGIN_MARKETPLACE_INSTALL_STARTED', plugin.id, userEmail, {
-        marketplacePluginId: pluginId,
-        version: manifest.version,
-        checksum,
+      // Inline validate (manifest already parsed, checksum already computed).
+      // Status write + audit atomic (#172).
+      await prisma.$transaction(async (tx) => {
+        await lifecycleManager.updateStatus(tx, plugin.id, 'VALIDATED');
+        await pluginAudit(tx, 'PLUGIN_VALIDATED', plugin.id, userEmail);
       });
-
-      // Inline validate (manifest already parsed, checksum already computed)
-      await lifecycleManager.updateStatus(prisma, plugin.id, 'VALIDATED');
-      await pluginAudit(prisma, 'PLUGIN_VALIDATED', plugin.id, userEmail);
 
       // Inline install: extract to installed/, run migrations, parse artifacts.
       // L-03: extract FIRST, then migrate; roll back the extracted dir if the
       // migration fails so we never leave a migration applied without files.
+      // These steps touch the filesystem/an external migration runner, not the
+      // DB, so they stay outside the transaction below.
       const installDir = path.join(PLUGIN_STORAGE_PATH, 'installed', plugin.id);
       await extractZipTo(zipPath, installDir);
       const migrationSql = await tryExtractFileFromZip(zipPath, 'migration.sql');
@@ -561,14 +575,17 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           throw migErr;
         }
       }
-      const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest as Parameters<typeof parseBundleArtifacts>[3]);
 
-      await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
-      await pluginAudit(prisma, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
-        installDir,
-        hasMigration: migrationSql !== null,
-        source: 'marketplace',
-        ...counts,
+      // Artifact parsing (DB writes) + status flip + audit atomic (#172).
+      await prisma.$transaction(async (tx) => {
+        const c = await parseBundleArtifacts(tx, plugin.id, installDir, manifest as Parameters<typeof parseBundleArtifacts>[3]);
+        await lifecycleManager.updateStatus(tx, plugin.id, 'INSTALLED');
+        await pluginAudit(tx, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
+          installDir,
+          hasMigration: migrationSql !== null,
+          source: 'marketplace',
+          ...c,
+        });
       });
 
       // Clean up staging zip
@@ -647,26 +664,31 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         const finalStagingPath = path.join(PLUGIN_STORAGE_PATH, 'staging', stagingName);
         // File is already at zipPath inside staging — just record it
 
-        const plugin = await prisma.pluginRegistry.create({
-          data: {
-            pluginId:    manifest.id,
-            name:        manifest.name,
-            version:     manifest.version,
-            author:      manifest.author,
-            license:     manifest.license,
-            status:      'UPLOADED',
-            manifest:    manifest as any,
-            permissions: manifest.permissions,
-            checksum,
-            stagingZip:  stagingName, // L-08: record the staging zip for O(1) lookup
-          },
-        });
+        // Issue #172: create + audit atomic.
+        const plugin = await prisma.$transaction(async (tx) => {
+          const created = await tx.pluginRegistry.create({
+            data: {
+              pluginId:    manifest.id,
+              name:        manifest.name,
+              version:     manifest.version,
+              author:      manifest.author,
+              license:     manifest.license,
+              status:      'UPLOADED',
+              manifest:    manifest as any,
+              permissions: manifest.permissions,
+              checksum,
+              stagingZip:  stagingName, // L-08: record the staging zip for O(1) lookup
+            },
+          });
 
-        await pluginAudit(prisma, 'PLUGIN_UPLOADED', plugin.id, (req as any).user!.email, {
-          pluginId: manifest.id,
-          version:  manifest.version,
-          checksum,
-          stagingFile: path.basename(finalStagingPath),
+          await pluginAudit(tx, 'PLUGIN_UPLOADED', created.id, (req as any).user!.email, {
+            pluginId: manifest.id,
+            version:  manifest.version,
+            checksum,
+            stagingFile: path.basename(finalStagingPath),
+          });
+
+          return created;
         });
 
         res.status(201).json({
@@ -706,9 +728,12 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         if (zipPath) {
           const valid = PluginValidator.validateChecksum(zipPath, plugin.checksum);
           if (!valid) {
-            await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', 'Checksum mismatch');
-            await pluginAudit(prisma, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
-              reason: 'Checksum mismatch',
+            // Issue #172: status flip to ERROR + audit atomic.
+            await prisma.$transaction(async (tx) => {
+              await lifecycleManager.updateStatus(tx, plugin.id, 'ERROR', 'Checksum mismatch');
+              await pluginAudit(tx, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
+                reason: 'Checksum mismatch',
+              });
             });
             res.status(422).json({ error: 'Checksum mismatch — plugin file may be corrupted' });
             return;
@@ -718,9 +743,11 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           if (manifest.signature) {
             const publicKeyB64 = process.env.PLUGIN_SIGNING_PUBLIC_KEY;
             if (!publicKeyB64) {
-              await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', 'No signing public key configured');
-              await pluginAudit(prisma, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
-                reason: 'PLUGIN_SIGNING_PUBLIC_KEY not set but manifest has signature',
+              await prisma.$transaction(async (tx) => {
+                await lifecycleManager.updateStatus(tx, plugin.id, 'ERROR', 'No signing public key configured');
+                await pluginAudit(tx, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
+                  reason: 'PLUGIN_SIGNING_PUBLIC_KEY not set but manifest has signature',
+                });
               });
               res.status(422).json({ error: 'Signature verification failed: PLUGIN_SIGNING_PUBLIC_KEY not configured' });
               return;
@@ -738,9 +765,11 @@ export function createPluginRouter(prisma: PrismaClient): Router {
               );
               if (!ok) throw new Error('Signature invalid');
             } catch (sigErr) {
-              await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', 'Signature verification failed');
-              await pluginAudit(prisma, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
-                reason: 'Ed25519 signature invalid',
+              await prisma.$transaction(async (tx) => {
+                await lifecycleManager.updateStatus(tx, plugin.id, 'ERROR', 'Signature verification failed');
+                await pluginAudit(tx, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
+                  reason: 'Ed25519 signature invalid',
+                });
               });
               res.status(422).json({ error: 'Ed25519 signature verification failed' });
               return;
@@ -752,23 +781,31 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         try {
           PluginValidator.validateManifest(manifest);
         } catch (manifestErr: any) {
-          await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', String(manifestErr.message));
-          await pluginAudit(prisma, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
-            reason: manifestErr.message,
+          await prisma.$transaction(async (tx) => {
+            await lifecycleManager.updateStatus(tx, plugin.id, 'ERROR', String(manifestErr.message));
+            await pluginAudit(tx, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
+              reason: manifestErr.message,
+            });
           });
           res.status(422).json({ error: 'Manifest validation failed', details: manifestErr.flatten?.() });
           return;
         }
 
-        await lifecycleManager.updateStatus(prisma, plugin.id, 'VALIDATED');
-        await pluginAudit(prisma, 'PLUGIN_VALIDATED', plugin.id, userEmail);
+        await prisma.$transaction(async (tx) => {
+          await lifecycleManager.updateStatus(tx, plugin.id, 'VALIDATED');
+          await pluginAudit(tx, 'PLUGIN_VALIDATED', plugin.id, userEmail);
+        });
 
         res.json({ id: plugin.id, status: 'VALIDATED' });
       } catch (err) {
         console.error('[plugins-api] validate error:', err);
-        await lifecycleManager.updateStatus(prisma, plugin.id, 'ERROR', (err as Error).message).catch(() => {});
-        await pluginAudit(prisma, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
-          reason: (err as Error).message,
+        // Best-effort recovery on an unexpected error: status flip + audit
+        // atomic (#172), whole attempt still swallowed as before.
+        await prisma.$transaction(async (tx) => {
+          await lifecycleManager.updateStatus(tx, plugin.id, 'ERROR', (err as Error).message);
+          await pluginAudit(tx, 'PLUGIN_VALIDATION_FAILED', plugin.id, userEmail, {
+            reason: (err as Error).message,
+          });
         }).catch(() => {});
         res.status(500).json({ error: 'Internal server error' });
       }
@@ -818,23 +855,26 @@ export function createPluginRouter(prisma: PrismaClient): Router {
 
         // Parse the bundle's hooks/cron/routes into DB rows (fails if a declared
         // hook/cron/route has no handler file in the bundle).
+        // Issue #172: artifact parsing (DB writes) + status flip + audit atomic.
         const manifest = plugin.manifest as Parameters<typeof parseBundleArtifacts>[3];
-        const counts = await parseBundleArtifacts(prisma, plugin.id, installDir, manifest);
+        await prisma.$transaction(async (tx) => {
+          const c = await parseBundleArtifacts(tx, plugin.id, installDir, manifest);
+          await lifecycleManager.updateStatus(tx, plugin.id, 'INSTALLED');
+          await pluginAudit(tx, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
+            installDir,
+            hasMigration: migrationSql !== null,
+            ...c,
+          });
+        });
 
-        await lifecycleManager.updateStatus(prisma, plugin.id, 'INSTALLED');
-
-        // L-08: the staging zip is consumed once installed — GC it and clear the ref.
+        // L-08: the staging zip is consumed once installed — GC it and clear the
+        // ref. Best-effort cleanup, deliberately outside the transaction above
+        // (a GC failure must not roll back a successful install).
         await fs.promises.unlink(zipPath).catch(() => {});
         await prisma.pluginRegistry.update({
           where: { id: plugin.id },
           data: { stagingZip: null },
         }).catch(() => {});
-
-        await pluginAudit(prisma, 'PLUGIN_INSTALLED', plugin.id, userEmail, {
-          installDir,
-          hasMigration: migrationSql !== null,
-          ...counts,
-        });
 
         res.json({ id: plugin.id, status: 'INSTALLED' });
       } catch (err) {
@@ -874,6 +914,11 @@ export function createPluginRouter(prisma: PrismaClient): Router {
         { algorithm: 'HS256', expiresIn: '5m' },
       );
 
+      // Issue #172 — intentional exclusion, NOT wrapped in a transaction: the
+      // approval token is a signed JWT held only in-memory (consumedApprovalJtis
+      // map) and never written to the DB, so there is no preceding mutation to
+      // roll back against. This audit insert is the only DB write in this
+      // handler; wrapping a single write in $transaction adds no atomicity.
       await pluginAudit(prisma, 'PLUGIN_APPROVAL_ISSUED', plugin.id, approverEmail, {
         action: 'activate',
       });
@@ -943,25 +988,32 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
-        await prisma.pluginRegistry.update({
-          where: { id: plugin.id },
-          data: {
-            status:     'ACTIVE',
-            approvedBy: userEmail,
-            approvedAt: new Date(),
-            lastError:  null,
-            updatedAt:  new Date(),
-          },
-        });
+        // Issue #172: status flip to ACTIVE + audit atomic. Runtime
+        // registration is in-memory (not DB), but is kept inside the callback
+        // in the original order — if it throws, the status update now rolls
+        // back too, closing a pre-existing gap where a failed runtime
+        // registration could leave the DB status ACTIVE with nothing running.
+        await prisma.$transaction(async (tx) => {
+          await tx.pluginRegistry.update({
+            where: { id: plugin.id },
+            data: {
+              status:     'ACTIVE',
+              approvedBy: userEmail,
+              approvedAt: new Date(),
+              lastError:  null,
+              updatedAt:  new Date(),
+            },
+          });
 
-        // Register the plugin's hooks/cron/routes into the live runtime
-        const full = await prisma.pluginRegistry.findUnique({
-          where: { id: plugin.id },
-          include: { hooks: true, cronJobs: true, routes: true },
-        });
-        if (full) pluginRuntime.registerPlugin(full as unknown as RuntimePlugin);
+          // Register the plugin's hooks/cron/routes into the live runtime
+          const full = await tx.pluginRegistry.findUnique({
+            where: { id: plugin.id },
+            include: { hooks: true, cronJobs: true, routes: true },
+          });
+          if (full) pluginRuntime.registerPlugin(full as unknown as RuntimePlugin);
 
-        await pluginAudit(prisma, 'PLUGIN_ACTIVATED', plugin.id, userEmail);
+          await pluginAudit(tx, 'PLUGIN_ACTIVATED', plugin.id, userEmail);
+        });
 
         res.json({ id: plugin.id, status: 'ACTIVE' });
       } catch (err) {
@@ -990,8 +1042,11 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       try {
         // Tear down live hooks/cron/routes before flipping status
         pluginRuntime.unregisterPlugin(plugin.id, plugin.pluginId);
-        await lifecycleManager.updateStatus(prisma, plugin.id, 'INACTIVE');
-        await pluginAudit(prisma, 'PLUGIN_DEACTIVATED', plugin.id, userEmail);
+        // Issue #172: status flip to INACTIVE + audit atomic.
+        await prisma.$transaction(async (tx) => {
+          await lifecycleManager.updateStatus(tx, plugin.id, 'INACTIVE');
+          await pluginAudit(tx, 'PLUGIN_DEACTIVATED', plugin.id, userEmail);
+        });
 
         res.json({ id: plugin.id, status: 'INACTIVE' });
       } catch (err) {
@@ -1068,14 +1123,21 @@ export function createPluginRouter(prisma: PrismaClient): Router {
           await fs.promises.unlink(stagingZip).catch(() => {});
         }
 
-        // Audit before deleting the record (so the plugin id is still meaningful)
-        await pluginAudit(prisma, 'PLUGIN_UNINSTALLED', plugin.id, userEmail, {
-          pluginId: plugin.pluginId,
-          backupPath,
-        });
+        // Issue #172: audit + delete atomic — either both commit or neither
+        // does, so a failed audit insert can no longer leave the registry row
+        // deleted with no record of it. Audit still written before the delete
+        // (order preserved from the original code, "so the plugin id is still
+        // meaningful") — within the same transaction this is purely stylistic,
+        // since nothing is visible outside until commit.
+        await prisma.$transaction(async (tx) => {
+          await pluginAudit(tx, 'PLUGIN_UNINSTALLED', plugin.id, userEmail, {
+            pluginId: plugin.pluginId,
+            backupPath,
+          });
 
-        // Delete the PluginRegistry record (cascades to hooks, cron, routes, backups)
-        await prisma.pluginRegistry.delete({ where: { id: plugin.id } });
+          // Delete the PluginRegistry record (cascades to hooks, cron, routes, backups)
+          await tx.pluginRegistry.delete({ where: { id: plugin.id } });
+        });
 
         res.json({ id: plugin.id, uninstalled: true });
       } catch (err) {
@@ -1119,13 +1181,16 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       try {
         const mergedConfig = { ...(plugin.config as Record<string, unknown>), ...parsed.data };
 
-        await prisma.pluginRegistry.update({
-          where: { id: plugin.id },
-          data: { config: mergedConfig as any, updatedAt: new Date() },
-        });
+        // Issue #172: config update + audit atomic.
+        await prisma.$transaction(async (tx) => {
+          await tx.pluginRegistry.update({
+            where: { id: plugin.id },
+            data: { config: mergedConfig as any, updatedAt: new Date() },
+          });
 
-        await pluginAudit(prisma, 'PLUGIN_CONFIG_UPDATED', plugin.id, userEmail, {
-          updatedKeys: Object.keys(parsed.data),
+          await pluginAudit(tx, 'PLUGIN_CONFIG_UPDATED', plugin.id, userEmail, {
+            updatedKeys: Object.keys(parsed.data),
+          });
         });
 
         res.json({ config: mergedConfig });

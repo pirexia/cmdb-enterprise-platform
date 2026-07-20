@@ -1,7 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type { PluginStatus } from './schemas.js';
 
-export async function getActivePlugins(prisma: PrismaClient) {
+// Widened to Prisma.TransactionClient (issue #172) — the base PrismaClient is
+// also assignable to it, so these helpers work both standalone and when
+// passed the `tx` client from inside a `prisma.$transaction(async (tx) => {})`.
+export async function getActivePlugins(prisma: Prisma.TransactionClient) {
   return prisma.pluginRegistry.findMany({
     where: { status: 'ACTIVE' },
     include: { hooks: true, cronJobs: true, routes: true },
@@ -9,7 +12,7 @@ export async function getActivePlugins(prisma: PrismaClient) {
 }
 
 export async function setPluginStatus(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   id: string,
   status: PluginStatus,
   lastError?: string | null,
@@ -21,7 +24,7 @@ export async function setPluginStatus(
 }
 
 export async function createBackupRecord(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   pluginId: string,
   backupPath: string,
   sizeBytes: number,

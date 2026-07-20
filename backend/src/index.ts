@@ -2887,6 +2887,14 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
  * Returns: { message: string }
  * ADMIN only.
  */
+// Issue #172 (review fix): the cert file is a single shared on-disk resource with
+// no DB row / row lock behind it. Two concurrent uploads (or an upload racing a
+// prior request's compensating restore) could interleave writes and leave the
+// file and audit_logs permanently diverged. This is a minimal in-process mutex
+// scoped to this one route — it does not protect against multi-process/multi-
+// replica deployments, only against concurrent requests within this instance.
+let certUploadInProgress = false;
+
 app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const { certificate } = req.body as { certificate?: string };
 
@@ -2901,6 +2909,12 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     return;
   }
 
+  if (certUploadInProgress) {
+    res.status(409).json({ error: 'Another certificate upload is already in progress. Try again shortly.' });
+    return;
+  }
+  certUploadInProgress = true;
+
   try {
     const certDir = '/app/certs';
     const certPath = path.join(certDir, 'server.crt');
@@ -2913,7 +2927,13 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     // an unaudited change reaching disk, snapshot whatever was there before (for
     // restore), write the new cert, then audit — if the audit insert fails, undo
     // the filesystem write (restore previous cert / remove if none existed) so the
-    // persisted state always matches what's in audit_logs.
+    // persisted state always matches what's in audit_logs. This restore is itself
+    // a best-effort, non-transactional fs write: if it also throws (disk full,
+    // permissions changed mid-request, EIO, read-only fs), that is caught
+    // separately below and logged loudly (CERT_RESTORE_FAILED) rather than
+    // silently swallowing the original audit error — the system may now hold an
+    // unaudited or partially-written cert on disk, which needs manual/operational
+    // follow-up since a filesystem write can never be made fully transactional.
     const previousCert = fs.existsSync(certPath) ? fs.readFileSync(certPath) : null;
 
     // Write certificate to file
@@ -2927,10 +2947,23 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
       `;
     } catch (auditError) {
       // Compensate: undo the filesystem write so an unaudited cert never persists.
-      if (previousCert !== null) {
-        fs.writeFileSync(certPath, previousCert, { mode: 0o600 });
-      } else {
-        fs.rmSync(certPath, { force: true });
+      try {
+        if (previousCert !== null) {
+          fs.writeFileSync(certPath, previousCert, { mode: 0o600 });
+        } else {
+          fs.rmSync(certPath, { force: true });
+        }
+      } catch (restoreError) {
+        // The compensating restore itself failed: disk state is now inconsistent
+        // with audit_logs and cannot be reconciled automatically. Log loudly and
+        // distinctly (internal only — never in the API response) so this is
+        // detectable operationally, then still surface the original audit error.
+        log.error(
+          `[POST /api/admin/certificates/upload] CERT_RESTORE_FAILED — compensating restore failed after audit ` +
+            `insert error; on-disk certificate may now be unaudited/inconsistent with audit_logs. ` +
+            `Manual verification of ${certPath} required.`,
+          { auditError, restoreError }
+        );
       }
       throw auditError;
     }
@@ -2946,6 +2979,8 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
   } catch (error) {
     log.error('[POST /api/admin/certificates/upload] Error:', error);
     res.status(500).json({ error: 'Failed to save certificate' });
+  } finally {
+    certUploadInProgress = false;
   }
 });
 

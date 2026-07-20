@@ -508,10 +508,15 @@ function validatePasswordPolicy(password: string, role: UserRole): string[] {
   return errors;
 }
 
-/** Returns true if the password matches any of the last N history entries. */
-async function isPasswordInHistory(userId: string, newPassword: string): Promise<boolean> {
+/**
+ * Returns true if the password matches any of the last N history entries.
+ * Takes a Prisma.TransactionClient (the base PrismaClient is also assignable
+ * to it structurally) so callers can run this inside an enclosing
+ * prisma.$transaction(...) alongside the audit-log insert.
+ */
+async function isPasswordInHistory(db: Prisma.TransactionClient, userId: string, newPassword: string): Promise<boolean> {
   type HistRow = { hash: string };
-  const history = await prisma.$queryRaw<HistRow[]>`
+  const history = await db.$queryRaw<HistRow[]>`
     SELECT hash FROM "password_history"
     WHERE user_id = ${userId}::uuid
     ORDER BY created_at DESC
@@ -523,14 +528,19 @@ async function isPasswordInHistory(userId: string, newPassword: string): Promise
   return false;
 }
 
-/** Inserts a new hash into password_history and prunes entries beyond the limit. */
-async function recordPasswordHistory(userId: string, hash: string): Promise<void> {
-  await prisma.$executeRaw`
+/**
+ * Inserts a new hash into password_history and prunes entries beyond the limit.
+ * Takes a Prisma.TransactionClient (see isPasswordInHistory above) so this
+ * mutation can be part of the same transaction as the password UPDATE and
+ * the audit-log insert.
+ */
+async function recordPasswordHistory(db: Prisma.TransactionClient, userId: string, hash: string): Promise<void> {
+  await db.$executeRaw`
     INSERT INTO "password_history"(id, user_id, hash, created_at)
     VALUES(gen_random_uuid(), ${userId}::uuid, ${hash}, now())
   `;
   // Prune old entries beyond the configured limit
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     DELETE FROM "password_history" ph
     WHERE ph.user_id = ${userId}::uuid
     AND NOT EXISTS (
@@ -1171,11 +1181,13 @@ app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Re
     return;
   }
   try {
-    await prisma.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
     res.json({ id, role, message: `Role updated to ${role}` });
   } catch (e) {
     console.error('[PATCH /api/users/:id/role]', e);
@@ -1201,11 +1213,13 @@ app.patch('/api/users/:id/status', authenticateToken, requireAdmin, async (req: 
     return;
   }
   try {
-    await prisma.$executeRaw`UPDATE "users" SET active = ${active}, updated_at = now() WHERE id = ${id}::uuid`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), ${active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER'}, 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET active = ${active}, updated_at = now() WHERE id = ${id}::uuid`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), ${active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER'}, 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
     res.json({ id, active, message: active ? 'User activated' : 'User deactivated' });
   } catch (e) {
     console.error('[PATCH /api/users/:id/status]', e);
@@ -1264,7 +1278,7 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     }
 
     // Password history check
-    const inHistory = await isPasswordInHistory(user.id, newPassword);
+    const inHistory = await isPasswordInHistory(prisma, user.id, newPassword);
     if (inHistory) {
       res.status(422).json({ error: 'PASSWORD_HISTORY', message: `No puedes reutilizar ninguna de tus últimas ${PASSWORD_HISTORY_COUNT} contraseñas.` });
       return;
@@ -1272,12 +1286,14 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
 
     // Apply change
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
-    await recordPasswordHistory(user.id, newHash);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'CHANGE_PASSWORD', 'USER', ${user.id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
+      await recordPasswordHistory(tx, user.id, newHash);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'CHANGE_PASSWORD', 'USER', ${user.id}, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ message: 'Contraseña actualizada correctamente.' });
   } catch (e) {
@@ -1319,12 +1335,14 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
     }
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
-    await recordPasswordHistory(user.id, newHash);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'RESET_PASSWORD', 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
+      await recordPasswordHistory(tx, user.id, newHash);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'RESET_PASSWORD', 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ message: `Contraseña reseteada para el usuario ${user.email}.` });
   } catch (e) {
@@ -1362,34 +1380,39 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
-    // 1. Resolve the user and get their email
-    const rows = await prisma.$queryRaw<{ id: string; email: string; username: string }[]>`
-      SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
-    `;
-    if (!rows.length) {
+    const pseudoToken = await prisma.$transaction(async (tx) => {
+      // 1. Resolve the user and get their email
+      const rows = await tx.$queryRaw<{ id: string; email: string; username: string }[]>`
+        SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
+      `;
+      if (!rows.length) return null;
+      const { email } = rows[0];
+
+      // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
+      //    The token is deterministic so repeat erasures produce the same result (idempotent).
+      const token = '[deleted-' +
+        crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
+        ']';
+      await tx.$executeRaw`
+        UPDATE "audit_logs" SET user_email = ${token} WHERE user_email = ${email}
+      `;
+
+      // 3. Hard-delete the user (trusted_devices, password_history, schedule_entries,
+      //    department_managers cascade automatically — see FK comments in schema.prisma)
+      await tx.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
+
+      // 4. Record the erasure in the audit log under the admin's email
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
+      `;
+      return token;
+    });
+
+    if (pseudoToken === null) {
       res.status(404).json({ error: 'User not found.' });
       return;
     }
-    const { email } = rows[0];
-
-    // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
-    //    The token is deterministic so repeat erasures produce the same result (idempotent).
-    const pseudoToken = '[deleted-' +
-      crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
-      ']';
-    await prisma.$executeRaw`
-      UPDATE "audit_logs" SET user_email = ${pseudoToken} WHERE user_email = ${email}
-    `;
-
-    // 3. Hard-delete the user (trusted_devices, password_history, schedule_entries,
-    //    department_managers cascade automatically — see FK comments in schema.prisma)
-    await prisma.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
-
-    // 4. Record the erasure in the audit log under the admin's email
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
-    `;
 
     log.info(`[DELETE /api/admin/users/${targetId}] GDPR erasure completed by ${req.user!.email}. Audit logs pseudonymised as ${pseudoToken}.`);
     res.json({ message: 'User erased. Audit log entries pseudonymised.' });

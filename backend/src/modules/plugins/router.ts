@@ -988,11 +988,20 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
-        // Issue #172: status flip to ACTIVE + audit atomic. Runtime
-        // registration is in-memory (not DB), but is kept inside the callback
-        // in the original order — if it throws, the status update now rolls
-        // back too, closing a pre-existing gap where a failed runtime
-        // registration could leave the DB status ACTIVE with nothing running.
+        // Issue #172 review fix: status flip to ACTIVE + audit are atomic
+        // inside the transaction. pluginRuntime.registerPlugin is a live,
+        // IRREVERSIBLE runtime side effect (starts cron tasks running, wires
+        // hooks into the shared hookRegistry, mounts routes) — it must run
+        // only AFTER the transaction has durably committed, never inside it
+        // or before it. Doing otherwise let a rolled-back audit insert leave
+        // live cron/hooks running while the DB reverted to the
+        // pre-activation status, with no way to reconcile short of a manual
+        // deactivate or a process restart. If registerPlugin itself throws
+        // after a successful commit, we fall into the same catch below: the
+        // DB is already ACTIVE + audited, the client gets a 500, and the
+        // plugin needs a manual retry/deactivate to reconcile — this matches
+        // how a post-commit registerPlugin failure was already handled
+        // pre-#172 (only the ordering relative to the transaction changed).
         await prisma.$transaction(async (tx) => {
           await tx.pluginRegistry.update({
             where: { id: plugin.id },
@@ -1005,15 +1014,16 @@ export function createPluginRouter(prisma: PrismaClient): Router {
             },
           });
 
-          // Register the plugin's hooks/cron/routes into the live runtime
-          const full = await tx.pluginRegistry.findUnique({
-            where: { id: plugin.id },
-            include: { hooks: true, cronJobs: true, routes: true },
-          });
-          if (full) pluginRuntime.registerPlugin(full as unknown as RuntimePlugin);
-
           await pluginAudit(tx, 'PLUGIN_ACTIVATED', plugin.id, userEmail);
         });
+
+        // Register the plugin's hooks/cron/routes into the live runtime —
+        // only reached once the transaction above has committed.
+        const full = await prisma.pluginRegistry.findUnique({
+          where: { id: plugin.id },
+          include: { hooks: true, cronJobs: true, routes: true },
+        });
+        if (full) pluginRuntime.registerPlugin(full as unknown as RuntimePlugin);
 
         res.json({ id: plugin.id, status: 'ACTIVE' });
       } catch (err) {
@@ -1040,13 +1050,24 @@ export function createPluginRouter(prisma: PrismaClient): Router {
       }
 
       try {
-        // Tear down live hooks/cron/routes before flipping status
-        pluginRuntime.unregisterPlugin(plugin.id, plugin.pluginId);
-        // Issue #172: status flip to INACTIVE + audit atomic.
+        // Issue #172 review fix: status flip to INACTIVE + audit are atomic
+        // inside the transaction. pluginRuntime.unregisterPlugin is a live,
+        // irreversible runtime side effect (tears down hooks/cron/routes) —
+        // it must run only AFTER the transaction has durably committed, never
+        // before it. Running it first (the pre-fix position) let a
+        // rolled-back audit insert leave the DB still claiming ACTIVE while
+        // the runtime had already been torn down — the plugin would be
+        // functionally dead in the running process despite the DB saying
+        // otherwise. Moving it after mirrors the same "commit first, side
+        // effect after" discipline used for activate above.
         await prisma.$transaction(async (tx) => {
           await lifecycleManager.updateStatus(tx, plugin.id, 'INACTIVE');
           await pluginAudit(tx, 'PLUGIN_DEACTIVATED', plugin.id, userEmail);
         });
+
+        // Tear down live hooks/cron/routes only once the status flip + audit
+        // have durably committed.
+        pluginRuntime.unregisterPlugin(plugin.id, plugin.pluginId);
 
         res.json({ id: plugin.id, status: 'INACTIVE' });
       } catch (err) {

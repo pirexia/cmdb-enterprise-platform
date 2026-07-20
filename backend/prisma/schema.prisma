@@ -131,6 +131,11 @@ model User {
   email           String          @unique @db.VarChar(255)
   password        String?         @map("password") @db.VarChar(255)
   role            UserRole        @default(VIEWER)
+  /// External identity key. Semantics depend on ssoProvider:
+  /// - 'microsoft' (Azure AD SSO): Azure OID.
+  /// - 'ldap' (on-prem AD, since v3.5.6): lowercased sAMAccountName — the
+  ///   authoritative, stable AD identity. Login may be typed as sAMAccountName,
+  ///   UPN, NetBIOS DOMAIN\sam, or email; the row is always keyed off this field.
   ssoExternalId   String?         @unique @map("sso_external_id") @db.VarChar(255)
   ssoProvider     String?         @map("sso_provider") @db.VarChar(50)
   active          Boolean         @default(true) @map("active")

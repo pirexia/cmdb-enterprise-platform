@@ -948,7 +948,7 @@
   "login": {
     "title": "Iniciar sessão",
     "subtitle": "Aceda à sua plataforma CMDB",
-    "email_label": "Endereço de e-mail",
+    "email_label": "Endereço de e-mail ou utilizador",
     "password_label": "Palavra-passe",
     "mfa_label": "Código MFA (6 dígitos)",
     "submit": "Iniciar sessão",
@@ -977,7 +977,7 @@
     "enable_mfa_btn": "Ativar MFA",
     "error_qr_failed": "Não foi possível carregar o código QR. Tente novamente.",
     "error_mfa_code": "Código incorreto. Verifique a sua aplicação TOTP.",
-    "email_placeholder": "email@empresa.com",
+    "email_placeholder": "email@empresa.com ou utilizador",
     "password_placeholder": "••••••••",
     "show_password": "Mostrar palavra-passe",
     "hide_password": "Ocultar palavra-passe",

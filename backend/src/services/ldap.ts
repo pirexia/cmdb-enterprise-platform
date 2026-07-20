@@ -13,13 +13,15 @@
  *
  * Bind strategies (in order of preference):
  *   1. Admin bind + search (when LDAP_BIND_DN is set):
- *      Service account binds first, searches for the user by mail/sAMAccountName,
- *      then re-binds as the found user to verify the password.
+ *      Service account binds first, searches for the user by the given
+ *      attribute (sAMAccountName / userPrincipalName / mail), then re-binds
+ *      as the found user to verify the password.
  *      This is the standard enterprise AD pattern.
  *
  *   2. Direct user bind (fallback when LDAP_BIND_DN is absent):
  *      Binds directly with the email as userPrincipalName (AD UPN format) or
- *      builds a uid= DN for OpenLDAP / 389-ds.
+ *      builds a uid= DN for OpenLDAP / 389-ds, then self-searches for the
+ *      caller's own attributes.
  *
  * Fail-safe: all LDAP calls are wrapped in a 5-second timeout. If the server
  * is unreachable, the promise rejects immediately so the local bcrypt path
@@ -29,7 +31,7 @@
 // ldap-authentication is TypeScript-native (no @types needed)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { authenticate } = require('ldap-authentication') as {
-  authenticate: (opts: Record<string, unknown>) => Promise<unknown>;
+  authenticate: (opts: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
 
 const LDAP_TIMEOUT_MS = 5_000;
@@ -41,6 +43,37 @@ const env = {
   searchBase:           () => process.env.LDAP_SEARCH_BASE ?? process.env.LDAP_BASE_DN ?? 'dc=example,dc=com',
   rejectUnauthorized:   ()  => process.env.LDAP_TLS_REJECT_UNAUTHORIZED !== '0',
 };
+
+/** LDAP attribute used to look up the account before re-binding as it. */
+export type LdapUsernameAttribute = 'sAMAccountName' | 'userPrincipalName' | 'mail';
+
+/** Identity attributes as returned by the directory after a successful bind. */
+export interface LdapUserIdentity {
+  sAMAccountName?: string;
+  userPrincipalName?: string;
+  mail?: string;
+  displayName?: string;
+  dn?: string;
+}
+
+const IDENTITY_ATTRIBUTES = ['sAMAccountName', 'userPrincipalName', 'mail', 'displayName'];
+
+/** ldapts returns a plain string for single-valued attributes, an array for multi-valued. */
+function firstValue(v: unknown): string | undefined {
+  if (Array.isArray(v)) return typeof v[0] === 'string' ? v[0] : undefined;
+  return typeof v === 'string' ? v : undefined;
+}
+
+function toIdentity(user: Record<string, unknown> | null | undefined): LdapUserIdentity {
+  if (!user) return {};
+  return {
+    sAMAccountName:    firstValue(user.sAMAccountName),
+    userPrincipalName: firstValue(user.userPrincipalName),
+    mail:              firstValue(user.mail),
+    displayName:       firstValue(user.displayName),
+    dn:                firstValue(user.dn),
+  };
+}
 
 /** Wraps a promise with a hard timeout. Rejects with a clear error on expiry. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -72,16 +105,26 @@ function escapeLdap(value: string): string {
 
 /**
  * Attempts to authenticate the user against the LDAP/AD server.
- * Resolves silently on success; throws a descriptive Error on failure.
+ * Resolves with the directory's own identity attributes on success (the
+ * authoritative source of truth — callers must key the local user record off
+ * this, not off the string the caller typed); throws a descriptive Error on
+ * failure.
  *
- * @param username - Email or plain username supplied at login
+ * @param username - Identifier supplied at login (sAMAccountName, UPN, or email)
  * @param password - Clear-text password (sent over TLS/StartTLS in production)
+ * @param usernameAttribute - LDAP attribute to search by. Defaults to 'mail'
+ *   when the identifier contains '@', otherwise 'sAMAccountName'.
  */
-export async function authenticateLDAP(username: string, password: string): Promise<void> {
+export async function authenticateLDAP(
+  username: string,
+  password: string,
+  usernameAttribute?: LdapUsernameAttribute
+): Promise<LdapUserIdentity> {
   if (!username || !password) {
     throw new Error('Username and password are required for LDAP authentication');
   }
 
+  const attr = usernameAttribute ?? (username.includes('@') ? 'mail' : 'sAMAccountName');
   const tlsOptions = { rejectUnauthorized: env.rejectUnauthorized() };
   const ldapOpts   = { url: env.url(), tlsOptions };
 
@@ -91,21 +134,23 @@ export async function authenticateLDAP(username: string, password: string): Prom
     if (bindDn) {
       // ── Strategy 1: Admin bind + search (recommended for AD) ──────────────
       // The service account binds first, then searches for the user by the
-      // 'mail' attribute (AD) or 'uid' (OpenLDAP). The library then re-binds
-      // as the found user to verify their password.
-      await withTimeout(
+      // requested attribute. The library then re-binds as the found user to
+      // verify their password.
+      const user = await withTimeout(
         authenticate({
           ldapOpts,
           adminDn:           bindDn,
           adminPassword:     env.bindPassword(),
           userSearchBase:    env.searchBase(),
-          usernameAttribute: username.includes('@') ? 'mail' : 'uid',
+          usernameAttribute: attr,
           username:          escapeLdap(username),
           userPassword:      password,
+          attributes:        IDENTITY_ATTRIBUTES,
         }),
         LDAP_TIMEOUT_MS,
         'admin-bind'
       );
+      return toIdentity(user);
     } else {
       // ── Strategy 2: Direct user bind (fallback) ────────────────────────────
       // AD accepts email UPN directly; OpenLDAP needs uid=<user>,<base> format.
@@ -113,11 +158,21 @@ export async function authenticateLDAP(username: string, password: string): Prom
         ? escapeLdap(username)
         : `uid=${escapeLdap(username)},${env.searchBase()}`;
 
-      await withTimeout(
-        authenticate({ ldapOpts, userDn, userPassword: password }),
+      const user = await withTimeout(
+        authenticate({
+          ldapOpts,
+          userDn,
+          userPassword:      password,
+          // Self-search after bind so the caller still gets an authoritative identity.
+          usernameAttribute: attr,
+          username:          escapeLdap(username),
+          userSearchBase:    env.searchBase(),
+          attributes:        IDENTITY_ATTRIBUTES,
+        }),
         LDAP_TIMEOUT_MS,
         'direct-bind'
       );
+      return toIdentity(user);
     }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);

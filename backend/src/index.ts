@@ -3122,23 +3122,28 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
       if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
     }
 
-    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
-    const relation = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
-      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
-      RETURNING id::text
-    `;
+    const relation = await prisma.$transaction(async (tx) => {
+      // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+        SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+        WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
+        RETURNING id::text
+      `;
+
+      if (!inserted.length) return inserted;
+
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${inserted[0].id}, ${req.user!.email}, now())
+      `;
+      return inserted;
+    });
 
     if (!relation.length) {
       res.status(404).json({ error: 'One or both CIs not found.' });
       return;
     }
-
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
-    `;
 
     // Re-index BOTH endpoints — each CI's relation list changed
     void queueEntityForIndexing('ci', sourceCiId);
@@ -3198,23 +3203,28 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
       if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
     }
 
-    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
-    const relation = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
-      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
-      RETURNING id::text
-    `;
+    const relation = await prisma.$transaction(async (tx) => {
+      // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+        SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+        WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
+        RETURNING id::text
+      `;
+
+      if (!inserted.length) return inserted;
+
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${inserted[0].id}, ${req.user!.email}, now())
+      `;
+      return inserted;
+    });
 
     if (!relation.length) {
       res.status(404).json({ error: 'One or both CIs not found.' });
       return;
     }
-
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
-    `;
 
     // Re-index BOTH endpoints — each CI's relation list changed
     void queueEntityForIndexing('ci', sourceCiId);
@@ -3248,12 +3258,14 @@ app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Re
       FROM ci_relations WHERE id = ${id}::uuid LIMIT 1
     `;
 
-    await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index both endpoints (relation list changed for both)
     if (endpoints.length) {

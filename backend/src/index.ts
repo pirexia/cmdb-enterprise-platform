@@ -1510,51 +1510,54 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ci = await prisma.cI.create({
-      data: {
-        name, apiSlug, criticality, environment,
-        ciTypeId:        ciTypeId        || null,
-        status:          status          || "ACTIVO",
-        inventoryNumber: inventoryNumber || null,
-        branchId:        branchId        || null,
-        ciModelId:       ciModelId       || null,
-        eolDate:         resolvedEolDate     || null,
-        eosDate:         resolvedSupportDate || null,
-        businessOwnerId: businessOwnerId || null,
-        technicalLeadId: technicalLeadId || null,
-        businessImpact:     businessImpact     || null,
-        recoveryPriority:   recoveryPriority   ?? null,
-        rto:                rto                ?? null,
-        rpo:                rpo                ?? null,
-        spofRisk:           spofRisk           ?? false,
-        containsPii:        containsPii        ?? false,
-        dataClassification: dataClassification || null,
-        cpuModel:           cpuModel           || null,
-        vCpus:              vCpus              ?? null,
-        ram:                ram                || null,
-        disk:               disk               || null,
-        adminIp:            adminIp            || null,
-        mgmtIp:             mgmtIp             || null,
-        hostName:           hostName           || null,
-        clusterName:        clusterName        || null,
-        operatingSystemId:  operatingSystemId  || null,
-        firmwareVersion:    firmwareVersion    || null,
-        dns:                dns                || null,
-        hypervisorId:       hypervisorId       || null,
-        powerState:         powerState         || null,
-        ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
-        ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
-      } as Parameters<typeof prisma.cI.create>[0]['data'],
-      include: CI_INCLUDE,
-    });
+    const ci = await prisma.$transaction(async (tx) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const created = await tx.cI.create({
+        data: {
+          name, apiSlug, criticality, environment,
+          ciTypeId:        ciTypeId        || null,
+          status:          status          || "ACTIVO",
+          inventoryNumber: inventoryNumber || null,
+          branchId:        branchId        || null,
+          ciModelId:       ciModelId       || null,
+          eolDate:         resolvedEolDate     || null,
+          eosDate:         resolvedSupportDate || null,
+          businessOwnerId: businessOwnerId || null,
+          technicalLeadId: technicalLeadId || null,
+          businessImpact:     businessImpact     || null,
+          recoveryPriority:   recoveryPriority   ?? null,
+          rto:                rto                ?? null,
+          rpo:                rpo                ?? null,
+          spofRisk:           spofRisk           ?? false,
+          containsPii:        containsPii        ?? false,
+          dataClassification: dataClassification || null,
+          cpuModel:           cpuModel           || null,
+          vCpus:              vCpus              ?? null,
+          ram:                ram                || null,
+          disk:               disk               || null,
+          adminIp:            adminIp            || null,
+          mgmtIp:             mgmtIp             || null,
+          hostName:           hostName           || null,
+          clusterName:        clusterName        || null,
+          operatingSystemId:  operatingSystemId  || null,
+          firmwareVersion:    firmwareVersion    || null,
+          dns:                dns                || null,
+          hypervisorId:       hypervisorId       || null,
+          powerState:         powerState         || null,
+          ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
+          ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
+        } as Parameters<typeof prisma.cI.create>[0]['data'],
+        include: CI_INCLUDE,
+      });
 
-    // Audit log (raw — Prisma client types regenerate after migrate)
-    const createDetails = JSON.stringify(buildAuditDetails(`CI "${ci.name}" creado`));
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
-      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
-    `;
+      // Audit log (raw — Prisma client types regenerate after migrate)
+      const createDetails = JSON.stringify(buildAuditDetails(`CI "${created.name}" creado`));
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${created.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
+      `;
+      return created;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', ci.id);
@@ -1777,16 +1780,19 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       return;
     }
 
-    const ci = await prisma.cI.update({
-      where: { id },
-      data: updateData,
-      include: CI_INCLUDE,
-    });
+    const ci = await prisma.$transaction(async (tx) => {
+      const updated = await tx.cI.update({
+        where: { id },
+        data: updateData,
+        include: CI_INCLUDE,
+      });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
+      `;
+      return updated;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', id);
@@ -3278,19 +3284,21 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
     const checkDate = lastCheckDate ? new Date(lastCheckDate) : new Date();
     const source    = verificationSource ?? 'MANUAL';
 
-    await prisma.$executeRaw`
-      UPDATE "configuration_items"
-      SET    last_check_date      = ${checkDate},
-             verification_source  = ${source},
-             updated_at           = now()
-      WHERE  id = ${id}::uuid
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "configuration_items"
+        SET    last_check_date      = ${checkDate},
+               verification_source  = ${source},
+               updated_at           = now()
+        WHERE  id = ${id}::uuid
+      `;
 
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
-    `;
+      // Audit log
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', id);
@@ -3368,15 +3376,17 @@ app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuid
       }
     }
 
-    await prisma.hardwareCI.update({
-      where : { ciId: id },
-      data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.hardwareCI.update({
+        where : { ciId: id },
+        data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
+      });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ id, parentRackCiId, uPosition, orientation, sizeU, powerW });
   } catch (error) {

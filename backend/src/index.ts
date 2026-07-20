@@ -2049,19 +2049,23 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       v.cve === cve ? { ...v, status, updatedAt: new Date().toISOString() } : v
     );
 
-    await prisma.$executeRaw`
-      UPDATE "configuration_items"
-      SET "vulnerabilities" = ${JSON.stringify(updated)}::jsonb
-      WHERE "id" = ${ciId}::uuid
-    `;
-
-    // Audit log (raw — Prisma client types regenerate after migrate)
+    // Issue #172: wrap the vulnerabilities-column update + audit insert in one
+    // transaction so the audit is never missing when the status change persists.
     const entityId = `${ciId}:${cve}`;
     const action   = `UPDATE_VULN_STATUS:${status}`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "configuration_items"
+        SET "vulnerabilities" = ${JSON.stringify(updated)}::jsonb
+        WHERE "id" = ${ciId}::uuid
+      `;
+
+      // Audit log (raw — Prisma client types regenerate after migrate)
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index the vulnerability + its parent CI (whose summary line changed)
     void queueEntityForIndexing('vulnerability', vulnUuid(ciId, cve));
@@ -2904,16 +2908,34 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     // Ensure directory exists (mapped from host via volume)
     fs.mkdirSync(certDir, { recursive: true });
 
+    // Issue #172: the certificate write is a filesystem side effect, not a DB row,
+    // so it cannot join a Prisma transaction with the audit insert. To still avoid
+    // an unaudited change reaching disk, snapshot whatever was there before (for
+    // restore), write the new cert, then audit — if the audit insert fails, undo
+    // the filesystem write (restore previous cert / remove if none existed) so the
+    // persisted state always matches what's in audit_logs.
+    const previousCert = fs.existsSync(certPath) ? fs.readFileSync(certPath) : null;
+
     // Write certificate to file
     fs.writeFileSync(certPath, certificate.trim() + '\n', { mode: 0o600 });
 
-    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
+    try {
+      // Audit log
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
+      `;
+    } catch (auditError) {
+      // Compensate: undo the filesystem write so an unaudited cert never persists.
+      if (previousCert !== null) {
+        fs.writeFileSync(certPath, previousCert, { mode: 0o600 });
+      } else {
+        fs.rmSync(certPath, { force: true });
+      }
+      throw auditError;
+    }
 
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
-    `;
+    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
 
     res.json({
       message: 'Certificate uploaded successfully. Restart the nginx container to apply the new certificate.',
@@ -4074,11 +4096,15 @@ app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, 
   const { contractIds } = parsed.data;
   const ciId = req.params.id as string;
   try {
-    await prisma.cI.update({
-      where: { id: ciId },
-      data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
+    // Issue #172: wrap the join-table connect + audit insert in one transaction
+    // so the audit is never missing when the association persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.update({
+        where: { id: ciId },
+        data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
+      });
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
     });
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
 
     void queueEntityForIndexing('ci', ciId);
     for (const cid of contractIds) {
@@ -4095,11 +4121,15 @@ app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin
   const ciId = req.params.id as string;
   const contractId = req.params.contractId as string;
   try {
-    await prisma.cI.update({
-      where: { id: ciId },
-      data: { contracts: { disconnect: [{ id: contractId }] } },
+    // Issue #172: wrap the join-table disconnect + audit insert in one
+    // transaction so the audit is never missing when the removal persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.update({
+        where: { id: ciId },
+        data: { contracts: { disconnect: [{ id: contractId }] } },
+      });
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
     });
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
 
     void queueEntityForIndexing('ci', ciId);
     const rootId = await getContractRoot(contractId);
@@ -4117,12 +4147,17 @@ app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, 
   const { documentIds } = parsed.data;
   const ciId = req.params.id as string;
   try {
-    let associated = 0;
-    for (const documentId of documentIds) {
-      await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
-      associated++;
-    }
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count:associated})}::jsonb,now())`;
+    // Issue #172: wrap the join-table inserts + audit insert in one transaction
+    // so the audit is never missing when the associations persist.
+    const associated = await prisma.$transaction(async (tx) => {
+      let count = 0;
+      for (const documentId of documentIds) {
+        await tx.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+        count++;
+      }
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count})}::jsonb,now())`;
+      return count;
+    });
 
     void queueEntityForIndexing('ci', ciId);
 
@@ -4135,8 +4170,12 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
   const ciId = req.params.id as string;
   const docId = req.params.docId as string;
   try {
-    await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
+    // Issue #172: wrap the join-table delete + audit insert in one transaction
+    // so the audit is never missing when the removal persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
+    });
 
     void queueEntityForIndexing('ci', ciId);
 

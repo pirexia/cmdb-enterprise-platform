@@ -792,29 +792,33 @@ app.get('/api/auth/sso/microsoft/callback', ssoLimiter, async (req: Request, res
       return;
     }
 
-    // ── Create trusted device (SSO auth = trusted, MFA never required) ────────
+    // ── Create trusted device (SSO auth = trusted, MFA never required) + audit ──
+    // Wrapped in one transaction so the device grant and its audit record
+    // either both persist or neither does (A.8.15 — no unlogged session write).
     const deviceToken = crypto.randomBytes(32).toString('hex');
     const expiry      = new Date();
     expiry.setDate(expiry.getDate() + (parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10) || 30));
     const ua = req.headers['user-agent'] ?? '';
     const ip = req.ip ?? '';
-    await prisma.$executeRaw`
-      INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
-      VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
-      ON CONFLICT DO NOTHING
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+        VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
+        ON CONFLICT DO NOTHING
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
+      `;
+    });
 
     // ── Issue JWT ──────────────────────────────────────────────────────────────
+    // Signed only after the transaction commits — no external side effects
+    // (JWT signing, cookie-setting, res.redirect) belong inside a DB transaction.
     const payload: JwtPayload = {
       id: user.id, username: user.username, email: user.email, role: user.role as UserRole,
     };
     const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
-
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
-      VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
-    `;
 
     log.info(`[SSO] Successful login: ${email}`);
 
@@ -2669,13 +2673,16 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
     // Store the pending secret server-side so /mfa/enable can retrieve it
-    // without trusting any client-supplied value.
-    await prisma.$executeRaw`
-      UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
-    `;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
+    // without trusting any client-supplied value. Mutation + audit insert are
+    // atomic (A.8.15) — an unlogged mfa_pending_secret write is a gap too.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
+    });
 
     res.json({ secret, qrDataUrl });
   } catch (error) {
@@ -2713,12 +2720,23 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
       return;
     }
-    await prisma.$executeRaw`
-      UPDATE "users"
-      SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
-      WHERE id = ${req.user!.id}::uuid
-    `;
-    // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
+    // Mutation + audit insert are atomic (A.8.15) — an unlogged mfa_secret
+    // write would be a silent auth-bypass audit gap (highest-risk site here).
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "users"
+        SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
+        WHERE id = ${req.user!.id}::uuid
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'MFA_ENABLED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())
+      `;
+    });
+
+    // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired).
+    // No external side effects (JWT signing, cookie-setting, res.json) belong
+    // inside a DB transaction — these run only after the write above commits.
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
     const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     setAuthCookie(res, newToken);
@@ -2737,10 +2755,6 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       `;
     }
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'MFA_ENABLED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())
-    `;
     const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role, mfa_enabled: true };
     res.json({ message: 'MFA enabled successfully', token: newToken, user: userObj, ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
   } catch (error) {

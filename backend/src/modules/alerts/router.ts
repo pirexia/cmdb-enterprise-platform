@@ -52,8 +52,11 @@ export function createAlertsRouter(prisma: PrismaClient): Router {
       return;
     }
     try {
-      const config = await upsertConfig(prisma, parsed.data);
-      await insertAlertAudit(prisma, 'UPDATE_ALERT_CONFIG', userEmail(req), 'default');
+      const config = await prisma.$transaction(async (tx) => {
+        const c = await upsertConfig(tx, parsed.data);
+        await insertAlertAudit(tx, 'UPDATE_ALERT_CONFIG', userEmail(req), 'default');
+        return c;
+      });
       res.json(config);
     } catch {
       res.status(500).json({ error: 'Internal server error' });
@@ -82,8 +85,11 @@ export function createAlertsRouter(prisma: PrismaClient): Router {
       return;
     }
     try {
-      const rule = await upsertRule(prisma, catParsed.data.category, bodyParsed.data);
-      await insertAlertAudit(prisma, 'UPDATE_ALERT_RULE', userEmail(req), catParsed.data.category);
+      const rule = await prisma.$transaction(async (tx) => {
+        const r = await upsertRule(tx, catParsed.data.category, bodyParsed.data);
+        await insertAlertAudit(tx, 'UPDATE_ALERT_RULE', userEmail(req), catParsed.data.category);
+        return r;
+      });
       res.json(rule);
     } catch {
       res.status(500).json({ error: 'Internal server error' });
@@ -118,6 +124,10 @@ export function createAlertsRouter(prisma: PrismaClient): Router {
       const subject = `[TEST] ⚠️ CMDB Alert Report — ${date}`;
       const result  = await sendEmail(html, subject, validated.data);
 
+      // #172: no DB mutation precedes this audit insert (config/rules/scan above
+      // are reads; sendEmail() is an external SMTP call, not a DB write) — a lone
+      // insert has nothing to roll back against, so it stays outside $transaction
+      // (wrapping it would only hold a DB transaction open across nothing).
       await insertAlertAudit(prisma, 'ALERT_TEST_SEND', userEmail(req), 'default');
 
       res.json({
@@ -138,6 +148,11 @@ export function createAlertsRouter(prisma: PrismaClient): Router {
   // Full pipeline run, dedup bypassed (MANUAL trigger)
   router.post('/run-now', async (req: Request, res: Response): Promise<void> => {
     try {
+      // #172: this audit only records that an admin triggered a manual run —
+      // it has no DB mutation of its own to pair with (runAlertsPipeline below
+      // does its own atomic run-row + audit write internally, see pipeline.ts).
+      // A lone insert has nothing to roll back against, so it stays outside
+      // $transaction.
       await insertAlertAudit(prisma, 'ALERT_RUN_NOW', userEmail(req), 'default');
       const result = await runAlertsPipeline(prisma, 'MANUAL', true);
       res.json(result);

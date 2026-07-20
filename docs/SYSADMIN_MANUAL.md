@@ -369,13 +369,29 @@ openssl rand -base64 32
 | `LDAP_BIND_DN` | Recomendada | DN de la cuenta de servicio | `cn=svc-cmdb,ou=ServiceAccounts,dc=corp,dc=local` |
 | `LDAP_BIND_PASSWORD` | Recomendada | Contraseña de la cuenta de servicio | — |
 | `LDAP_TLS_REJECT_UNAUTHORIZED` | Opcional | Poner `0` solo si el cert del DC es autofirmado | `0` |
+| `LDAP_UPN_SUFFIX` | Opcional | Sufijo UPN del dominio AD (habilita login `usuario@sufijo`) | `azkar.com` |
+| `LDAP_NETBIOS_DOMAIN` | Opcional | Nombre NetBIOS del dominio (solo informativo, no bloquea el login) | `AZKARAD` |
+
+### Formatos de login soportados (desde v3.5.6)
+
+Un usuario de AD puede autenticarse con cualquiera de estos formatos; el sistema resuelve siempre la misma fila de base de datos, indexada internamente por el `sAMAccountName` que devuelve el propio directorio tras el bind (nunca por lo que el usuario tecleó):
+
+| Formato | Ejemplo | Atributo LDAP consultado |
+|---------|---------|---------------------------|
+| sAMAccountName (usuario AD) | `andres.matias` | `sAMAccountName` |
+| UPN | `andres.matias@azkar.com` | `userPrincipalName` (requiere `LDAP_UPN_SUFFIX`) |
+| NetBIOS | `AZKARAD\andres.matias` | `sAMAccountName` (la parte tras la `\`) |
+| Email (retrocompatible) | `andres.matias@dachser.com` | `mail` |
+| Cuenta local CMDB | `admin@cmdb.local` | — (bcrypt local, no consulta AD) |
+
+Si `LDAP_UPN_SUFFIX` no está configurado, el formato `usuario@dominio-ad` se trata como email (`mail`) en vez de UPN.
 
 ### Estrategias de autenticación
 
 El sistema aplica automáticamente la estrategia más segura disponible:
 
 **Estrategia 1 — Admin bind + search (recomendada para AD corporativo):**
-Se activa cuando `LDAP_BIND_DN` está configurado. La cuenta de servicio hace bind primero, luego busca al usuario por atributo `mail` (si el login es un email) o `uid`, y finalmente re-hace bind como ese usuario para verificar la contraseña.
+Se activa cuando `LDAP_BIND_DN` está configurado. La cuenta de servicio hace bind primero, luego busca al usuario por el atributo LDAP correspondiente al formato tecleado (`sAMAccountName`, `userPrincipalName` o `mail` — ver tabla anterior), y finalmente re-hace bind como ese usuario para verificar la contraseña.
 
 ```bash
 # Ejemplo para Active Directory

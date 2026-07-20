@@ -485,6 +485,9 @@ check_new_env_vars() {
     "VCENTER_DEFAULT_ENVIRONMENT"
     "VCENTER_DEFAULT_CRITICALITY"
     "VCENTER_SYNC_CRON"
+    # v3.5.6 — AD username login (optional)
+    "LDAP_UPN_SUFFIX"
+    "LDAP_NETBIOS_DOMAIN"
   )
 
   local missing=()
@@ -545,6 +548,9 @@ check_new_env_vars() {
         VCENTER_DEFAULT_ENVIRONMENT) echo "VCENTER_DEFAULT_ENVIRONMENT=PRODUCTION" ;;
         VCENTER_DEFAULT_CRITICALITY) echo "VCENTER_DEFAULT_CRITICALITY=MEDIUM" ;;
         VCENTER_SYNC_CRON)           echo "VCENTER_SYNC_CRON=0 */6 * * *" ;;
+        # v3.5.6 — AD username login (optional)
+        LDAP_UPN_SUFFIX)     echo "LDAP_UPN_SUFFIX=" ;;
+        LDAP_NETBIOS_DOMAIN) echo "LDAP_NETBIOS_DOMAIN=" ;;
       esac
     done
   } >> "${env_file}"

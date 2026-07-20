@@ -484,10 +484,14 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.5.5 — ✅ LIBERADA (tag `v3.5.5`, PR develop→main, release en GitHub, desplegada y verificada en producción, 2026-07-16)
+**Versión actual en producción:** v3.5.5 (código de #181 ya desplegado directamente en prod, ver más abajo — release formal vX.Y.Z pendiente de tag/main)
 **Rama activa:** `develop`
-**PRs abiertos:** —
-**Issues abiertos para la siguiente sesión:** #181 (aprovisionamiento n8n: 3 credenciales + 1 workflow fallan con 500/400 — usuario de servicio SQL-inserted sin Project personal en n8n; root cause del 500 confirmado en vivo, no arreglado)
+**PRs abiertos:** `fix/181-n8n-credential-provisioning` → `develop` (pendiente)
+**Issues abiertos para la siguiente sesión:** #172 (auditoría no transaccional — legacy `index.ts` + módulos restantes, staff-schedule ya resuelto), #153 (npm audit exceljs→uuid), #152 (otplib v12→v13, auth-crítico). Roadmap completo: `docs/superpowers/plans/2026-07-16-open-issues-remediation-roadmap.md`
+
+### Issue #181 — resuelto y desplegado en producción (2026-07-16/17)
+
+Aprovisionamiento n8n: 3 credenciales + 1 workflow fallaban con 500/400. Causas raíz confirmadas en vivo contra la instancia real de n8n 1.123.27: (1) el usuario de servicio (`cmdb-provisioner@cmdb.local`), creado por INSERT SQL directo en `scripts/lib/n8n-bootstrap.sh`, carecía del "personal project" que n8n exige para crear credenciales — corregido con SQL idempotente (creación de `project`+`project_relation`, verificada en vivo: crea → no-op en la segunda ejecución, sin duplicados); (2) `buildLdapCredential` enviaba `baseDn` (rechazado por el schema de n8n, `additionalProperties:false`) y `port` como número (el schema exige string) — corregido; (3) el 400 del workflow `vCenter Sync` era una cascada de (1), resuelto sin cambio de código adicional. **Hallazgo cross-cutting durante la implementación**: `podman exec ... psql -c "..."` NO sustituye variables `:'var'` contra esta imagen de postgres (confirmado aislando `\echo :x` vs `SELECT :x;` — el primero sustituye, el segundo da error de sintaxis; la misma consulta por stdin sí sustituye) — el bloque SQL se alimenta ahora por heredoc/stdin con `-i` en el exec. Verificado end-to-end en producción: backfill aplicado sobre el usuario real (autorizado explícitamente), backend redesplegado (`podman build` directo + verificación de `String(port)`/ausencia de `baseDn` en el `dist` compilado + `down`/`up` completo), log de arranque `aprovisionamiento completado` sin errores, `POST /api/admin/n8n/resync` → 200 `errors: []`, las 3 credenciales + los 8 workflows (incluido vCenter Sync) provisionan correctamente. 63/63 tests, `tsc --noEmit` limpio. Plan: `docs/superpowers/plans/2026-07-16-issue-181-n8n-credential-provisioning.md`.
 
 **Patrón canónico de la casa** (vistas de nivel superior — Dashboard, Inventory, Vulnerabilities, Reports, DCIM, Decommission):
 ```

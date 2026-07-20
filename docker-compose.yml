@@ -80,6 +80,10 @@ services:
       LDAP_BASE_DN:      ${LDAP_BASE_DN:-}
       LDAP_BIND_DN:      ${LDAP_BIND_DN:-}
       LDAP_BIND_PASSWORD: ${LDAP_BIND_PASSWORD:-}
+      # UPN suffix / NetBIOS domain for AD username login (optional — enables
+      # login with sAMAccountName, UPN, or DOMAIN\sam in addition to email)
+      LDAP_UPN_SUFFIX:      ${LDAP_UPN_SUFFIX:-}
+      LDAP_NETBIOS_DOMAIN:  ${LDAP_NETBIOS_DOMAIN:-}
       # Microsoft 365 SSO (optional — USE_MICROSOFT_SSO=false to disable)
       USE_MICROSOFT_SSO:    ${USE_MICROSOFT_SSO:-false}
       AZURE_TENANT_ID:      ${AZURE_TENANT_ID:-}

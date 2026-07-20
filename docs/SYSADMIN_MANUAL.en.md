@@ -376,13 +376,29 @@ openssl rand -base64 32
 | `LDAP_BIND_DN` | Recommended | DN of the service account | `cn=svc-cmdb,ou=ServiceAccounts,dc=corp,dc=local` |
 | `LDAP_BIND_PASSWORD` | Recommended | Password of the service account | — |
 | `LDAP_TLS_REJECT_UNAUTHORIZED` | Optional | Set to `0` only if the DC certificate is self-signed | `0` |
+| `LDAP_UPN_SUFFIX` | Optional | AD domain UPN suffix (enables login as `user@suffix`) | `azkar.com` |
+| `LDAP_NETBIOS_DOMAIN` | Optional | NetBIOS domain name (informational only, never blocks login) | `AZKARAD` |
+
+### Supported login formats (since v3.5.6)
+
+An AD user can authenticate with any of the following formats; the system always resolves the same database row, keyed internally by the `sAMAccountName` returned by the directory itself after the bind (never by what the user typed):
+
+| Format | Example | LDAP attribute queried |
+|--------|---------|--------------------------|
+| sAMAccountName (AD username) | `andres.matias` | `sAMAccountName` |
+| UPN | `andres.matias@azkar.com` | `userPrincipalName` (requires `LDAP_UPN_SUFFIX`) |
+| NetBIOS | `AZKARAD\andres.matias` | `sAMAccountName` (the part after `\`) |
+| Email (retrocompatible) | `andres.matias@dachser.com` | `mail` |
+| Local CMDB account | `admin@cmdb.local` | — (local bcrypt, no AD lookup) |
+
+If `LDAP_UPN_SUFFIX` is not configured, the `user@ad-domain` format is treated as an email (`mail`) instead of a UPN.
 
 ### Authentication strategies
 
 The system automatically applies the most secure available strategy:
 
 **Strategy 1 — Admin bind + search (recommended for corporate AD):**
-Activated when `LDAP_BIND_DN` is configured. The service account performs the initial bind, then searches for the user by the `mail` attribute (if the login is an email address) or `uid`, and finally re-binds as that user to verify the password.
+Activated when `LDAP_BIND_DN` is configured. The service account performs the initial bind, then searches for the user by the LDAP attribute matching the typed format (`sAMAccountName`, `userPrincipalName`, or `mail` — see the table above), and finally re-binds as that user to verify the password.
 
 ```bash
 # Example for Active Directory

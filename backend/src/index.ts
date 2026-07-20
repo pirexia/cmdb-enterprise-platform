@@ -15,7 +15,8 @@ import path from 'path';
 import cron from 'node-cron';
 import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAlertsPipeline } from './modules/alerts/pipeline';
-import { authenticateLDAP } from './services/ldap';
+import { authenticateLDAP, type LdapUserIdentity } from './services/ldap';
+import { parseLoginIdentifier } from './services/ldapIdentity';
 import { lookupEolWithFallbacks } from './services/eolService';
 import { getSystemInfo } from './services/systemInfoService';
 import {
@@ -336,8 +337,18 @@ app.use('/api/internal', createInternalRouter(prisma, {
 
 // ── Zod schemas (input validation) ───────────────────────────────────────────
 
+// Login identifier: local/SSO email, bare sAMAccountName, or NetBIOS DOMAIN\sam.
+// Charset is allowlisted (A03 defense-in-depth) — actual LDAP escaping happens
+// in services/ldap.ts before any directory query.
+const SAM_LOGIN_REGEX     = /^[A-Za-z0-9._-]+$/;
+const NETBIOS_LOGIN_REGEX = /^[A-Za-z0-9._-]+\\[A-Za-z0-9._-]+$/;
+
 const LoginSchema = z.object({
-  email:       z.string().email('Email inválido').max(254),
+  email: z.string().min(1, 'El identificador de acceso es obligatorio').max(254)
+    .refine(
+      (v) => z.string().email().safeParse(v).success || SAM_LOGIN_REGEX.test(v) || NETBIOS_LOGIN_REGEX.test(v),
+      'Identificador de acceso inválido'
+    ),
   password:    z.string().min(1, 'La contraseña es obligatoria').max(128),
   mfaCode:     z.string().length(6).regex(/^\d{6}$/).optional(),
   trustDevice: z.boolean().optional(),
@@ -889,36 +900,89 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
     let user: UserRow | null = null;
     let ldapSuccess = false;
 
-    const isLocalAccount = email.endsWith('@cmdb.local') || email.endsWith('@cmdb.internal');
+    // The typed identifier only decides HOW to search AD. The local user row
+    // is always keyed off the authoritative sAMAccountName AD returns after a
+    // successful bind — never off what the caller typed (see D2 in the plan).
+    const identifier = parseLoginIdentifier(email);
+    const isLocalAccount = identifier.form === 'local';
 
     if (process.env.USE_LDAP === 'true' && !isLocalAccount) {
+      let ad: LdapUserIdentity | null = null;
       try {
-        await authenticateLDAP(email, password);
+        ad = await authenticateLDAP(identifier.value, password, identifier.ldapAttr);
         ldapSuccess = true;
-        log.info(`[POST /api/auth/login] LDAP authentication successful for ${email}`);
+        log.info(`[POST /api/auth/login] LDAP authentication successful for ${identifier.value}`);
       } catch (ldapErr) {
         log.warn('[POST /api/auth/login] LDAP authentication failed, attempting local fallback:', ldapErr);
       }
 
-      if (ldapSuccess) {
+      const sam = ad?.sAMAccountName?.toLowerCase();
+      if (ldapSuccess && !sam) {
+        // AD bound successfully but returned no sAMAccountName — cannot key a
+        // stable local identity; treat as a failed login rather than guessing.
+        log.warn(`[POST /api/auth/login] LDAP bind succeeded but no sAMAccountName returned for ${identifier.value}`);
+        ldapSuccess = false;
+      }
+
+      if (ldapSuccess && sam && ad) {
         let rows = await prisma.$queryRaw<UserRow[]>`
           SELECT id, username, email, password, role, COALESCE(active, true) AS active,
                  mfa_enabled, mfa_secret, mfa_prompted_at
-          FROM "users" WHERE email = ${email} LIMIT 1
+          FROM "users" WHERE sso_external_id = ${sam} AND sso_provider = 'ldap' LIMIT 1
         `;
+
+        if (rows.length === 0 && ad.mail) {
+          // Auto-heal: a shadow user provisioned before the AD-identity migration
+          // (keyed by email) now authenticates — bind it to the authoritative sam.
+          const byMail = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id FROM "users" WHERE lower(email) = lower(${ad.mail}) LIMIT 1
+          `;
+          if (byMail.length > 0) {
+            await prisma.$executeRaw`
+              UPDATE "users" SET sso_external_id = ${sam}, sso_provider = 'ldap', updated_at = now()
+              WHERE id = ${byMail[0].id}::uuid
+            `;
+            await prisma.$executeRaw`
+              INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+              VALUES(gen_random_uuid(), 'UPDATE', 'User', ${byMail[0].id}::uuid, ${ad.mail}, now())
+            `;
+            rows = await prisma.$queryRaw<UserRow[]>`
+              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+                     mfa_enabled, mfa_secret, mfa_prompted_at
+              FROM "users" WHERE id = ${byMail[0].id}::uuid LIMIT 1
+            `;
+            log.info(`[POST /api/auth/login] Auto-healed LDAP identity mapping for ${ad.mail} -> ${sam}`);
+          }
+        }
+
         if (rows.length === 0) {
-          const username  = email.split('@')[0];
-          const dummyHash = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
-          await prisma.$executeRaw`
-            INSERT INTO "users" (id, username, email, password, role, sso_external_id, created_at, updated_at)
-            VALUES (gen_random_uuid(), ${username}, ${email}, ${dummyHash}, 'VIEWER', ${email}, now(), now())
-          `;
-          rows = await prisma.$queryRaw<UserRow[]>`
-            SELECT id, username, email, password, role, COALESCE(active, true) AS active,
-                   mfa_enabled, mfa_secret, mfa_prompted_at
-            FROM "users" WHERE email = ${email} LIMIT 1
-          `;
-          log.info(`[POST /api/auth/login] Auto-provisioned LDAP shadow user: ${email}`);
+          const username       = ad.sAMAccountName!;
+          const provisionEmail = ad.mail ?? `${sam}@${process.env.LDAP_UPN_SUFFIX || 'ldap.local'}`;
+          const dummyHash      = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
+          try {
+            const inserted = await prisma.$queryRaw<{ id: string }[]>`
+              INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, created_at, updated_at)
+              VALUES (gen_random_uuid(), ${username}, ${provisionEmail}, ${dummyHash}, 'VIEWER', ${sam}, 'ldap', now(), now())
+              RETURNING id
+            `;
+            await prisma.$executeRaw`
+              INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+              VALUES(gen_random_uuid(), 'CREATE', 'User', ${inserted[0].id}::uuid, ${provisionEmail}, now())
+            `;
+            rows = await prisma.$queryRaw<UserRow[]>`
+              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+                     mfa_enabled, mfa_secret, mfa_prompted_at
+              FROM "users" WHERE id = ${inserted[0].id}::uuid LIMIT 1
+            `;
+            log.info(`[POST /api/auth/login] Auto-provisioned LDAP shadow user: ${username}`);
+          } catch (provisionErr) {
+            // Unique constraint collision on username/email, or other DB error —
+            // surface a generic message, log details internally (A09 — never
+            // leak Prisma/DB internals in the API response).
+            log.error('[POST /api/auth/login] LDAP auto-provisioning failed:', provisionErr);
+            res.status(500).json({ error: 'No se pudo completar el inicio de sesión. Contacte con el administrador.' });
+            return;
+          }
         }
         user = rows[0];
       }

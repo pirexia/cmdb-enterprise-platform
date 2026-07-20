@@ -295,7 +295,7 @@ export default function LoginPage() {
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">{t("login.email_label")}</label>
                   <input
-                    type="email" required autoComplete="email" placeholder={t("login.email_placeholder")}
+                    type="text" required autoComplete="username" placeholder={t("login.email_placeholder")}
                     value={email} onChange={(e) => setEmail(e.target.value)}
                     className="w-full rounded-none border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20"
                   />

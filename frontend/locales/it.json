@@ -948,7 +948,7 @@
   "login": {
     "title": "Accedi",
     "subtitle": "Accedi alla tua piattaforma CMDB",
-    "email_label": "Indirizzo e-mail",
+    "email_label": "Indirizzo e-mail o nome utente",
     "password_label": "Password",
     "mfa_label": "Codice MFA (6 cifre)",
     "submit": "Accedi",
@@ -977,7 +977,7 @@
     "enable_mfa_btn": "Attiva MFA",
     "error_qr_failed": "Impossibile caricare il codice QR. Riprova.",
     "error_mfa_code": "Codice errato. Controlla la tua app TOTP.",
-    "email_placeholder": "email@azienda.it",
+    "email_placeholder": "email@azienda.it o nome utente",
     "password_placeholder": "••••••••",
     "show_password": "Mostra password",
     "hide_password": "Nascondi password",

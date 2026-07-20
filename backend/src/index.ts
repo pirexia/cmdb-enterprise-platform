@@ -2346,23 +2346,27 @@ app.post('/api/cis/bulk/batches', authenticateToken, requireAdmin, ciXlsxUploadM
   if (rows.length > CI_BULK_MAX_ROWS) { res.status(400).json({ error: `El XLSX excede el límite de ${CI_BULK_MAX_ROWS} filas` }); return; }
 
   try {
-    const batchRows = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO "ci_bulk_import_batch"(id, created_by, status, row_count, created_at, updated_at)
-      VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${rows.length}, now(), now())
-      RETURNING id::text AS id`;
-    const batchId = batchRows[0].id;
+    const { batchId } = await prisma.$transaction(async (tx) => {
+      const batchRows = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "ci_bulk_import_batch"(id, created_by, status, row_count, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${rows.length}, now(), now())
+        RETURNING id::text AS id`;
+      const batchId = batchRows[0].id;
 
-    for (let i = 0; i < rows.length; i++) {
-      await prisma.$executeRaw`
-        INSERT INTO "ci_bulk_import_item"(id, batch_id, row_index, raw_data, status, analysis, created_at, updated_at)
-        VALUES(gen_random_uuid(), ${batchId}::uuid, ${i + 1}, ${JSON.stringify(rows[i])}::jsonb,
-               'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
-    }
+      for (let i = 0; i < rows.length; i++) {
+        await tx.$executeRaw`
+          INSERT INTO "ci_bulk_import_item"(id, batch_id, row_index, raw_data, status, analysis, created_at, updated_at)
+          VALUES(gen_random_uuid(), ${batchId}::uuid, ${i + 1}, ${JSON.stringify(rows[i])}::jsonb,
+                 'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
+      }
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'CI_BULK_UPLOAD', 'CiBulkImportBatch', ${batchId}::uuid, ${req.user!.email},
-             ${JSON.stringify({ rowCount: rows.length })}::jsonb, now())`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_UPLOAD', 'CiBulkImportBatch', ${batchId}::uuid, ${req.user!.email},
+               ${JSON.stringify({ rowCount: rows.length })}::jsonb, now())`;
+
+      return { batchId };
+    });
 
     res.status(201).json({ batchId, rowCount: rows.length });
   } catch (e) {
@@ -2428,9 +2432,11 @@ app.delete('/api/cis/bulk/items/:id', authenticateToken, requireAdmin, async (re
       LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado y no se puede descartar' }); return; }
-    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_item" WHERE id = ${req.params.id}::uuid`;
-    await recomputeCIBatchStatus(rows[0].batch_id);
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "ci_bulk_import_item" WHERE id = ${req.params.id}::uuid`;
+      await recomputeCIBatchStatus(tx, rows[0].batch_id);
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[DELETE /api/cis/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2442,8 +2448,10 @@ app.delete('/api/cis/bulk/batches/:id', authenticateToken, requireAdmin, async (
       SELECT id::text AS id FROM "ci_bulk_import_batch"
       WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
-    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_BATCH','CiBulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "ci_bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_BATCH','CiBulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[DELETE /api/cis/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2486,7 +2494,7 @@ app.post('/api/cis/bulk/items/:id/commit', authenticateToken, requireAdmin, asyn
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Decisión inválida' }); return; }
 
     const result = await materializeCIBulkItem(item, parsed.data, req.user!.email);
-    await recomputeCIBatchStatus(item.batch_id);
+    await recomputeCIBatchStatus(prisma, item.batch_id);
     res.status(201).json(result);
   } catch (e) {
     if (e instanceof CIBulkValidationError) { res.status(400).json({ error: e.message }); return; }
@@ -2528,7 +2536,7 @@ app.post('/api/cis/bulk/batches/:id/commit', authenticateToken, requireAdmin, as
         results.push({ itemId: item.id, ok: false, error: msg });
       }
     }
-    await recomputeCIBatchStatus(String(req.params.id));
+    await recomputeCIBatchStatus(prisma, String(req.params.id));
     res.json({ results });
   } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2542,11 +2550,13 @@ app.post('/api/cis/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, a
       WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
         AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
-    await prisma.$executeRaw`
-      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE id = ${req.params.id}::uuid`;
-    await recomputeCIBatchStatus(rows[0].batch_id);
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+        WHERE id = ${req.params.id}::uuid`;
+      await recomputeCIBatchStatus(tx, rows[0].batch_id);
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[POST /api/cis/bulk/items/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2559,14 +2569,17 @@ app.post('/api/cis/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin,
       WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
     const batchIdStr = String(req.params.id);
-    const count = Number(await prisma.$executeRaw`
-      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE batch_id = ${batchIdStr}::uuid AND status IN ('ANALYZED','ERROR')`);
-    await recomputeCIBatchStatus(batchIdStr);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
-      VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_BATCH','CiBulkImportBatch',${batchIdStr}::uuid,${req.user!.email},
-             ${JSON.stringify({ count })}::jsonb, now())`;
+    const count = await prisma.$transaction(async (tx) => {
+      const affected = Number(await tx.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+        WHERE batch_id = ${batchIdStr}::uuid AND status IN ('ANALYZED','ERROR')`);
+      await recomputeCIBatchStatus(tx, batchIdStr);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+        VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_BATCH','CiBulkImportBatch',${batchIdStr}::uuid,${req.user!.email},
+               ${JSON.stringify({ count: affected })}::jsonb, now())`;
+      return affected;
+    });
     res.json({ ok: true, count });
   } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -3454,8 +3467,11 @@ const BULK_BATCH_TTL_HOURS    = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24
 const BULK_REAPED_RETENTION_DAYS = parseInt(process.env.BULK_REAPED_RETENTION_DAYS ?? '7', 10);
 const BULK_MAX_OPEN_BATCHES   = parseInt(process.env.BULK_MAX_OPEN_BATCHES ?? '5', 10);
 
-async function recomputeCIBatchStatus(batchId: string): Promise<void> {
-  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
+// Takes a Prisma.TransactionClient (the base PrismaClient is also assignable
+// to it structurally, see isPasswordInHistory above) so callers can run this
+// inside an enclosing prisma.$transaction(...) alongside the audit-log insert.
+async function recomputeCIBatchStatus(db: Prisma.TransactionClient, batchId: string): Promise<void> {
+  const rows = await db.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
     SELECT COUNT(*) AS total,
            COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
            COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
@@ -3472,7 +3488,7 @@ async function recomputeCIBatchStatus(batchId: string): Promise<void> {
   else if (committed > 0)       status = 'PARTIALLY_COMMITTED';
   else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
   else                          status = 'READY';
-  await prisma.$executeRaw`UPDATE "ci_bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
+  await db.$executeRaw`UPDATE "ci_bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
 
 const _rawCiConcurrency = parseInt(process.env.CI_BULK_CONCURRENCY ?? '3', 10);
@@ -3649,7 +3665,7 @@ async function processCIBulkImportQueue(): Promise<void> {
   await withConcurrency(tasks, Math.max(1, available));
 
   for (const batchId of touchedBatches) {
-    try { await recomputeCIBatchStatus(batchId); }
+    try { await recomputeCIBatchStatus(prisma, batchId); }
     catch (e) { console.error('[CI-Bulk] processCIBulkImportQueue batch-status error:', e); }
   }
 }

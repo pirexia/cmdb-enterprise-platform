@@ -1,8 +1,8 @@
-import { PrismaClient, DateTypeCategory } from '@prisma/client';
+import { Prisma, DateTypeCategory } from '@prisma/client';
 
 // ─── Date Types ───────────────────────────────────────────────────────────────
 
-export function dtQueries(prisma: PrismaClient) {
+export function dtQueries(prisma: Prisma.TransactionClient) {
   return {
     list: (category?: DateTypeCategory) =>
       prisma.dateType.findMany({
@@ -65,7 +65,7 @@ function parseDateValue(v: string): Date {
   return new Date(`${v}T00:00:00.000Z`);
 }
 
-export function ciDateQueries(prisma: PrismaClient) {
+export function ciDateQueries(prisma: Prisma.TransactionClient) {
   return {
     list: (ciId: string) =>
       prisma.cIDate.findMany({
@@ -97,7 +97,7 @@ export function ciDateQueries(prisma: PrismaClient) {
   };
 }
 
-export function osDateQueries(prisma: PrismaClient) {
+export function osDateQueries(prisma: Prisma.TransactionClient) {
   return {
     list: (operatingSystemId: string) =>
       prisma.operatingSystemDate.findMany({
@@ -129,7 +129,7 @@ export function osDateQueries(prisma: PrismaClient) {
   };
 }
 
-export function bswDateQueries(prisma: PrismaClient) {
+export function bswDateQueries(prisma: Prisma.TransactionClient) {
   return {
     list: (baseSoftwareId: string) =>
       prisma.baseSoftwareDate.findMany({
@@ -161,7 +161,7 @@ export function bswDateQueries(prisma: PrismaClient) {
   };
 }
 
-export function dmDateQueries(prisma: PrismaClient) {
+export function dmDateQueries(prisma: Prisma.TransactionClient) {
   return {
     list: (deviceModelId: string) =>
       prisma.deviceModelDate.findMany({
@@ -195,7 +195,7 @@ export function dmDateQueries(prisma: PrismaClient) {
 
 // ─── Operating Systems ────────────────────────────────────────────────────────
 
-export function osQueries(prisma: PrismaClient) {
+export function osQueries(prisma: Prisma.TransactionClient) {
   return {
     list: () =>
       prisma.operatingSystem.findMany({
@@ -254,7 +254,7 @@ export function osQueries(prisma: PrismaClient) {
   };
 }
 
-export function bswQueries(prisma: PrismaClient) {
+export function bswQueries(prisma: Prisma.TransactionClient) {
   return {
     list: () =>
       prisma.baseSoftware.findMany({

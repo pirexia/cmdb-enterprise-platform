@@ -80,16 +80,18 @@ export function createSettingsRouter(prisma: PrismaClient): Router {
       return;
     }
     try {
-      await Promise.all(
-        updates.map((u) =>
-          (prisma as any).appSettings.upsert({
-            where:  { key: u.key },
-            update: { value: u.value },
-            create: { key: u.key, value: u.value },
-          })
-        )
-      );
-      await settingsAudit(prisma, 'UPDATE_THEME', 'theme', req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await Promise.all(
+          updates.map((u) =>
+            (tx as any).appSettings.upsert({
+              where:  { key: u.key },
+              update: { value: u.value },
+              create: { key: u.key, value: u.value },
+            })
+          )
+        );
+        await settingsAudit(tx, 'UPDATE_THEME', 'theme', req.user!.email);
+      });
       res.json({ ok: true });
     } catch (error) {
       console.error('[PUT /api/settings/theme] Error:', error);
@@ -118,19 +120,19 @@ export function createSettingsRouter(prisma: PrismaClient): Router {
     }
     try {
       const b64 = buf.toString('base64');
-      await (prisma as any).$transaction([
-        (prisma as any).appSettings.upsert({
+      await prisma.$transaction(async (tx) => {
+        await (tx as any).appSettings.upsert({
           where:  { key: 'logo_data' },
           update: { value: b64 },
           create: { key: 'logo_data', value: b64 },
-        }),
-        (prisma as any).appSettings.upsert({
+        });
+        await (tx as any).appSettings.upsert({
           where:  { key: 'logo_mime' },
-          update: { value: req.file.mimetype },
-          create: { key: 'logo_mime', value: req.file.mimetype },
-        }),
-      ]);
-      await settingsAudit(prisma, 'UPDATE_LOGO', 'logo', req.user!.email);
+          update: { value: req.file!.mimetype },
+          create: { key: 'logo_mime', value: req.file!.mimetype },
+        });
+        await settingsAudit(tx, 'UPDATE_LOGO', 'logo', req.user!.email);
+      });
       res.json({ ok: true });
     } catch (error) {
       console.error('[POST /api/settings/logo] Error:', error);
@@ -141,11 +143,11 @@ export function createSettingsRouter(prisma: PrismaClient): Router {
   // DELETE /api/settings/logo — ADMIN only
   router.delete('/logo', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
     try {
-      await (prisma as any).$transaction([
-        (prisma as any).appSettings.upsert({ where: { key: 'logo_data' }, update: { value: '' }, create: { key: 'logo_data', value: '' } }),
-        (prisma as any).appSettings.upsert({ where: { key: 'logo_mime' }, update: { value: '' }, create: { key: 'logo_mime', value: '' } }),
-      ]);
-      await settingsAudit(prisma, 'DELETE_LOGO', 'logo', req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await (tx as any).appSettings.upsert({ where: { key: 'logo_data' }, update: { value: '' }, create: { key: 'logo_data', value: '' } });
+        await (tx as any).appSettings.upsert({ where: { key: 'logo_mime' }, update: { value: '' }, create: { key: 'logo_mime', value: '' } });
+        await settingsAudit(tx, 'DELETE_LOGO', 'logo', req.user!.email);
+      });
       res.json({ ok: true });
     } catch (error) {
       console.error('[DELETE /api/settings/logo] Error:', error);

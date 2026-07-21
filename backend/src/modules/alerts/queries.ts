@@ -1,7 +1,7 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { AlertConfigUpdate, AlertRuleUpdate } from './schemas.js';
 
-export async function getConfig(prisma: PrismaClient) {
+export async function getConfig(prisma: Prisma.TransactionClient) {
   let config = await prisma.alertConfig.findUnique({ where: { id: 'default' } });
   if (!config) {
     config = await prisma.alertConfig.create({ data: { id: 'default' } });
@@ -28,22 +28,22 @@ export async function getConfig(prisma: PrismaClient) {
   };
 }
 
-export async function getRules(prisma: PrismaClient) {
+export async function getRules(prisma: Prisma.TransactionClient) {
   return prisma.alertRule.findMany({ orderBy: { category: 'asc' } });
 }
 
-export async function getHistory(prisma: PrismaClient, limit = 50) {
+export async function getHistory(prisma: Prisma.TransactionClient, limit = 50) {
   return prisma.alertRun.findMany({ orderBy: { startedAt: 'desc' }, take: limit });
 }
 
-export async function getLastSuccessfulRun(prisma: PrismaClient) {
+export async function getLastSuccessfulRun(prisma: Prisma.TransactionClient) {
   return prisma.alertRun.findFirst({
     where:   { status: { in: ['SENT', 'ALL_CLEAR'] } },
     orderBy: { startedAt: 'desc' },
   });
 }
 
-export async function upsertConfig(prisma: PrismaClient, data: AlertConfigUpdate) {
+export async function upsertConfig(prisma: Prisma.TransactionClient, data: AlertConfigUpdate) {
   // Separate new fields (Prisma client not yet regenerated for T8 columns)
   const { teamsWebhookUrl, slackBotToken, slackChannel, ...ormData } = data;
 
@@ -70,7 +70,7 @@ export async function upsertConfig(prisma: PrismaClient, data: AlertConfigUpdate
   return getConfig(prisma);
 }
 
-export async function upsertRule(prisma: PrismaClient, category: string, data: AlertRuleUpdate) {
+export async function upsertRule(prisma: Prisma.TransactionClient, category: string, data: AlertRuleUpdate) {
   // Separate channels field (Prisma client not yet regenerated for T8 column)
   const { channels, ...ormData } = data;
 
@@ -89,7 +89,7 @@ export async function upsertRule(prisma: PrismaClient, category: string, data: A
   return rule;
 }
 
-export async function createRun(prisma: PrismaClient, data: {
+export async function createRun(prisma: Prisma.TransactionClient, data: {
   trigger:     string;
   status:      string;
   totalAlerts: number;

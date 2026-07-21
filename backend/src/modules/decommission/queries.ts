@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const MAX_DEPTH = 8;
 
@@ -36,7 +36,7 @@ export interface SystemCiRow { id: string; name: string; }
 
 // ── List & CRUD ────────────────────────────────────────────────────────────────
 
-export async function listPlans(prisma: PrismaClient): Promise<PlanRow[]> {
+export async function listPlans(prisma: Prisma.TransactionClient): Promise<PlanRow[]> {
   return prisma.$queryRaw<PlanRow[]>`
     SELECT p.*, ci.name AS system_ci_name
     FROM   "decommission_plan" p
@@ -49,7 +49,7 @@ export async function listPlans(prisma: PrismaClient): Promise<PlanRow[]> {
 // returns the first `limit` systems (focus-load). LIKE wildcards in the user
 // term are escaped so they are matched literally (A03 — injection-safe).
 export async function searchSystemCis(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   search: string,
   limit : number,
 ): Promise<SystemCiRow[]> {
@@ -66,7 +66,7 @@ export async function searchSystemCis(
   `;
 }
 
-export async function getPlan(prisma: PrismaClient, id: string): Promise<PlanRow | null> {
+export async function getPlan(prisma: Prisma.TransactionClient, id: string): Promise<PlanRow | null> {
   const rows = await prisma.$queryRaw<PlanRow[]>`
     SELECT p.*, ci.name AS system_ci_name
     FROM   "decommission_plan" p
@@ -78,7 +78,7 @@ export async function getPlan(prisma: PrismaClient, id: string): Promise<PlanRow
 }
 
 export async function createPlan(
-  prisma    : PrismaClient,
+  prisma    : Prisma.TransactionClient,
   name      : string,
   systemCiId: string,
   createdBy : string,
@@ -92,7 +92,7 @@ export async function createPlan(
 }
 
 export async function updatePlan(
-  prisma  : PrismaClient,
+  prisma  : Prisma.TransactionClient,
   id      : string,
   name?   : string,
   status? : string,
@@ -111,7 +111,7 @@ export async function updatePlan(
   return rows[0];
 }
 
-export async function deletePlan(prisma: PrismaClient, id: string): Promise<void> {
+export async function deletePlan(prisma: Prisma.TransactionClient, id: string): Promise<void> {
   await prisma.$executeRaw`DELETE FROM "decommission_plan" WHERE id = ${id}::uuid`;
 }
 
@@ -140,7 +140,7 @@ interface SharedCheckRow {
 }
 
 export async function generateInventory(
-  prisma    : PrismaClient,
+  prisma    : Prisma.TransactionClient,
   planId    : string,
   systemCiId: string,
   systemDate: Date,
@@ -260,7 +260,7 @@ export async function generateInventory(
 
 // ── Plan CIs ──────────────────────────────────────────────────────────────────
 
-export async function listPlanCis(prisma: PrismaClient, planId: string): Promise<PlanCiRow[]> {
+export async function listPlanCis(prisma: Prisma.TransactionClient, planId: string): Promise<PlanCiRow[]> {
   return prisma.$queryRaw<PlanCiRow[]>`
     SELECT
       dpc.id, dpc.plan_id, dpc.ci_id, ci.name AS ci_name,
@@ -275,7 +275,7 @@ export async function listPlanCis(prisma: PrismaClient, planId: string): Promise
 }
 
 export async function updatePlanCi(
-  prisma      : PrismaClient,
+  prisma      : Prisma.TransactionClient,
   planId      : string,
   ciId        : string,
   scheduledDate?: string | null,
@@ -292,7 +292,7 @@ export async function updatePlanCi(
 
 // ── Documents ─────────────────────────────────────────────────────────────────
 
-export async function listPlanDocuments(prisma: PrismaClient, planId: string): Promise<DocRow[]> {
+export async function listPlanDocuments(prisma: Prisma.TransactionClient, planId: string): Promise<DocRow[]> {
   return prisma.$queryRaw<DocRow[]>`
     SELECT dpd.id, dpd.plan_id, dpd.document_id, dpd.source,
            d.name AS doc_name, d.type AS doc_type
@@ -303,7 +303,7 @@ export async function listPlanDocuments(prisma: PrismaClient, planId: string): P
   `;
 }
 
-export async function addPlanDocument(prisma: PrismaClient, planId: string, documentId: string): Promise<void> {
+export async function addPlanDocument(prisma: Prisma.TransactionClient, planId: string, documentId: string): Promise<void> {
   await prisma.$executeRaw`
     INSERT INTO "decommission_plan_document"("plan_id","document_id","source")
     VALUES (${planId}::uuid, ${documentId}::uuid, 'MANUAL')
@@ -311,7 +311,7 @@ export async function addPlanDocument(prisma: PrismaClient, planId: string, docu
   `;
 }
 
-export async function removePlanDocument(prisma: PrismaClient, planId: string, documentId: string): Promise<void> {
+export async function removePlanDocument(prisma: Prisma.TransactionClient, planId: string, documentId: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "decommission_plan_document"
     WHERE "plan_id" = ${planId}::uuid AND "document_id" = ${documentId}::uuid
@@ -320,7 +320,7 @@ export async function removePlanDocument(prisma: PrismaClient, planId: string, d
 
 // ── Contracts ─────────────────────────────────────────────────────────────────
 
-export async function listPlanContracts(prisma: PrismaClient, planId: string): Promise<ContractRow[]> {
+export async function listPlanContracts(prisma: Prisma.TransactionClient, planId: string): Promise<ContractRow[]> {
   return prisma.$queryRaw<ContractRow[]>`
     SELECT dpc.id, dpc.plan_id, dpc.contract_id, dpc.source,
            c.name AS contract_name, c.contract_ref
@@ -331,7 +331,7 @@ export async function listPlanContracts(prisma: PrismaClient, planId: string): P
   `;
 }
 
-export async function addPlanContract(prisma: PrismaClient, planId: string, contractId: string): Promise<void> {
+export async function addPlanContract(prisma: Prisma.TransactionClient, planId: string, contractId: string): Promise<void> {
   await prisma.$executeRaw`
     INSERT INTO "decommission_plan_contract"("plan_id","contract_id","source")
     VALUES (${planId}::uuid, ${contractId}::uuid, 'MANUAL')
@@ -339,7 +339,7 @@ export async function addPlanContract(prisma: PrismaClient, planId: string, cont
   `;
 }
 
-export async function removePlanContract(prisma: PrismaClient, planId: string, contractId: string): Promise<void> {
+export async function removePlanContract(prisma: Prisma.TransactionClient, planId: string, contractId: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "decommission_plan_contract"
     WHERE "plan_id" = ${planId}::uuid AND "contract_id" = ${contractId}::uuid
@@ -348,7 +348,7 @@ export async function removePlanContract(prisma: PrismaClient, planId: string, c
 
 // ── Licenses ──────────────────────────────────────────────────────────────────
 
-export async function listPlanLicenses(prisma: PrismaClient, planId: string): Promise<LicenseRow[]> {
+export async function listPlanLicenses(prisma: Prisma.TransactionClient, planId: string): Promise<LicenseRow[]> {
   return prisma.$queryRaw<LicenseRow[]>`
     SELECT dpl.id, dpl.plan_id, dpl.license_id, dpl.source,
            l.name AS license_name
@@ -359,7 +359,7 @@ export async function listPlanLicenses(prisma: PrismaClient, planId: string): Pr
   `;
 }
 
-export async function addPlanLicense(prisma: PrismaClient, planId: string, licenseId: string): Promise<void> {
+export async function addPlanLicense(prisma: Prisma.TransactionClient, planId: string, licenseId: string): Promise<void> {
   await prisma.$executeRaw`
     INSERT INTO "decommission_plan_license"("plan_id","license_id","source")
     VALUES (${planId}::uuid, ${licenseId}::uuid, 'MANUAL')
@@ -367,7 +367,7 @@ export async function addPlanLicense(prisma: PrismaClient, planId: string, licen
   `;
 }
 
-export async function removePlanLicense(prisma: PrismaClient, planId: string, licenseId: string): Promise<void> {
+export async function removePlanLicense(prisma: Prisma.TransactionClient, planId: string, licenseId: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "decommission_plan_license"
     WHERE "plan_id" = ${planId}::uuid AND "license_id" = ${licenseId}::uuid
@@ -382,7 +382,7 @@ export interface GanttTask {
   parent_ci_id: string | null;
 }
 
-export async function getGanttData(prisma: PrismaClient, planId: string): Promise<GanttTask[]> {
+export async function getGanttData(prisma: Prisma.TransactionClient, planId: string): Promise<GanttTask[]> {
   return prisma.$queryRaw<GanttTask[]>`
     SELECT dpc.ci_id, ci.name AS ci_name, dpc.depth,
            dpc.scheduled_date, dpc.is_shared, dpc.parent_ci_id

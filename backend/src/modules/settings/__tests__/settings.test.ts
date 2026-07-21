@@ -55,8 +55,11 @@ beforeEach(() => {
   // Default mocks — override per test where needed
   mockFindMany.mockResolvedValue([]);
   mockUpsert.mockResolvedValue({});
-  mockTransaction.mockResolvedValue([]);
   mockExecuteRaw.mockResolvedValue(1);
+  // $transaction now takes a callback(tx) — issue #172 wraps mutation + audit
+  // insert atomically. Run the callback against the same mocked prisma so
+  // tx.appSettings.upsert / tx.$executeRaw resolve to the mocks above.
+  mockTransaction.mockImplementation(async (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma));
 });
 
 // ── GET /api/settings/theme ───────────────────────────────────────────────────
@@ -204,7 +207,6 @@ describe('POST /api/settings/logo', () => {
   });
 
   it('stores logo and inserts audit log for valid PNG', async () => {
-    mockTransaction.mockResolvedValue([{}, {}]);
     const res = await buildApp()
       .post('/api/settings/logo')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
@@ -232,7 +234,6 @@ describe('DELETE /api/settings/logo', () => {
   });
 
   it('clears logo and inserts audit log for ADMIN', async () => {
-    mockTransaction.mockResolvedValue([{}, {}]);
     const res = await buildApp()
       .delete('/api/settings/logo')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`);

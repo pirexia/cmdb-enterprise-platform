@@ -90,13 +90,19 @@ export async function runAlertsPipeline(
     const { messageId } = await sendEmail(html, subject, recipients);
 
     const status = total === 0 ? 'ALL_CLEAR' : 'SENT';
-    const run    = await createRun(prisma, {
-      trigger, status, totalAlerts: total,
-      breakdown: { ...scan.breakdown, fingerprint: scan.fingerprint },
-      recipients, messageId, finishedAt: new Date(),
+    // sendEmail() above is an external SMTP call, not a DB write — it must stay
+    // outside the transaction so a DB issue never blocks/rolls back a mail
+    // already sent. The run row + its audit record are the DB mutation pair
+    // that must be atomic (#172 / A.8.15): wrap them together.
+    const run = await prisma.$transaction(async (tx) => {
+      const r = await createRun(tx, {
+        trigger, status, totalAlerts: total,
+        breakdown: { ...scan.breakdown, fingerprint: scan.fingerprint },
+        recipients, messageId, finishedAt: new Date(),
+      });
+      await insertAlertAudit(tx, 'ALERT_CRON_RUN', 'system', r.id);
+      return r;
     });
-
-    await insertAlertAudit(prisma, 'ALERT_CRON_RUN', 'system', run.id);
 
     return { runId: run.id, status, totalAlerts: total, breakdown: scan.breakdown, messageId };
   } catch (err) {

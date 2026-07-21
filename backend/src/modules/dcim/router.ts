@@ -72,8 +72,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimBuildingCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const building = await prisma.dcimBuilding.create({ data: parsed.data });
-      await dcimAudit(prisma, 'CREATE_DCIM_BUILDING', 'DcimBuilding', building.id, req.user!.email);
+      const building = await prisma.$transaction(async (tx) => {
+        const created = await tx.dcimBuilding.create({ data: parsed.data });
+        await dcimAudit(tx, 'CREATE_DCIM_BUILDING', 'DcimBuilding', created.id, req.user!.email);
+        return created;
+      });
       res.status(201).json(building);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Building name already exists in this branch' }); return; }
@@ -88,8 +91,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimBuildingUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const building = await prisma.dcimBuilding.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await dcimAudit(prisma, 'UPDATE_DCIM_BUILDING', 'DcimBuilding', building.id, req.user!.email);
+      const building = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimBuilding.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await dcimAudit(tx, 'UPDATE_DCIM_BUILDING', 'DcimBuilding', updated.id, req.user!.email);
+        return updated;
+      });
       res.json(building);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Building not found' }); return; }
@@ -102,8 +108,10 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/buildings/:id  (ADMIN)
   router.delete('/buildings/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimBuilding.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_BUILDING', 'DcimBuilding', req.params.id as string, req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await tx.dcimBuilding.delete({ where: { id: req.params.id as string } });
+        await dcimAudit(tx, 'DELETE_DCIM_BUILDING', 'DcimBuilding', req.params.id as string, req.user!.email);
+      });
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Building not found' }); return; }
@@ -137,8 +145,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimFloorCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const floor = await prisma.dcimFloor.create({ data: parsed.data });
-      await dcimAudit(prisma, 'CREATE_DCIM_FLOOR', 'DcimFloor', floor.id, req.user!.email);
+      const floor = await prisma.$transaction(async (tx) => {
+        const created = await tx.dcimFloor.create({ data: parsed.data });
+        await dcimAudit(tx, 'CREATE_DCIM_FLOOR', 'DcimFloor', created.id, req.user!.email);
+        return created;
+      });
       res.status(201).json(floor);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Floor level already exists in this building' }); return; }
@@ -153,8 +164,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimFloorUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const floor = await prisma.dcimFloor.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await dcimAudit(prisma, 'UPDATE_DCIM_FLOOR', 'DcimFloor', floor.id, req.user!.email);
+      const floor = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimFloor.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await dcimAudit(tx, 'UPDATE_DCIM_FLOOR', 'DcimFloor', updated.id, req.user!.email);
+        return updated;
+      });
       res.json(floor);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Floor not found' }); return; }
@@ -166,8 +180,10 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/floors/:id  (ADMIN)
   router.delete('/floors/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimFloor.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_FLOOR', 'DcimFloor', req.params.id as string, req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await tx.dcimFloor.delete({ where: { id: req.params.id as string } });
+        await dcimAudit(tx, 'DELETE_DCIM_FLOOR', 'DcimFloor', req.params.id as string, req.user!.email);
+      });
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Floor not found' }); return; }
@@ -226,8 +242,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimRoomCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const room = await prisma.dcimRoom.create({ data: parsed.data });
-      await dcimAudit(prisma, 'CREATE_DCIM_ROOM', 'DcimRoom', room.id, req.user!.email);
+      const room = await prisma.$transaction(async (tx) => {
+        const created = await tx.dcimRoom.create({ data: parsed.data });
+        await dcimAudit(tx, 'CREATE_DCIM_ROOM', 'DcimRoom', created.id, req.user!.email);
+        return created;
+      });
       res.status(201).json(room);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Room name already exists on this floor' }); return; }
@@ -242,8 +261,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimRoomUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const room = await prisma.dcimRoom.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await dcimAudit(prisma, 'UPDATE_DCIM_ROOM', 'DcimRoom', room.id, req.user!.email);
+      const room = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimRoom.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await dcimAudit(tx, 'UPDATE_DCIM_ROOM', 'DcimRoom', updated.id, req.user!.email);
+        return updated;
+      });
       res.json(room);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Room not found' }); return; }
@@ -255,8 +277,10 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/rooms/:id  (ADMIN)
   router.delete('/rooms/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimRoom.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_ROOM', 'DcimRoom', req.params.id as string, req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await tx.dcimRoom.delete({ where: { id: req.params.id as string } });
+        await dcimAudit(tx, 'DELETE_DCIM_ROOM', 'DcimRoom', req.params.id as string, req.user!.email);
+      });
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Room not found' }); return; }
@@ -288,8 +312,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimAisleCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const aisle = await prisma.dcimAisle.create({ data: parsed.data });
-      await dcimAudit(prisma, 'CREATE_DCIM_AISLE', 'DcimAisle', aisle.id, req.user!.email);
+      const aisle = await prisma.$transaction(async (tx) => {
+        const created = await tx.dcimAisle.create({ data: parsed.data });
+        await dcimAudit(tx, 'CREATE_DCIM_AISLE', 'DcimAisle', created.id, req.user!.email);
+        return created;
+      });
       res.status(201).json(aisle);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Aisle name already exists in this room' }); return; }
@@ -304,8 +331,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimAisleUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const aisle = await prisma.dcimAisle.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await dcimAudit(prisma, 'UPDATE_DCIM_AISLE', 'DcimAisle', aisle.id, req.user!.email);
+      const aisle = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimAisle.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await dcimAudit(tx, 'UPDATE_DCIM_AISLE', 'DcimAisle', updated.id, req.user!.email);
+        return updated;
+      });
       res.json(aisle);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Aisle not found' }); return; }
@@ -317,8 +347,10 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/aisles/:id  (ADMIN)
   router.delete('/aisles/:id', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      await prisma.dcimAisle.delete({ where: { id: req.params.id as string } });
-      await dcimAudit(prisma, 'DELETE_DCIM_AISLE', 'DcimAisle', req.params.id as string, req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await tx.dcimAisle.delete({ where: { id: req.params.id as string } });
+        await dcimAudit(tx, 'DELETE_DCIM_AISLE', 'DcimAisle', req.params.id as string, req.user!.email);
+      });
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Aisle not found' }); return; }
@@ -351,8 +383,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimFootprintCreateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const fp = await prisma.dcimFootprint.create({ data: parsed.data });
-      await dcimAudit(prisma, 'CREATE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
+      const fp = await prisma.$transaction(async (tx) => {
+        const created = await tx.dcimFootprint.create({ data: parsed.data });
+        await dcimAudit(tx, 'CREATE_DCIM_FOOTPRINT', 'DcimFootprint', created.id, req.user!.email);
+        return created;
+      });
       res.status(201).json(fp);
     } catch (err: any) {
       if (err?.code === 'P2002') { res.status(409).json({ error: 'Grid position already occupied in this room' }); return; }
@@ -367,8 +402,11 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = DcimFootprintUpdateSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const fp = await prisma.dcimFootprint.update({ where: { id: req.params.id as string }, data: parsed.data });
-      await dcimAudit(prisma, 'UPDATE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
+      const fp = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimFootprint.update({ where: { id: req.params.id as string }, data: parsed.data });
+        await dcimAudit(tx, 'UPDATE_DCIM_FOOTPRINT', 'DcimFootprint', updated.id, req.user!.email);
+        return updated;
+      });
       res.json(fp);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }
@@ -403,8 +441,10 @@ export function createDcimRouter(prisma: PrismaClient): Router {
         }
       }
 
-      await prisma.dcimFootprint.delete({ where: { id: fp.id } });
-      await dcimAudit(prisma, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
+      await prisma.$transaction(async (tx) => {
+        await tx.dcimFootprint.delete({ where: { id: fp.id } });
+        await dcimAudit(tx, 'DELETE_DCIM_FOOTPRINT', 'DcimFootprint', fp.id, req.user!.email);
+      });
       res.status(204).end();
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }
@@ -420,11 +460,14 @@ export function createDcimRouter(prisma: PrismaClient): Router {
     const parsed = AssignRackSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
-      const fp = await prisma.dcimFootprint.update({
-        where : { id: req.params.id as string },
-        data  : { rackCiId: parsed.data.ciId },
+      const fp = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimFootprint.update({
+          where : { id: req.params.id as string },
+          data  : { rackCiId: parsed.data.ciId },
+        });
+        await dcimAudit(tx, 'ASSIGN_RACK', 'DcimFootprint', updated.id, req.user!.email);
+        return updated;
       });
-      await dcimAudit(prisma, 'ASSIGN_RACK', 'DcimFootprint', fp.id, req.user!.email);
       res.json(fp);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }
@@ -438,11 +481,14 @@ export function createDcimRouter(prisma: PrismaClient): Router {
   // DELETE /api/dcim/footprints/:id/assign-rack  (ADMIN)
   router.delete('/footprints/:id/assign-rack', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
     try {
-      const fp = await prisma.dcimFootprint.update({
-        where : { id: req.params.id as string },
-        data  : { rackCiId: null },
+      const fp = await prisma.$transaction(async (tx) => {
+        const updated = await tx.dcimFootprint.update({
+          where : { id: req.params.id as string },
+          data  : { rackCiId: null },
+        });
+        await dcimAudit(tx, 'UNASSIGN_RACK', 'DcimFootprint', updated.id, req.user!.email);
+        return updated;
       });
-      await dcimAudit(prisma, 'UNASSIGN_RACK', 'DcimFootprint', fp.id, req.user!.email);
       res.json(fp);
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'Footprint not found' }); return; }

@@ -508,10 +508,15 @@ function validatePasswordPolicy(password: string, role: UserRole): string[] {
   return errors;
 }
 
-/** Returns true if the password matches any of the last N history entries. */
-async function isPasswordInHistory(userId: string, newPassword: string): Promise<boolean> {
+/**
+ * Returns true if the password matches any of the last N history entries.
+ * Takes a Prisma.TransactionClient (the base PrismaClient is also assignable
+ * to it structurally) so callers can run this inside an enclosing
+ * prisma.$transaction(...) alongside the audit-log insert.
+ */
+async function isPasswordInHistory(db: Prisma.TransactionClient, userId: string, newPassword: string): Promise<boolean> {
   type HistRow = { hash: string };
-  const history = await prisma.$queryRaw<HistRow[]>`
+  const history = await db.$queryRaw<HistRow[]>`
     SELECT hash FROM "password_history"
     WHERE user_id = ${userId}::uuid
     ORDER BY created_at DESC
@@ -523,14 +528,19 @@ async function isPasswordInHistory(userId: string, newPassword: string): Promise
   return false;
 }
 
-/** Inserts a new hash into password_history and prunes entries beyond the limit. */
-async function recordPasswordHistory(userId: string, hash: string): Promise<void> {
-  await prisma.$executeRaw`
+/**
+ * Inserts a new hash into password_history and prunes entries beyond the limit.
+ * Takes a Prisma.TransactionClient (see isPasswordInHistory above) so this
+ * mutation can be part of the same transaction as the password UPDATE and
+ * the audit-log insert.
+ */
+async function recordPasswordHistory(db: Prisma.TransactionClient, userId: string, hash: string): Promise<void> {
+  await db.$executeRaw`
     INSERT INTO "password_history"(id, user_id, hash, created_at)
     VALUES(gen_random_uuid(), ${userId}::uuid, ${hash}, now())
   `;
   // Prune old entries beyond the configured limit
-  await prisma.$executeRaw`
+  await db.$executeRaw`
     DELETE FROM "password_history" ph
     WHERE ph.user_id = ${userId}::uuid
     AND NOT EXISTS (
@@ -782,29 +792,33 @@ app.get('/api/auth/sso/microsoft/callback', ssoLimiter, async (req: Request, res
       return;
     }
 
-    // ── Create trusted device (SSO auth = trusted, MFA never required) ────────
+    // ── Create trusted device (SSO auth = trusted, MFA never required) + audit ──
+    // Wrapped in one transaction so the device grant and its audit record
+    // either both persist or neither does (A.8.15 — no unlogged session write).
     const deviceToken = crypto.randomBytes(32).toString('hex');
     const expiry      = new Date();
     expiry.setDate(expiry.getDate() + (parseInt(process.env.TRUSTED_DEVICE_TTL_DAYS ?? '30', 10) || 30));
     const ua = req.headers['user-agent'] ?? '';
     const ip = req.ip ?? '';
-    await prisma.$executeRaw`
-      INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
-      VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
-      ON CONFLICT DO NOTHING
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO "trusted_devices" (id, user_id, token, user_agent, ip_address, expires_at, created_at, last_seen_at)
+        VALUES (gen_random_uuid(), ${user.id}::uuid, ${deviceToken}, ${ua}, ${ip}, ${expiry}, now(), now())
+        ON CONFLICT DO NOTHING
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
+      `;
+    });
 
     // ── Issue JWT ──────────────────────────────────────────────────────────────
+    // Signed only after the transaction commits — no external side effects
+    // (JWT signing, cookie-setting, res.redirect) belong inside a DB transaction.
     const payload: JwtPayload = {
       id: user.id, username: user.username, email: user.email, role: user.role as UserRole,
     };
     const token = jwt.sign(payload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
-
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
-      VALUES (gen_random_uuid(), 'LOGIN_SSO', 'User', ${user.id}, ${user.email}, 'Microsoft SSO login', now())
-    `;
 
     log.info(`[SSO] Successful login: ${email}`);
 
@@ -1171,11 +1185,13 @@ app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Re
     return;
   }
   try {
-    await prisma.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
     res.json({ id, role, message: `Role updated to ${role}` });
   } catch (e) {
     console.error('[PATCH /api/users/:id/role]', e);
@@ -1201,11 +1217,13 @@ app.patch('/api/users/:id/status', authenticateToken, requireAdmin, async (req: 
     return;
   }
   try {
-    await prisma.$executeRaw`UPDATE "users" SET active = ${active}, updated_at = now() WHERE id = ${id}::uuid`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), ${active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER'}, 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET active = ${active}, updated_at = now() WHERE id = ${id}::uuid`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), ${active ? 'ACTIVATE_USER' : 'DEACTIVATE_USER'}, 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
     res.json({ id, active, message: active ? 'User activated' : 'User deactivated' });
   } catch (e) {
     console.error('[PATCH /api/users/:id/status]', e);
@@ -1264,7 +1282,7 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
     }
 
     // Password history check
-    const inHistory = await isPasswordInHistory(user.id, newPassword);
+    const inHistory = await isPasswordInHistory(prisma, user.id, newPassword);
     if (inHistory) {
       res.status(422).json({ error: 'PASSWORD_HISTORY', message: `No puedes reutilizar ninguna de tus últimas ${PASSWORD_HISTORY_COUNT} contraseñas.` });
       return;
@@ -1272,12 +1290,14 @@ app.post('/api/profile/change-password', authenticateToken, async (req: Request,
 
     // Apply change
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
-    await recordPasswordHistory(user.id, newHash);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'CHANGE_PASSWORD', 'USER', ${user.id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${user.id}::uuid`;
+      await recordPasswordHistory(tx, user.id, newHash);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'CHANGE_PASSWORD', 'USER', ${user.id}, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ message: 'Contraseña actualizada correctamente.' });
   } catch (e) {
@@ -1319,12 +1339,14 @@ app.post('/api/users/:id/reset-password', authenticateToken, requireAdmin, async
     }
 
     const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await prisma.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
-    await recordPasswordHistory(user.id, newHash);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'RESET_PASSWORD', 'USER', ${id}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE "users" SET password = ${newHash}, updated_at = now() WHERE id = ${id}::uuid`;
+      await recordPasswordHistory(tx, user.id, newHash);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'RESET_PASSWORD', 'USER', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ message: `Contraseña reseteada para el usuario ${user.email}.` });
   } catch (e) {
@@ -1362,34 +1384,39 @@ app.delete('/api/admin/users/:id', authenticateToken, requireAdmin, async (req: 
   }
 
   try {
-    // 1. Resolve the user and get their email
-    const rows = await prisma.$queryRaw<{ id: string; email: string; username: string }[]>`
-      SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
-    `;
-    if (!rows.length) {
+    const pseudoToken = await prisma.$transaction(async (tx) => {
+      // 1. Resolve the user and get their email
+      const rows = await tx.$queryRaw<{ id: string; email: string; username: string }[]>`
+        SELECT id::text AS id, email, username FROM "users" WHERE id = ${targetId}::uuid LIMIT 1
+      `;
+      if (!rows.length) return null;
+      const { email } = rows[0];
+
+      // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
+      //    The token is deterministic so repeat erasures produce the same result (idempotent).
+      const token = '[deleted-' +
+        crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
+        ']';
+      await tx.$executeRaw`
+        UPDATE "audit_logs" SET user_email = ${token} WHERE user_email = ${email}
+      `;
+
+      // 3. Hard-delete the user (trusted_devices, password_history, schedule_entries,
+      //    department_managers cascade automatically — see FK comments in schema.prisma)
+      await tx.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
+
+      // 4. Record the erasure in the audit log under the admin's email
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
+      `;
+      return token;
+    });
+
+    if (pseudoToken === null) {
       res.status(404).json({ error: 'User not found.' });
       return;
     }
-    const { email } = rows[0];
-
-    // 2. Pseudonymise audit_logs: replace user_email with a stable, non-reversible token.
-    //    The token is deterministic so repeat erasures produce the same result (idempotent).
-    const pseudoToken = '[deleted-' +
-      crypto.createHash('sha256').update(email + JWT_SECRET_VALUE).digest('hex').slice(0, 16) +
-      ']';
-    await prisma.$executeRaw`
-      UPDATE "audit_logs" SET user_email = ${pseudoToken} WHERE user_email = ${email}
-    `;
-
-    // 3. Hard-delete the user (trusted_devices, password_history, schedule_entries,
-    //    department_managers cascade automatically — see FK comments in schema.prisma)
-    await prisma.$executeRaw`DELETE FROM "users" WHERE id = ${targetId}::uuid`;
-
-    // 4. Record the erasure in the audit log under the admin's email
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'GDPR_ERASURE', 'USER', ${targetId}::uuid, ${req.user!.email}, now())
-    `;
 
     log.info(`[DELETE /api/admin/users/${targetId}] GDPR erasure completed by ${req.user!.email}. Audit logs pseudonymised as ${pseudoToken}.`);
     res.json({ message: 'User erased. Audit log entries pseudonymised.' });
@@ -1510,51 +1537,54 @@ app.post('/api/cis', authenticateToken, requireAdmin, async (req: Request, res: 
       }
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ci = await prisma.cI.create({
-      data: {
-        name, apiSlug, criticality, environment,
-        ciTypeId:        ciTypeId        || null,
-        status:          status          || "ACTIVO",
-        inventoryNumber: inventoryNumber || null,
-        branchId:        branchId        || null,
-        ciModelId:       ciModelId       || null,
-        eolDate:         resolvedEolDate     || null,
-        eosDate:         resolvedSupportDate || null,
-        businessOwnerId: businessOwnerId || null,
-        technicalLeadId: technicalLeadId || null,
-        businessImpact:     businessImpact     || null,
-        recoveryPriority:   recoveryPriority   ?? null,
-        rto:                rto                ?? null,
-        rpo:                rpo                ?? null,
-        spofRisk:           spofRisk           ?? false,
-        containsPii:        containsPii        ?? false,
-        dataClassification: dataClassification || null,
-        cpuModel:           cpuModel           || null,
-        vCpus:              vCpus              ?? null,
-        ram:                ram                || null,
-        disk:               disk               || null,
-        adminIp:            adminIp            || null,
-        mgmtIp:             mgmtIp             || null,
-        hostName:           hostName           || null,
-        clusterName:        clusterName        || null,
-        operatingSystemId:  operatingSystemId  || null,
-        firmwareVersion:    firmwareVersion    || null,
-        dns:                dns                || null,
-        hypervisorId:       hypervisorId       || null,
-        powerState:         powerState         || null,
-        ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
-        ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
-      } as Parameters<typeof prisma.cI.create>[0]['data'],
-      include: CI_INCLUDE,
-    });
+    const ci = await prisma.$transaction(async (tx) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const created = await tx.cI.create({
+        data: {
+          name, apiSlug, criticality, environment,
+          ciTypeId:        ciTypeId        || null,
+          status:          status          || "ACTIVO",
+          inventoryNumber: inventoryNumber || null,
+          branchId:        branchId        || null,
+          ciModelId:       ciModelId       || null,
+          eolDate:         resolvedEolDate     || null,
+          eosDate:         resolvedSupportDate || null,
+          businessOwnerId: businessOwnerId || null,
+          technicalLeadId: technicalLeadId || null,
+          businessImpact:     businessImpact     || null,
+          recoveryPriority:   recoveryPriority   ?? null,
+          rto:                rto                ?? null,
+          rpo:                rpo                ?? null,
+          spofRisk:           spofRisk           ?? false,
+          containsPii:        containsPii        ?? false,
+          dataClassification: dataClassification || null,
+          cpuModel:           cpuModel           || null,
+          vCpus:              vCpus              ?? null,
+          ram:                ram                || null,
+          disk:               disk               || null,
+          adminIp:            adminIp            || null,
+          mgmtIp:             mgmtIp             || null,
+          hostName:           hostName           || null,
+          clusterName:        clusterName        || null,
+          operatingSystemId:  operatingSystemId  || null,
+          firmwareVersion:    firmwareVersion    || null,
+          dns:                dns                || null,
+          hypervisorId:       hypervisorId       || null,
+          powerState:         powerState         || null,
+          ...(hardware && { hardware: { create: { serialNumber: hardware.serialNumber, model: hardware.model, manufacturer: hardware.manufacturer } } }),
+          ...(software && { software: { create: { version: software.version, licenseType: software.licenseType } } }),
+        } as Parameters<typeof prisma.cI.create>[0]['data'],
+        include: CI_INCLUDE,
+      });
 
-    // Audit log (raw — Prisma client types regenerate after migrate)
-    const createDetails = JSON.stringify(buildAuditDetails(`CI "${ci.name}" creado`));
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
-      VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${ci.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
-    `;
+      // Audit log (raw — Prisma client types regenerate after migrate)
+      const createDetails = JSON.stringify(buildAuditDetails(`CI "${created.name}" creado`));
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), 'CREATE_CI', 'CI', ${created.id}, ${req.user!.email}, ${createDetails}::jsonb, now())
+      `;
+      return created;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', ci.id);
@@ -1777,16 +1807,19 @@ app.patch('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id'
       return;
     }
 
-    const ci = await prisma.cI.update({
-      where: { id },
-      data: updateData,
-      include: CI_INCLUDE,
-    });
+    const ci = await prisma.$transaction(async (tx) => {
+      const updated = await tx.cI.update({
+        where: { id },
+        data: updateData,
+        include: CI_INCLUDE,
+      });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'UPDATE_CI', 'CI', ${id}, ${req.user!.email}, now())
+      `;
+      return updated;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', id);
@@ -2016,19 +2049,23 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       v.cve === cve ? { ...v, status, updatedAt: new Date().toISOString() } : v
     );
 
-    await prisma.$executeRaw`
-      UPDATE "configuration_items"
-      SET "vulnerabilities" = ${JSON.stringify(updated)}::jsonb
-      WHERE "id" = ${ciId}::uuid
-    `;
-
-    // Audit log (raw — Prisma client types regenerate after migrate)
+    // Issue #172: wrap the vulnerabilities-column update + audit insert in one
+    // transaction so the audit is never missing when the status change persists.
     const entityId = `${ciId}:${cve}`;
     const action   = `UPDATE_VULN_STATUS:${status}`;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "configuration_items"
+        SET "vulnerabilities" = ${JSON.stringify(updated)}::jsonb
+        WHERE "id" = ${ciId}::uuid
+      `;
+
+      // Audit log (raw — Prisma client types regenerate after migrate)
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index the vulnerability + its parent CI (whose summary line changed)
     void queueEntityForIndexing('vulnerability', vulnUuid(ciId, cve));
@@ -2313,23 +2350,27 @@ app.post('/api/cis/bulk/batches', authenticateToken, requireAdmin, ciXlsxUploadM
   if (rows.length > CI_BULK_MAX_ROWS) { res.status(400).json({ error: `El XLSX excede el límite de ${CI_BULK_MAX_ROWS} filas` }); return; }
 
   try {
-    const batchRows = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO "ci_bulk_import_batch"(id, created_by, status, row_count, created_at, updated_at)
-      VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${rows.length}, now(), now())
-      RETURNING id::text AS id`;
-    const batchId = batchRows[0].id;
+    const { batchId } = await prisma.$transaction(async (tx) => {
+      const batchRows = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO "ci_bulk_import_batch"(id, created_by, status, row_count, created_at, updated_at)
+        VALUES(gen_random_uuid(), ${req.user!.email}, 'UPLOADED', ${rows.length}, now(), now())
+        RETURNING id::text AS id`;
+      const batchId = batchRows[0].id;
 
-    for (let i = 0; i < rows.length; i++) {
-      await prisma.$executeRaw`
-        INSERT INTO "ci_bulk_import_item"(id, batch_id, row_index, raw_data, status, analysis, created_at, updated_at)
-        VALUES(gen_random_uuid(), ${batchId}::uuid, ${i + 1}, ${JSON.stringify(rows[i])}::jsonb,
-               'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
-    }
+      for (let i = 0; i < rows.length; i++) {
+        await tx.$executeRaw`
+          INSERT INTO "ci_bulk_import_item"(id, batch_id, row_index, raw_data, status, analysis, created_at, updated_at)
+          VALUES(gen_random_uuid(), ${batchId}::uuid, ${i + 1}, ${JSON.stringify(rows[i])}::jsonb,
+                 'PENDING_ANALYSIS', '{}'::jsonb, now(), now())`;
+      }
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-      VALUES(gen_random_uuid(), 'CI_BULK_UPLOAD', 'CiBulkImportBatch', ${batchId}::uuid, ${req.user!.email},
-             ${JSON.stringify({ rowCount: rows.length })}::jsonb, now())`;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+        VALUES(gen_random_uuid(), 'CI_BULK_UPLOAD', 'CiBulkImportBatch', ${batchId}::uuid, ${req.user!.email},
+               ${JSON.stringify({ rowCount: rows.length })}::jsonb, now())`;
+
+      return { batchId };
+    });
 
     res.status(201).json({ batchId, rowCount: rows.length });
   } catch (e) {
@@ -2395,9 +2436,11 @@ app.delete('/api/cis/bulk/items/:id', authenticateToken, requireAdmin, async (re
       LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found' }); return; }
     if (rows[0].status === 'COMMITTED') { res.status(409).json({ error: 'El elemento ya fue confirmado y no se puede descartar' }); return; }
-    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_item" WHERE id = ${req.params.id}::uuid`;
-    await recomputeCIBatchStatus(rows[0].batch_id);
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "ci_bulk_import_item" WHERE id = ${req.params.id}::uuid`;
+      await recomputeCIBatchStatus(tx, rows[0].batch_id);
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[DELETE /api/cis/bulk/items/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2409,8 +2452,10 @@ app.delete('/api/cis/bulk/batches/:id', authenticateToken, requireAdmin, async (
       SELECT id::text AS id FROM "ci_bulk_import_batch"
       WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
-    await prisma.$executeRaw`DELETE FROM "ci_bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_BATCH','CiBulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "ci_bulk_import_batch" WHERE id = ${req.params.id}::uuid`;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_DISCARD_BATCH','CiBulkImportBatch',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[DELETE /api/cis/bulk/batches/:id]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2453,7 +2498,7 @@ app.post('/api/cis/bulk/items/:id/commit', authenticateToken, requireAdmin, asyn
     if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Decisión inválida' }); return; }
 
     const result = await materializeCIBulkItem(item, parsed.data, req.user!.email);
-    await recomputeCIBatchStatus(item.batch_id);
+    await recomputeCIBatchStatus(prisma, item.batch_id);
     res.status(201).json(result);
   } catch (e) {
     if (e instanceof CIBulkValidationError) { res.status(400).json({ error: e.message }); return; }
@@ -2495,7 +2540,7 @@ app.post('/api/cis/bulk/batches/:id/commit', authenticateToken, requireAdmin, as
         results.push({ itemId: item.id, ok: false, error: msg });
       }
     }
-    await recomputeCIBatchStatus(String(req.params.id));
+    await recomputeCIBatchStatus(prisma, String(req.params.id));
     res.json({ results });
   } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/commit]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2509,11 +2554,13 @@ app.post('/api/cis/bulk/items/:id/reanalyze', authenticateToken, requireAdmin, a
       WHERE i.id = ${req.params.id}::uuid AND b.created_by = ${req.user!.email}
         AND i.status IN ('ANALYZED','ERROR') LIMIT 1`;
     if (!rows.length) { res.status(404).json({ error: 'Not found or not re-analyzable' }); return; }
-    await prisma.$executeRaw`
-      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE id = ${req.params.id}::uuid`;
-    await recomputeCIBatchStatus(rows[0].batch_id);
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+        WHERE id = ${req.params.id}::uuid`;
+      await recomputeCIBatchStatus(tx, rows[0].batch_id);
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,created_at) VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_ITEM','CiBulkImportItem',${req.params.id}::uuid,${req.user!.email},now())`;
+    });
     res.json({ ok: true });
   } catch (e) { console.error('[POST /api/cis/bulk/items/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2526,14 +2573,17 @@ app.post('/api/cis/bulk/batches/:id/reanalyze', authenticateToken, requireAdmin,
       WHERE id = ${req.params.id}::uuid AND created_by = ${req.user!.email} LIMIT 1`;
     if (!batch.length) { res.status(404).json({ error: 'Not found' }); return; }
     const batchIdStr = String(req.params.id);
-    const count = Number(await prisma.$executeRaw`
-      UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
-      WHERE batch_id = ${batchIdStr}::uuid AND status IN ('ANALYZED','ERROR')`);
-    await recomputeCIBatchStatus(batchIdStr);
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
-      VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_BATCH','CiBulkImportBatch',${batchIdStr}::uuid,${req.user!.email},
-             ${JSON.stringify({ count })}::jsonb, now())`;
+    const count = await prisma.$transaction(async (tx) => {
+      const affected = Number(await tx.$executeRaw`
+        UPDATE "ci_bulk_import_item" SET status='PENDING_ANALYSIS', error_message=NULL, updated_at=now()
+        WHERE batch_id = ${batchIdStr}::uuid AND status IN ('ANALYZED','ERROR')`);
+      await recomputeCIBatchStatus(tx, batchIdStr);
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at)
+        VALUES(gen_random_uuid(),'CI_BULK_REANALYZE_BATCH','CiBulkImportBatch',${batchIdStr}::uuid,${req.user!.email},
+               ${JSON.stringify({ count: affected })}::jsonb, now())`;
+      return affected;
+    });
     res.json({ ok: true, count });
   } catch (e) { console.error('[POST /api/cis/bulk/batches/:id/reanalyze]', e); res.status(500).json({ error: 'Internal server error' }); }
 });
@@ -2640,13 +2690,16 @@ app.post('/api/auth/mfa/setup', authenticateToken, async (req: Request, res: Res
     const qrDataUrl = await QRCode.toDataURL(otpauth);
 
     // Store the pending secret server-side so /mfa/enable can retrieve it
-    // without trusting any client-supplied value.
-    await prisma.$executeRaw`
-      UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
-    `;
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
+    // without trusting any client-supplied value. Mutation + audit insert are
+    // atomic (A.8.15) — an unlogged mfa_pending_secret write is a gap too.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "users" SET mfa_pending_secret = ${secret}, updated_at = now() WHERE id = ${req.user!.id}::uuid
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'MFA_SETUP_INITIATED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())`;
+    });
 
     res.json({ secret, qrDataUrl });
   } catch (error) {
@@ -2684,12 +2737,23 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       res.status(400).json({ error: 'Invalid TOTP code. Please try again.' });
       return;
     }
-    await prisma.$executeRaw`
-      UPDATE "users"
-      SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
-      WHERE id = ${req.user!.id}::uuid
-    `;
-    // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired)
+    // Mutation + audit insert are atomic (A.8.15) — an unlogged mfa_secret
+    // write would be a silent auth-bypass audit gap (highest-risk site here).
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "users"
+        SET mfa_secret = ${secret}, mfa_enabled = true, mfa_pending_secret = NULL, updated_at = now()
+        WHERE id = ${req.user!.id}::uuid
+      `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES(gen_random_uuid(), 'MFA_ENABLED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())
+      `;
+    });
+
+    // Issue a new full JWT (replaces limited token if admin had mfaSetupRequired).
+    // No external side effects (JWT signing, cookie-setting, res.json) belong
+    // inside a DB transaction — these run only after the write above commits.
     const newPayload: JwtPayload = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role };
     const newToken = jwt.sign(newPayload, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     setAuthCookie(res, newToken);
@@ -2708,10 +2772,6 @@ app.post('/api/auth/mfa/enable', authenticateToken, async (req: Request, res: Re
       `;
     }
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES(gen_random_uuid(), 'MFA_ENABLED', 'User', ${req.user!.id}::uuid, ${req.user!.email}, now())
-    `;
     const userObj = { id: req.user!.id, username: req.user!.username, email: req.user!.email, role: req.user!.role, mfa_enabled: true };
     res.json({ message: 'MFA enabled successfully', token: newToken, user: userObj, ...(newDeviceToken ? { deviceToken: newDeviceToken } : {}) });
   } catch (error) {
@@ -2827,6 +2887,14 @@ app.post('/api/admin/certificates/csr', authenticateToken, requireAdmin, async (
  * Returns: { message: string }
  * ADMIN only.
  */
+// Issue #172 (review fix): the cert file is a single shared on-disk resource with
+// no DB row / row lock behind it. Two concurrent uploads (or an upload racing a
+// prior request's compensating restore) could interleave writes and leave the
+// file and audit_logs permanently diverged. This is a minimal in-process mutex
+// scoped to this one route — it does not protect against multi-process/multi-
+// replica deployments, only against concurrent requests within this instance.
+let certUploadInProgress = false;
+
 app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const { certificate } = req.body as { certificate?: string };
 
@@ -2841,6 +2909,12 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     return;
   }
 
+  if (certUploadInProgress) {
+    res.status(409).json({ error: 'Another certificate upload is already in progress. Try again shortly.' });
+    return;
+  }
+  certUploadInProgress = true;
+
   try {
     const certDir = '/app/certs';
     const certPath = path.join(certDir, 'server.crt');
@@ -2848,16 +2922,53 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
     // Ensure directory exists (mapped from host via volume)
     fs.mkdirSync(certDir, { recursive: true });
 
+    // Issue #172: the certificate write is a filesystem side effect, not a DB row,
+    // so it cannot join a Prisma transaction with the audit insert. To still avoid
+    // an unaudited change reaching disk, snapshot whatever was there before (for
+    // restore), write the new cert, then audit — if the audit insert fails, undo
+    // the filesystem write (restore previous cert / remove if none existed) so the
+    // persisted state always matches what's in audit_logs. This restore is itself
+    // a best-effort, non-transactional fs write: if it also throws (disk full,
+    // permissions changed mid-request, EIO, read-only fs), that is caught
+    // separately below and logged loudly (CERT_RESTORE_FAILED) rather than
+    // silently swallowing the original audit error — the system may now hold an
+    // unaudited or partially-written cert on disk, which needs manual/operational
+    // follow-up since a filesystem write can never be made fully transactional.
+    const previousCert = fs.existsSync(certPath) ? fs.readFileSync(certPath) : null;
+
     // Write certificate to file
     fs.writeFileSync(certPath, certificate.trim() + '\n', { mode: 0o600 });
 
-    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
+    try {
+      // Audit log
+      await prisma.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
+      `;
+    } catch (auditError) {
+      // Compensate: undo the filesystem write so an unaudited cert never persists.
+      try {
+        if (previousCert !== null) {
+          fs.writeFileSync(certPath, previousCert, { mode: 0o600 });
+        } else {
+          fs.rmSync(certPath, { force: true });
+        }
+      } catch (restoreError) {
+        // The compensating restore itself failed: disk state is now inconsistent
+        // with audit_logs and cannot be reconciled automatically. Log loudly and
+        // distinctly (internal only — never in the API response) so this is
+        // detectable operationally, then still surface the original audit error.
+        log.error(
+          `[POST /api/admin/certificates/upload] CERT_RESTORE_FAILED — compensating restore failed after audit ` +
+            `insert error; on-disk certificate may now be unaudited/inconsistent with audit_logs. ` +
+            `Manual verification of ${certPath} required.`,
+          { auditError, restoreError }
+        );
+      }
+      throw auditError;
+    }
 
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'UPLOAD_CERTIFICATE', 'SYSTEM', 'ssl-cert', ${req.user!.email}, now())
-    `;
+    log.info(`[POST /api/admin/certificates/upload] Certificate uploaded successfully by ${req.user!.email}`);
 
     res.json({
       message: 'Certificate uploaded successfully. Restart the nginx container to apply the new certificate.',
@@ -2868,6 +2979,8 @@ app.post('/api/admin/certificates/upload', authenticateToken, requireAdmin, asyn
   } catch (error) {
     log.error('[POST /api/admin/certificates/upload] Error:', error);
     res.status(500).json({ error: 'Failed to save certificate' });
+  } finally {
+    certUploadInProgress = false;
   }
 });
 
@@ -3116,23 +3229,28 @@ app.post('/api/cis/:id/relations', authenticateToken, requireAdmin, async (req: 
       if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
     }
 
-    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
-    const relation = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
-      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
-      RETURNING id::text
-    `;
+    const relation = await prisma.$transaction(async (tx) => {
+      // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+        SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+        WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
+        RETURNING id::text
+      `;
+
+      if (!inserted.length) return inserted;
+
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${inserted[0].id}, ${req.user!.email}, now())
+      `;
+      return inserted;
+    });
 
     if (!relation.length) {
       res.status(404).json({ error: 'One or both CIs not found.' });
       return;
     }
-
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
-    `;
 
     // Re-index BOTH endpoints — each CI's relation list changed
     void queueEntityForIndexing('ci', sourceCiId);
@@ -3192,23 +3310,28 @@ app.post('/api/relations', authenticateToken, requireAdmin, async (req: Request,
       if (violation) { res.status(violation.status).json({ error: violation.error }); return; }
     }
 
-    // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
-    const relation = await prisma.$queryRaw<{ id: string }[]>`
-      INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
-      SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
-      WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
-      RETURNING id::text
-    `;
+    const relation = await prisma.$transaction(async (tx) => {
+      // Atomic INSERT...SELECT: inserts only if both CIs exist, eliminating TOCTOU race
+      const inserted = await tx.$queryRaw<{ id: string }[]>`
+        INSERT INTO ci_relations (id, source_ci_id, target_ci_id, relation_type, created_by, created_at)
+        SELECT gen_random_uuid(), ${sourceCiId}::uuid, ${targetCiId}::uuid, ${relationType}::"RelationType", ${req.user!.email}, now()
+        WHERE (SELECT COUNT(*) FROM configuration_items WHERE id IN (${sourceCiId}::uuid, ${targetCiId}::uuid)) = 2
+        RETURNING id::text
+      `;
+
+      if (!inserted.length) return inserted;
+
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${inserted[0].id}, ${req.user!.email}, now())
+      `;
+      return inserted;
+    });
 
     if (!relation.length) {
       res.status(404).json({ error: 'One or both CIs not found.' });
       return;
     }
-
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'CREATE_RELATION:' + relationType}, 'CI_RELATION', ${relation[0].id}, ${req.user!.email}, now())
-    `;
 
     // Re-index BOTH endpoints — each CI's relation list changed
     void queueEntityForIndexing('ci', sourceCiId);
@@ -3242,12 +3365,14 @@ app.delete('/api/relations/:id', authenticateToken, requireAdmin, async (req: Re
       FROM ci_relations WHERE id = ${id}::uuid LIMIT 1
     `;
 
-    await prisma.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM ci_relations WHERE id = ${id}::uuid`;
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'DELETE_RELATION', 'CI_RELATION', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index both endpoints (relation list changed for both)
     if (endpoints.length) {
@@ -3278,19 +3403,21 @@ app.patch('/api/cis/:id/verification', authenticateToken, requireAdmin, async (r
     const checkDate = lastCheckDate ? new Date(lastCheckDate) : new Date();
     const source    = verificationSource ?? 'MANUAL';
 
-    await prisma.$executeRaw`
-      UPDATE "configuration_items"
-      SET    last_check_date      = ${checkDate},
-             verification_source  = ${source},
-             updated_at           = now()
-      WHERE  id = ${id}::uuid
-    `;
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        UPDATE "configuration_items"
+        SET    last_check_date      = ${checkDate},
+               verification_source  = ${source},
+               updated_at           = now()
+        WHERE  id = ${id}::uuid
+      `;
 
-    // Audit log
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
-    `;
+      // Audit log
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), ${'UPDATE_VERIFICATION:' + source}, 'CI', ${id}, ${req.user!.email}, now())
+      `;
+    });
 
     // Re-index this entity for the RAG (queue, non-blocking on errors)
     void queueEntityForIndexing('ci', id);
@@ -3368,15 +3495,17 @@ app.patch('/api/cis/:id/placement', authenticateToken, requireAdmin, requireUuid
       }
     }
 
-    await prisma.hardwareCI.update({
-      where : { ciId: id },
-      data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
-    });
+    await prisma.$transaction(async (tx) => {
+      await tx.hardwareCI.update({
+        where : { ciId: id },
+        data  : { parentRackCiId, uPosition, orientation, sizeU, powerW },
+      });
 
-    await prisma.$executeRaw`
-      INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
-      VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
-    `;
+      await tx.$executeRaw`
+        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
+        VALUES (gen_random_uuid(), 'CI_PLACEMENT', 'CI', ${id}::uuid, ${req.user!.email}, now())
+      `;
+    });
 
     res.json({ id, parentRackCiId, uPosition, orientation, sizeU, powerW });
   } catch (error) {
@@ -3395,8 +3524,11 @@ const BULK_BATCH_TTL_HOURS    = parseInt(process.env.BULK_BATCH_TTL_HOURS ?? '24
 const BULK_REAPED_RETENTION_DAYS = parseInt(process.env.BULK_REAPED_RETENTION_DAYS ?? '7', 10);
 const BULK_MAX_OPEN_BATCHES   = parseInt(process.env.BULK_MAX_OPEN_BATCHES ?? '5', 10);
 
-async function recomputeCIBatchStatus(batchId: string): Promise<void> {
-  const rows = await prisma.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
+// Takes a Prisma.TransactionClient (the base PrismaClient is also assignable
+// to it structurally, see isPasswordInHistory above) so callers can run this
+// inside an enclosing prisma.$transaction(...) alongside the audit-log insert.
+async function recomputeCIBatchStatus(db: Prisma.TransactionClient, batchId: string): Promise<void> {
+  const rows = await db.$queryRaw<{ total: bigint; pending: bigint; committed: bigint; errors: bigint }[]>`
     SELECT COUNT(*) AS total,
            COUNT(*) FILTER (WHERE status IN ('PENDING_ANALYSIS','ANALYZING')) AS pending,
            COUNT(*) FILTER (WHERE status = 'COMMITTED') AS committed,
@@ -3413,7 +3545,7 @@ async function recomputeCIBatchStatus(batchId: string): Promise<void> {
   else if (committed > 0)       status = 'PARTIALLY_COMMITTED';
   else if (errors > 0 && committed === 0 && pending === 0) status = 'ERROR';
   else                          status = 'READY';
-  await prisma.$executeRaw`UPDATE "ci_bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
+  await db.$executeRaw`UPDATE "ci_bulk_import_batch" SET status = ${status}, updated_at = now() WHERE id = ${batchId}::uuid`;
 }
 
 const _rawCiConcurrency = parseInt(process.env.CI_BULK_CONCURRENCY ?? '3', 10);
@@ -3590,7 +3722,7 @@ async function processCIBulkImportQueue(): Promise<void> {
   await withConcurrency(tasks, Math.max(1, available));
 
   for (const batchId of touchedBatches) {
-    try { await recomputeCIBatchStatus(batchId); }
+    try { await recomputeCIBatchStatus(prisma, batchId); }
     catch (e) { console.error('[CI-Bulk] processCIBulkImportQueue batch-status error:', e); }
   }
 }
@@ -3999,11 +4131,15 @@ app.post('/api/cis/:id/contracts', authenticateToken, requireAdmin, async (req, 
   const { contractIds } = parsed.data;
   const ciId = req.params.id as string;
   try {
-    await prisma.cI.update({
-      where: { id: ciId },
-      data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
+    // Issue #172: wrap the join-table connect + audit insert in one transaction
+    // so the audit is never missing when the association persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.update({
+        where: { id: ciId },
+        data: { contracts: { connect: contractIds.map((cid) => ({ id: cid })) } },
+      });
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
     });
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractIds})}::jsonb,now())`;
 
     void queueEntityForIndexing('ci', ciId);
     for (const cid of contractIds) {
@@ -4020,11 +4156,15 @@ app.delete('/api/cis/:id/contracts/:contractId', authenticateToken, requireAdmin
   const ciId = req.params.id as string;
   const contractId = req.params.contractId as string;
   try {
-    await prisma.cI.update({
-      where: { id: ciId },
-      data: { contracts: { disconnect: [{ id: contractId }] } },
+    // Issue #172: wrap the join-table disconnect + audit insert in one
+    // transaction so the audit is never missing when the removal persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.cI.update({
+        where: { id: ciId },
+        data: { contracts: { disconnect: [{ id: contractId }] } },
+      });
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
     });
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({contractId})}::jsonb,now())`;
 
     void queueEntityForIndexing('ci', ciId);
     const rootId = await getContractRoot(contractId);
@@ -4042,12 +4182,17 @@ app.post('/api/cis/:id/documents', authenticateToken, requireAdmin, async (req, 
   const { documentIds } = parsed.data;
   const ciId = req.params.id as string;
   try {
-    let associated = 0;
-    for (const documentId of documentIds) {
-      await prisma.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
-      associated++;
-    }
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count:associated})}::jsonb,now())`;
+    // Issue #172: wrap the join-table inserts + audit insert in one transaction
+    // so the audit is never missing when the associations persist.
+    const associated = await prisma.$transaction(async (tx) => {
+      let count = 0;
+      for (const documentId of documentIds) {
+        await tx.$executeRaw`INSERT INTO "document_cis"(id,document_id,ci_id) VALUES(gen_random_uuid(),${documentId}::uuid,${ciId}::uuid) ON CONFLICT DO NOTHING`;
+        count++;
+      }
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'LINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentIds,count})}::jsonb,now())`;
+      return count;
+    });
 
     void queueEntityForIndexing('ci', ciId);
 
@@ -4060,8 +4205,12 @@ app.delete('/api/cis/:id/documents/:docId', authenticateToken, requireAdmin, asy
   const ciId = req.params.id as string;
   const docId = req.params.docId as string;
   try {
-    await prisma.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
-    await prisma.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
+    // Issue #172: wrap the join-table delete + audit insert in one transaction
+    // so the audit is never missing when the removal persists.
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`DELETE FROM "document_cis" WHERE document_id=${docId}::uuid AND ci_id=${ciId}::uuid`;
+      await tx.$executeRaw`INSERT INTO "audit_logs"(id,action,entity,entity_id,user_email,details,created_at) VALUES(gen_random_uuid(),'UNLINK_CI','CI',${ciId}::uuid,${req.user!.email},${JSON.stringify({documentId:docId})}::jsonb,now())`;
+    });
 
     void queueEntityForIndexing('ci', ciId);
 

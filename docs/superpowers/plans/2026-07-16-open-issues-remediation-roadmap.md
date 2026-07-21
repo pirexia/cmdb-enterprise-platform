@@ -53,7 +53,11 @@ Rationale: #181 is a live functional failure; #172 is a compliance gap with a na
 
 ### #172 — non-transactional audit (legacy + remaining modules)
 
-**Status:** partially done. The **staff-schedule module is already transactional** (`audit.ts` takes `Prisma.TransactionClient`, router wraps mutation+audit in one `$transaction`, `auditTransaction.test.ts` exists — shipped in v3.5.1). Issue was left open only for the rest.
+**Status:** ✅ resolved (implementation complete 2026-07-20/21, branch `fix/172-audit-transactions`, PR pending human review — not yet merged per `feedback_merge_without_review`). Plan: `docs/superpowers/plans/2026-07-17-issue-172-audit-transactions.md`. All 12 tasks executed via subagent-driven-development (Tasks 8-12 parallelized across isolated worktrees, zero file overlap): `index.ts` (29 sites across CI core/relations/user-admin/auth/bulk-import/links-certs-vulns) + `catalog`/`dcim`/`decommission`/`settings`/`alerts`/`plugins` modules (66 sites). Two fix rounds during review: Task 7's certificate-upload site (filesystem write, can't join a Prisma transaction — needed a novel guarded compensating-restore pattern + mutex, not the standard wrap) and Task 12's plugin activate/deactivate (initially wrapped irreversible runtime side effects — live cron scheduling, hook registration — *inside* the transaction, creating a rollback hazard where sandboxed code could run while the DB said otherwise; fixed by moving `registerPlugin`/`unregisterPlugin` to run only after commit). Final whole-branch review (opus): 0 Critical, 0 Important, ready to merge. 477/477 tests, `tsc --noEmit` clean, grep sweep confirms 0 orphaned `audit_logs` INSERT sites remain. **New follow-ups surfaced during implementation, not yet filed as issues:** (1) `index.ts` cannot be imported/mounted via supertest (unconditional `app.listen()`) — all 6 `index.ts` task tests are hand-mirrored harnesses, not exercises of the real route; (2) Task 6's batch-create holds a transaction open across up to 500 sequential per-row INSERTs — should convert to a single bulk statement; (3) `backend/src/modules/internal/alerts.ts:117-121` (n8n M2M endpoint) has the same unwrapped mutation-then-audit pattern, outside this plan's inventory. **Live Docker/DB smoke test skipped this session**: attempting `podman-compose down` for the dev stack surfaced that the dev and production pods share the same underlying podman pod (`pod_cmdb-enterprise-platform`) — the command failed safely (podman refused to force-remove running containers without `-f`), production confirmed unaffected (200 OK, 5/5 containers up throughout), but a `-f` retry would have taken down prod. Root cause not yet investigated — do not retry `podman-compose down/up` for dev without first understanding why the pods are shared.
+
+<details><summary>Original triage entry (superseded by the resolution above)</summary>
+
+**Status (as of 2026-07-16, before resolution):** partially done. The **staff-schedule module is already transactional** (`audit.ts` takes `Prisma.TransactionClient`, router wraps mutation+audit in one `$transaction`, `auditTransaction.test.ts` exists — shipped in v3.5.1). Issue was left open only for the rest.
 
 **Remaining scope:** the legacy `index.ts` pattern (mutation commits, then a separate `$executeRaw` audit insert — e.g. `CREATE_RELATION`/`DELETE_RELATION` at `index.ts:3070`, `:3146`, and the other legacy domains) plus any non-staff-schedule module following the same 2-step pattern. If the audit insert fails or the process dies between the two steps, the write persists with no `audit_logs` record — a strict A.8.15 gap.
 
@@ -64,6 +68,8 @@ Rationale: #181 is a live functional failure; #172 is a compliance gap with a na
 - `reports/audit.ts` swallows audit errors (`console.error` + continue) — defensible for reads (`VIEW_REPORT`/`EXPORT_REPORT`), **not** for writes; confirm it's only used on read paths.
 
 **Effort:** L (many legacy handlers, each needs a transaction wrap + a rollback test — good candidate for decomposition into per-domain tasks). **Risk:** medium — touching every legacy write path; TDD per handler contains it. **Testable per handler:** forced-audit-failure test shows no orphaned write.
+
+</details>
 
 ---
 

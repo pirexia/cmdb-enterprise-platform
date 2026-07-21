@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import type { Application } from 'express';
 import { PluginManifest, PluginManifestSchema, PluginStatus } from './schemas.js';
 import { pluginAudit } from './audit.js';
@@ -428,8 +428,12 @@ export class PluginLifecycleManager {
     return this.validTransitions[from]?.includes(to) ?? false;
   }
 
+  // Widened to Prisma.TransactionClient (issue #172) — the base PrismaClient
+  // is also assignable to it, so callers can pass either the base client or a
+  // `tx` client from inside `prisma.$transaction(async (tx) => {})` to make
+  // this status write atomic with an adjacent audit insert.
   async updateStatus(
-    prisma: PrismaClient,
+    prisma: Prisma.TransactionClient,
     pluginDbId: string,
     status: PluginStatus,
     lastError?: string,

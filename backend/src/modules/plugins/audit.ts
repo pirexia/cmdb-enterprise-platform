@@ -1,7 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
+// Issue #172 (ISO 27001 A.8.15): takes a Prisma.TransactionClient (the base
+// PrismaClient is also assignable to it) so callers run the business mutation
+// and this audit insert inside a single `prisma.$transaction(async (tx) => {
+// ... })`. That makes the write and its audit record atomic — either both
+// commit or both roll back. Always pass the `tx` client from inside the
+// transaction alongside the mutation, never the base client afterwards.
 export async function pluginAudit(
-  prisma: PrismaClient,
+  prisma: Prisma.TransactionClient,
   action: string,
   pluginId: string,
   userEmail: string,

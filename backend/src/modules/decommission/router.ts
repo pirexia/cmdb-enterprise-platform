@@ -84,8 +84,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
       }
 
       const userEmail = (req as any).user?.email ?? 'unknown';
-      const plan = await createPlan(prisma, parse.data.name, parse.data.systemCiId, userEmail);
-      await decommissionAudit(prisma, 'CREATE', 'DECOMMISSION_PLAN', plan.id, userEmail);
+      const plan = await prisma.$transaction(async (tx) => {
+        const p = await createPlan(tx, parse.data.name, parse.data.systemCiId, userEmail);
+        await decommissionAudit(tx, 'CREATE', 'DECOMMISSION_PLAN', p.id, userEmail);
+        return p;
+      });
       queuePlan(plan.id);
       res.status(201).json({ plan });
     } catch (err) {
@@ -114,9 +117,12 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
       return;
     }
     try {
-      const plan = await updatePlan(prisma, req.params.id as string, parse.data.name, parse.data.status);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'UPDATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      const plan = await prisma.$transaction(async (tx) => {
+        const p = await updatePlan(tx, req.params.id as string, parse.data.name, parse.data.status);
+        await decommissionAudit(tx, 'UPDATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+        return p;
+      });
       queuePlan(req.params.id as string);
       res.json({ plan });
     } catch (err) {
@@ -129,9 +135,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
   router.delete('/plans/:id', requireAdminRole, requireUuidParam('id'), makePlanLoader(prisma), async (req: Request, res: Response) => {
     try {
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'DELETE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await deletePlan(tx, req.params.id as string);
+        await decommissionAudit(tx, 'DELETE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       if (rag) await rag.purgeEntity('decommission', req.params.id as string);
-      await deletePlan(prisma, req.params.id as string);
       res.status(204).send();
     } catch (err) {
       console.error('[decommission] delete error:', err);
@@ -160,11 +168,13 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
       }
 
       const systemDate = dateRows[0].date_value;
-      await generateInventory(prisma, req.params.id as string, plan.system_ci_id, systemDate);
+      const userEmail = (req as any).user?.email ?? 'unknown';
+      await prisma.$transaction(async (tx) => {
+        await generateInventory(tx, req.params.id as string, plan.system_ci_id, systemDate);
+        await decommissionAudit(tx, 'GENERATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
 
       const cis = await listPlanCis(prisma, req.params.id as string);
-      const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'GENERATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
       queuePlan(req.params.id as string);
 
       // Warn if any child has scheduled_date > system date
@@ -212,10 +222,12 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
       return;
     }
     try {
-      await updatePlanCi(prisma, req.params.id as string, req.params.ciId as string,
-        parse.data.scheduledDate, parse.data.notes);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'UPDATE_CI_DATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await updatePlanCi(tx, req.params.id as string, req.params.ciId as string,
+          parse.data.scheduledDate, parse.data.notes);
+        await decommissionAudit(tx, 'UPDATE_CI_DATE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       res.json({ ok: true });
     } catch (err) {
       console.error('[decommission] update ci error:', err);
@@ -248,9 +260,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
     const parse = PlanDocumentAddSchema.safeParse(req.body);
     if (!parse.success) { res.status(400).json({ error: 'Validation error' }); return; }
     try {
-      await addPlanDocument(prisma, req.params.id as string, parse.data.documentId);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'ADD_DOCUMENT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await addPlanDocument(tx, req.params.id as string, parse.data.documentId);
+        await decommissionAudit(tx, 'ADD_DOCUMENT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(201).json({ ok: true });
     } catch (err) {
@@ -261,9 +275,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
 
   router.delete('/plans/:id/documents/:docId', requireAdminRole, requireUuidParam('id'), requireUuidParam('docId'), makePlanLoader(prisma), async (req: Request, res: Response) => {
     try {
-      await removePlanDocument(prisma, req.params.id as string, req.params.docId as string);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'REMOVE_DOCUMENT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await removePlanDocument(tx, req.params.id as string, req.params.docId as string);
+        await decommissionAudit(tx, 'REMOVE_DOCUMENT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(204).send();
     } catch (err) {
@@ -286,9 +302,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
     const parse = PlanContractAddSchema.safeParse(req.body);
     if (!parse.success) { res.status(400).json({ error: 'Validation error' }); return; }
     try {
-      await addPlanContract(prisma, req.params.id as string, parse.data.contractId);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'ADD_CONTRACT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await addPlanContract(tx, req.params.id as string, parse.data.contractId);
+        await decommissionAudit(tx, 'ADD_CONTRACT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(201).json({ ok: true });
     } catch (err) {
@@ -299,9 +317,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
 
   router.delete('/plans/:id/contracts/:contractId', requireAdminRole, requireUuidParam('id'), requireUuidParam('contractId'), makePlanLoader(prisma), async (req: Request, res: Response) => {
     try {
-      await removePlanContract(prisma, req.params.id as string, req.params.contractId as string);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'REMOVE_CONTRACT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await removePlanContract(tx, req.params.id as string, req.params.contractId as string);
+        await decommissionAudit(tx, 'REMOVE_CONTRACT', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(204).send();
     } catch (err) {
@@ -324,9 +344,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
     const parse = PlanLicenseAddSchema.safeParse(req.body);
     if (!parse.success) { res.status(400).json({ error: 'Validation error' }); return; }
     try {
-      await addPlanLicense(prisma, req.params.id as string, parse.data.licenseId);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'ADD_LICENSE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await addPlanLicense(tx, req.params.id as string, parse.data.licenseId);
+        await decommissionAudit(tx, 'ADD_LICENSE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(201).json({ ok: true });
     } catch (err) {
@@ -337,9 +359,11 @@ export function createDecommissionRouter(prisma: PrismaClient, rag?: RagOps): Ro
 
   router.delete('/plans/:id/licenses/:licenseId', requireAdminRole, requireUuidParam('id'), requireUuidParam('licenseId'), makePlanLoader(prisma), async (req: Request, res: Response) => {
     try {
-      await removePlanLicense(prisma, req.params.id as string, req.params.licenseId as string);
       const userEmail = (req as any).user?.email ?? 'unknown';
-      await decommissionAudit(prisma, 'REMOVE_LICENSE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      await prisma.$transaction(async (tx) => {
+        await removePlanLicense(tx, req.params.id as string, req.params.licenseId as string);
+        await decommissionAudit(tx, 'REMOVE_LICENSE', 'DECOMMISSION_PLAN', req.params.id as string, userEmail);
+      });
       queuePlan(req.params.id as string);
       res.status(204).send();
     } catch (err) {

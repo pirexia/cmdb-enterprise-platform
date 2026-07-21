@@ -48,9 +48,15 @@ export async function initializePluginEngine(
       console.info(`[plugin-engine] re-activated plugin: ${plugin.pluginId} v${plugin.version}`);
     } catch (err) {
       console.error(`[plugin-engine] failed to re-activate plugin ${plugin.pluginId}:`, err);
-      await setPluginStatus(prisma, plugin.id, 'ERROR', (err as Error).message).catch(() => {});
-      await pluginAudit(prisma, 'PLUGIN_ERROR', plugin.id, 'system', {
-        description: `Re-activation failed: ${(err as Error).message}`,
+      // Issue #172 (ISO 27001 A.8.15): the ERROR status write and its audit
+      // record must be atomic — wrapped in a transaction so a failed audit
+      // insert never leaves an unlogged status mutation. Best-effort at
+      // startup (non-critical path), so failures are still swallowed.
+      await prisma.$transaction(async (tx) => {
+        await setPluginStatus(tx, plugin.id, 'ERROR', (err as Error).message);
+        await pluginAudit(tx, 'PLUGIN_ERROR', plugin.id, 'system', {
+          description: `Re-activation failed: ${(err as Error).message}`,
+        });
       }).catch(() => {});
     }
   }

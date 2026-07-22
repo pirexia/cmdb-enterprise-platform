@@ -184,36 +184,38 @@ Every feature, fix, refactor, and configuration change **must** satisfy all of t
 
 ## Environment & Commands
 
-**Development runs entirely in Docker** (WSL2 local, RHEL 9 production). Never run `npm install` or `npx prisma` directly on the host — always through the container or via `docker exec`.
+**This server has a single environment: production.** There is no separate dev stack — `docker-compose.prod.yml` is the only compose file, and it is what you develop against. Container engine is **podman** (via `podman-compose`, rootless — no `docker`/`sg docker` group needed on this host). Never run `npm install` or `npx prisma` directly on the host — always through the container or via `podman exec`.
+
+**Always pass `-f docker-compose.prod.yml` explicitly on every compose command.** Omitting `-f` lets podman-compose fall back to directory-derived project naming, which is unsafe to rely on — see the pod-naming note below.
 
 ```bash
 # Start / rebuild all containers
-sg docker -c "docker compose down && docker compose up -d --build"
+podman-compose -f docker-compose.prod.yml down && podman-compose -f docker-compose.prod.yml up -d --build
 
 # Apply schema changes (run inside backend container)
-sg docker -c "docker exec cmdb-backend npx prisma migrate deploy"
+podman exec cmdb-backend-prod npx prisma migrate deploy
 
 # Generate Prisma client after schema edits
-sg docker -c "docker exec cmdb-backend npx prisma generate"
+podman exec cmdb-backend-prod npx prisma generate
 
 # TypeScript check (pre-commit gate — must pass with 0 new errors)
 cd backend && npx tsc --noEmit
 
 # Backend container shell
-sg docker -c "docker exec -it cmdb-backend sh"
+podman exec -it cmdb-backend-prod sh
 
 # PostgreSQL shell (user/db come from .env — defaults shown)
-sg docker -c "docker exec -it cmdb-postgres psql -U admin -d cmdb_db"
+podman exec -it cmdb-postgres-prod psql -U admin -d cmdb_db
 
 # DB backup
-sg docker -c "docker exec cmdb-postgres pg_dump -U admin cmdb_db" > backup_$(date +%F).sql
+podman exec cmdb-postgres-prod pg_dump -U admin cmdb_db > backup_$(date +%F).sql
 
 # Run a Node.js script inside the backend container (for DB operations needing bcrypt/Prisma)
 # Copy script to /app/ so node_modules are in scope
-sg docker -c "docker cp /tmp/myscript.js cmdb-backend:/app/myscript.js && docker exec -w /app cmdb-backend node myscript.js && docker exec cmdb-backend rm /app/myscript.js"
+podman cp /tmp/myscript.js cmdb-backend-prod:/app/myscript.js && podman exec -w /app cmdb-backend-prod node myscript.js && podman exec cmdb-backend-prod rm /app/myscript.js
 ```
 
-> `sg docker -c "..."` is required when the current shell session does not have the `docker` group — common in WSL2.
+**Pod-naming note (root cause of a near-miss during the v3.5.6 release, fixed in v3.5.7):** `docker-compose.prod.yml` declares a top-level `name: cmdb-prod` so its podman-compose project/pod name is deterministic, never derived from the working directory. Do not remove that `name:` key, and never invoke `podman-compose` for this project without `-f docker-compose.prod.yml` — a bare `down`/`up` with no `-f` (or a stray second compose file reintroduced later) risks resolving to the same pod as production.
 
 **Known pre-existing TypeScript errors** (ignore in `tsc` output, do not fix):
 - `Property 'license' does not exist on type 'PrismaClient'`
@@ -275,7 +277,7 @@ Browser ──HTTPS:443──▶ nginx ─── /         ──▶ frontend  (
 Only nginx exposes host ports (443 HTTPS, 80 HTTP→redirect). All other containers are internal.
 `/api/internal/*` is blocked at nginx (deny all → 404); accessible only container-to-container via `X-CMDB-Service-Token`.
 
-Two compose files: `docker-compose.yml` (development, exposes all ports, includes Adminer) and `docker-compose.prod.yml` (production, nginx as gateway, DB and backend not exposed, isolated networks, named TLS volume `cmdb-tls-certs`).
+A single compose file: `docker-compose.prod.yml` (nginx as gateway, DB and backend not exposed to host, isolated networks, named TLS volume `cmdb-tls-certs`). There is no separate dev compose file — this is the only environment.
 
 **TLS certificates** live in `./certs/` at project root (not `./backend/certs/`). Nginx mounts them read-only; backend mounts them read-write (for the CSR generation endpoint). The named Docker volume `cmdb-tls-certs` mirrors this directory for the production compose.
 
@@ -384,7 +386,7 @@ PostgreSQL 15 (dev) / 16 (prod). Prisma v6 as ORM + migration runner. The schema
 Before committing any `fix` or `feat`:
 
 1. `npx tsc --noEmit` passes (no new errors beyond the known pre-existing ones)
-2. Containers rebuild and start cleanly (`docker compose up -d --build`)
+2. Containers rebuild and start cleanly (`podman-compose -f docker-compose.prod.yml up -d --build`)
 3. Health check passes through nginx: `curl -sk https://localhost/api/health`
 4. Update docs if applicable:
    - Visual/flow changes → `docs/USER_MANUAL.md` + `docs/USER_MANUAL.en.md`

@@ -87,8 +87,7 @@
 ```
 cmdb-enterprise-platform/
 │
-├── 📄 docker-compose.yml        ← Orquestación para DESARROLLO (con Adminer)
-├── 📄 docker-compose.prod.yml   ← Orquestación para PRODUCCIÓN (optimizada, sin Adminer)
+├── 📄 docker-compose.prod.yml   ← Orquestación única (un solo entorno: producción)
 ├── 📄 .env.example              ← Plantilla de variables de entorno (mínimo 6 vars)
 ├── 📄 .gitignore / .gitattributes
 ├── 📄 README.md
@@ -145,9 +144,11 @@ Para una comprensión completa del sistema, su despliegue y uso, consulta la doc
 
 ---
 
-## 👨‍💻 Quickstart para Desarrollo
+## 👨‍💻 Quickstart
 
-### Instalación en producción (un solo comando)
+Este proyecto tiene un único entorno: **producción**. No existe un stack de desarrollo separado — `docker-compose.prod.yml` es el único fichero de orquestación.
+
+### Instalación (un solo comando)
 
 ```bash
 bash scripts/install.sh
@@ -159,7 +160,7 @@ Accede en `https://<tu-dominio>/` una vez que el script termine.
 
 ---
 
-### Desarrollo local con Docker Compose
+### Instalación / actualización manual
 
 1. **Clonar el repositorio:**
    ```bash
@@ -173,21 +174,20 @@ Accede en `https://<tu-dominio>/` una vez que el script termine.
    # Solo 6 variables obligatorias — el resto tiene valores por defecto
    ```
 
-3. **Levantar los servicios:**
+3. **Levantar los servicios** (siempre con `-f` explícito):
    ```bash
-   docker compose up -d --build
+   podman-compose -f docker-compose.prod.yml up -d --build
    ```
    > El backend ejecuta automáticamente las migraciones y el seed inicial en el primer arranque.
 
 4. **Accede a la plataforma:**
    - **Plataforma (via nginx):** `https://localhost` (acepta el aviso de certificado autofirmado)
-   - **Adminer (DB UI):** `http://localhost:8080`
 
    **Credenciales por defecto:**
    - Admin: `admin@cmdb.local` / `Admin1234!`
    - Auditor: `auditor@cmdb.local` / `Audit1234!`
    
-   ⚠️ **Cambiar contraseñas inmediatamente tras el primer login en producción.**
+   ⚠️ **Cambiar contraseñas inmediatamente tras el primer login.**
 
 ---
 

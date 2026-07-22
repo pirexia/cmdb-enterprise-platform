@@ -308,7 +308,7 @@ sudo chown 1000:1000 /mnt/nfs/cmdb-docs
 echo "DOCUMENTS_STORAGE_PATH=/mnt/nfs/cmdb-docs" >> .env
 
 # 5. Reiniciar el backend para que tome el nuevo bind mount
-docker compose up -d backend
+docker compose -f docker-compose.prod.yml up -d backend
 ```
 
 #### Migrar a un nuevo volumen (post-instalación)
@@ -317,7 +317,7 @@ Cuando se decide mover el almacenamiento a una ruta diferente (p.ej. de local a 
 
 ```bash
 # 1. Detener el backend (evitar escrituras durante la copia)
-docker compose stop backend
+docker compose -f docker-compose.prod.yml stop backend
 
 # 2. Copiar todos los ficheros al nuevo destino preservando permisos
 sudo rsync -av --progress \
@@ -335,7 +335,7 @@ sudo chown -R 1000:1000 /ruta/nueva
 sed -i "s|^DOCUMENTS_STORAGE_PATH=.*|DOCUMENTS_STORAGE_PATH=/ruta/nueva|" .env
 
 # 6. Arrancar el backend con el nuevo bind mount
-docker compose up -d backend
+docker compose -f docker-compose.prod.yml up -d backend
 
 # 7. Verificar carga de un documento en la UI antes de eliminar la ruta anterior
 # 8. Una vez confirmado, eliminar la ruta antigua (solo si era local):
@@ -1094,7 +1094,7 @@ docker logs cmdb-postgres-prod --tail 50
 # Si aparece "Permission denied" en el volumen (SELinux)
 # El docker-compose.prod.yml ya usa :Z para SELinux
 # Si persiste, verificar el contexto:
-ls -laZ /var/lib/docker/volumes/cmdb-postgres-data-prod/
+ls -laZ /var/lib/docker/volumes/cmdb-postgres-prod-data-prod/
 
 # Alternativa: deshabilitar SELinux temporalmente para diagnóstico (NO en producción)
 # sudo setenforce 0
@@ -1638,7 +1638,7 @@ Los manifiestos generados se guardarán en el directorio `openshift/` y requerir
 - **SecurityContextConstraints:** Los contenedores de la plataforma corren como usuario no root (`node`, UID 1000). Esto es compatible con el SCC `restricted` de OpenShift sin necesidad de privilegios adicionales.
 - **Routes:** Crear una Route para el frontend (puerto 3001) y otra para el backend (puerto 3000). OpenShift gestiona el TLS terminación en el router.
 - **ConfigMaps y Secrets:** Las variables del archivo `.env` deben migrarse a Secrets de OpenShift. No almacenar credenciales en ConfigMaps.
-- **PersistentVolumeClaims:** Reemplazar los volúmenes Docker (`cmdb-postgres-data-prod`, `cmdb-tls-certs`, `document-storage`) por PVCs con la clase de almacenamiento adecuada del clúster.
+- **PersistentVolumeClaims:** Reemplazar los volúmenes Docker (`cmdb-postgres-prod-data-prod`, `cmdb-tls-certs`, `document-storage`) por PVCs con la clase de almacenamiento adecuada del clúster.
 
 ### 14.4 Ejemplo de Secret para OpenShift
 
@@ -1670,15 +1670,15 @@ podman build -t registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD) 
 podman push registry.corp.local/cmdb/frontend:$(git rev-parse --short HEAD)
 
 # 3. Actualizar la imagen en el Deployment y hacer rollout
-oc set image deployment/cmdb-backend \
+oc set image deployment/cmdb-backend-prod \
   backend=registry.corp.local/cmdb/backend:$(git rev-parse --short HEAD) \
   -n cmdb-prod
 
-oc rollout restart deployment/cmdb-frontend -n cmdb-prod
+oc rollout restart deployment/cmdb-frontend-prod -n cmdb-prod
 
 # 4. Verificar el estado del rollout
-oc rollout status deployment/cmdb-backend -n cmdb-prod
-oc rollout status deployment/cmdb-frontend -n cmdb-prod
+oc rollout status deployment/cmdb-backend-prod -n cmdb-prod
+oc rollout status deployment/cmdb-frontend-prod -n cmdb-prod
 ```
 
 ---
@@ -1790,13 +1790,13 @@ AZURE_AUTO_PROVISION=true
 El SSO requiere que la tabla `users` tenga los campos `sso_provider` y `sso_external_id`. Aplica la migración correspondiente dentro del contenedor del backend:
 
 ```bash
-sg docker -c "docker exec cmdb-backend npx prisma migrate deploy"
+podman exec cmdb-backend-prod npx prisma migrate deploy
 ```
 
 Verifica que la migración se haya aplicado correctamente:
 
 ```bash
-sg docker -c "docker exec cmdb-postgres psql -U cmdb_db_user -d cmdb_db -c '\d users'" | grep sso
+podman exec cmdb-postgres-prod psql -U cmdb_db_user -d cmdb_db -c '\d users' | grep sso
 ```
 
 Deberías ver las columnas `sso_provider` y `sso_external_id` en la salida.
@@ -1808,13 +1808,13 @@ Deberías ver las columnas `sso_provider` y `sso_external_id` en la salida.
 Después de actualizar el `.env`, reconstruye e inicia el contenedor del backend para que los cambios surtan efecto:
 
 ```bash
-sg docker -c "docker compose up -d --build backend"
+podman-compose -f docker-compose.prod.yml up -d --build backend
 ```
 
 Comprueba que el backend arranca sin errores:
 
 ```bash
-sg docker -c "docker logs cmdb-backend --tail 30"
+podman logs cmdb-backend-prod --tail 30
 ```
 
 Deberías ver en los logs una línea similar a:
@@ -1870,7 +1870,7 @@ Los secretos de Azure AD tienen una fecha de caducidad. Si el secreto expira, el
 4. Actualiza `AZURE_CLIENT_SECRET` en `backend/.env`.
 5. Reinicia el backend:
    ```bash
-   sg docker -c "docker compose up -d --build backend"
+   podman-compose -f docker-compose.prod.yml up -d --build backend
    ```
 6. Verifica que el SSO sigue funcionando haciendo un login de prueba.
 7. Una vez confirmado, elimina el secreto antiguo en el portal de Azure.
@@ -1980,11 +1980,11 @@ Tabla de todas las variables nuevas en `.env`:
 podman ps | grep ollama
 
 # Descargar modelos (primera vez; ~7 GB en total)
-podman exec cmdb-ollama ollama pull bge-m3
-podman exec cmdb-ollama ollama pull qwen2.5:7b-instruct-q4_K_M
+podman exec cmdb-ollama-prod ollama pull bge-m3
+podman exec cmdb-ollama-prod ollama pull qwen2.5:7b-instruct-q4_K_M
 
 # Verificar modelos disponibles
-podman exec cmdb-ollama ollama list
+podman exec cmdb-ollama-prod ollama list
 ```
 
 Nota: los modelos se almacenan en el volumen `ollama-models` (bind-mount en `/opt/cmdb-data/ollama-models`). Persisten entre reinicios del contenedor.
@@ -1993,19 +1993,19 @@ Nota: los modelos se almacenan en el volumen `ollama-models` (bind-mount en `/op
 
 ```bash
 # Estado del contenedor Ollama
-podman ps --filter name=cmdb-ollama
+podman ps --filter name=cmdb-ollama-prod
 
 # Uso de recursos en tiempo real
-podman stats cmdb-ollama --no-stream
+podman stats cmdb-ollama-prod --no-stream
 
 # Logs del servicio
-podman logs --tail 50 cmdb-ollama
+podman logs --tail 50 cmdb-ollama-prod
 
 # Modelo actualmente cargado en memoria
-podman exec cmdb-ollama ollama ps
+podman exec cmdb-ollama-prod ollama ps
 
 # Test de conectividad backend → Ollama
-podman exec cmdb-backend curl -s http://ollama:11434/api/version
+podman exec cmdb-backend-prod curl -s http://ollama:11434/api/version
 ```
 
 ### 19.4 Indexación del corpus documental
@@ -2025,7 +2025,7 @@ curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
   https://localhost/api/admin/rag/backfill
 
 # Monitorizar progreso en la BD
-podman exec cmdb-postgres psql -U admin -d cmdb_db \
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db \
   -c "SELECT status, COUNT(*) FROM rag_document_index GROUP BY status;"
 ```
 
@@ -2037,7 +2037,7 @@ curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
 
 #### Estado del índice
 ```bash
-podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c "
   SELECT
     status,
     COUNT(*) as count,
@@ -2053,11 +2053,11 @@ podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
 #### Backup (incluir tablas RAG en el dump habitual)
 ```bash
 # Backup completo incluyendo pgvector y tablas RAG
-podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+podman exec cmdb-postgres-prod pg_dump -U admin cmdb_db \
   > /opt/cmdb-data/backups/backup_$(date +%F_%H%M).sql
 
 # Backup solo tablas RAG (ligero, para migraciones de modelo)
-podman exec cmdb-postgres pg_dump -U admin cmdb_db \
+podman exec cmdb-postgres-prod pg_dump -U admin cmdb_db \
   --table=rag_document_index \
   --table=rag_chunks \
   --table=rag_chat_sessions \
@@ -2067,7 +2067,7 @@ podman exec cmdb-postgres pg_dump -U admin cmdb_db \
 
 #### Restauración de tablas RAG
 ```bash
-podman exec -i cmdb-postgres psql -U admin -d cmdb_db \
+podman exec -i cmdb-postgres-prod psql -U admin -d cmdb_db \
   < /opt/cmdb-data/backups/rag_only_<FECHA>.sql
 ```
 
@@ -2084,7 +2084,7 @@ O bien volver a descargarlos con `ollama pull` (más sencillo si hay acceso a in
 Para cambiar el modelo LLM (por ejemplo, a una versión nueva):
 ```bash
 # 1. Descargar nuevo modelo
-podman exec cmdb-ollama ollama pull qwen2.5:14b-instruct-q4_K_M
+podman exec cmdb-ollama-prod ollama pull qwen2.5:14b-instruct-q4_K_M
 
 # 2. Actualizar .env
 sed -i 's/RAG_CHAT_MODEL=.*/RAG_CHAT_MODEL=qwen2.5:14b-instruct-q4_K_M/' .env
@@ -2118,7 +2118,7 @@ podman stats --no-stream
 du -sh /opt/cmdb-data/ollama-models/
 
 # Espacio ocupado por vectores en PostgreSQL
-podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c "
   SELECT
     schemaname,
     tablename,
@@ -2128,7 +2128,7 @@ podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
   ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
 
 # Últimas consultas al asistente IA (audit log)
-podman exec cmdb-postgres psql -U admin -d cmdb_db -c "
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c "
   SELECT user_email, created_at
   FROM audit_logs
   WHERE action = 'ASK_RAG'
@@ -2153,7 +2153,7 @@ Con RAG desactivado, los endpoints `/api/chat/*` devuelven HTTP 503. El resto de
 |---|---|---|
 | `/api/chat/ask` devuelve 503 | `RAG_ENABLED=false` o Ollama caído | Verificar `.env` y `podman ps` |
 | Respuestas muy lentas (>60 s) | Modelo no cargado en RAM / AMX inactivo | `ollama ps`; verificar `grep amx_tile /proc/cpuinfo` |
-| `rag_document_index` con estado ERROR | Error de parsing en el documento | `podman logs cmdb-backend \| grep INDEX_DOC` |
+| `rag_document_index` con estado ERROR | Error de parsing en el documento | `podman logs cmdb-backend-prod \| grep INDEX_DOC` |
 | Respuestas incorrectas / alucinaciones | Temperatura alta o corpus indexado desactualizado | Verificar `RAG_CHAT_TEMPERATURE=0.1`; lanzar reindex |
 | "no space left on device" | LV llena | `df -h /var/lib/containers /opt/cmdb-data` |
 | Embeddings lentos al indexar | Modelo bge-m3 no cargado | `ollama pull bge-m3`; reiniciar backend |
@@ -2350,13 +2350,13 @@ Configurables en `.env` (valores por defecto entre paréntesis):
 |----------|---------|-------------|
 | `PLUGIN_STORAGE_PATH` | `/var/lib/cmdb/plugins` | Directorio persistente de bundles, backups y ficheros instalados |
 | `PLUGIN_MAX_SIZE_MB` | `50` | Tamaño máximo del bundle subido (MB) |
-| `PLUGIN_DATABASE_URL` | (vacío en dev) | Conexión con el rol restringido `cmdb_plugin` para ejecutar migraciones DDL. **Obligatoria en producción** (el compose prod la exige) |
-| `PLUGIN_REQUIRE_APPROVAL_PROD` | `false` (dev) / `true` (prod) | Exige aprobación 4-eyes de un segundo ADMIN para activar plugins |
+| `PLUGIN_DATABASE_URL` | (requerida) | Conexión con el rol restringido `cmdb_plugin` para ejecutar migraciones DDL. **Obligatoria** — `docker-compose.prod.yml` la exige con `:?...` |
+| `PLUGIN_REQUIRE_APPROVAL_PROD` | `true` | Exige aprobación 4-eyes de un segundo ADMIN para activar plugins |
 | `PLUGIN_ENABLE_MARKETPLACE` | `true` | Habilita la consulta al marketplace |
 | `PLUGIN_MARKETPLACE_URL` | (vacío) | URL del repositorio del marketplace (puede ser privado) |
 | `PLUGIN_SIGNING_PUBLIC_KEY` | (no presente) | **Clave pública Ed25519 (base64 SPKI/DER)** para verificar firmas. **No** está en `.env.example` ni en los compose por defecto — añádela manualmente si vas a usar plugins firmados. Si un manifest declara firma y esta variable no está configurada, la validación falla |
 
-> En `docker-compose.prod.yml`, `PLUGIN_DATABASE_URL` está marcada como requerida (`:?...`) y `PLUGIN_REQUIRE_APPROVAL_PROD` por defecto `true`. En `docker-compose.yml` (desarrollo) la aprobación está deshabilitada y `PLUGIN_DATABASE_URL` puede dejarse vacía (cae a `DATABASE_URL`).
+> `docker-compose.prod.yml` marca `PLUGIN_DATABASE_URL` como requerida (`:?...`) y `PLUGIN_REQUIRE_APPROVAL_PROD` por defecto `true`. Ambas deben configurarse en `.env` antes del primer arranque.
 
 ### 22.2 Crear el rol de base de datos `cmdb_plugin`
 
@@ -2364,7 +2364,7 @@ Las migraciones de plugins se ejecutan con un rol PostgreSQL **restringido** que
 
 ```bash
 # Aplicar el script de bootstrap (incluido en el repo)
-sg docker -c "docker exec -i cmdb-postgres psql -U admin -d cmdb_db" < scripts/create-plugin-db-role.sql
+podman exec -i cmdb-postgres-prod psql -U admin -d cmdb_db < scripts/create-plugin-db-role.sql
 ```
 
 El script (`scripts/create-plugin-db-role.sql`):
@@ -2388,10 +2388,9 @@ PLUGIN_DATABASE_URL=postgresql://cmdb_plugin:una-contraseña-fuerte@postgres:543
 
 ### 22.3 Volumen `cmdb-plugins`
 
-El almacenamiento de plugins se persiste en un volumen Docker dedicado, ya declarado en ambos compose:
+El almacenamiento de plugins se persiste en un volumen Docker dedicado, declarado en `docker-compose.prod.yml`:
 
-- `docker-compose.yml`: volumen `cmdb-plugins` montado en `/var/lib/cmdb/plugins`.
-- `docker-compose.prod.yml`: volumen `cmdb-plugins-prod`.
+- Volumen `cmdb-plugins-prod`, montado en `/var/lib/cmdb/plugins`.
 
 Estructura interna: `staging/` (bundles subidos), `installed/<uuid>/` (ficheros extraídos), `backups/` (backups JSON pre-uninstall).
 
@@ -2401,11 +2400,11 @@ El storage de plugins **no** lo cubre el `pg_dump` de la base de datos (son fich
 
 ```bash
 # Backup del volumen de plugins (ficheros: bundles, instalados, backups JSON)
-sg docker -c "docker run --rm -v cmdb-plugins:/data -v \$(pwd):/backup alpine \
-  tar czf /backup/plugins_storage_\$(date +%F).tar.gz -C /data ."
+podman run --rm -v cmdb-plugins-prod:/data -v $(pwd):/backup alpine \
+  tar czf /backup/plugins_storage_$(date +%F).tar.gz -C /data .
 
 # Las tablas plg_* viven en PostgreSQL y SÍ las cubre el pg_dump habitual:
-sg docker -c "docker exec cmdb-postgres pg_dump -U admin cmdb_db" > backup_\$(date +%F).sql
+podman exec cmdb-postgres-prod pg_dump -U admin cmdb_db > backup_$(date +%F).sql
 ```
 
 Para una recuperación completa necesitas **ambos**: el dump de PostgreSQL (registro de plugins + tablas `plg_*`) y el tar del volumen (ficheros instalados + backups). Restaura el volumen con el `tar` inverso y la BD con `psql`.
@@ -2435,16 +2434,16 @@ Las migraciones son **idempotentes** (usan `IF NOT EXISTS` y `ON CONFLICT DO NOT
 
 ```bash
 # Comprobar que las tablas existen
-sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c '\dt date_types ci_dates operating_system_dates base_software_dates device_model_dates'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c '\dt date_types ci_dates operating_system_dates base_software_dates device_model_dates'
 
 # Comprobar que los triggers existen
-sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c \"\
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c "\
 SELECT trigger_name, event_manipulation, event_object_table \
 FROM information_schema.triggers \
-WHERE trigger_name LIKE 'trg_sync_%' ORDER BY 1;\""
+WHERE trigger_name LIKE 'trg_sync_%' ORDER BY 1;"
 
 # Comprobar seed de DateTypes
-sg docker -c "docker exec cmdb-postgres psql -U admin cmdb_db -c 'SELECT code, category, is_system FROM date_types ORDER BY sort_order;'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT code, category, is_system FROM date_types ORDER BY sort_order;'
 ```
 
 ### 23.3 Rollback manual (si es necesario)
@@ -2528,16 +2527,16 @@ El pipeline (`runAlertsPipeline`) ejecuta el escaneo de las 7 categorías, calcu
 
 ```bash
 # Comprobar que las tablas existen
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c '\dt alert_config alert_rules alert_runs'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c '\dt alert_config alert_rules alert_runs'
 
 # Verificar la configuración sembrada
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT id, enabled, send_time_hour, send_time_minute, timezone, locale FROM alert_config;'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT id, enabled, send_time_hour, send_time_minute, timezone, locale FROM alert_config;'
 
 # Verificar las 7 reglas
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT category, enabled, warn_days FROM alert_rules ORDER BY category;'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT category, enabled, warn_days FROM alert_rules ORDER BY category;'
 
 # Ver el historial de ejecuciones
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT trigger, status, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 10;'"
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c 'SELECT trigger, status, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 10;'
 
 # Forzar envío de prueba desde la API
 TOKEN=$(curl -sk -X POST https://localhost/api/auth/login \
@@ -2554,11 +2553,11 @@ curl -sk -X POST https://localhost/api/alerts/test \
 
 ```bash
 # Ver logs del scheduler
-sg docker -c "docker logs cmdb-backend-prod 2>&1 | grep -i 'alert\|smtp\|scheduler' | tail -30"
+podman logs cmdb-backend-prod 2>&1 | grep -i 'alert\|smtp\|scheduler' | tail -30
 
 # Comprobar que la última ejecución fue exitosa
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
-  \"SELECT status, error_msg, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 5;\""
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  "SELECT status, error_msg, total_alerts, started_at FROM alert_runs ORDER BY started_at DESC LIMIT 5;"
 ```
 
 **El email llega a deshora:**
@@ -2566,8 +2565,8 @@ sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
 Verifica que la zona horaria en `alert_config` sea correcta. La aplicación usa `Intl.DateTimeFormat` con el identificador IANA — no depende del TZ del contenedor. Ejemplo:
 
 ```bash
-sg docker -c "docker exec cmdb-postgres-prod psql -U admin cmdb_db -c \
-  \"UPDATE alert_config SET timezone = 'Europe/Madrid' WHERE id = 'default';\""
+podman exec cmdb-postgres-prod psql -U admin cmdb_db -c \
+  "UPDATE alert_config SET timezone = 'Europe/Madrid' WHERE id = 'default';"
 ```
 
 (O usa la UI: **Configuración → Alertas → Configuración Global**.)

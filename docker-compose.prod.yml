@@ -1,25 +1,34 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # docker-compose.prod.yml — CMDB Enterprise Platform (Production)
 #
+# This is the ONLY environment on this server. There is no separate "dev" stack —
+# development happens against this same compose file. The explicit `name:` below
+# pins the podman-compose project/pod name so it never collides with anything
+# else that might be brought up from this directory.
+#
 # Architecture (all traffic through nginx):
 #   Browser → nginx:443 (HTTPS) → frontend:3001 or backend:3000 (HTTP internal)
 #
-# Production hardening vs docker-compose.yml:
+# Hardening:
 #   • PostgreSQL NOT exposed to host — internal network only
 #   • Backend NOT exposed to host — internal network only
 #   • Separate networks: cmdb-internal (DB↔backend) and cmdb-public (nginx↔frontend↔backend)
 #   • Named volumes for data and TLS certificate storage
 #   • restart: unless-stopped on all services
 #   • no-new-privileges security option on all services
-#   • No Adminer
 #
-# Usage:
-#   bash scripts/install.sh          # recommended — interactive installer
+# Usage — ALWAYS pass -f explicitly, even though this is the only compose file,
+# so commands are never ambiguous about which project/pod they target:
+#   bash scripts/install.sh                              # recommended — interactive installer
 #   # or manually:
-#   cp .env.example .env && docker compose -f docker-compose.prod.yml up -d --build
+#   cp .env.example .env
+#   podman-compose -f docker-compose.prod.yml up -d --build
+#   podman-compose -f docker-compose.prod.yml down        # NEVER omit -f
 #
 # SELinux (RHEL/CentOS): :Z suffix relabels volumes for Enforcing mode.
 # ──────────────────────────────────────────────────────────────────────────────
+
+name: cmdb-prod
 
 services:
 

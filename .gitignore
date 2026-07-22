@@ -179,3 +179,12 @@ document-storage/_staging/
 
 # graphify generated knowledge graph (regenerate with `graphify update .`)
 graphify-out/
+
+# ─── Internal session / planning artifacts — local-only, never pushed ─────────
+# Application docs (manuals, architecture, compliance) live directly under
+# docs/ and ARE tracked. Everything under docs/internal/ (implementation
+# plans, plan-status snapshots, release notes drafts, specs, RAG runbooks,
+# bug-hunt/audit reports, functional test logs, backlog/execution logs) is
+# working history for whoever is developing this repo, not a shipped
+# deliverable — kept on disk locally, excluded from origin.
+docs/internal/

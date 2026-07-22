@@ -184,36 +184,38 @@ Every feature, fix, refactor, and configuration change **must** satisfy all of t
 
 ## Environment & Commands
 
-**Development runs entirely in Docker** (WSL2 local, RHEL 9 production). Never run `npm install` or `npx prisma` directly on the host — always through the container or via `docker exec`.
+**This server has a single environment: production.** There is no separate dev stack — `docker-compose.prod.yml` is the only compose file, and it is what you develop against. Container engine is **podman** (via `podman-compose`, rootless — no `docker`/`sg docker` group needed on this host). Never run `npm install` or `npx prisma` directly on the host — always through the container or via `podman exec`.
+
+**Always pass `-f docker-compose.prod.yml` explicitly on every compose command.** Omitting `-f` lets podman-compose fall back to directory-derived project naming, which is unsafe to rely on — see the pod-naming note below.
 
 ```bash
 # Start / rebuild all containers
-sg docker -c "docker compose down && docker compose up -d --build"
+podman-compose -f docker-compose.prod.yml down && podman-compose -f docker-compose.prod.yml up -d --build
 
 # Apply schema changes (run inside backend container)
-sg docker -c "docker exec cmdb-backend npx prisma migrate deploy"
+podman exec cmdb-backend-prod npx prisma migrate deploy
 
 # Generate Prisma client after schema edits
-sg docker -c "docker exec cmdb-backend npx prisma generate"
+podman exec cmdb-backend-prod npx prisma generate
 
 # TypeScript check (pre-commit gate — must pass with 0 new errors)
 cd backend && npx tsc --noEmit
 
 # Backend container shell
-sg docker -c "docker exec -it cmdb-backend sh"
+podman exec -it cmdb-backend-prod sh
 
 # PostgreSQL shell (user/db come from .env — defaults shown)
-sg docker -c "docker exec -it cmdb-postgres psql -U admin -d cmdb_db"
+podman exec -it cmdb-postgres-prod psql -U admin -d cmdb_db
 
 # DB backup
-sg docker -c "docker exec cmdb-postgres pg_dump -U admin cmdb_db" > backup_$(date +%F).sql
+podman exec cmdb-postgres-prod pg_dump -U admin cmdb_db > backup_$(date +%F).sql
 
 # Run a Node.js script inside the backend container (for DB operations needing bcrypt/Prisma)
 # Copy script to /app/ so node_modules are in scope
-sg docker -c "docker cp /tmp/myscript.js cmdb-backend:/app/myscript.js && docker exec -w /app cmdb-backend node myscript.js && docker exec cmdb-backend rm /app/myscript.js"
+podman cp /tmp/myscript.js cmdb-backend-prod:/app/myscript.js && podman exec -w /app cmdb-backend-prod node myscript.js && podman exec cmdb-backend-prod rm /app/myscript.js
 ```
 
-> `sg docker -c "..."` is required when the current shell session does not have the `docker` group — common in WSL2.
+**Pod-naming note (root cause of a near-miss during the v3.5.6 release, fixed in v3.5.7):** `docker-compose.prod.yml` declares a top-level `name: cmdb-prod` so its podman-compose project/pod name is deterministic, never derived from the working directory. Do not remove that `name:` key, and never invoke `podman-compose` for this project without `-f docker-compose.prod.yml` — a bare `down`/`up` with no `-f` (or a stray second compose file reintroduced later) risks resolving to the same pod as production.
 
 **Known pre-existing TypeScript errors** (ignore in `tsc` output, do not fix):
 - `Property 'license' does not exist on type 'PrismaClient'`
@@ -275,7 +277,7 @@ Browser ──HTTPS:443──▶ nginx ─── /         ──▶ frontend  (
 Only nginx exposes host ports (443 HTTPS, 80 HTTP→redirect). All other containers are internal.
 `/api/internal/*` is blocked at nginx (deny all → 404); accessible only container-to-container via `X-CMDB-Service-Token`.
 
-Two compose files: `docker-compose.yml` (development, exposes all ports, includes Adminer) and `docker-compose.prod.yml` (production, nginx as gateway, DB and backend not exposed, isolated networks, named TLS volume `cmdb-tls-certs`).
+A single compose file: `docker-compose.prod.yml` (nginx as gateway, DB and backend not exposed to host, isolated networks, named TLS volume `cmdb-tls-certs`). There is no separate dev compose file — this is the only environment.
 
 **TLS certificates** live in `./certs/` at project root (not `./backend/certs/`). Nginx mounts them read-only; backend mounts them read-write (for the CSR generation endpoint). The named Docker volume `cmdb-tls-certs` mirrors this directory for the production compose.
 
@@ -384,7 +386,7 @@ PostgreSQL 15 (dev) / 16 (prod). Prisma v6 as ORM + migration runner. The schema
 Before committing any `fix` or `feat`:
 
 1. `npx tsc --noEmit` passes (no new errors beyond the known pre-existing ones)
-2. Containers rebuild and start cleanly (`docker compose up -d --build`)
+2. Containers rebuild and start cleanly (`podman-compose -f docker-compose.prod.yml up -d --build`)
 3. Health check passes through nginx: `curl -sk https://localhost/api/health`
 4. Update docs if applicable:
    - Visual/flow changes → `docs/USER_MANUAL.md` + `docs/USER_MANUAL.en.md`
@@ -483,10 +485,10 @@ Rules:
 
 ## Plan Activo
 
-**Versión actual en producción:** v3.5.6 (tag creado, release GitHub, main/develop sincronizados, 2026-07-21)
+**Versión actual en producción:** v3.5.7 (tag creado, release GitHub, main/develop sincronizados, 2026-07-22)
 **Rama activa:** `develop`
 **PRs abiertos:** ninguno
-**Issues abiertos para la siguiente sesión:** #153 (npm audit exceljs→uuid), #152 (otplib v12→v13, auth-crítico). Nuevos follow-ups surgidos durante #172 (no abiertos como issues todavía — ver `docs/superpowers/plans/2026-07-16-open-issues-remediation-roadmap.md` sección #172): `index.ts` no es importable/montable en tests (app.listen() incondicional), Task 6 bulk-import batch-create con bucle de hasta 500 INSERTs secuenciales dentro de una transacción, `backend/src/modules/internal/alerts.ts:117-121` con el mismo patrón mutación-sin-transacción que #172 corrigió en todo lo demás. Roadmap completo: `docs/superpowers/plans/2026-07-16-open-issues-remediation-roadmap.md`
+**Issues abiertos para la siguiente sesión:** #153 (npm audit exceljs→uuid), #152 (otplib v12→v13, auth-crítico). Follow-ups surgidos durante #172 (no abiertos como issues todavía — ver `docs/internal/plans/2026-07-16-open-issues-remediation-roadmap.md`, ahora fuera de origin): `index.ts` no es importable/montable en tests (app.listen() incondicional), Task 6 bulk-import batch-create con bucle de hasta 500 INSERTs secuenciales dentro de una transacción, `backend/src/modules/internal/alerts.ts:117-121` con el mismo patrón mutación-sin-transacción que #172 corrigió en todo lo demás.
 
 ### Issue #181 — resuelto y desplegado en producción (2026-07-16/17)
 
@@ -515,6 +517,11 @@ Aprovisionamiento n8n: 3 credenciales + 1 workflow fallaban con 500/400. Causas 
 - Esquinas: **`rounded-none`** en toda la app
 
 ### Releases recientes
+
+> Nota (v3.5.7): las rutas `docs/PLAN_v*.md`, `docs/PLAN_STATUS_v*.md`, `docs/RELEASE_v*.md`, `docs/SPEC_*.md` y `docs/superpowers/plans/*` citadas en las entradas de abajo se movieron a `docs/internal/{plans,plan-status,releases,specs}/` (gitignored, solo en disco local) — el historial de citas se deja tal cual por precisión histórica, pero el fichero real ya no está en esa ruta ni en origin.
+
+- **v3.5.7** ✅ LIBERADA (tag `v3.5.7`, PR develop→main, release en GitHub, main/develop sincronizados, 2026-07-22): consolidación a un único entorno (producción) + limpieza de `docs/`. **Contenedores**: se elimina `docker-compose.yml` (dev) — causa raíz del near-miss de podman durante v3.5.6 (ambos compose sin `name:` de proyecto propio → mismo pod). `docker-compose.prod.yml` es ahora el único fichero, con `name: cmdb-prod` explícito en la cabecera (verificado: `podman-compose -f docker-compose.prod.yml config` resuelve el proyecto correctamente). Se evaluó renombrar los 4 contenedores sin sufijo `-prod` (`cmdb-redis`, `cmdb-n8n-main`, `cmdb-n8n-worker-1/2`) pero se descartó: `cmdb-n8n-main` es hostname DNS interno real (`N8N_INTERNAL_URL`) y target directo de `podman exec` en `install.sh`/`update.sh`/`n8n-bootstrap.sh` — renombrarlo exigía tocar scripts funcionales + `.env` ya desplegado + un test, sin aportar seguridad adicional ya que la causa raíz real (colisión de pod) queda resuelta solo con borrar el fichero dev. Limpiadas variables muertas de `.env.example` (`POSTGRES_PORT`, `ADMINER_PORT`, restos del stack dev inexistente). Actualizados README/CLAUDE.md/ambos manuales sysadmin: reemplazados ~50 ejemplos `sg docker`/`docker compose` sin `-f`/nombres de contenedor sin `-prod` por los comandos reales `podman`/`podman-compose -f docker-compose.prod.yml` que usa este host. **Docs**: 61 ficheros de planificación interna (PLAN_v\*, PLAN_STATUS_v\*, RELEASE_v\*, specs, RAG runbooks, bug-hunt/audit reports, test logs, backlog/execution log) movidos de `docs/` y `docs/superpowers/` a `docs/internal/{plans,plan-status,releases,specs,rag,audits,testing,misc}/`, gitignorado y `git rm --cached` — quedan en disco local pero fuera de origin; la documentación de aplicación/cumplimiento (manuales, arquitectura, integraciones, plugin engine, DPIA, ISMS) se queda intacta donde estaba. Verificado: ningún enlace markdown funcional apuntaba a los ficheros movidos (solo citas en prosa dentro del changelog de CLAUDE.md, ahora con nota explicando la nueva ubicación). Redeploy de producción verificado tras el cambio: `down`/`up` limpio con `-f docker-compose.prod.yml`, `/api/health` 200, login OK.
+
 - **v3.5.6** ✅ LIBERADA (tag `v3.5.6`, PR #187 `fix/172-audit-transactions`→`develop` fusionado, release en GitHub, main/develop sincronizados, 2026-07-21): cierra el alcance restante de #172 (ISO 27001 A.8.15) — todo camino de escritura+auditoría en el monolito legacy `index.ts` (29 sitios: CI core, relaciones, admin de usuarios incl. borrado GDPR, auth/SSO/MFA, importación masiva, enlaces/certificados/vulnerabilidades) y en 6 módulos (`catalog` 14, `dcim` 17, `decommission` 11, `settings` 3, `alerts` 5, `plugins` 17 — 66 sitios) ahora envuelve mutación + inserción en `AuditLog` en una única `prisma.$transaction`, siguiendo el patrón ya enviado en `staff-schedule` (v3.5.1). Ejecutado vía subagent-driven-development: Tareas 1-7 secuenciales (comparten `index.ts`), Tareas 8-12 paralelizadas en 5 worktrees git aislados (módulos sin solape de archivos) — patrón confirmado exitoso, documentado en memoria para reutilizar. **Dos rondas de fix tras revisión**: Task 7 (subida de certificado — escritura a filesystem, no a BD, no puede unirse a una transacción Prisma; primera pasada dejó el restore compensatorio sin proteger — corregido con try/catch dedicado + marcador de log `CERT_RESTORE_FAILED` + mutex en proceso + tests simulando fallo de fs); Task 12 (activar/desactivar plugin — envolvía efectos de runtime irreversibles, cron en vivo programado, hooks registrados, DENTRO de la transacción — un rollback podía dejar código de plugin sandboxed ejecutándose mientras la BD decía lo contrario; corregido moviendo `registerPlugin`/`unregisterPlugin` a después del commit). Revisión final de toda la rama (modelo opus, diff de ~315KB/19 commits): 0 Critical, 0 Important. Sitio de mayor riesgo (borrado GDPR, 4 pasos) re-trazado independientemente por el revisor en sus 4 ramas de fallo, sin hallar ningún camino de commit parcial. 477/477 tests, `tsc --noEmit` limpio, barrido grep confirma 0 sitios de auditoría huérfanos. **Hallazgo operativo durante el despliegue, fuera del plan original**: los pods de desarrollo y producción de podman comparten el mismo pod subyacente (`pod_cmdb-enterprise-platform`) porque ni `docker-compose.yml` ni `docker-compose.prod.yml` declaran un nombre de proyecto distinto — un `podman-compose down` sin `-f docker-compose.prod.yml` puede intentar tocar contenedores de producción; la mitigación es pasar siempre `-f docker-compose.prod.yml` explícitamente para cualquier operación sobre producción. **Follow-ups nuevos, no abiertos como issues todavía**: `index.ts` no es importable/montable en tests (bloquea probar los handlers reales, no solo réplicas manuales de la lógica de transacción); Task 6 mantiene una transacción abierta durante hasta 500 INSERTs secuenciales por fila en la creación de lotes masivos (candidato a convertir a una única sentencia bulk); `backend/src/modules/internal/alerts.ts:117-121` (endpoint M2M de n8n) tiene el mismo patrón mutación-sin-transacción que este release corrigió en todo lo demás, fuera del inventario original del plan. Plan: `docs/superpowers/plans/2026-07-17-issue-172-audit-transactions.md`.
 - **v3.5.5** ✅ LIBERADA (tag `v3.5.5`, PR #182 feature→develop + PR develop→main, release en GitHub, desplegada y verificada en producción, 2026-07-16): resuelve #178 (`N8N_API_KEY` desincronizada) y #179 (ventana de reintento de aprovisionamiento n8n insuficiente). `N8nApiError` tipado (status + `isAuthError` para 401/403) permite a `provisionOnBoot()` distinguir credencial inválida (falla rápido, log accionable, no gasta reintentos) de "n8n aún no listo" (reintenta); ventana ampliada de 60s (10×6s) a 120s (15×8s); `POST /api/admin/n8n/resync` devuelve `502` accionable en vez de 500 genérico; healthcheck de observabilidad en `n8n-main` en ambos compose — **sin** `depends_on` hacia el backend (evaluado y rechazado a propósito: convertiría una integración opcional en un punto único de fallo de arranque, NIS2/ISO 22301); `scripts/update.sh` auto-detecta y regenera una `N8N_API_KEY` presente pero rechazada (antes solo detectaba vacía). **Hallazgo en vivo durante la verificación en producción, fuera del plan original**: busybox `wget` (las imágenes de n8n-main y backend) devuelve un `403` espurio contra peticiones genuinamente válidas a esta versión de n8n (1.123.27) — confirmado comparando la misma petición vía `wget` vs `node fetch` (el mecanismo real de `apiClient.ts`), mismo contenedor, mismo instante: `fetch` obtiene 200/401 limpio, `wget` no, sin cabecera `WWW-Authenticate` (descarta basic-auth). Esto rompía tanto el healthcheck nuevo como la sonda de `update.sh` — corregidos ambos a `node -e fetch(...)`; una primera pasada del fix perdió el margen de reintento (`--tries=2`) que evita falsos negativos en el arranque en frío de n8n (#179) — restaurado con reintento único (backoff 1s) solo ante fallo de red/timeout, nunca ante un rechazo HTTP definitivo. **Fix operativo aplicado en producción de forma independiente al merge de código**: `N8N_API_KEY` regenerada y verificada en vivo (401 confirmado resuelto, 7/7 workflows reaprovisionados, `POST /api/admin/n8n/resync` → 200) — durante ese diagnóstico se descubrió y documentó una variante del bug de caching de `podman-compose`: un `--force-recreate` SELECTIVO de un servicio dentro de un pod ya existente puede dejar el contenedor con variables de entorno de una instantánea de pod obsoleta (confirmado byte a byte, dos keys JWT distintas con mismo prefijo/longitud) — solo un `down`+`up` completo del stack garantiza que un `.env` editado se recoja de verdad. **Nuevo issue #181** (no arreglado, fuera de alcance): 3 credenciales + 1 workflow de aprovisionamiento fallan con 500/400 una vez resuelta la autenticación — root cause del 500 confirmado en vivo (el usuario de servicio `cmdb-provisioner@cmdb.local`, creado por `n8n-bootstrap.sh` vía INSERT SQL directo, carece del `Project` personal que n8n 1.123.x exige para crear credenciales — el insert directo se salta el hook de n8n que lo crearía). 63/63 tests, `tsc --noEmit` limpio. Plan: `docs/superpowers/plans/2026-07-16-n8n-provisioning-178-179.md`.
 - **v3.5.4** ✅ LIBERADA (tag `v3.5.4`, merge develop→main, despliegue completo del stack de producción verificado, 2026-07-16): agrupa 4 commits que quedaron en `develop` tras el release de v3.5.3 sin llegar a fusionarse a `main` — **H1-H2 hardening** del conector vCenter: robustez ante VMs sin guest info (503) y resolución del host ESXi por mapeo inverso verificada contra un vCenter 8.x real (`docs/INTEGRATIONS.md` actualizado, sustituye el intento inicial vía `VM.Summary.host` que no existe en esa versión de la API); sección **Hipervisores** en Datos Maestros (gap detectado post-v3.5.3). Además, **fix nuevo de esta sesión**: reconciliación de la relación `HOSTS` cuando VMware DRS migra una VM a otro host ESXi entre sincronizaciones — antes la relación al host antiguo quedaba huérfana indefinidamente (una VM podía terminar mostrada como alojada por varios ESXi a la vez); ahora, tras resolver el host actual sin ambigüedad, se buscan y eliminan las relaciones `HOSTS` obsoletas hacia otro `PHYSICAL_SERVER`, con auditoría `DELETE_RELATION` (A.8.15) y reindexado RAG del host antiguo; nunca se ejecuta si la resolución del host queda nula/ambigua. 3 tests nuevos, 30/30 en `vcenter.test.ts`, `tsc --noEmit` limpio. Plan: `docs/superpowers/plans/2026-07-15-vcenter-hosts-drs-reconciliation.md`. **Incidencia de despliegue documentada como aprendizaje operativo**: `podman-compose build --no-cache` no invalidó de forma fiable el stage `builder` del Dockerfile multi-stage del backend (build silenciosamente stale) — corregido reconstruyendo con `podman build` directo y verificando el `dist` compilado en una imagen aislada antes de tocar producción; recrear el contenedor individual quedó en deadlock de dependencias de pod en podman, resuelto con `down`/`up` completo del stack (confirmado con el usuario por el corte de servicio que implica). **2 issues de infraestructura n8n abiertos para la siguiente sesión, no bloqueantes para este release**: #178 (`N8N_API_KEY` desincronizada — 401 unauthorized en `provisionOnBoot()`, causa raíz documentada desde v3.5.3) y #179 (ventana de reintento de 60s insuficiente cuando el stack completo arranca en frío y `n8n-main` tarda más en estar listo).

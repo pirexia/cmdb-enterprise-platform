@@ -21,6 +21,18 @@ import request from 'supertest';
 // GDPR erasure). Status/change-password/reset-password apply the identical
 // transform and are covered by TypeScript + the manual verification in the
 // task report.
+//
+// NOTE ON MOCK LIMITATIONS (issue #191): the mock `$executeRaw` below never
+// touches real Postgres, so it cannot catch parameter-binding/type-cast
+// errors — e.g. the `SET role = ${role}` bug where Prisma bound the enum
+// column `users.role` (`"UserRole"`) as a `text` parameter, which Postgres
+// rejects with 42804 ("column is of type UserRole but expression is of type
+// text") since it has no implicit text->enum cast. That bug caused every
+// PATCH /api/users/:id/role call to 500. The fix (`${role}::"UserRole"`,
+// mirrored below) was verified against a real Postgres instance, not via
+// this suite — no jest test in this codebase currently exercises a real DB
+// connection (every module test mocks @prisma/client), so this file
+// intentionally does not claim to catch that class of bug.
 
 describe('user role change transactional audit (issue #172)', () => {
   interface Committed {
@@ -74,7 +86,7 @@ describe('user role change transactional audit (issue #172)', () => {
       }
       try {
         await prisma.$transaction(async (tx: { $executeRaw: (...args: unknown[]) => Promise<number> }) => {
-          await tx.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
+          await tx.$executeRaw`UPDATE "users" SET role = ${role}::"UserRole", updated_at = now() WHERE id = ${id}::uuid`;
           await tx.$executeRaw`
             INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
             VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${'admin@cmdb.local'}, now())

@@ -1186,7 +1186,7 @@ app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Re
   }
   try {
     await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`UPDATE "users" SET role = ${role}, updated_at = now() WHERE id = ${id}::uuid`;
+      await tx.$executeRaw`UPDATE "users" SET role = ${role}::"UserRole", updated_at = now() WHERE id = ${id}::uuid`;
       await tx.$executeRaw`
         INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, created_at)
         VALUES(gen_random_uuid(), ${'SET_ROLE:' + role}, 'USER', ${id}, ${req.user!.email}, now())

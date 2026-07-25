@@ -213,7 +213,24 @@ export async function updateEntries(prisma: Prisma.TransactionClient, scheduleId
         },
       });
     } catch (err: any) {
-      if (err?.code === 'P2002' && String(err?.meta?.target ?? '').includes('on_guard')) {
+      // Prisma reports `meta.target` for a unique-constraint violation as the
+      // COLUMN TUPLE the constraint covers (e.g. ['department_id','date']),
+      // not the index name — even for a partial index. A naive
+      // `.includes('on_guard')` string check against that tuple never
+      // matches (confirmed live: `String(['department_id','date'])` is
+      // `"department_id,date"`, no 'on_guard' substring), silently falling
+      // through to the generic 500 handler instead of the intended 409.
+      // schedule_entries_on_guard_unique is the only constraint on exactly
+      // (department_id, date) — the sibling constraint
+      // (scheduleId, userId, date) never matches this column pair.
+      const target = err?.meta?.target;
+      const isGuardUniqueViolation =
+        err?.code === 'P2002' &&
+        Array.isArray(target) &&
+        target.includes('department_id') &&
+        target.includes('date') &&
+        !target.includes('user_id');
+      if (isGuardUniqueViolation) {
         throw new ScheduleServiceError(409, `Another worker is already on GUARDIA duty on ${e.date} for this department`);
       }
       throw err;

@@ -8,7 +8,6 @@ export const SCHEDULE_STATUS = [
   'VACACIONES',
   'BAJA_MEDICA',
   'BAJA_PATERNIDAD',
-  'GUARDIA',
   'INTENSIVO',
   'VIAJE',
   'AUSENTE',
@@ -25,6 +24,7 @@ export const ALERT_TYPE = [
   'PRESENCE_PCT',
   'FLEX_RANGE',
   'GUARDIA_COVERAGE',
+  'GUARDIA_UNIQUE',
   'BAJA_CONFLICT',
 ] as const;
 export type AlertType = (typeof ALERT_TYPE)[number];
@@ -90,6 +90,7 @@ const EntryUpdateSchema = z.object({
   userId: z.string().uuid(),
   date: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date'),
   status: z.enum(SCHEDULE_STATUS),
+  onGuard: z.boolean().optional(),
   startTime: timeSchema.nullable().optional(),
   endTime: timeSchema.nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
@@ -107,4 +108,16 @@ export const ManagerAssignSchema = z.object({
 
 export const UserDeptAssignSchema = z.object({
   departmentId: z.string().uuid().nullable(),
+});
+
+// ─── Clone / import-previous-week ──────────────────────────────────────────
+
+export const CloneScheduleSchema = z.object({
+  targetWeekStart: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date'),
+});
+
+// ─── Per-user weekly hours override ────────────────────────────────────────
+
+export const UserWeeklyHoursSchema = z.object({
+  weeklyTargetHours: z.number().min(0).max(80).nullable(),
 });

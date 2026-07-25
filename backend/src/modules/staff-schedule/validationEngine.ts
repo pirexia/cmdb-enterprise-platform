@@ -10,6 +10,7 @@ export interface EntryLike {
   userId: string;
   date: string; // ISO "YYYY-MM-DD"
   status: string;
+  onGuard?: boolean;
   startTime?: string | null;
   endTime?: string | null;
 }
@@ -133,11 +134,11 @@ export function validate(
   cfg: ValidationConfig,
   summer: SummerPeriodLike | null | undefined,
   teleworkCountsByUser: Record<string, number>,
+  weeklyTargetsByUser: Record<string, number> = {},
 ): GeneratedAlert[] {
   const alerts: GeneratedAlert[] = [];
   const isSummer = detectSummer(schedule.weekStart, summer ?? null);
   const maxDaily = isSummer ? cfg.summerMaxDailyNetHours : cfg.winterMaxDailyNetHours;
-  const target = cfg.weeklyTargetNetHours;
 
   // ── DAILY_HOURS (ERROR): Mon-Thu net hours over the daily maximum ─────────
   for (const e of entries) {
@@ -165,6 +166,7 @@ export function validate(
 
   for (const [userId, es] of byUser) {
     // ── WEEKLY_HOURS (ERROR): intensive Friday but week total below target ──
+    const target = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
     const hasIntensiveFriday = es.some((e) => e.status === 'INTENSIVO' && weekdayIso(e.date) === 5);
     if (hasIntensiveFriday) {
       const weekly = es.reduce((sum, e) => sum + computeNetHours(e, cfg, isSummer), 0);
@@ -190,7 +192,7 @@ export function validate(
     }
 
     // ── GUARDIA_COVERAGE (ERROR) — week-level reinterpretation, see note ────
-    const guardiaDays = es.filter((e) => e.status === 'GUARDIA');
+    const guardiaDays = es.filter((e) => e.onGuard);
     const hasAwayDay = es.some((e) => e.status === 'VIAJE' || e.status === 'VACACIONES');
     if (guardiaDays.length > 0 && hasAwayDay) {
       for (const g of guardiaDays) {
@@ -232,6 +234,33 @@ export function validate(
           message: `Entry/exit time (${e.startTime}-${e.endTime}) outside the flexible window`,
           userId,
           date: e.date,
+        });
+      }
+    }
+  }
+
+  // ── GUARDIA_UNIQUE (ERROR): more than one worker on guard duty the same
+  // day within this schedule. This is a same-schedule early-warning shown in
+  // the DRAFT validation UI; the hard, cross-department-history guarantee is
+  // the `schedule_entries_on_guard_unique` partial index enforced at write
+  // time (service.ts updateEntries), per A01.
+  const guardsByDate = new Map<string, string[]>();
+  for (const e of entries) {
+    if (e.onGuard) {
+      const arr = guardsByDate.get(e.date) ?? [];
+      arr.push(e.userId);
+      guardsByDate.set(e.date, arr);
+    }
+  }
+  for (const [date, userIds] of guardsByDate) {
+    if (userIds.length > 1) {
+      for (const uid of userIds) {
+        alerts.push({
+          type: 'GUARDIA_UNIQUE',
+          severity: 'ERROR',
+          message: `More than one worker is on GUARDIA duty on ${date}`,
+          userId: uid,
+          date,
         });
       }
     }

@@ -110,7 +110,7 @@ describe('validationEngine.validate', () => {
 
   it('does not raise GUARDIA_COVERAGE / BAJA_CONFLICT when there is no week-level conflict', () => {
     const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'GUARDIA', startTime: '08:00', endTime: '17:00' },
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
       { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
     ];
     const alerts = validate(schedule, entries, cfg, null, {});
@@ -118,15 +118,36 @@ describe('validationEngine.validate', () => {
     expect(alertsOfType(alerts, 'BAJA_CONFLICT')).toHaveLength(0);
   });
 
-  it('raises GUARDIA_COVERAGE when GUARDIA and VIAJE/VACACIONES fall in the same week', () => {
+  it('raises GUARDIA_COVERAGE when on-guard and VIAJE/VACACIONES fall in the same week', () => {
     const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'GUARDIA', startTime: '08:00', endTime: '17:00' },
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
       { userId: 'u1', date: '2026-07-07', status: 'VACACIONES' },
     ];
     const alerts = validate(schedule, entries, cfg, null, {});
     const coverage = alertsOfType(alerts, 'GUARDIA_COVERAGE');
     expect(coverage).toHaveLength(1);
     expect(coverage[0].severity).toBe('ERROR');
+  });
+
+  it('a worker can be TELETRABAJO and on guard on the same day, with no conflict alert', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', onGuard: true, startTime: '08:00', endTime: '17:00' },
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    expect(alertsOfType(alerts, 'GUARDIA_COVERAGE')).toHaveLength(0);
+    expect(alertsOfType(alerts, 'GUARDIA_UNIQUE')).toHaveLength(0);
+  });
+
+  it('raises GUARDIA_UNIQUE when two workers are on guard the same day', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
+      { userId: 'u2', date: '2026-07-06', status: 'TELETRABAJO', onGuard: true, startTime: '08:00', endTime: '17:00' },
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    const unique = alertsOfType(alerts, 'GUARDIA_UNIQUE');
+    expect(unique).toHaveLength(2);
+    expect(unique.map((a) => a.userId).sort()).toEqual(['u1', 'u2']);
+    expect(unique[0].severity).toBe('ERROR');
   });
 
   it('raises BAJA_CONFLICT when a health-leave day and a working day fall in the same week', () => {

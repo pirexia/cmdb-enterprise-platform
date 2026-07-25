@@ -87,10 +87,13 @@ export function computeNetHours(entry: EntryLike, cfg: ValidationConfig, isSumme
   if (!entry.startTime || !entry.endTime) return 0;
 
   const gross = minutesBetween(entry.startTime, entry.endTime) / 60;
-  const isFriday = weekdayIso(entry.date) === 5;
   const isIntensive = entry.status === 'INTENSIVO';
 
-  const brk = isFriday || isIntensive
+  // The break applies every working day, including Fridays — only an
+  // INTENSIVO (continuous) day skips it. Fixes issue #195: a normal Friday
+  // was silently zeroing the break, inflating the weekly total (e.g. 40.5h
+  // instead of 40h for a 5x8h week).
+  const brk = isIntensive
     ? 0
     : (isSummer ? cfg.summerBreakMinutes : cfg.winterBreakMinutes) / 60;
 

@@ -1,4 +1,4 @@
-import { validate, ValidationConfig, EntryLike, ScheduleLike } from '../validationEngine';
+import { validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours } from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
 const cfg: ValidationConfig = {
@@ -92,6 +92,20 @@ describe('validationEngine.validate', () => {
     const presence = alertsOfType(alerts, 'PRESENCE_PCT');
     expect(presence).toHaveLength(1);
     expect(presence[0].severity).toBe('WARNING');
+  });
+
+  it('(f) Friday PRESENCIAL applies the same break as other days (bug #195 regression)', () => {
+    // 07:30-16:00 gross 8.5h, summer break 30min -> net 8.0h, same as Mon-Thu.
+    const fri: EntryLike = { userId: 'u1', date: '2026-07-10', status: 'PRESENCIAL', startTime: '07:30', endTime: '16:00' };
+    expect(computeNetHours(fri, cfg, true)).toBeCloseTo(8.0, 5);
+  });
+
+  it('(g) 5x 07:30-16:00 summer week nets exactly 40h, not 40.5h', () => {
+    const entries: EntryLike[] = ['2026-07-06', '2026-07-07', '2026-07-08', '2026-07-09', '2026-07-10'].map((date) => ({
+      userId: 'u1', date, status: 'PRESENCIAL', startTime: '07:30', endTime: '16:00',
+    }));
+    const total = entries.reduce((sum, e) => sum + computeNetHours(e, cfg, true), 0);
+    expect(total).toBeCloseTo(40.0, 5);
   });
 
   it('does not raise GUARDIA_COVERAGE / BAJA_CONFLICT when there is no week-level conflict', () => {

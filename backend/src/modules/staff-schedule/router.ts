@@ -8,6 +8,8 @@ import {
   EntriesUpdateSchema,
   ManagerAssignSchema,
   UserDeptAssignSchema,
+  CloneScheduleSchema,
+  UserWeeklyHoursSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
 import { auditStaffSchedule } from './audit.js';
@@ -193,6 +195,28 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // PUT /api/staff-schedule/users/:userId/weekly-hours  (ADMIN)  { weeklyTargetHours }
+  router.put('/users/:userId/weekly-hours', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserWeeklyHoursSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: req.params.userId as string },
+          data: { weeklyTargetHours: parsed.data.weeklyTargetHours },
+          select: { id: true, username: true, weeklyTargetHours: true },
+        });
+        await auditStaffSchedule(tx, { action: 'SET_USER_WEEKLY_HOURS', entity: 'DEPARTMENT', entityId: req.params.userId as string, userEmail: req.user!.email });
+        return u;
+      });
+      res.json(user);
+    } catch (err: any) {
+      if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
+      console.error('[StaffSchedule] user weekly-hours update error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // ─── Summer schedule (global period, D7) ────────────────────────────────
 
   // GET /api/staff-schedule/summer?year=
@@ -345,33 +369,22 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // POST /api/staff-schedule/:id/clone  (deptEdit) — clones entries to next week.
-  // TODO(Task 5): expose a caller-chosen target week via request body instead
-  // of always defaulting to origin.weekStart + 7 days; this handler is a
-  // minimal compatibility shim over the renamed cloneToWeek() so the router
-  // keeps compiling until the full endpoint redesign lands.
-  // NOTE: this shim is NOT fully behavior-preserving versus the old
-  // cloneToNextWeek — cloneToWeek (Task 4) also enforces that the target week
-  // must be strictly in the future, a guard the old function never had (an
-  // intentional Task-4 design decision, kept here on purpose). Cloning a
-  // schedule whose weekStart is more than a week in the past will now throw
-  // a 422 where the old code silently proceeded, until Task 5 replaces this
-  // handler with a caller-chosen target week.
+  // POST /api/staff-schedule/:id/clone  (deptEdit) — { targetWeekStart } clones
+  // entries onto a caller-chosen future, empty Monday. Reused by "Import
+  // previous week" (frontend calls this with scheduleId = previous week's
+  // schedule and targetWeekStart = the currently-viewed week).
   router.post('/:id/clone', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
+    const parsed = CloneScheduleSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
       const created = await prisma.$transaction(async (tx) => {
-        const origin = await tx.staffSchedule.findUnique({ where: { id: req.params.id as string }, select: { weekStart: true } });
-        if (!origin) throw new ScheduleServiceError(404, 'Schedule not found');
-        const nextWeekStart = new Date(origin.weekStart);
-        nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
-        const targetWeekStart = nextWeekStart.toISOString().slice(0, 10);
-        const c = await cloneToWeek(tx, req.params.id as string, targetWeekStart, req.user!.email);
+        const c = await cloneToWeek(tx, req.params.id as string, parsed.data.targetWeekStart, req.user!.email);
         await auditStaffSchedule(tx, { action: 'CLONE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: c.id, userEmail: req.user!.email });
         return c;
       }, { timeout: 20000 });
       res.status(201).json(created);
     } catch (err: any) {
-      if (err?.code === 'P2002') { res.status(409).json({ error: 'A schedule already exists for the next week' }); return; }
+      if (err?.code === 'P2002') { res.status(409).json({ error: 'A schedule already exists for the target week' }); return; }
       handleServiceError(err, res, 'clone');
     }
   });

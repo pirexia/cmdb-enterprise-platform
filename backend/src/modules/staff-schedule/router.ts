@@ -350,6 +350,13 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   // of always defaulting to origin.weekStart + 7 days; this handler is a
   // minimal compatibility shim over the renamed cloneToWeek() so the router
   // keeps compiling until the full endpoint redesign lands.
+  // NOTE: this shim is NOT fully behavior-preserving versus the old
+  // cloneToNextWeek — cloneToWeek (Task 4) also enforces that the target week
+  // must be strictly in the future, a guard the old function never had (an
+  // intentional Task-4 design decision, kept here on purpose). Cloning a
+  // schedule whose weekStart is more than a week in the past will now throw
+  // a 422 where the old code silently proceeded, until Task 5 replaces this
+  // handler with a caller-chosen target week.
   router.post('/:id/clone', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const created = await prisma.$transaction(async (tx) => {

@@ -417,10 +417,19 @@ export async function buildScheduleView(
       );
     }
 
-    // Aggregate figures computed from the real (unmasked) data: statuses that
-    // trigger masking (BAJA_*) always compute to 0 net hours anyway (same as
-    // AUSENTE) and are excluded from telework/travel/guard counters, so no
-    // health-status information is leaked through these aggregates.
+    // Aggregate figures computed from the real (unmasked) data. weeklyNetHours,
+    // travelDays and teleworkDaysWeek/Month are keyed off `status` itself
+    // (VIAJE / TELETRABAJO / BAJA_* are mutually exclusive status values), so a
+    // BAJA_* entry can never contribute to those counters by construction — no
+    // extra filtering needed, no health-status information leaks through them.
+    // `onGuard`, however, is an orthogonal per-entry flag (Task 4) that can be
+    // true on a BAJA_* entry at the same time (nothing currently enforces
+    // otherwise; BAJA_CONFLICT is only a non-blocking WARNING). guardDays must
+    // therefore explicitly exclude HEALTH_STATUSES entries — without it, a
+    // masked health-leave day (shown to a non-owner/non-ADMIN viewer as
+    // {status:'AUSENTE', onGuard:false}) could still silently increment a
+    // guardDays total they can see, leaking that the masked day was not a
+    // normal absence (GDPR Art. 9).
     const weeklyNetHours = data.entriesReal.reduce(
       (sum, e) => sum + computeNetHours(
         { userId: e.userId, date: isoDate(e.date), status: e.status, startTime: e.startTime, endTime: e.endTime },
@@ -430,7 +439,7 @@ export async function buildScheduleView(
       0,
     );
     const travelDays = data.entriesReal.filter((e) => e.status === 'VIAJE').length;
-    const guardDays = data.entriesReal.filter((e) => e.onGuard).length;
+    const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
     const teleworkDaysWeek = data.entriesReal.filter((e) => e.status === 'TELETRABAJO').length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
     const weeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
@@ -533,7 +542,10 @@ export async function getMonthlySummary(
     netHours,
     teleworkDays: count((s) => s === 'TELETRABAJO'),
     travelDays: count((s) => s === 'VIAJE'),
-    guardDays: entries.filter((e) => e.onGuard).length,
+    // onGuard is orthogonal to status (Task 4) and can be true on a BAJA_*
+    // (health-leave) entry — exclude HEALTH_STATUSES entries so this count
+    // never leaks masked health-leave information to non-owner/non-ADMIN viewers.
+    guardDays: entries.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length,
     vacationDays: count((s) => s === 'VACACIONES'),
   };
   if (isAuthorized) {

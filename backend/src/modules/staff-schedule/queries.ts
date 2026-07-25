@@ -49,3 +49,21 @@ export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
     orderBy: { username: 'asc' },
   });
 }
+
+// Resolve each user's effective weekly target: their own override if set,
+// otherwise the department's default (used for both V-WEEKLY_HOURS and the
+// client-side exit-time autofill).
+export async function loadWeeklyTargetHours(
+  prisma: Db,
+  userIds: string[],
+  departmentDefault: number,
+): Promise<Record<string, number>> {
+  if (userIds.length === 0) return {};
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, weeklyTargetHours: true },
+  });
+  const map: Record<string, number> = {};
+  for (const u of users) map[u.id] = u.weeklyTargetHours ?? departmentDefault;
+  return map;
+}

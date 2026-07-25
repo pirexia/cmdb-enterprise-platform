@@ -8,7 +8,6 @@ export const SCHEDULE_STATUS = [
   "VACACIONES",
   "BAJA_MEDICA",
   "BAJA_PATERNIDAD",
-  "GUARDIA",
   "INTENSIVO",
   "VIAJE",
   "AUSENTE",
@@ -22,6 +21,7 @@ export const ALERT_TYPE = [
   "PRESENCE_PCT",
   "FLEX_RANGE",
   "GUARDIA_COVERAGE",
+  "GUARDIA_UNIQUE",
   "BAJA_CONFLICT",
 ] as const;
 export type AlertType = (typeof ALERT_TYPE)[number];
@@ -80,6 +80,7 @@ export interface StaffScheduleListItem {
 
 export interface MaskedEntryFields {
   status: ScheduleStatus | string;
+  onGuard: boolean;
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
@@ -92,6 +93,8 @@ export interface ScheduleRow {
   entries: Record<string, MaskedEntryFields>;
   summary: {
     weeklyNetHours: number;
+    weeklyTargetHours: number;
+    teleworkDaysWeek: number;
     teleworkDaysMonth: number;
     travelDays: number;
     guardDays: number;
@@ -128,6 +131,7 @@ export interface EntryUpdateInput {
   userId: string;
   date: string;
   status: ScheduleStatus;
+  onGuard?: boolean;
   startTime?: string | null;
   endTime?: string | null;
   notes?: string | null;

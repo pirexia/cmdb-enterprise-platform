@@ -11,7 +11,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER";
+export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER" | "WORKER";
 
 export interface AuthUser {
   id:          string;

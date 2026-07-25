@@ -791,6 +791,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
+      "role_worker": "WORKER",
       "me_label": "(me)",
       "viewer_notice": "You need the {role} role to change settings. Read-only mode.",
       "confirm_activate": "Activate user \"{name}\"?",
@@ -2283,7 +2284,6 @@
       "VACACIONES": "Vacation",
       "BAJA_MEDICA": "Sick leave",
       "BAJA_PATERNIDAD": "Parental leave",
-      "GUARDIA": "On-call",
       "INTENSIVO": "Reduced hours",
       "VIAJE": "Business travel",
       "AUSENTE": "Absent",
@@ -2300,6 +2300,7 @@
       "FLEX_RANGE": "Outside flexible hours",
       "GUARDIA_COVERAGE": "On-call coverage conflict",
       "BAJA_CONFLICT": "Conflict with sick/parental leave",
+      "GUARDIA_UNIQUE": "More than one worker on guard the same day",
       "severity": {
         "WARNING": "Warning",
         "ERROR": "Error"
@@ -2315,7 +2316,8 @@
       "addManager": "Add manager",
       "removeManager": "Remove",
       "assignDepartment": "Assign department",
-      "configure": "Configure"
+      "configure": "Configure",
+      "applyWeek": "Apply to whole week"
     },
     "config": {
       "title": "Schedule configuration",
@@ -2338,11 +2340,14 @@
       "maxDailyNetHours": "Maximum net hours (Mon-Thu)",
       "breakMinutes": "Lunch break (min)",
       "fridayNetHours": "Friday reduced-hours net time",
-      "newDepartment": "New department"
+      "newDepartment": "New department",
+      "weeklyHoursOverride": "Weekly hours (worker)",
+      "weeklyHoursDefault": "Department default"
     },
     "summary": {
       "weeklyHours": "Weekly hours",
-      "teleworkDays": "Telework days",
+      "teleworkDaysWeek": "Telework (week)",
+      "teleworkDaysMonth": "Telework (month total)",
       "travelDays": "Travel days",
       "guardDays": "On-call days"
     },
@@ -2350,7 +2355,9 @@
       "startTime": "Start time",
       "endTime": "End time",
       "notes": "Notes",
-      "status": "Status"
+      "status": "Status",
+      "onGuard": "On guard",
+      "applyWeekHint": "Apply this day's status/time to the whole week"
     },
     "canEdit": {
       "readonly": "Read-only — you do not manage this department"
@@ -2367,7 +2374,8 @@
     },
     "empty": {
       "noSchedule": "No schedule for this week",
-      "createSchedule": "Create schedule"
+      "createSchedule": "Create schedule",
+      "importPreviousWeek": "Import previous week"
     },
     "calendar": {
       "person": "Person"
@@ -2385,6 +2393,11 @@
     },
     "summer": {
       "year": "Year"
+    },
+    "clone": {
+      "pickWeek": "Choose target week",
+      "targetWeek": "Target week",
+      "mustBeFutureEmpty": "Must be a future week with no existing schedule"
     }
   }
 }

@@ -13,7 +13,7 @@ const LdapCreateSchema = z.object({
   username:     z.string().min(1).max(100),
   displayName:  z.string().max(255).optional(),
   ssoExternalId: z.string().min(1).max(255),
-  role:         z.enum(['ADMIN', 'AUDITOR', 'VIEWER']).default('VIEWER'),
+  role:         z.enum(['ADMIN', 'AUDITOR', 'VIEWER', 'WORKER']).default('VIEWER'),
 });
 
 const LdapSyncSchema = z.object({

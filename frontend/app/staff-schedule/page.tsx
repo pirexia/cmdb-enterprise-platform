@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock } from "lucide-react";
+import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useDepartments, useSchedule, useScheduleExport, mondayOf } from "./hooks/useStaffSchedule";
+import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf } from "./hooks/useStaffSchedule";
 import type { EntryUpdateInput } from "./types";
 import WeekSelector from "@/components/staff-schedule/WeekSelector";
 import DepartmentFilter from "@/components/staff-schedule/DepartmentFilter";
 import StaffScheduleCalendar from "@/components/staff-schedule/StaffScheduleCalendar";
 import AlertPanel from "@/components/staff-schedule/AlertPanel";
 import ScheduleConfigPanel from "@/components/staff-schedule/ScheduleConfigPanel";
+import WeekTargetPicker from "@/components/staff-schedule/WeekTargetPicker";
+import AllDepartmentsView from "@/components/staff-schedule/AllDepartmentsView";
 
 export default function StaffSchedulePage() {
   const { t } = useLanguage();
@@ -19,10 +21,12 @@ export default function StaffSchedulePage() {
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [showConfig, setShowConfig] = useState(false);
+  const [showClonePicker, setShowClonePicker] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const { departments, loading: deptLoading, refetch: refetchDepartments } = useDepartments();
+  const { config: departmentConfig } = useDepartmentConfig(departmentId);
   const {
     view,
     loading,
@@ -34,6 +38,7 @@ export default function StaffSchedulePage() {
     publish,
     unpublish,
     clone,
+    importPreviousWeek,
   } = useSchedule(departmentId, weekStart);
   const { exportSchedule } = useScheduleExport();
 
@@ -55,14 +60,13 @@ export default function StaffSchedulePage() {
     await saveEntries([entry]);
   };
 
-  const handleClone = () => runAction(async () => {
-    await clone();
-    setWeekStart((w) => {
-      const d = new Date(`${w}T00:00:00Z`);
-      d.setUTCDate(d.getUTCDate() + 7);
-      return mondayOf(d);
-    });
+  const handleClone = () => setShowClonePicker(true);
+
+  const handleCloneConfirm = (targetWeekStart: string) => runAction(async () => {
+    await clone(targetWeekStart);
   });
+
+  const handleImportPreviousWeek = () => runAction(importPreviousWeek);
 
   const canEdit = !!view?.canEdit;
   const status = view?.schedule.status;
@@ -168,9 +172,7 @@ export default function StaffSchedulePage() {
         )}
 
         {!departmentId && (
-          <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 text-center text-sm text-slate-500">
-            {t("staffSchedule.filter.allDepartments")}
-          </div>
+          <AllDepartmentsView weekStart={weekStart} />
         )}
 
         {departmentId && (loading || deptLoading) && (
@@ -190,19 +192,33 @@ export default function StaffSchedulePage() {
         {departmentId && !loading && notFound && (
           <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 text-center space-y-3">
             <p className="text-sm text-slate-500">{t("staffSchedule.empty.noSchedule")}</p>
-            <button
-              onClick={() => runAction(createSchedule)}
-              disabled={busy}
-              className="rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 shadow-sm disabled:opacity-50"
-            >
-              {t("staffSchedule.empty.createSchedule")}
-            </button>
+            <div className="flex items-center justify-center gap-2">
+              <button
+                onClick={() => runAction(createSchedule)}
+                disabled={busy}
+                className="rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 shadow-sm disabled:opacity-50"
+              >
+                {t("staffSchedule.empty.createSchedule")}
+              </button>
+              <button
+                onClick={handleImportPreviousWeek}
+                disabled={busy}
+                className="rounded-none border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <FileDown className="h-4 w-4" /> {t("staffSchedule.empty.importPreviousWeek")}
+              </button>
+            </div>
           </div>
         )}
 
         {view && (
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_20rem] gap-6 items-start">
-            <StaffScheduleCalendar view={view} onSaveEntry={handleSaveEntry} />
+            <StaffScheduleCalendar
+              view={view}
+              departmentConfig={departmentConfig}
+              onSaveEntry={handleSaveEntry}
+              onSaveEntries={saveEntries}
+            />
             <AlertPanel
               alerts={view.alerts}
               canEdit={canEdit && status === "DRAFT"}
@@ -219,6 +235,12 @@ export default function StaffSchedulePage() {
           departments={departments}
           onClose={() => setShowConfig(false)}
           onDepartmentsChanged={refetchDepartments}
+        />
+      )}
+      {showClonePicker && (
+        <WeekTargetPicker
+          onClose={() => setShowClonePicker(false)}
+          onConfirm={handleCloneConfirm}
         />
       )}
     </div>

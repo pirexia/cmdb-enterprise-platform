@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER' | 'WORKER';
 
 export interface JwtPayload {
   id:               string;

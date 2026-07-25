@@ -1,6 +1,8 @@
 import type { ReportDefinition, ReportMeta, UserRole } from './types.js';
 
-const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, AUDITOR: 2, ADMIN: 3 };
+// WORKER is VIEWER-equivalent everywhere except Staff Schedule (v3.5.9) —
+// same rank so report access behaves identically to a VIEWER.
+const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, WORKER: 1, AUDITOR: 2, ADMIN: 3 };
 
 const registry = new Map<string, ReportDefinition>();
 

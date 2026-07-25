@@ -44,6 +44,9 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
   const [assignUserId, setAssignUserId] = useState("");
   const [assignDeptId, setAssignDeptId] = useState<string>("");
   const [managersError, setManagersError] = useState<string | null>(null);
+  const [assignWeeklyHours, setAssignWeeklyHours] = useState("");
+  const [weeklyHoursError, setWeeklyHoursError] = useState<string | null>(null);
+  const [weeklyHoursSaving, setWeeklyHoursSaving] = useState(false);
 
   useEffect(() => {
     apiFetch("/api/users")
@@ -180,6 +183,27 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
       setAssignDeptId("");
     } catch (e) {
       setManagersError(e instanceof Error ? e.message : "error");
+    }
+  };
+
+  const handleSetWeeklyHours = async () => {
+    if (!assignUserId) return;
+    setWeeklyHoursError(null);
+    setWeeklyHoursSaving(true);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${assignUserId}/weekly-hours`, {
+        method: "PUT",
+        body: JSON.stringify({ weeklyTargetHours: assignWeeklyHours === "" ? null : Number(assignWeeklyHours) }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? `Status ${res.status}`);
+      }
+      setAssignWeeklyHours("");
+    } catch (e) {
+      setWeeklyHoursError(e instanceof Error ? e.message : "error");
+    } finally {
+      setWeeklyHoursSaving(false);
     }
   };
 
@@ -457,6 +481,32 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 {t("staffSchedule.action.save")}
               </button>
             </div>
+            {managersError && <p className="text-xs text-red-600">{managersError}</p>}
+
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-slate-600 min-w-[10rem]">
+                {t("staffSchedule.config.weeklyHoursOverride")}
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={80}
+                step={0.5}
+                placeholder={t("staffSchedule.config.weeklyHoursDefault")}
+                value={assignWeeklyHours}
+                onChange={(e) => setAssignWeeklyHours(e.target.value)}
+                className="w-32 rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={handleSetWeeklyHours}
+                disabled={!assignUserId || weeklyHoursSaving}
+                className="rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {t("staffSchedule.action.save")}
+              </button>
+            </div>
+            {weeklyHoursError && <p className="text-xs text-red-600">{weeklyHoursError}</p>}
           </section>
 
           {/* Summer schedule */}

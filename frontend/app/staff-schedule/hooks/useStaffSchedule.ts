@@ -155,14 +155,39 @@ export function useSchedule(departmentId: string | null, weekStart: string) {
     await load();
   }, [scheduleId, load]);
 
-  const clone = useCallback(async () => {
+  const clone = useCallback(async (targetWeekStart: string) => {
     if (!scheduleId) return;
-    const res = await apiFetch(`/api/staff-schedule/${scheduleId}/clone`, { method: "POST" });
+    const res = await apiFetch(`/api/staff-schedule/${scheduleId}/clone`, {
+      method: "POST",
+      body: JSON.stringify({ targetWeekStart }),
+    });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? `Status ${res.status}`);
     }
   }, [scheduleId]);
+
+  // Import the previous week's schedule (same department) onto the currently
+  // viewed, empty week. Looks up the previous week's schedule id, then clones
+  // it forward via the same endpoint used by the "Clone to week..." picker.
+  const importPreviousWeek = useCallback(async () => {
+    if (!departmentId) return;
+    const prevWeekStart = addDaysIso(weekStart, -7);
+    const listRes = await apiFetch(`/api/staff-schedule?departmentId=${departmentId}&weekStart=${prevWeekStart}`);
+    if (!listRes.ok) throw new Error(`Status ${listRes.status}`);
+    const list: StaffScheduleListItem[] = await listRes.json();
+    const prev = list.find((s) => s.weekStart.slice(0, 10) === prevWeekStart);
+    if (!prev) throw new Error("No schedule found for the previous week");
+    const res = await apiFetch(`/api/staff-schedule/${prev.id}/clone`, {
+      method: "POST",
+      body: JSON.stringify({ targetWeekStart: weekStart }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `Status ${res.status}`);
+    }
+    await load();
+  }, [departmentId, weekStart, load]);
 
   return {
     view,
@@ -177,6 +202,7 @@ export function useSchedule(departmentId: string | null, weekStart: string) {
     publish,
     unpublish,
     clone,
+    importPreviousWeek,
   };
 }
 
@@ -281,4 +307,41 @@ export function useSummerSchedule(year: number) {
   );
 
   return { summer, loading, refetch, save };
+}
+
+/** Read-only view of every department's schedule for a given week ("Todos los departamentos"). */
+export function useAllDepartmentsSchedules(weekStart: string) {
+  const [entries, setEntries] = useState<{ department: { id: string; name: string }; view: ScheduleView }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const listRes = await apiFetch(`/api/staff-schedule?weekStart=${weekStart}`);
+      if (!listRes.ok) throw new Error(`Status ${listRes.status}`);
+      const list: StaffScheduleListItem[] = await listRes.json();
+      const matches = list.filter((s) => s.weekStart.slice(0, 10) === weekStart);
+      const results = await Promise.all(
+        matches.map(async (s) => {
+          const r = await apiFetch(`/api/staff-schedule/${s.id}`);
+          if (!r.ok) return null;
+          const view: ScheduleView = await r.json();
+          return { department: s.department, view };
+        }),
+      );
+      setEntries(results.filter((r): r is { department: { id: string; name: string }; view: ScheduleView } => r !== null));
+    } catch {
+      setError("error");
+    } finally {
+      setLoading(false);
+    }
+  }, [weekStart]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { entries, loading, error, refetch: load };
 }

@@ -39,7 +39,7 @@
 30. [Registro de Eventos — Mejoras](#30-registro-de-eventos--mejoras-v270)
 31. [Gestión de Plugins — solo ADMIN](#31-gestión-de-plugins-v280--solo-admin)
 32. [Módulo Decomisionado — Planes de Baja](#32-módulo-decomisionado--planes-de-baja-v285)
-34. [Horarios del Personal](#34-horarios-del-personal-v350)
+34. [Horarios del Personal](#34-horarios-del-personal-v350--actualizado-v359)
 
 ---
 
@@ -1036,7 +1036,7 @@ Todos los cambios quedan registrados en el Registro de Auditoría.
 
 > Esta sección solo está disponible para usuarios con rol **ADMIN**.
 
-> **Nota:** los **departamentos** del módulo de Horarios del personal **no** se gestionan aquí. Se crean desde `Horarios del personal` → **⚙ Configuración** (ver [sección 34.6](#34-horarios-del-personal-v350)).
+> **Nota:** los **departamentos** del módulo de Horarios del personal **no** se gestionan aquí. Se crean desde `Horarios del personal` → **⚙ Configuración** (ver [sección 34.6](#34-horarios-del-personal-v350--actualizado-v359)).
 
 ### Acceder
 
@@ -1772,24 +1772,33 @@ Las fechas relacionadas se dibujan con marcas **punteadas** para distinguirlas d
 - Los elementos se limitan a 200 por consulta (ajustable con los filtros). Para conjuntos mayores, usa los filtros de tipo o búsqueda para acotar.
 - En pantallas de menos de 1024px la vista muestra un aviso de optimización para escritorio.
 
-## 34. Horarios del Personal (v3.5.0)
+## 34. Horarios del Personal (v3.5.0 · actualizado v3.5.9)
 
 Planificación semanal de horarios por departamento. **No es un sistema de fichajes** — es una herramienta de planificación, no registra la hora real de entrada/salida.
 
 ### 34.1 Acceso
 
-Disponible para roles `ADMIN` y `AUDITOR` en el menú lateral ("Horarios del personal"). Los `VIEWER` no tienen acceso al módulo.
+Disponible para roles `ADMIN`, `AUDITOR` y `WORKER` en el menú lateral ("Horarios del personal"). Los `VIEWER` no tienen acceso al módulo.
+
+El rol **`WORKER`** (nuevo en v3.5.9) se comporta exactamente igual que `VIEWER` en el resto de la aplicación, pero además tiene acceso de **lectura** a este módulo — todos los departamentos, con el mismo enmascaramiento de datos de salud que un `AUDITOR` (ver §34.5). Pensado para empleados que necesitan consultar horarios sin tener las capacidades más amplias de `AUDITOR`/`ADMIN`. Un `ADMIN` asigna el rol `WORKER` desde **Configuración → Usuarios**, igual que cualquier otro rol.
 
 ### 34.2 El calendario semanal
 
 - **Filas**: personas del departamento seleccionado. **Columnas**: los días de la semana (lunes a viernes).
-- Cada celda muestra el estado del día (Presencial, Teletrabajo, Vacaciones, Baja médica, Baja de paternidad, Guardia, Intensivo, Viaje, Ausente) y el horario si está definido.
+- Cada celda muestra el estado del día (Presencial, Teletrabajo, Vacaciones, Baja médica, Baja de paternidad, Intensivo, Viaje, Ausente) y el horario si está definido. Si la persona está de guardia ese día, la celda muestra además un indicador de guardia independiente del estado — desde v3.5.9 la guardia **ya no es un estado exclusivo**: es una marca que puede combinarse con cualquier estado (por ejemplo, alguien puede estar en Teletrabajo Y de guardia el mismo día).
 - Usa el selector de departamento y el selector de semana (con botones anterior/siguiente y un selector de fecha) para navegar.
-- Si no existe planificación para la semana seleccionada, puedes crear una desde cero — se generan automáticamente entradas base "Presencial" para todo el personal del departamento.
+- El selector de departamento incluye una opción **"Todos los departamentos"** (v3.5.9): muestra la planificación de todos los departamentos para la semana seleccionada, uno debajo de otro, en modo **solo lectura** — ninguna celda es editable en esta vista, aunque tengas permiso de edición sobre alguno de esos departamentos. Para editar, selecciona un departamento concreto.
+- Si no existe planificación para la semana seleccionada, puedes crear una desde cero — se generan automáticamente entradas base "Presencial" para todo el personal del departamento. En este mismo estado vacío tienes también un botón **"Importar semana anterior"** (ver §34.4).
 
 ### 34.3 Editar un día (solo si tienes permiso)
 
 Haz clic en una celda para abrir el editor: elige el estado, y si aplica, la hora de entrada y salida, y una nota opcional. Solo puedes editar mientras la planificación esté en estado **Borrador** y seas responsable de ese departamento (o ADMIN).
+
+Además del estado, el editor incluye una casilla independiente **"De guardia"** (v3.5.9) — antes la guardia era una opción más del desplegable de estado (excluyente con el resto); ahora es una casilla que puedes marcar junto a cualquier estado. El sistema garantiza como máximo una persona de guardia por departamento y día: si intentas marcar una segunda, verás un aviso claro indicando quién ya está de guardia ese día.
+
+Al escribir la hora de entrada y salir del campo (tab), la hora de salida se **autocompleta** (v3.5.9) a partir de la jornada diaria propia de esa persona — si un ADMIN le ha configurado una jornada semanal distinta a la del departamento (por ejemplo, una reducción de jornada) se usa la suya — más el descanso configurado para el departamento; puedes seguir corrigiéndola a mano.
+
+Un nuevo botón **"Aplicar a toda la semana"** (v3.5.9) copia el estado, horario, notas y marca de guardia del día que estás editando a los cinco días laborables de esa misma persona, en un solo clic.
 
 ### 34.4 Validar y publicar
 
@@ -1797,8 +1806,10 @@ Haz clic en una celda para abrir el editor: elige el estado, y si aplica, la hor
 - Las alertas se clasifican en **Error** (bloquean la publicación) y **Aviso** (no bloquean, mismo se recomienda revisarlas).
 - **Publicar** solo es posible si no quedan alertas de tipo Error sin resolver. Para "resolver" una alerta, corrige las entradas del calendario correspondientes y vuelve a pulsar Validar — no existe un botón para marcar una alerta como resuelta manualmente.
 - Una vez publicada, la planificación queda protegida frente a ediciones. Solo un ADMIN puede despublicarla si necesita corregirse.
-- **Clonar** copia toda la planificación de la semana a la semana siguiente, como borrador nuevo.
+- **Clonar** (rediseñado en v3.5.9) abre un selector de fecha para elegir a qué lunes futuro quieres copiar la planificación completa como borrador nuevo — ya no está limitado a "la semana siguiente". Solo se ofrecen semanas del departamento que todavía no tienen planificación; si la semana elegida ya tiene una, verás un mensaje claro indicando que esa semana en concreto no está disponible (antes de v3.5.9 el clonado era rígido — siempre intentaba clonar a la semana siguiente, y si esa semana estaba ocupada, el error no dejaba claro que otras semanas sí estaban libres).
+- **Importar semana anterior** (nuevo en v3.5.9, disponible cuando la semana seleccionada aún no tiene planificación): copia hacia delante la planificación de la semana inmediatamente anterior del mismo departamento — una segunda forma de poblar una semana nueva, sin tener que elegir semana a semana con Clonar.
 - **Exportar** genera un CSV o XLSX de la semana visible.
+- No existe una acción para **borrar** una planificación completa: una planificación en Borrador solo puede dejarse como está o publicarse.
 
 ### 34.5 Protección de datos de salud (importante)
 

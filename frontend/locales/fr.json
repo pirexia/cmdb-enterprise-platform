@@ -746,6 +746,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
+      "role_worker": "WORKER",
       "me_label": "(moi)",
       "viewer_notice": "Vous avez besoin du rôle {role} pour modifier la configuration. Mode lecture seule.",
       "confirm_activate": "Activer l'utilisateur \"{name}\" ?",
@@ -2164,7 +2165,6 @@
       "VACACIONES": "Congés",
       "BAJA_MEDICA": "Arrêt maladie",
       "BAJA_PATERNIDAD": "Congé parental",
-      "GUARDIA": "Astreinte",
       "INTENSIVO": "Horaire réduit",
       "VIAJE": "Déplacement professionnel",
       "AUSENTE": "Absent",
@@ -2181,6 +2181,7 @@
       "FLEX_RANGE": "Hors plage d'horaires flexibles",
       "GUARDIA_COVERAGE": "Conflit de couverture d'astreinte",
       "BAJA_CONFLICT": "Conflit avec un arrêt maladie/congé parental",
+      "GUARDIA_UNIQUE": "Plusieurs employés d'astreinte le même jour",
       "severity": {
         "WARNING": "Avertissement",
         "ERROR": "Erreur"
@@ -2196,7 +2197,8 @@
       "addManager": "Ajouter un responsable",
       "removeManager": "Retirer",
       "assignDepartment": "Attribuer un service",
-      "configure": "Configurer"
+      "configure": "Configurer",
+      "applyWeek": "Appliquer à toute la semaine"
     },
     "config": {
       "title": "Configuration des horaires",
@@ -2219,11 +2221,14 @@
       "maxDailyNetHours": "Heures effectives maximales (lundi-jeudi)",
       "breakMinutes": "Pause déjeuner (min)",
       "fridayNetHours": "Heures effectives du vendredi réduit",
-      "newDepartment": "Nouveau service"
+      "newDepartment": "Nouveau service",
+      "weeklyHoursOverride": "Heures hebdomadaires (employé)",
+      "weeklyHoursDefault": "Valeur par défaut du département"
     },
     "summary": {
       "weeklyHours": "Heures hebdomadaires",
-      "teleworkDays": "Jours de télétravail",
+      "teleworkDaysWeek": "Télétravail (semaine)",
+      "teleworkDaysMonth": "Télétravail (total du mois)",
       "travelDays": "Jours de déplacement",
       "guardDays": "Jours d'astreinte"
     },
@@ -2231,7 +2236,9 @@
       "startTime": "Heure d'entrée",
       "endTime": "Heure de sortie",
       "notes": "Notes",
-      "status": "Statut"
+      "status": "Statut",
+      "onGuard": "D'astreinte",
+      "applyWeekHint": "Appliquer le statut/horaire de ce jour à toute la semaine"
     },
     "canEdit": {
       "readonly": "Lecture seule — vous ne gérez pas ce service"
@@ -2248,7 +2255,8 @@
     },
     "empty": {
       "noSchedule": "Aucune planification pour cette semaine",
-      "createSchedule": "Créer une planification"
+      "createSchedule": "Créer une planification",
+      "importPreviousWeek": "Importer la semaine précédente"
     },
     "calendar": {
       "person": "Personne"
@@ -2266,6 +2274,11 @@
     },
     "summer": {
       "year": "Année"
+    },
+    "clone": {
+      "pickWeek": "Choisir la semaine cible",
+      "targetWeek": "Semaine cible",
+      "mustBeFutureEmpty": "Doit être une semaine future sans planning existant"
     }
   }
 }

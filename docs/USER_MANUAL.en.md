@@ -39,7 +39,7 @@
 30. [Event Log — Improvements](#30-event-log--improvements-v270)
 31. [Plugin Management — ADMIN only](#31-plugin-management-v280--admin-only)
 32. [Decommission Module — Retirement Plans](#32-decommission-module--retirement-plans-v285)
-34. [Staff Schedule](#34-staff-schedule-v350)
+34. [Staff Schedule](#34-staff-schedule-v350--updated-v359)
 
 ---
 
@@ -1036,7 +1036,7 @@ All changes are recorded in the Audit Log.
 
 > This section is only available to users with the **ADMIN** role.
 
-> **Note:** the **departments** used by the Staff Schedule module are **not** managed here. They are created from `Staff Schedule` → **⚙ Configure** (see [section 34.6](#34-staff-schedule-v350)).
+> **Note:** the **departments** used by the Staff Schedule module are **not** managed here. They are created from `Staff Schedule` → **⚙ Configure** (see [section 34.6](#34-staff-schedule-v350--updated-v359)).
 
 ### Accessing
 
@@ -1756,24 +1756,33 @@ Related dates are drawn with **dashed** marks to distinguish them from the CI's 
 - Results are capped at 200 items per query — use the type and search filters to narrow down larger datasets.
 - On screens narrower than 1024px, a desktop-optimized notice is shown instead of the Gantt.
 
-## 34. Staff Schedule (v3.5.0)
+## 34. Staff Schedule (v3.5.0 · updated v3.5.9)
 
 Weekly, per-department shift planning. **This is not a clock-in/time-tracking system** — it's a planning tool; it does not record actual clock-in/clock-out times.
 
 ### 34.1 Access
 
-Available to `ADMIN` and `AUDITOR` roles from the sidebar ("Staff Schedule"). `VIEWER` users have no access to this module.
+Available to `ADMIN`, `AUDITOR` and `WORKER` roles from the sidebar ("Staff Schedule"). `VIEWER` users have no access to this module.
+
+The **`WORKER`** role (new in v3.5.9) behaves exactly like `VIEWER` everywhere else in the application, but also gets **read** access to this module — all departments, with the same health-data masking as an `AUDITOR` (see §34.5). It's meant for employees who need to see schedules without the broader `AUDITOR`/`ADMIN` capabilities. An `ADMIN` assigns the `WORKER` role from **Settings → Users**, same as any other role.
 
 ### 34.2 The weekly calendar
 
 - **Rows**: people in the selected department. **Columns**: the days of the week (Monday to Friday).
-- Each cell shows the day's status (Onsite, Remote Work, Vacation, Sick Leave, Parental Leave, On-call, Reduced Hours/intensive Friday, Business Travel, Absent) and the planned schedule, if set.
+- Each cell shows the day's status (Onsite, Remote Work, Vacation, Sick Leave, Parental Leave, Reduced Hours/intensive Friday, Business Travel, Absent) and the planned schedule, if set. If the person is on call that day, the cell also shows a separate on-call indicator — as of v3.5.9, on-call duty **is no longer an exclusive status**: it's a flag that can be combined with any status (for example, someone can be Remote Work AND on call the same day).
 - Use the department filter and the week selector (previous/next buttons plus a date picker) to navigate.
-- If no schedule exists yet for the selected week, you can create one from scratch — base "Onsite" entries are auto-generated for every person in the department.
+- The department filter includes an **"All departments"** option (v3.5.9): it shows every department's schedule for the selected week, stacked, in **read-only** mode — no cell is editable in this view, even if you have edit permission on one of those departments. To edit, pick a specific department.
+- If no schedule exists yet for the selected week, you can create one from scratch — base "Onsite" entries are auto-generated for every person in the department. This same empty-week state also offers an **"Import previous week"** button (see §34.4).
 
 ### 34.3 Editing a day (if you have permission)
 
 Click a cell to open the editor: choose the status and, if applicable, start/end time and an optional note. You can only edit while the schedule is in **Draft** status and you manage that department (or are ADMIN).
+
+Besides the status, the editor now has a separate **"On call"** checkbox (v3.5.9) — on-call duty used to be an option inside the status dropdown (mutually exclusive with every other status); it's now a checkbox you can tick alongside any status. The system guarantees at most one person on call per department per day: if you try to check a second one, you'll see a clear warning naming who's already on call that day.
+
+When you enter a start time and tab out, the exit time is now **auto-filled** (v3.5.9) from that person's own daily working hours — if an ADMIN has set them an individual weekly-hours override that differs from the department default (for example, a reduced-hours arrangement), theirs is used — plus the department's configured break; you can still correct it by hand.
+
+A new **"Apply to whole week"** button (v3.5.9) copies the status, schedule, notes and on-call flag from the day you're editing to all five weekdays for that same person, in a single action.
 
 ### 34.4 Validate and publish
 
@@ -1781,8 +1790,10 @@ Click a cell to open the editor: choose the status and, if applicable, start/end
 - Alerts are classified as **Error** (block publishing) or **Warning** (non-blocking, but worth reviewing).
 - **Publish** is only possible once no unresolved Error alerts remain. To "resolve" an alert, fix the underlying calendar entries and click Validate again — there is no button to manually mark an alert as resolved.
 - Once published, a schedule is protected from further edits. Only an ADMIN can unpublish it if it needs correcting.
-- **Clone** copies the entire week's schedule to the following week as a new draft.
+- **Clone** (redesigned in v3.5.9) opens a date picker so you can choose any future Monday to copy the full schedule to as a new draft — it's no longer limited to "the following week". Only weeks that don't already have a schedule for that department are offered; if the week you pick turns out to be taken, you'll get a clear message that specifically that week isn't available (before v3.5.9, cloning was rigid — it always tried the following week, and if that particular week was taken, the error didn't make clear that other weeks were free).
+- **Import previous week** (new in v3.5.9, available when the selected week has no schedule yet): copies the immediately preceding week's schedule for the same department forward — a second way to populate a new week, without having to pick a week one at a time with Clone.
 - **Export** produces a CSV or XLSX of the visible week.
+- There is no action to **delete** a whole schedule: a Draft schedule can only be left as-is or published.
 
 ### 34.5 Health data protection (important)
 

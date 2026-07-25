@@ -83,4 +83,22 @@ El tratamiento es **necesario y proporcionado** para la finalidad de organizaci�
 Con las medidas de minimización y masking descritas, el riesgo residual para los interesados se considera **bajo**. No se requiere consulta previa a la autoridad de control salvo que la organización desplegante identifique factores de riesgo adicionales específicos de su contexto (volumen de empleados, sector regulado, etc.).
 
 ---
+
+## 5. Adenda — v3.5.9 (2026-07-25)
+
+Rework del módulo con cambios funcionales relevantes para esta DPIA (ver `docs/STAFF_SCHEDULE.md` §13 para el detalle técnico completo). No amplía las categorías de datos tratadas (§1.4) ni introduce nuevas finalidades; se documenta como adenda porque toca dos de los controles descritos en §3.
+
+### 5.1 Riesgo: correlación de la guardia (`onGuard`) con un día de baja médica/paternidad
+
+En este rework, la guardia deja de ser uno de los estados de jornada y pasa a ser un campo independiente, `onGuard` (booleano), que puede coexistir con cualquier estado — incluidos `BAJA_MEDICA`/`BAJA_PATERNIDAD`. `onGuard` **no es en sí mismo un dato de salud** y no está sujeto a la base jurídica de §2.1.b. Sin embargo, si su valor real se sirviera sin cambios en un día en el que el estado subyacente está enmascarado, un viewer no autorizado podría inferir mediante correlación que ese día concreto corresponde a una baja (por ejemplo, si observa que el patrón de guardias de una persona se interrumpe justo esa semana, o si compara la vista enmascarada con conocimiento externo del calendario de guardias).
+
+**Medida — extensión de `maskEntryForViewer()`**: la misma rama del código que sustituye el estado real por `AUSENTE` genérico (§3.1 de este documento) ahora también fuerza `onGuard: false` en la respuesta enmascarada, con independencia del valor real almacenado. Aplica en las mismas 3 superficies ya cubiertas por el masking existente (vista de calendario, export, resumen). No requiere una base jurídica nueva porque no se trata como dato de salud en sí — es una medida de minimización defensiva para evitar la correlación con un dato que sí lo es.
+
+**Hallazgo relacionado, registrado como lección de revisión**: durante la revisión de código de este rework se detectó (y corrigió) que los agregados numéricos `guardDays` (resumen semanal y resumen mensual) no excluían las entries con estado de baja médica/paternidad del conteo, aunque la entry individual sí estuviera correctamente enmascarada — un viewer no autorizado podía en principio inferir "esta persona tiene una baja con guardia asociada" a partir de una discrepancia en el agregado, sin que ninguna entry individual revelara el estado real. Es un recordatorio de que **los campos derivados/agregados necesitan la misma disciplina de enmascaramiento que los campos en bruto de los que se calculan** — enmascarar solo la entry no basta si un agregado aguas abajo se calcula antes del masking o sin excluir los mismos registros. Recomendación para futuras extensiones del módulo: cualquier nuevo campo agregado o de conteo debe revisarse explícitamente contra esta misma clase de fuga antes de exponerse.
+
+### 5.2 Nuevo rol `WORKER` — destinatario adicional (actualización de §3.6)
+
+Se añade el rol de usuario `WORKER`, que se comporta como `VIEWER` en el resto de la aplicación pero obtiene acceso de lectura a este módulo. A efectos de esta DPIA, `WORKER` tiene **exactamente el mismo modelo de amenaza y el mismo tratamiento que `AUDITOR`** ya documentado en §3.6: lectura de todos los departamentos, con el mismo enmascaramiento de datos de salud (nunca ve `BAJA_MEDICA`/`BAJA_PATERNIDAD` reales salvo que sea su propio registro, ni el `onGuard` real de un día enmascarado — §5.1). No se trata de una categoría de destinatario nueva desde el punto de vista de riesgo, solo de un nombre de rol adicional con ese mismo alcance; se documenta aquí para que la lista de "quién puede ver estos datos" quede completa. §3.6 se actualiza en consecuencia: donde decía "AUDITOR: lectura de todo el CMDB con el mismo enmascaramiento que un manager", léase "AUDITOR y WORKER".
+
+---
 **Este documento debe revisarse** ante cualquier cambio que amplíe las categorías de datos tratadas, los destinatarios, o el periodo de retención.

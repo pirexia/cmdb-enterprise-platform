@@ -8,8 +8,9 @@ import type { ScheduleView } from './service.js';
 
 function cellText(entry: ScheduleView['rows'][number]['entries'][string] | undefined): string {
   if (!entry) return '';
-  if (entry.startTime && entry.endTime) return `${entry.status} ${entry.startTime}-${entry.endTime}`;
-  return entry.status;
+  const guard = entry.onGuard ? ' [GUARDIA]' : '';
+  if (entry.startTime && entry.endTime) return `${entry.status} ${entry.startTime}-${entry.endTime}${guard}`;
+  return `${entry.status}${guard}`;
 }
 
 function escapeCsv(v: string): string {
@@ -17,12 +18,13 @@ function escapeCsv(v: string): string {
 }
 
 export function exportScheduleCsv(view: ScheduleView): string {
-  const header = ['Username', ...view.days, 'WeeklyNetHours', 'TeleworkDaysMonth', 'TravelDays', 'GuardDays'];
+  const header = ['Username', ...view.days, 'WeeklyNetHours', 'TeleworkDaysWeek', 'TeleworkDaysMonth', 'TravelDays', 'GuardDays'];
   const lines = view.rows.map((row) => {
     const cells = [
       row.username,
       ...view.days.map((d) => cellText(row.entries[d])),
       String(row.summary.weeklyNetHours),
+      String(row.summary.teleworkDaysWeek),
       String(row.summary.teleworkDaysMonth),
       String(row.summary.travelDays),
       String(row.summary.guardDays),
@@ -40,6 +42,7 @@ export async function exportScheduleXlsx(view: ScheduleView): Promise<Buffer> {
     { header: 'Username', key: 'username', width: 24 },
     ...view.days.map((d) => ({ header: d, key: d, width: 20 })),
     { header: 'WeeklyNetHours', key: 'weeklyNetHours', width: 16 },
+    { header: 'TeleworkDaysWeek', key: 'teleworkDaysWeek', width: 16 },
     { header: 'TeleworkDaysMonth', key: 'teleworkDaysMonth', width: 18 },
     { header: 'TravelDays', key: 'travelDays', width: 12 },
     { header: 'GuardDays', key: 'guardDays', width: 12 },
@@ -50,6 +53,7 @@ export async function exportScheduleXlsx(view: ScheduleView): Promise<Buffer> {
     const wsRow: Record<string, unknown> = { username: row.username };
     for (const d of view.days) wsRow[d] = cellText(row.entries[d]);
     wsRow.weeklyNetHours = row.summary.weeklyNetHours;
+    wsRow.teleworkDaysWeek = row.summary.teleworkDaysWeek;
     wsRow.teleworkDaysMonth = row.summary.teleworkDaysMonth;
     wsRow.travelDays = row.summary.travelDays;
     wsRow.guardDays = row.summary.guardDays;

@@ -2356,7 +2356,8 @@
       "endTime": "End time",
       "notes": "Notes",
       "status": "Status",
-      "onGuard": "On guard"
+      "onGuard": "On guard",
+      "applyWeekHint": "Apply this day's status/time to the whole week"
     },
     "canEdit": {
       "readonly": "Read-only — you do not manage this department"

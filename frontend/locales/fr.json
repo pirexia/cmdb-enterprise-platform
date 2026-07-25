@@ -2237,7 +2237,8 @@
       "endTime": "Heure de sortie",
       "notes": "Notes",
       "status": "Statut",
-      "onGuard": "D'astreinte"
+      "onGuard": "D'astreinte",
+      "applyWeekHint": "Appliquer le statut/horaire de ce jour à toute la semaine"
     },
     "canEdit": {
       "readonly": "Lecture seule — vous ne gérez pas ce service"

@@ -2237,7 +2237,8 @@
       "endTime": "Ora di uscita",
       "notes": "Note",
       "status": "Stato",
-      "onGuard": "In reperibilità"
+      "onGuard": "In reperibilità",
+      "applyWeekHint": "Applica lo stato/orario di questo giorno a tutta la settimana"
     },
     "canEdit": {
       "readonly": "Sola lettura — non gestisci questo reparto"

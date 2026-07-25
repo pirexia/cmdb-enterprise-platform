@@ -2356,7 +2356,8 @@
       "endTime": "Hora de salida",
       "notes": "Notas",
       "status": "Estado",
-      "onGuard": "De guardia"
+      "onGuard": "De guardia",
+      "applyWeekHint": "Aplicar el estado/horario de este día a toda la semana"
     },
     "canEdit": {
       "readonly": "Solo lectura — no gestionas este departamento"

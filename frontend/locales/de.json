@@ -2237,7 +2237,8 @@
       "endTime": "Endzeit",
       "notes": "Notizen",
       "status": "Status",
-      "onGuard": "Bereitschaftsdienst"
+      "onGuard": "Bereitschaftsdienst",
+      "applyWeekHint": "Status/Uhrzeit dieses Tages auf die ganze Woche anwenden"
     },
     "canEdit": {
       "readonly": "Nur Lesezugriff — Sie verwalten diese Abteilung nicht"

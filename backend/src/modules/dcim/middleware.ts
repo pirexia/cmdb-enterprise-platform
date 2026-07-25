@@ -15,10 +15,12 @@ export function requireUuidParam(paramName: string) {
   };
 }
 
-// Block VIEWER role from all DCIM endpoints (read + write).
+// Block VIEWER and WORKER roles from all DCIM endpoints (read + write).
+// WORKER is VIEWER-equivalent everywhere except the Staff Schedule module,
+// which grants it read access explicitly — it must not fall through here.
 export function requireDcimAccess(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).user?.role;
-  if (!role || role === 'VIEWER') {
+  if (!role || role === 'VIEWER' || role === 'WORKER') {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

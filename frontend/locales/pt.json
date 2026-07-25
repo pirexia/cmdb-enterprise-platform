@@ -2237,7 +2237,8 @@
       "endTime": "Hora de saída",
       "notes": "Notas",
       "status": "Estado",
-      "onGuard": "De plantão"
+      "onGuard": "De plantão",
+      "applyWeekHint": "Aplicar o estado/horário deste dia a toda a semana"
     },
     "canEdit": {
       "readonly": "Apenas leitura — não gere este departamento"

@@ -1,6 +1,6 @@
 export type ReportCategory = 'inventory' | 'security' | 'financial' | 'compliance' | 'lifecycle' | 'audit';
 export type ExportFormat = 'csv' | 'xlsx';
-export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'AUDITOR' | 'VIEWER' | 'WORKER';
 export type ColumnType = 'string' | 'number' | 'date' | 'badge' | 'boolean';
 export type FilterType = 'date-range' | 'select' | 'multi-select' | 'search' | 'toggle';
 

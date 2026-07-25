@@ -10,7 +10,7 @@ import {
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
-import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers } from './queries.js';
+import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -28,6 +28,7 @@ interface Viewer {
 
 export interface MaskedEntryFields {
   status: string;
+  onGuard: boolean;
   startTime: string | null;
   endTime: string | null;
   notes: string | null;
@@ -41,15 +42,17 @@ export interface MaskedEntryFields {
 // every response that could expose entries (view, export, monthly summary) —
 // never trust the client to hide this.
 export function maskEntryForViewer(
-  entry: { status: string; startTime: string | null; endTime: string | null; notes: string | null; userId: string },
+  entry: { status: string; startTime: string | null; endTime: string | null; notes: string | null; userId: string; onGuard: boolean },
   viewer: Viewer,
 ): MaskedEntryFields {
   const isHealthStatus = HEALTH_STATUSES.includes(entry.status);
   const isAuthorized = viewer.role === 'ADMIN' || viewer.id === entry.userId;
   if (isHealthStatus && !isAuthorized) {
-    return { status: 'AUSENTE', startTime: null, endTime: null, notes: null, healthMasked: true };
+    // onGuard forced false: don't let guard-duty correlate with a masked
+    // health-leave day and leak information about it (Art. 9).
+    return { status: 'AUSENTE', startTime: null, endTime: null, notes: null, onGuard: false, healthMasked: true };
   }
-  return { status: entry.status, startTime: entry.startTime, endTime: entry.endTime, notes: entry.notes, healthMasked: false };
+  return { status: entry.status, startTime: entry.startTime, endTime: entry.endTime, notes: entry.notes, onGuard: entry.onGuard, healthMasked: false };
 }
 
 interface AlertLike {
@@ -153,6 +156,7 @@ export async function createSchedule(
     Array.from({ length: 5 }, (_, i) => ({
       scheduleId: schedule.id,
       userId: u.id,
+      departmentId: params.departmentId,
       date: addDaysUtc(weekStartDate, i),
       status: 'PRESENCIAL',
     })),
@@ -167,6 +171,7 @@ export interface EntryInput {
   userId: string;
   date: string;
   status: string;
+  onGuard?: boolean;
   startTime?: string | null;
   endTime?: string | null;
   notes?: string | null;
@@ -174,7 +179,10 @@ export interface EntryInput {
 
 // updateEntries — only allowed while the schedule is DRAFT (D10).
 export async function updateEntries(prisma: Prisma.TransactionClient, scheduleId: string, entries: EntryInput[]) {
-  const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { status: true } });
+  const schedule = await prisma.staffSchedule.findUnique({
+    where: { id: scheduleId },
+    select: { status: true, departmentId: true },
+  });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
   if (schedule.status !== 'DRAFT') {
     throw new ScheduleServiceError(409, 'Schedule is not editable once published');
@@ -182,24 +190,34 @@ export async function updateEntries(prisma: Prisma.TransactionClient, scheduleId
 
   for (const e of entries) {
     const date = parseDateOnly(e.date);
-    await prisma.scheduleEntry.upsert({
-      where: { scheduleId_userId_date: { scheduleId, userId: e.userId, date } },
-      create: {
-        scheduleId,
-        userId: e.userId,
-        date,
-        status: e.status,
-        startTime: e.startTime ?? null,
-        endTime: e.endTime ?? null,
-        notes: e.notes ?? null,
-      },
-      update: {
-        status: e.status,
-        startTime: e.startTime ?? null,
-        endTime: e.endTime ?? null,
-        notes: e.notes ?? null,
-      },
-    });
+    try {
+      await prisma.scheduleEntry.upsert({
+        where: { scheduleId_userId_date: { scheduleId, userId: e.userId, date } },
+        create: {
+          scheduleId,
+          userId: e.userId,
+          departmentId: schedule.departmentId,
+          date,
+          status: e.status,
+          onGuard: e.onGuard ?? false,
+          startTime: e.startTime ?? null,
+          endTime: e.endTime ?? null,
+          notes: e.notes ?? null,
+        },
+        update: {
+          status: e.status,
+          onGuard: e.onGuard ?? false,
+          startTime: e.startTime ?? null,
+          endTime: e.endTime ?? null,
+          notes: e.notes ?? null,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code === 'P2002' && String(err?.meta?.target ?? '').includes('on_guard')) {
+        throw new ScheduleServiceError(409, `Another worker is already on GUARDIA duty on ${e.date} for this department`);
+      }
+      throw err;
+    }
   }
 }
 
@@ -215,6 +233,7 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
     userId: e.userId,
     date: isoDate(e.date),
     status: e.status,
+    onGuard: e.onGuard,
     startTime: e.startTime,
     endTime: e.endTime,
   }));
@@ -225,9 +244,10 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   for (const uid of userIds) {
     teleworkCountsByUser[uid] = await countTeleworkThisMonth(prisma, uid, schedule.year, month);
   }
+  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, userIds, cfg.weeklyTargetNetHours);
 
   const scheduleLike: ScheduleLike = { id: schedule.id, weekStart: isoDate(schedule.weekStart), year: schedule.year };
-  const alerts = validate(scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser);
+  const alerts = validate(scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser, weeklyTargetsByUser);
 
   await prisma.scheduleAlert.deleteMany({ where: { scheduleId } });
   if (alerts.length > 0) {
@@ -266,13 +286,38 @@ export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: st
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
-// cloneToNextWeek — copies all entries verbatim to a new DRAFT schedule one week later.
-export async function cloneToNextWeek(prisma: Prisma.TransactionClient, scheduleId: string, createdBy: string) {
+// cloneToWeek — copies all entries from `scheduleId` onto a caller-chosen
+// target Monday. Used both by the "Clone to week..." picker and by
+// "Import previous week" (source = previous week's schedule, target = the
+// currently-viewed empty week). Rejects a target that isn't strictly in the
+// future, isn't a Monday, or already has a schedule for this department.
+export async function cloneToWeek(
+  prisma: Prisma.TransactionClient,
+  scheduleId: string,
+  targetWeekStart: string,
+  createdBy: string,
+) {
   const origin = await loadScheduleWithEntries(prisma, scheduleId);
   if (!origin) throw new ScheduleServiceError(404, 'Schedule not found');
 
-  const newWeekStart = addDaysUtc(origin.weekStart, 7);
-  const newWeekEnd = addDaysUtc(origin.weekEnd, 7);
+  const newWeekStart = parseDateOnly(targetWeekStart);
+  const todayUtc = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+  if (newWeekStart.getTime() <= todayUtc.getTime()) {
+    throw new ScheduleServiceError(422, 'Target week must be in the future');
+  }
+  if (newWeekStart.getUTCDay() !== 1) {
+    throw new ScheduleServiceError(422, 'Target week must start on a Monday');
+  }
+
+  const existing = await prisma.staffSchedule.findUnique({
+    where: { departmentId_weekStart: { departmentId: origin.departmentId, weekStart: newWeekStart } },
+    select: { id: true },
+  });
+  if (existing) {
+    throw new ScheduleServiceError(409, 'A schedule already exists for the target week');
+  }
+
+  const newWeekEnd = addDaysUtc(newWeekStart, 4);
   const year = newWeekStart.getUTCFullYear();
   const summer = await loadSummerForYear(prisma, year);
   const isSummerWeek = detectSummer(isoDate(newWeekStart), summer);
@@ -289,11 +334,15 @@ export async function cloneToNextWeek(prisma: Prisma.TransactionClient, schedule
     },
   });
 
+  const dayOffsetOf = (originDate: Date) => Math.round((originDate.getTime() - origin.weekStart.getTime()) / 86400000);
+
   const entriesData = origin.entries.map((e) => ({
     scheduleId: created.id,
     userId: e.userId,
-    date: addDaysUtc(e.date, 7),
+    departmentId: origin.departmentId,
+    date: addDaysUtc(newWeekStart, dayOffsetOf(e.date)),
     status: e.status,
+    onGuard: e.onGuard,
     startTime: e.startTime,
     endTime: e.endTime,
     notes: e.notes,
@@ -319,7 +368,7 @@ export interface ScheduleView {
     userId: string;
     username: string;
     entries: Record<string, MaskedEntryFields>;
-    summary: { weeklyNetHours: number; teleworkDaysMonth: number; travelDays: number; guardDays: number };
+    summary: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
   }>;
   alerts: Array<{
     id: string;
@@ -357,12 +406,13 @@ export async function buildScheduleView(
   }
 
   const month = schedule.weekStart.getUTCMonth() + 1;
+  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, Array.from(byUser.keys()), cfg.weeklyTargetNetHours);
   const rows: ScheduleView['rows'] = [];
   for (const [userId, data] of byUser) {
     const entries: Record<string, MaskedEntryFields> = {};
     for (const e of data.entriesReal) {
       entries[isoDate(e.date)] = maskEntryForViewer(
-        { status: e.status, startTime: e.startTime, endTime: e.endTime, notes: e.notes, userId: e.userId },
+        { status: e.status, startTime: e.startTime, endTime: e.endTime, notes: e.notes, userId: e.userId, onGuard: e.onGuard },
         viewer,
       );
     }
@@ -380,14 +430,16 @@ export async function buildScheduleView(
       0,
     );
     const travelDays = data.entriesReal.filter((e) => e.status === 'VIAJE').length;
-    const guardDays = data.entriesReal.filter((e) => e.status === 'GUARDIA').length;
+    const guardDays = data.entriesReal.filter((e) => e.onGuard).length;
+    const teleworkDaysWeek = data.entriesReal.filter((e) => e.status === 'TELETRABAJO').length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
+    const weeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
 
     rows.push({
       userId,
       username: data.username,
       entries,
-      summary: { weeklyNetHours, teleworkDaysMonth, travelDays, guardDays },
+      summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
     });
   }
 
@@ -481,7 +533,7 @@ export async function getMonthlySummary(
     netHours,
     teleworkDays: count((s) => s === 'TELETRABAJO'),
     travelDays: count((s) => s === 'VIAJE'),
-    guardDays: count((s) => s === 'GUARDIA'),
+    guardDays: entries.filter((e) => e.onGuard).length,
     vacationDays: count((s) => s === 'VACACIONES'),
   };
   if (isAuthorized) {

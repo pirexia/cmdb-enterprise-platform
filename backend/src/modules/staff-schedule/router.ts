@@ -17,7 +17,7 @@ import {
   runValidation,
   publish,
   unpublish,
-  cloneToNextWeek,
+  cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
   ScheduleServiceError,
@@ -345,11 +345,20 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // POST /api/staff-schedule/:id/clone  (deptEdit) — clones entries to next week
+  // POST /api/staff-schedule/:id/clone  (deptEdit) — clones entries to next week.
+  // TODO(Task 5): expose a caller-chosen target week via request body instead
+  // of always defaulting to origin.weekStart + 7 days; this handler is a
+  // minimal compatibility shim over the renamed cloneToWeek() so the router
+  // keeps compiling until the full endpoint redesign lands.
   router.post('/:id/clone', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const created = await prisma.$transaction(async (tx) => {
-        const c = await cloneToNextWeek(tx, req.params.id as string, req.user!.email);
+        const origin = await tx.staffSchedule.findUnique({ where: { id: req.params.id as string }, select: { weekStart: true } });
+        if (!origin) throw new ScheduleServiceError(404, 'Schedule not found');
+        const nextWeekStart = new Date(origin.weekStart);
+        nextWeekStart.setUTCDate(nextWeekStart.getUTCDate() + 7);
+        const targetWeekStart = nextWeekStart.toISOString().slice(0, 10);
+        const c = await cloneToWeek(tx, req.params.id as string, targetWeekStart, req.user!.email);
         await auditStaffSchedule(tx, { action: 'CLONE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: c.id, userEmail: req.user!.email });
         return c;
       }, { timeout: 20000 });

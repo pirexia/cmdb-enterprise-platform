@@ -221,15 +221,17 @@ export async function updateEntries(prisma: Prisma.TransactionClient, scheduleId
       // `"department_id,date"`, no 'on_guard' substring), silently falling
       // through to the generic 500 handler instead of the intended 409.
       // schedule_entries_on_guard_unique is the only constraint on exactly
-      // (department_id, date) — the sibling constraint
-      // (scheduleId, userId, date) never matches this column pair.
+      // (department_id, date). The sibling constraint (scheduleId, userId,
+      // date) is Prisma-schema-declared, so Prisma reports ITS violations
+      // using the camelCase Prisma field names ('scheduleId'/'userId'), never
+      // the snake_case DB column 'department_id' — so this check needs no
+      // extra disambiguation against it.
       const target = err?.meta?.target;
       const isGuardUniqueViolation =
         err?.code === 'P2002' &&
         Array.isArray(target) &&
         target.includes('department_id') &&
-        target.includes('date') &&
-        !target.includes('user_id');
+        target.includes('date');
       if (isGuardUniqueViolation) {
         throw new ScheduleServiceError(409, `Another worker is already on GUARDIA duty on ${e.date} for this department`);
       }

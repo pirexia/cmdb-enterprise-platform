@@ -11,6 +11,7 @@ enum UserRole {
   ADMIN
   AUDITOR
   VIEWER
+  WORKER
 }
 
 enum Criticality {
@@ -147,6 +148,7 @@ model User {
   // v3.5.0 — Staff Schedule
   departmentId    String?          @db.Uuid @map("department_id")
   department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  weeklyTargetHours Float?         @map("weekly_target_hours")
   managedDepartments DepartmentManager[]
   scheduleEntries ScheduleEntry[]
 
@@ -1507,6 +1509,7 @@ model Department {
   users          User[]
   managers       DepartmentManager[]
   schedules      StaffSchedule[]
+  scheduleEntries ScheduleEntry[]
   config         DepartmentScheduleConfig?
 
   createdAt      DateTime @default(now()) @map("created_at")
@@ -1601,25 +1604,29 @@ model StaffSchedule {
 // onDelete: Cascade on `user` so GDPR erasure (DELETE /api/admin/users/:id)
 // can hard-delete the user row without violating a FK (D6).
 model ScheduleEntry {
-  id         String    @id @default(uuid()) @db.Uuid
-  scheduleId String    @db.Uuid @map("schedule_id")
-  userId     String    @db.Uuid @map("user_id")
-  date       DateTime  @db.Date
-  status     String                                  // 9 statuses, see SCHEDULE_STATUS allowlist
-  startTime  String?   @map("start_time")             // "09:00"
-  endTime    String?   @map("end_time")
-  notes      String?
+  id           String    @id @default(uuid()) @db.Uuid
+  scheduleId   String    @db.Uuid @map("schedule_id")
+  userId       String    @db.Uuid @map("user_id")
+  departmentId String    @db.Uuid @map("department_id")
+  date         DateTime  @db.Date
+  status       String
+  onGuard      Boolean   @default(false) @map("on_guard")
+  startTime    String?   @map("start_time")
+  endTime      String?   @map("end_time")
+  notes        String?
 
-  createdAt  DateTime  @default(now()) @map("created_at")
-  updatedAt  DateTime  @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  schedule   StaffSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  schedule     StaffSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  department   Department    @relation(fields: [departmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([scheduleId, userId, date])
   @@index([scheduleId])
   @@index([userId])
   @@index([date])
+  @@index([departmentId])
   @@map("schedule_entries")
 }
 

@@ -746,6 +746,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
+      "role_worker": "WORKER",
       "me_label": "(ich)",
       "viewer_notice": "Sie benötigen die Rolle {role} um die Konfiguration zu ändern. Nur-Lese-Modus.",
       "confirm_activate": "Benutzer \"{name}\" aktivieren?",
@@ -2164,7 +2165,6 @@
       "VACACIONES": "Urlaub",
       "BAJA_MEDICA": "Krankheitsurlaub",
       "BAJA_PATERNIDAD": "Elternzeit",
-      "GUARDIA": "Bereitschaftsdienst",
       "INTENSIVO": "Verkürzte Arbeitszeit",
       "VIAJE": "Dienstreise",
       "AUSENTE": "Abwesend",
@@ -2181,6 +2181,7 @@
       "FLEX_RANGE": "Außerhalb der Gleitzeit",
       "GUARDIA_COVERAGE": "Konflikt bei Bereitschaftsabdeckung",
       "BAJA_CONFLICT": "Konflikt mit Krankheits-/Elternzeit",
+      "GUARDIA_UNIQUE": "Mehr als ein Mitarbeiter am selben Tag im Bereitschaftsdienst",
       "severity": {
         "WARNING": "Warnung",
         "ERROR": "Fehler"
@@ -2196,7 +2197,8 @@
       "addManager": "Verantwortlichen hinzufügen",
       "removeManager": "Entfernen",
       "assignDepartment": "Abteilung zuweisen",
-      "configure": "Konfigurieren"
+      "configure": "Konfigurieren",
+      "applyWeek": "Auf die ganze Woche anwenden"
     },
     "config": {
       "title": "Dienstplankonfiguration",
@@ -2219,11 +2221,14 @@
       "maxDailyNetHours": "Maximale effektive Stunden (Mo-Do)",
       "breakMinutes": "Mittagspause (Min.)",
       "fridayNetHours": "Effektive Stunden Freitag (verkürzt)",
-      "newDepartment": "Neue Abteilung"
+      "newDepartment": "Neue Abteilung",
+      "weeklyHoursOverride": "Wochenstunden (Mitarbeiter)",
+      "weeklyHoursDefault": "Abteilungsstandard"
     },
     "summary": {
       "weeklyHours": "Wochenstunden",
-      "teleworkDays": "Homeoffice-Tage",
+      "teleworkDaysWeek": "Homeoffice (Woche)",
+      "teleworkDaysMonth": "Homeoffice (Monat gesamt)",
       "travelDays": "Reisetage",
       "guardDays": "Bereitschaftstage"
     },
@@ -2231,7 +2236,8 @@
       "startTime": "Startzeit",
       "endTime": "Endzeit",
       "notes": "Notizen",
-      "status": "Status"
+      "status": "Status",
+      "onGuard": "Bereitschaftsdienst"
     },
     "canEdit": {
       "readonly": "Nur Lesezugriff — Sie verwalten diese Abteilung nicht"
@@ -2248,7 +2254,8 @@
     },
     "empty": {
       "noSchedule": "Kein Dienstplan für diese Woche",
-      "createSchedule": "Dienstplan erstellen"
+      "createSchedule": "Dienstplan erstellen",
+      "importPreviousWeek": "Vorherige Woche importieren"
     },
     "calendar": {
       "person": "Person"
@@ -2266,6 +2273,11 @@
     },
     "summer": {
       "year": "Jahr"
+    },
+    "clone": {
+      "pickWeek": "Zielwoche auswählen",
+      "targetWeek": "Zielwoche",
+      "mustBeFutureEmpty": "Muss eine zukünftige Woche ohne bestehenden Zeitplan sein"
     }
   }
 }

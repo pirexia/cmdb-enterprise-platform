@@ -746,6 +746,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
+      "role_worker": "WORKER",
       "me_label": "(eu)",
       "viewer_notice": "Necessita da função {role} para modificar a configuração. Modo só de leitura.",
       "confirm_activate": "Ativar o utilizador \"{name}\"?",
@@ -2164,7 +2165,6 @@
       "VACACIONES": "Férias",
       "BAJA_MEDICA": "Baixa médica",
       "BAJA_PATERNIDAD": "Licença parental",
-      "GUARDIA": "Sobreaviso",
       "INTENSIVO": "Horário reduzido",
       "VIAJE": "Viagem",
       "AUSENTE": "Ausente",
@@ -2181,6 +2181,7 @@
       "FLEX_RANGE": "Fora do horário flexível",
       "GUARDIA_COVERAGE": "Conflito de cobertura de sobreaviso",
       "BAJA_CONFLICT": "Conflito com baixa médica/licença parental",
+      "GUARDIA_UNIQUE": "Mais de um trabalhador de plantão no mesmo dia",
       "severity": {
         "WARNING": "Aviso",
         "ERROR": "Erro"
@@ -2196,7 +2197,8 @@
       "addManager": "Adicionar responsável",
       "removeManager": "Remover",
       "assignDepartment": "Atribuir departamento",
-      "configure": "Configurar"
+      "configure": "Configurar",
+      "applyWeek": "Aplicar à semana inteira"
     },
     "config": {
       "title": "Configuração de horário",
@@ -2219,11 +2221,14 @@
       "maxDailyNetHours": "Máximo de horas efetivas (segunda-quinta)",
       "breakMinutes": "Pausa para almoço (min)",
       "fridayNetHours": "Horas de sexta-feira reduzida",
-      "newDepartment": "Novo departamento"
+      "newDepartment": "Novo departamento",
+      "weeklyHoursOverride": "Horas semanais (trabalhador)",
+      "weeklyHoursDefault": "Padrão do departamento"
     },
     "summary": {
       "weeklyHours": "Horas semanais",
-      "teleworkDays": "Dias de teletrabalho",
+      "teleworkDaysWeek": "Teletrabalho (semana)",
+      "teleworkDaysMonth": "Teletrabalho (total do mês)",
       "travelDays": "Dias de viagem",
       "guardDays": "Dias de sobreaviso"
     },
@@ -2231,7 +2236,8 @@
       "startTime": "Hora de entrada",
       "endTime": "Hora de saída",
       "notes": "Notas",
-      "status": "Estado"
+      "status": "Estado",
+      "onGuard": "De plantão"
     },
     "canEdit": {
       "readonly": "Apenas leitura — não gere este departamento"
@@ -2248,7 +2254,8 @@
     },
     "empty": {
       "noSchedule": "Não há planeamento para esta semana",
-      "createSchedule": "Criar planeamento"
+      "createSchedule": "Criar planeamento",
+      "importPreviousWeek": "Importar semana anterior"
     },
     "calendar": {
       "person": "Pessoa"
@@ -2266,6 +2273,11 @@
     },
     "summer": {
       "year": "Ano"
+    },
+    "clone": {
+      "pickWeek": "Escolher semana de destino",
+      "targetWeek": "Semana de destino",
+      "mustBeFutureEmpty": "Deve ser uma semana futura sem calendário existente"
     }
   }
 }

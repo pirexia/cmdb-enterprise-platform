@@ -20,7 +20,7 @@ export async function loadScheduleWithEntries(
     where: { AND: [{ id: scheduleId }, visibility] },
     include: {
       entries: {
-        include: { user: { select: { id: true, username: true } } },
+        include: { user: { select: { id: true, username: true, displayName: true } } },
         orderBy: [{ userId: 'asc' }, { date: 'asc' }],
       },
       alerts: { orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }] },
@@ -53,7 +53,7 @@ export async function countTeleworkThisMonth(
 export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
   return prisma.user.findMany({
     where: { departmentId, active: true },
-    select: { id: true, username: true },
+    select: { id: true, username: true, displayName: true },
     orderBy: { username: 'asc' },
   });
 }

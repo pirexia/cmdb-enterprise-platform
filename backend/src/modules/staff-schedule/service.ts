@@ -387,6 +387,7 @@ export interface ScheduleView {
   rows: Array<{
     userId: string;
     username: string;
+    displayName: string | null;
     entries: Record<string, MaskedEntryFields>;
     summary: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
   }>;
@@ -425,10 +426,10 @@ export async function buildScheduleView(
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
-  const byUser = new Map<string, { username: string; entriesReal: typeof schedule.entries }>();
+  const byUser = new Map<string, { username: string; displayName: string | null; entriesReal: typeof schedule.entries }>();
   for (const e of schedule.entries) {
     if (!byUser.has(e.userId)) {
-      byUser.set(e.userId, { username: e.user.username, entriesReal: [] });
+      byUser.set(e.userId, { username: e.user.username, displayName: e.user.displayName ?? null, entriesReal: [] });
     }
     byUser.get(e.userId)!.entriesReal.push(e);
   }
@@ -475,6 +476,7 @@ export async function buildScheduleView(
     rows.push({
       userId,
       username: data.username,
+      displayName: data.displayName,
       entries,
       summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
     });

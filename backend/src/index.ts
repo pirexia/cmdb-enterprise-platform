@@ -1040,8 +1040,8 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
           const dummyHash      = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
           try {
             const inserted = await prisma.$queryRaw<{ id: string }[]>`
-              INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, created_at, updated_at)
-              VALUES (gen_random_uuid(), ${username}, ${provisionEmail}, ${dummyHash}, 'VIEWER', ${sam}, 'ldap', now(), now())
+              INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, display_name, created_at, updated_at)
+              VALUES (gen_random_uuid(), ${username}, ${provisionEmail}, ${dummyHash}, 'VIEWER', ${sam}, 'ldap', ${ad.displayName ?? null}, now(), now())
               RETURNING id
             `;
             await prisma.$executeRaw`
@@ -1064,6 +1064,17 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
           }
         }
         user = rows[0];
+
+        // v3.5.10 — El directorio es la fuente de verdad del nombre para
+        // mostrar: se refresca en cada login si ha cambiado. No se audita (no
+        // es un cambio de gobernanza ni de acceso) y el valor no se escribe en
+        // ningún log, por ser dato personal.
+        if (ad.displayName) {
+          await prisma.$executeRaw`
+            UPDATE "users" SET display_name = ${ad.displayName}, updated_at = now()
+            WHERE id = ${user.id}::uuid AND display_name IS DISTINCT FROM ${ad.displayName}
+          `;
+        }
       }
     }
 

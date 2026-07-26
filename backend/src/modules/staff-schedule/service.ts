@@ -10,7 +10,8 @@ import {
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
-import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours } from './queries.js';
+import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
+         buildScheduleVisibilityFilter, loadManagedDepartmentIds } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -408,7 +409,15 @@ export async function buildScheduleView(
   scheduleId: string,
   viewer: Viewer,
 ): Promise<ScheduleView | null> {
-  const schedule = await loadScheduleWithEntries(prisma, scheduleId);
+  // v3.5.10 — La visibilidad se resuelve EN la consulta: VIEWER y AUDITOR solo
+  // alcanzan horarios publicados; MANAGER además cualquier estado de los
+  // departamentos que gestiona; ADMIN todo. Un horario fuera de alcance
+  // devuelve null y el router responde 404 — nunca 403, para no revelar que
+  // existe un borrador ajeno.
+  const managed = viewer.role === 'ADMIN' ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const visibility = buildScheduleVisibilityFilter(viewer.role, managed);
+
+  const schedule = await loadScheduleWithEntries(prisma, scheduleId, visibility);
   if (!schedule) return null;
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
@@ -530,8 +539,18 @@ export async function getMonthlySummary(
 ): Promise<MonthlySummary> {
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 1));
+  // v3.5.10 — El resumen mensual solo agrega horarios que el visor tiene
+  // derecho a ver, filtrando por la relación en la propia consulta. Excepción
+  // deliberada: el propio usuario ve siempre su resumen completo (son sus
+  // datos), igual que el ADMIN.
+  const isSelfOrAdmin = viewer.role === 'ADMIN' || viewer.id === userId;
+  const managed = isSelfOrAdmin ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const scheduleFilter = isSelfOrAdmin
+    ? {}
+    : buildScheduleVisibilityFilter(viewer.role, managed);
+
   const entries = await prisma.scheduleEntry.findMany({
-    where: { userId, date: { gte: start, lt: end } },
+    where: { userId, date: { gte: start, lt: end }, schedule: scheduleFilter },
     include: { schedule: { select: { isSummerWeek: true, departmentId: true } } },
   });
 

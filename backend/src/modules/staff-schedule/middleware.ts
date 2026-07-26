@@ -16,13 +16,18 @@ export function requireUuidParam(paramName: string) {
   };
 }
 
-// Block VIEWER role from the whole module (D12). AUDITOR/MANAGER get
-// read-only access (masked, all departments); manager/ADMIN get read+write
-// per requireDeptEditAccess. MANAGER is otherwise VIEWER-equivalent
-// everywhere else in the app — this is the only module it can read (v3.5.9).
+// v3.5.10 — Los cuatro roles pueden ENTRAR al módulo; QUÉ ven se decide en la
+// consulta mediante buildScheduleVisibilityFilter (filtro de BD, no
+// post-filtrado — A01):
+//   VIEWER / AUDITOR → solo horarios publicados
+//   MANAGER          → además cualquier estado de los departamentos que gestiona
+//   ADMIN            → todo
+// La ESCRITURA sigue gobernada por requireDeptEditAccess (D1, sin cambios), y
+// el masking de datos de salud (GDPR Art.9) se aplica igual que antes a todo el
+// que no sea ADMIN ni manager del departamento en cuestión.
 export function requireScheduleAccess(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).user?.role;
-  if (!role || !['ADMIN', 'AUDITOR', 'MANAGER'].includes(role)) {
+  if (!role || !['ADMIN', 'AUDITOR', 'MANAGER', 'VIEWER'].includes(role)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

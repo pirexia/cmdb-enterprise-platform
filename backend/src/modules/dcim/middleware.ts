@@ -15,12 +15,13 @@ export function requireUuidParam(paramName: string) {
   };
 }
 
-// Block VIEWER and MANAGER roles from all DCIM endpoints (read + write).
-// MANAGER is VIEWER-equivalent everywhere except the Staff Schedule module,
-// which grants it read access explicitly — it must not fall through here.
+// v3.5.10 — Solo VIEWER queda bloqueado en DCIM. MANAGER pasa a ser
+// equivalente a AUDITOR fuera del módulo de horarios (D3) y por tanto tiene
+// acceso aquí; lo que NO gana es el acceso a los registros de auditoría
+// (requireAudit y la denylist de informes lo siguen excluyendo).
 export function requireDcimAccess(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).user?.role;
-  if (!role || role === 'VIEWER' || role === 'MANAGER') {
+  if (!role || role === 'VIEWER') {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

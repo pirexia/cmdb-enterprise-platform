@@ -1,8 +1,15 @@
 import type { ReportDefinition, ReportMeta, UserRole } from './types.js';
 
-// MANAGER is VIEWER-equivalent everywhere except Staff Schedule (v3.5.9) —
-// same rank so report access behaves identically to a VIEWER.
-const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, MANAGER: 1, AUDITOR: 2, ADMIN: 3 };
+// v3.5.10 — MANAGER comparte rango con AUDITOR (D3): fuera del módulo de
+// horarios es un perfil de lectura equivalente. El rango es lineal, así que por
+// sí solo le daría también los informes de auditoría — que D3 excluye
+// expresamente. De ahí la denylist: es la excepción que el rango no puede
+// expresar. requireAudit (GET /api/audit-logs) sigue admitiendo solo
+// ADMIN y AUDITOR.
+const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, MANAGER: 2, AUDITOR: 2, ADMIN: 3 };
+
+/** Informes vetados a MANAGER pese a cumplir el rango. */
+const MANAGER_DENIED_REPORTS = new Set(['audit-trail']);
 
 const registry = new Map<string, ReportDefinition>();
 
@@ -43,10 +50,11 @@ export function getAvailableReports(userRole: UserRole): ReportMeta[] {
     ...(def.allColumns ? { allColumns: def.allColumns } : {}),
     filters: def.filters,
     source: def.source,
-    available: userRank >= ROLE_RANK[def.minRole],
+    available: hasRoleAccess(userRole, def.minRole, def.id),
   }));
 }
 
-export function hasRoleAccess(userRole: UserRole, minRole: UserRole): boolean {
+export function hasRoleAccess(userRole: UserRole, minRole: UserRole, reportId?: string): boolean {
+  if (userRole === 'MANAGER' && reportId && MANAGER_DENIED_REPORTS.has(reportId)) return false;
   return ROLE_RANK[userRole] >= ROLE_RANK[minRole];
 }

@@ -6,10 +6,18 @@ import { Prisma } from '@prisma/client';
 type Db = Prisma.TransactionClient;
 
 // Load a schedule with its entries (incl. user id/username) and alerts.
-// Returns null if the schedule does not exist.
-export async function loadScheduleWithEntries(prisma: Db, scheduleId: string) {
-  return prisma.staffSchedule.findUnique({
-    where: { id: scheduleId },
+// Returns null if the schedule does not exist OR si el visor no tiene derecho a
+// verlo: el filtro de visibilidad viaja EN la cláusula WHERE (v3.5.10), de modo
+// que un borrador ajeno es indistinguible de uno inexistente (404, nunca 403 —
+// no se revela su existencia). El default vacío conserva el comportamiento de
+// los llamantes internos que ya han validado el acceso por otra vía.
+export async function loadScheduleWithEntries(
+  prisma: Db,
+  scheduleId: string,
+  visibility: Prisma.StaffScheduleWhereInput = {},
+) {
+  return prisma.staffSchedule.findFirst({
+    where: { AND: [{ id: scheduleId }, visibility] },
     include: {
       entries: {
         include: { user: { select: { id: true, username: true } } },
@@ -48,6 +56,37 @@ export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
     select: { id: true, username: true },
     orderBy: { username: 'asc' },
   });
+}
+
+// ── Visibilidad de horarios por rol (v3.5.10) ────────────────────────────────
+// Se aplica SIEMPRE en la cláusula WHERE de Prisma, nunca por post-filtrado en
+// memoria: los controles de acceso a filas deben ser filtros de BD (A01).
+//
+//   ADMIN            → sin filtro (ve, crea, edita y publica en todos)
+//   MANAGER          → publicados de todos + cualquier estado de sus departamentos
+//   VIEWER / AUDITOR → solo publicados
+//
+// Un rol desconocido cae en la rama más restrictiva por diseño (fail-closed):
+// añadir un rol nuevo al enum sin tocar esta función no abre datos por accidente.
+export function buildScheduleVisibilityFilter(
+  role: string,
+  managedDepartmentIds: string[],
+): Prisma.StaffScheduleWhereInput {
+  if (role === 'ADMIN') return {};
+  if (role === 'MANAGER' && managedDepartmentIds.length > 0) {
+    return { OR: [{ status: 'PUBLISHED' }, { departmentId: { in: managedDepartmentIds } }] };
+  }
+  return { status: 'PUBLISHED' };
+}
+
+// Departamentos que el usuario gestiona (filas DepartmentManager). No se llama
+// para ADMIN: su filtro es vacío y no necesita la consulta.
+export async function loadManagedDepartmentIds(prisma: Db, userId: string): Promise<string[]> {
+  const rows = await prisma.departmentManager.findMany({
+    where: { userId },
+    select: { departmentId: true },
+  });
+  return rows.map((r) => r.departmentId);
 }
 
 // Resolve each user's effective weekly target: their own override if set,

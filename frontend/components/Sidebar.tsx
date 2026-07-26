@@ -34,7 +34,7 @@ const NAV_ITEMS: NavEntry[] = [
   { type: "link", labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities", icon: Shield                                   },
   { type: "link", labelKey: "sidebar.reports",         href: "/reports",        icon: BarChart                                  },
   SEP,
-  { type: "link", labelKey: "sidebar.staffSchedule",    href: "/staff-schedule", icon: CalendarDays, roles: ["ADMIN","AUDITOR","MANAGER"]  },
+  { type: "link", labelKey: "sidebar.staffSchedule",    href: "/staff-schedule", icon: CalendarDays, roles: ["ADMIN","AUDITOR","MANAGER","VIEWER"]  },
   { type: "link", labelKey: "sidebar.dcim",             href: "/dcim",           icon: Server,       roles: ["ADMIN","AUDITOR"]  },
   { type: "link", labelKey: "sidebar.decommission",     href: "/decommission",   icon: PowerOff,     roles: ["ADMIN","AUDITOR"]  },
   { type: "link", labelKey: "sidebar.integrations",    href: "/integrations",   icon: Plug,         roles: ["ADMIN"]            },

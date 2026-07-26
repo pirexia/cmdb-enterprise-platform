@@ -1235,9 +1235,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
 app.get('/api/users', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    type UserRow = { id: string; username: string; email: string; role: string; active: boolean; sso_external_id: string | null; mfa_enabled: boolean; created_at: Date };
+    type UserRow = { id: string; username: string; displayName: string | null; email: string; role: string; active: boolean; sso_external_id: string | null; mfa_enabled: boolean; created_at: Date };
     const users = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, username, email, role,
+      SELECT id, username, display_name AS "displayName", email, role,
              COALESCE(active, true) AS active,
              sso_external_id, mfa_enabled, created_at
       FROM "users" ORDER BY username ASC

@@ -9,6 +9,8 @@ import { Vulnerability, VulnSeverity, VulnStatus } from './types.js';
 import { loadVCenterConfig, isConfigured, toPublicConfig } from './vcenterConfig.js';
 import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
 import { runVCenterSync, buildVCenterConnector, SyncLockedError } from './vcenterService.js';
+import { runLdapGroupSync, isSyncInProgress, LdapSyncInProgressError } from './ldapSyncService.js';
+import { isGroupGateEnabled, LdapDirectoryError } from '../../services/ldapDirectory.js';
 
 export function createIntegrationsRouter(
   prisma: PrismaClient,
@@ -308,6 +310,78 @@ export function createIntegrationsRouter(
       res.json(rows.map((r) => ({ date: r.created_at, ...(r.details as object) })));
     } catch (error) {
       console.error('[GET /api/integrations/vcenter/sync-log] Error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── LDAP/AD — grupo de acceso y sincronización de usuarios (v3.5.10) ───────
+  // En paralelo exacto a las rutas /vcenter/*: mismo patrón de estado, acción y
+  // registro, para que una integración nueva no invente su propia forma.
+
+  /**
+   * GET /api/integrations/ldap/status
+   * Estado de configuración de la puerta de grupo. Sin secretos: el nombre del
+   * grupo no lo es (aparece en cualquier consola de AD) y sin él el
+   * administrador no puede diagnosticar por qué no entra nadie.
+   */
+  router.get('/ldap/status', authenticateToken, requireAudit, (_req: Request, res: Response) => {
+    res.json({
+      enabled:        isGroupGateEnabled(),
+      group:          (process.env.LDAP_REQUIRED_GROUP ?? '').trim(),
+      nested:         process.env.LDAP_GROUP_NESTED !== 'false',
+      useLdap:        process.env.USE_LDAP === 'true',
+      defaultRole:    (process.env.LDAP_SYNC_DEFAULT_ROLE ?? 'VIEWER').toUpperCase(),
+      syncInProgress: isSyncInProgress(),
+    });
+  });
+
+  /**
+   * POST /api/integrations/ldap/sync
+   * Sincronización bajo demanda desde la UI. Ejecuta exactamente la misma
+   * función que el workflow diario de n8n.
+   */
+  router.post('/ldap/sync', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+    try {
+      const actor = (req as Request & { user?: { email?: string } }).user?.email ?? 'system@cmdb.local';
+      const result = await runLdapGroupSync(prisma, actor);
+      // 207 si alguna fila falló pero el resto se aplicó: el llamante debe poder
+      // distinguir "todo bien" de "parcial".
+      res.status(result.errors.length > 0 ? 207 : 200).json(result);
+    } catch (error) {
+      if (error instanceof LdapDirectoryError && error.code === 'NOT_CONFIGURED') {
+        res.status(400).json({ error: 'LDAP_GROUP_NOT_CONFIGURED' });
+        return;
+      }
+      if (error instanceof LdapSyncInProgressError) {
+        res.status(409).json({ error: 'SYNC_IN_PROGRESS' });
+        return;
+      }
+      // 502 accionable en lugar de 500 genérico (patrón adoptado en v3.5.5):
+      // el fallo es de un sistema externo, no de esta aplicación.
+      console.error('[POST /api/integrations/ldap/sync] Error:', error);
+      res.status(502).json({ error: 'LDAP_DIRECTORY_UNAVAILABLE' });
+    }
+  });
+
+  /**
+   * GET /api/integrations/ldap/sync-log
+   * Historial leído de audit_logs — sin tabla propia (D4 del patrón vCenter).
+   */
+  router.get('/ldap/sync-log', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
+    try {
+      const rows = await prisma.$queryRaw`
+        SELECT action,
+               entity_id::text AS "entityId",
+               user_email      AS "userEmail",
+               created_at      AS "createdAt"
+        FROM "audit_logs"
+        WHERE action LIKE 'LDAP_SYNC_%' OR action = 'LDAP_GROUP_DENIED'
+        ORDER BY created_at DESC
+        LIMIT 100
+      `;
+      res.json(rows);
+    } catch (error) {
+      console.error('[GET /api/integrations/ldap/sync-log] Error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

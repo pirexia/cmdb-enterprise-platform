@@ -91,6 +91,13 @@ services:
       # login with sAMAccountName, UPN, or DOMAIN\sam in addition to email)
       LDAP_UPN_SUFFIX:      ${LDAP_UPN_SUFFIX:-}
       LDAP_NETBIOS_DOMAIN:  ${LDAP_NETBIOS_DOMAIN:-}
+      # v3.5.10 — grupo de acceso AD y sincronización de usuarios (opcional)
+      LDAP_REQUIRED_GROUP:    ${LDAP_REQUIRED_GROUP:-}
+      LDAP_GROUP_NESTED:      ${LDAP_GROUP_NESTED:-true}
+      LDAP_GROUP_SEARCH_BASE: ${LDAP_GROUP_SEARCH_BASE:-}
+      LDAP_SYNC_DEFAULT_ROLE: ${LDAP_SYNC_DEFAULT_ROLE:-VIEWER}
+      LDAP_SYNC_MAX_MEMBERS:  ${LDAP_SYNC_MAX_MEMBERS:-5000}
+      LDAP_SYNC_CRON:         ${LDAP_SYNC_CRON:-0 3 * * *}
       # Microsoft 365 SSO (optional)
       USE_MICROSOFT_SSO:    ${USE_MICROSOFT_SSO:-false}
       AZURE_TENANT_ID:      ${AZURE_TENANT_ID:-}

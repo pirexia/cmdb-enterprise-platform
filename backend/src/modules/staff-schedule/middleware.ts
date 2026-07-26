@@ -16,13 +16,13 @@ export function requireUuidParam(paramName: string) {
   };
 }
 
-// Block VIEWER role from the whole module (D12). AUDITOR/WORKER get
+// Block VIEWER role from the whole module (D12). AUDITOR/MANAGER get
 // read-only access (masked, all departments); manager/ADMIN get read+write
-// per requireDeptEditAccess. WORKER is otherwise VIEWER-equivalent
+// per requireDeptEditAccess. MANAGER is otherwise VIEWER-equivalent
 // everywhere else in the app — this is the only module it can read (v3.5.9).
 export function requireScheduleAccess(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).user?.role;
-  if (!role || !['ADMIN', 'AUDITOR', 'WORKER'].includes(role)) {
+  if (!role || !['ADMIN', 'AUDITOR', 'MANAGER'].includes(role)) {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

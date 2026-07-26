@@ -746,7 +746,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
-      "role_worker": "WORKER",
+      "role_manager": "Manager",
       "me_label": "(ich)",
       "viewer_notice": "Sie benötigen die Rolle {role} um die Konfiguration zu ändern. Nur-Lese-Modus.",
       "confirm_activate": "Benutzer \"{name}\" aktivieren?",

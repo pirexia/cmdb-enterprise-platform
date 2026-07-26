@@ -854,7 +854,31 @@
       "vcenter_synclog_updated": "Updated",
       "vcenter_synclog_retired": "Retired",
       "vcenter_synclog_errors": "Errors",
-      "vcenter_synclog_empty": "No synchronization has run yet."
+      "vcenter_synclog_empty": "No synchronization has run yet.",
+      "ldapSync": {
+        "title": "AD user synchronisation",
+        "description": "Creates and updates the Active Directory access-group members in CMDB.",
+        "group": "Access group",
+        "nested": "Nested membership",
+        "defaultRole": "Role on creation",
+        "active": "Active",
+        "notConfigured": "Not configured",
+        "notConfiguredHint": "Set LDAP_REQUIRED_GROUP in .env to restrict access to the group and enable synchronisation.",
+        "syncNow": "Sync now",
+        "syncing": "Syncing…",
+        "resultCreated": "Created",
+        "resultUpdated": "Updated",
+        "resultReactivated": "Reactivated",
+        "resultDeactivated": "Deactivated",
+        "errorNotConfigured": "No access group is configured in .env.",
+        "errorInProgress": "A synchronisation is already running.",
+        "errorUnavailable": "The directory could not be queried. Check connectivity and the service account.",
+        "historyTitle": "Recent history",
+        "historyEmpty": "No synchronisations recorded yet.",
+        "colAction": "Action",
+        "colDate": "Date",
+        "colActor": "Source"
+      }
     },
     "branding": {
       "tab": "Appearance",

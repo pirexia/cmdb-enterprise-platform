@@ -10,14 +10,17 @@ import {
 import AlertsSettings from "@/components/AlertsSettings";
 import N8nResyncCard from "@/components/admin/N8nResyncCard";
 import VCenterCard from "./components/VCenterCard";
+import LdapSyncCard from "./components/LdapSyncCard";
 import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
+import { displayLabel } from "@/lib/displayLabel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface User {
   id:               string;
   username:         string;
+  displayName?:     string | null;
   email:            string;
   role:             "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER";
   active:           boolean;
@@ -522,10 +525,10 @@ export default function SettingsPage() {
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
                               <div className="h-7 w-7 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600">
-                                {u.username.slice(0, 2).toUpperCase()}
+                                {displayLabel(u).slice(0, 2).toUpperCase()}
                               </div>
                               <div>
-                                <p className="font-medium text-slate-800 text-sm">{u.username}</p>
+                                <p className="font-medium text-slate-800 text-sm">{displayLabel(u)}</p>
                                 {isSelf && <span className="text-[10px] text-indigo-500 font-medium">{t('settings.users.me_label')}</span>}
                               </div>
                             </div>
@@ -570,7 +573,7 @@ export default function SettingsPage() {
                                 checked={u.active}
                                 disabled={!isAdmin || isSelf || activeSaving}
                                 onChange={(val) => {
-                                  if (!confirm(`¿${val ? "Activar" : "Desactivar"} al usuario "${u.username}"?`)) return;
+                                  if (!confirm(`¿${val ? "Activar" : "Desactivar"} al usuario "${displayLabel(u)}"?`)) return;
                                   void handleActiveToggle(u.id, val);
                                 }}
                               />
@@ -732,6 +735,7 @@ export default function SettingsPage() {
 
             {/* vCenter connector */}
             <VCenterCard />
+            <LdapSyncCard />
           </div>
         )}
 

@@ -809,7 +809,31 @@
       "vcenter_synclog_updated": "Aktualisiert",
       "vcenter_synclog_retired": "Stillgelegt",
       "vcenter_synclog_errors": "Fehler",
-      "vcenter_synclog_empty": "Es wurde noch keine Synchronisierung ausgeführt."
+      "vcenter_synclog_empty": "Es wurde noch keine Synchronisierung ausgeführt.",
+      "ldapSync": {
+        "title": "AD-Benutzersynchronisierung",
+        "description": "Legt die Mitglieder der Active-Directory-Zugriffsgruppe in der CMDB an und aktualisiert sie.",
+        "group": "Zugriffsgruppe",
+        "nested": "Verschachtelte Mitgliedschaft",
+        "defaultRole": "Rolle bei Anlage",
+        "active": "Aktiv",
+        "notConfigured": "Nicht konfiguriert",
+        "notConfiguredHint": "Setzen Sie LDAP_REQUIRED_GROUP in der .env, um den Zugriff auf die Gruppe zu beschränken und die Synchronisierung zu aktivieren.",
+        "syncNow": "Jetzt synchronisieren",
+        "syncing": "Synchronisierung läuft…",
+        "resultCreated": "Angelegt",
+        "resultUpdated": "Aktualisiert",
+        "resultReactivated": "Reaktiviert",
+        "resultDeactivated": "Deaktiviert",
+        "errorNotConfigured": "In der .env ist keine Zugriffsgruppe konfiguriert.",
+        "errorInProgress": "Es läuft bereits eine Synchronisierung.",
+        "errorUnavailable": "Das Verzeichnis konnte nicht abgefragt werden. Prüfen Sie Verbindung und Dienstkonto.",
+        "historyTitle": "Letzte Vorgänge",
+        "historyEmpty": "Noch keine Synchronisierungen erfasst.",
+        "colAction": "Aktion",
+        "colDate": "Datum",
+        "colActor": "Quelle"
+      }
     },
     "branding": {
       "tab": "Erscheinungsbild",

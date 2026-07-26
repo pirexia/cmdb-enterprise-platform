@@ -809,7 +809,31 @@
       "vcenter_synclog_updated": "Atualizadas",
       "vcenter_synclog_retired": "Retiradas",
       "vcenter_synclog_errors": "Erros",
-      "vcenter_synclog_empty": "Ainda não foi executada nenhuma sincronização."
+      "vcenter_synclog_empty": "Ainda não foi executada nenhuma sincronização.",
+      "ldapSync": {
+        "title": "Sincronização de utilizadores AD",
+        "description": "Cria e atualiza na CMDB os utilizadores do grupo de acesso do Active Directory.",
+        "group": "Grupo de acesso",
+        "nested": "Pertença aninhada",
+        "defaultRole": "Perfil na criação",
+        "active": "Ativa",
+        "notConfigured": "Não configurada",
+        "notConfiguredHint": "Defina LDAP_REQUIRED_GROUP no .env para restringir o acesso ao grupo e ativar a sincronização.",
+        "syncNow": "Sincronizar agora",
+        "syncing": "A sincronizar…",
+        "resultCreated": "Criados",
+        "resultUpdated": "Atualizados",
+        "resultReactivated": "Reativados",
+        "resultDeactivated": "Desativados",
+        "errorNotConfigured": "Não existe grupo de acesso configurado no .env.",
+        "errorInProgress": "Já existe uma sincronização em curso.",
+        "errorUnavailable": "Não foi possível consultar o diretório. Verifique a conectividade e a conta de serviço.",
+        "historyTitle": "Histórico recente",
+        "historyEmpty": "Ainda não há sincronizações registadas.",
+        "colAction": "Ação",
+        "colDate": "Data",
+        "colActor": "Origem"
+      }
     },
     "branding": {
       "tab": "Aparência",

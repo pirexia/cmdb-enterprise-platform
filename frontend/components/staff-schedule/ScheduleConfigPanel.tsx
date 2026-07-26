@@ -9,6 +9,7 @@ import {
 } from "@/app/staff-schedule/hooks/useStaffSchedule";
 import type { Department, DepartmentScheduleConfig, SimpleUser } from "@/app/staff-schedule/types";
 import SummerScheduleConfig from "./SummerScheduleConfig";
+import { displayLabel } from "@/lib/displayLabel";
 
 interface Props {
   departments: Department[];
@@ -418,7 +419,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   <option value="">{t("staffSchedule.manager.selectUser")}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.username} ({u.email})
+                      {displayLabel(u)} ({u.email})
                     </option>
                   ))}
                 </select>
@@ -456,7 +457,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 <option value="">{t("staffSchedule.manager.selectUser")}</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.username} ({u.email})
+                    {displayLabel(u)} ({u.email})
                   </option>
                 ))}
               </select>

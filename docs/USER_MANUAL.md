@@ -1827,3 +1827,33 @@ Desde el botón "Configuración" puedes:
 - Configurar el periodo de horario de verano del año (fecha de inicio y fin).
 - Asignar y quitar responsables de departamento (personas que podrán editar horarios de ese departamento sin ser ADMIN).
 - Asignar el departamento de cada usuario.
+
+
+## Roles y acceso a horarios (v3.5.10)
+
+La aplicación tiene cuatro perfiles. El perfil **Gestor** (`MANAGER`) sustituye al antiguo `WORKER`.
+
+| Perfil | Qué puede hacer |
+|---|---|
+| **Visor** (`VIEWER`) | Consulta el inventario y los **horarios ya publicados**. No ve borradores ni DCIM |
+| **Auditor** (`AUDITOR`) | Lo del visor, más los registros de auditoría y DCIM. En horarios, solo los publicados |
+| **Gestor** (`MANAGER`) | Lectura como el auditor salvo los registros de auditoría. Además **crea, edita y publica los horarios de los departamentos que gestiona** |
+| **Administrador** (`ADMIN`) | Todo, incluida la configuración de departamentos, el periodo de verano, la asignación de gestores y despublicar horarios |
+
+Ser Gestor no basta para editar un departamento concreto: hay que estar asignado como gestor de ese departamento (lo hace un administrador desde la configuración del módulo). Un gestor que intente editar un departamento ajeno recibe un aviso de permiso denegado.
+
+Los datos de baja médica y de paternidad siguen ocultos para todo el que no sea el propio interesado o un administrador, en cualquiera de los cuatro perfiles.
+
+## Nombres en el calendario
+
+El calendario muestra el nombre completo tal como figura en el directorio corporativo (por ejemplo «Andrés Matías López») en lugar del nombre de cuenta («andres.matias»). Si un usuario no tiene nombre en el directorio —cuentas locales, por ejemplo— se sigue mostrando su nombre de cuenta.
+
+## Acceso restringido por grupo del directorio
+
+Su organización puede restringir el acceso a la aplicación a los miembros de un grupo de seguridad concreto del directorio. Si es su caso y no consigue entrar pese a que sus credenciales son correctas, solicite a su administrador que le incluya en ese grupo: la aplicación no distingue en el mensaje de error entre una contraseña incorrecta y una cuenta sin permiso de acceso.
+
+## Sincronizar usuarios desde el directorio
+
+Un administrador puede, en **Configuración → Integraciones → Sincronización de usuarios AD**, pulsar «Sincronizar ahora» para dar de alta en la aplicación a los miembros del grupo que aún no existan y actualizar los datos de los que ya estaban. La sincronización también se ejecuta automáticamente cada noche.
+
+Los usuarios que dejan de pertenecer al grupo se **desactivan**, nunca se borran, para conservar el histórico de auditoría. El perfil asignado manualmente a un usuario nunca se sobrescribe.

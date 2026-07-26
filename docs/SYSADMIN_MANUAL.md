@@ -2585,3 +2585,63 @@ DROP TABLE IF EXISTS alert_config;
 ```
 
 Después de eliminar las tablas, restaurar el shim de scheduler legado en `index.ts` si es necesario. Las tablas de `configuration_items`, `contracts`, `licenses` y `vulnerabilities` no se ven afectadas.
+
+
+## LDAP: grupo de acceso y sincronización de usuarios (v3.5.10)
+
+### Restringir el login a un grupo de seguridad
+
+Añada al `.env`:
+
+```bash
+LDAP_REQUIRED_GROUP=GS-CMDB-Iberia-Access   # CN corto o DN completo
+LDAP_GROUP_NESTED=true                       # false = solo miembros directos
+LDAP_GROUP_SEARCH_BASE=                      # opcional; cae a LDAP_SEARCH_BASE
+```
+
+**Requiere `LDAP_BIND_DN` y `LDAP_BIND_PASSWORD`**: la pertenencia se consulta con la cuenta de servicio. Sin ella, ningún login LDAP prosperará mientras el grupo esté configurado — es deliberado (ver más abajo).
+
+Con la variable **vacía**, el login LDAP se comporta exactamente como antes de v3.5.10. Es el valor por defecto, para que una actualización no deje a nadie fuera.
+
+Tras editar el `.env`, **redespliegue el stack completo**. Una recreación selectiva de un contenedor no recoge de forma fiable el `.env` editado:
+
+```bash
+podman-compose -f docker-compose.prod.yml down
+podman-compose -f docker-compose.prod.yml up -d --build
+```
+
+### Comportamiento ante fallos
+
+| Situación | Qué ocurre |
+|---|---|
+| Usuario fuera del grupo | `401`, cuenta desactivada, entrada `LDAP_GROUP_DENIED` en `audit_logs` |
+| Directorio caído o sin `LDAP_BIND_DN` | `401` para todo login LDAP; log `LDAP_GROUP_CHECK_UNAVAILABLE` |
+| Cuentas locales (`@cmdb.local`) | **No afectadas** en ningún caso |
+
+La última fila es la garantía operativa importante: aunque el controlador de dominio esté caído, el administrador local sigue pudiendo entrar. Si ve `LDAP_GROUP_CHECK_UNAVAILABLE` en los logs, revise conectividad al DC y las credenciales de la cuenta de servicio antes que ninguna otra cosa.
+
+### Sincronización de usuarios
+
+Dos disparadores, una sola lógica:
+
+- **Manual**: Configuración → Integraciones → «Sincronizar ahora» (solo ADMIN).
+- **Automático**: workflow n8n `LDAP Group Sync`, diario a las 03:00 (`LDAP_SYNC_CRON`). Se activa solo si `USE_LDAP=true` y hay grupo configurado.
+
+```bash
+LDAP_SYNC_DEFAULT_ROLE=VIEWER   # rol de alta; nunca se reaplica a los existentes
+LDAP_SYNC_MAX_MEMBERS=5000      # tope duro por pasada
+LDAP_SYNC_CRON=0 3 * * *
+```
+
+Nunca borra usuarios: los que salen del grupo quedan `active=false`. Los usuarios creados a mano (sin `sso_external_id`) son intocables. El rol de un usuario existente **nunca** se sobrescribe, de modo que una promoción manual sobrevive a la pasada nocturna.
+
+Verificación rápida desde el host:
+
+```bash
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c \
+  "SELECT action, count(*) FROM audit_logs WHERE action LIKE 'LDAP_%' GROUP BY action;"
+```
+
+### Variables obsoletas
+
+`LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN` ya no se usan: alimentaban el workflow anterior, que consultaba el directorio desde n8n. Pueden eliminarse del `.env`.

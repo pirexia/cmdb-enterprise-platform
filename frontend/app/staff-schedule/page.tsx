@@ -13,6 +13,7 @@ import AlertPanel from "@/components/staff-schedule/AlertPanel";
 import ScheduleConfigPanel from "@/components/staff-schedule/ScheduleConfigPanel";
 import WeekTargetPicker from "@/components/staff-schedule/WeekTargetPicker";
 import AllDepartmentsView from "@/components/staff-schedule/AllDepartmentsView";
+import { displayLabel } from "@/lib/displayLabel";
 
 export default function StaffSchedulePage() {
   const { t } = useLanguage();
@@ -42,7 +43,7 @@ export default function StaffSchedulePage() {
   } = useSchedule(departmentId, weekStart);
   const { exportSchedule } = useScheduleExport();
 
-  const usernameByUserId = Object.fromEntries((view?.rows ?? []).map((r) => [r.userId, r.username]));
+  const usernameByUserId = Object.fromEntries((view?.rows ?? []).map((r) => [r.userId, displayLabel(r)]));
 
   const runAction = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);

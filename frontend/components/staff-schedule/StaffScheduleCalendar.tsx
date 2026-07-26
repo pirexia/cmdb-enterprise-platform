@@ -5,6 +5,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import type { DepartmentScheduleConfig, EntryUpdateInput, ScheduleView } from "@/app/staff-schedule/types";
 import ScheduleCell from "./ScheduleCell";
 import ScheduleEntryPopover from "./ScheduleEntryPopover";
+import { displayLabel } from "@/lib/displayLabel";
 
 interface Props {
   view: ScheduleView;
@@ -57,14 +58,14 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
           {view.rows.map((row) => (
             <tr key={row.userId}>
               <td className="sticky left-0 z-10 bg-white border border-slate-100 px-3 py-2 text-xs font-medium text-slate-800">
-                {row.username}
+                {displayLabel(row)}
               </td>
               {view.days.map((d) => (
                 <ScheduleCell
                   key={d}
                   entry={row.entries[d]}
                   editable={editable}
-                  onClick={() => setEditing({ userId: row.userId, username: row.username, date: d })}
+                  onClick={() => setEditing({ userId: row.userId, username: displayLabel(row), date: d })}
                 />
               ))}
               <td className="border border-slate-100 px-3 py-2 text-xs text-slate-600">

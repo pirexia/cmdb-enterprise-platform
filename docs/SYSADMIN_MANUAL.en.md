@@ -2493,3 +2493,63 @@ DROP TABLE IF EXISTS alert_config;
 ```
 
 After removing the tables, restore the legacy scheduler block in `index.ts` if needed. The `configuration_items`, `contracts`, `licenses`, and `vulnerabilities` tables are not affected.
+
+
+## LDAP: access group and user synchronisation (v3.5.10)
+
+### Restricting login to a security group
+
+Add to `.env`:
+
+```bash
+LDAP_REQUIRED_GROUP=GS-CMDB-Iberia-Access   # short CN or full DN
+LDAP_GROUP_NESTED=true                       # false = direct members only
+LDAP_GROUP_SEARCH_BASE=                      # optional; falls back to LDAP_SEARCH_BASE
+```
+
+**Requires `LDAP_BIND_DN` and `LDAP_BIND_PASSWORD`**: membership is queried with the service account. Without it, no LDAP login will succeed while the group is configured — this is deliberate (see below).
+
+With the variable **empty**, LDAP login behaves exactly as before v3.5.10. That is the default, so an upgrade never locks anyone out.
+
+After editing `.env`, **redeploy the whole stack**. Selectively recreating a single container does not reliably pick up an edited `.env`:
+
+```bash
+podman-compose -f docker-compose.prod.yml down
+podman-compose -f docker-compose.prod.yml up -d --build
+```
+
+### Failure behaviour
+
+| Situation | What happens |
+|---|---|
+| User not in the group | `401`, account deactivated, `LDAP_GROUP_DENIED` entry in `audit_logs` |
+| Directory down, or no `LDAP_BIND_DN` | `401` for every LDAP login; `LDAP_GROUP_CHECK_UNAVAILABLE` in the log |
+| Local accounts (`@cmdb.local`) | **Unaffected** in all cases |
+
+That last row is the operational guarantee that matters: even with the domain controller down, the local administrator can still log in. If you see `LDAP_GROUP_CHECK_UNAVAILABLE` in the logs, check DC connectivity and the service account credentials before anything else.
+
+### User synchronisation
+
+Two triggers, one implementation:
+
+- **Manual**: Settings → Integrations → "Sync now" (ADMIN only).
+- **Automatic**: n8n workflow `LDAP Group Sync`, daily at 03:00 (`LDAP_SYNC_CRON`). Activated only when `USE_LDAP=true` and a group is configured.
+
+```bash
+LDAP_SYNC_DEFAULT_ROLE=VIEWER   # role on creation; never reapplied to existing users
+LDAP_SYNC_MAX_MEMBERS=5000      # hard cap per run
+LDAP_SYNC_CRON=0 3 * * *
+```
+
+It never deletes users: those who leave the group are set to `active=false`. Manually created users (no `sso_external_id`) are untouchable. An existing user's role is **never** overwritten, so a manual promotion survives the nightly run.
+
+Quick check from the host:
+
+```bash
+podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c \
+  "SELECT action, count(*) FROM audit_logs WHERE action LIKE 'LDAP_%' GROUP BY action;"
+```
+
+### Deprecated variables
+
+`LDAP_SYNC_GROUP_DN` and `LDAP_SYNC_DOMAIN` are no longer used: they fed the previous workflow, which queried the directory from n8n. They can be removed from `.env`.

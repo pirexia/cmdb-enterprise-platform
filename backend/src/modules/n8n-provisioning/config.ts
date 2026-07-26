@@ -22,8 +22,11 @@ export interface N8nProvisioningLdap {
   baseDN?: string;
   bindDN?: string;
   bindPassword?: string;
-  groupDN?: string;
-  syncDomain?: string;
+  /** v3.5.10 — CN o DN del grupo de acceso. Su presencia decide si el
+   *  workflow de sincronización debe activarse. */
+  requiredGroup?: string;
+  /** Cadencia del workflow diario de sincronización. */
+  syncCron?: string;
   useLdap: boolean;
 }
 
@@ -74,8 +77,11 @@ export function loadN8nProvisioningConfig(): N8nProvisioningConfig {
         baseDN:       envOrUndef('LDAP_BASE_DN') ?? envOrUndef('LDAP_SEARCH_BASE'),
         bindDN:       envOrUndef('LDAP_BIND_DN'),
         bindPassword: envOrUndef('LDAP_BIND_PASSWORD'),
-        groupDN:      envOrUndef('LDAP_SYNC_GROUP_DN'),
-        syncDomain:   envOrUndef('LDAP_SYNC_DOMAIN'),
+        // v3.5.10 — El grupo de acceso y la cadencia de sincronización. El
+        // workflow ya no consulta el directorio, así que no necesita groupDN
+        // ni syncDomain: solo saber cuándo disparar y si debe estar activo.
+        requiredGroup: envOrUndef('LDAP_REQUIRED_GROUP'),
+        syncCron:      process.env.LDAP_SYNC_CRON ?? '0 3 * * *',
         useLdap,
       }
     : null;

@@ -34,7 +34,7 @@ const NAV_ITEMS: NavEntry[] = [
   { type: "link", labelKey: "sidebar.vulnerabilities", href: "/vulnerabilities", icon: Shield                                   },
   { type: "link", labelKey: "sidebar.reports",         href: "/reports",        icon: BarChart                                  },
   SEP,
-  { type: "link", labelKey: "sidebar.staffSchedule",    href: "/staff-schedule", icon: CalendarDays, roles: ["ADMIN","AUDITOR","WORKER"]  },
+  { type: "link", labelKey: "sidebar.staffSchedule",    href: "/staff-schedule", icon: CalendarDays, roles: ["ADMIN","AUDITOR","MANAGER","VIEWER"]  },
   { type: "link", labelKey: "sidebar.dcim",             href: "/dcim",           icon: Server,       roles: ["ADMIN","AUDITOR"]  },
   { type: "link", labelKey: "sidebar.decommission",     href: "/decommission",   icon: PowerOff,     roles: ["ADMIN","AUDITOR"]  },
   { type: "link", labelKey: "sidebar.integrations",    href: "/integrations",   icon: Plug,         roles: ["ADMIN"]            },
@@ -165,7 +165,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
               <span className={`inline-block px-1.5 py-0.5 text-[10px] font-semibold ${
                 user.role === "ADMIN"   ? "bg-red-900/60 text-red-300"    :
                 user.role === "AUDITOR" ? "bg-amber-900/60 text-amber-300" :
-                user.role === "WORKER"  ? "bg-sky-900/60 text-sky-300"    :
+                user.role === "MANAGER"  ? "bg-sky-900/60 text-sky-300"    :
                                           "bg-slate-700 text-slate-400"
               }`}>
                 {user.role}

@@ -102,3 +102,33 @@ Se añade el rol de usuario `WORKER`, que se comporta como `VIEWER` en el resto 
 
 ---
 **Este documento debe revisarse** ante cualquier cambio que amplíe las categorías de datos tratadas, los destinatarios, o el periodo de retención.
+
+
+---
+
+## Adenda v3.5.10 — `users.display_name`
+
+**Dato nuevo tratado:** nombre y apellidos del empleado, tal como constan en el `displayName` de Active Directory (p. ej. «Andrés Matías López»).
+
+| Aspecto | Valoración |
+|---|---|
+| **Categoría** | Dato personal identificativo ordinario (art. 4.1 RGPD). **No** es categoría especial del art. 9 |
+| **Finalidad** | Presentación legible en el calendario de horarios y en el panel de usuarios. Sustituye al `sAMAccountName`, que ya era un identificador personal pero menos legible |
+| **Base legal** | La misma que el resto del módulo: art. 6.1.b (ejecución del contrato laboral) y 6.1.f (interés legítimo en la organización del trabajo) |
+| **Minimización** | Solo se almacena el nombre para mostrar. No se incorporan otros atributos del directorio (departamento AD, teléfono, cargo) aunque estén disponibles en la misma consulta |
+| **Origen** | Active Directory corporativo. No se solicita al interesado ni se introduce a mano |
+| **Actualización** | Se refresca en cada login y en cada sincronización: el directorio es la fuente de verdad |
+| **Conservación** | La de la fila de usuario. No tiene retención propia |
+| **Logs** | **No se escribe en ningún log.** Los mensajes de log del módulo y de la sincronización usan el identificador técnico (UUID), nunca el nombre ni el email |
+| **Derecho de supresión** | `DELETE /api/users/:id/erase` hace `DELETE` de la fila completa, no anonimización campo a campo, por lo que `display_name` desaparece con ella. No requiere tratamiento adicional |
+| **Riesgo residual** | **Bajo.** El dato ya era accesible para los mismos usuarios en forma de `sAMAccountName`, que en esta organización deriva del nombre real. La legibilidad aumenta, la población de datos expuestos no |
+
+**Conclusión:** el cambio no altera el nivel de riesgo de la DPIA original. No procede consulta previa a la autoridad de control.
+
+## Adenda v3.5.10 — ampliación de la audiencia de lectura
+
+`VIEWER` recupera el acceso de lectura al módulo, limitado a horarios **publicados**. Esto amplía la población que puede ver la planificación de sus compañeros.
+
+El enmascaramiento de datos de salud (art. 9) **no se ve afectado**: nunca dependió de que `VIEWER` estuviera bloqueado del módulo, sino de si el visor es `ADMIN` o el propio interesado. Un `VIEWER` recién admitido recibe exactamente el mismo tratamiento que ya recibía un `AUDITOR`: los estados `BAJA_MEDICA` y `BAJA_PATERNIDAD` se le sirven como `AUSENTE`, sin horas ni notas, y con `onGuard` forzado a `false` para que la guardia no permita correlacionar.
+
+Se añade una salvaguarda que antes no existía: los **borradores** dejan de ser visibles para `VIEWER` y `AUDITOR`. Antes, `AUDITOR` veía cualquier horario en cualquier estado; ahora solo los publicados. El cambio **reduce** la exposición para ese rol.

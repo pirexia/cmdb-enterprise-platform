@@ -12,6 +12,7 @@ import {
   UserWeeklyHoursSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
+import { buildScheduleVisibilityFilter, loadManagedDepartmentIds } from './queries.js';
 import { auditStaffSchedule } from './audit.js';
 import {
   createSchedule,
@@ -265,6 +266,16 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       const where: any = {};
       if (departmentId) where.departmentId = departmentId;
       if (weekStart && !Number.isNaN(Date.parse(weekStart))) where.weekStart = new Date(weekStart);
+
+      // v3.5.10 — Visibilidad por rol aplicada en la propia cláusula WHERE
+      // (A01: los controles de acceso a filas son filtros de BD, nunca
+      // post-filtrado). VIEWER/AUDITOR solo ven publicados; MANAGER además
+      // cualquier estado de los departamentos que gestiona; ADMIN todo.
+      const managed = req.user!.role === 'ADMIN'
+        ? []
+        : await loadManagedDepartmentIds(prisma, req.user!.id);
+      where.AND = [buildScheduleVisibilityFilter(req.user!.role, managed)];
+
       const schedules = await prisma.staffSchedule.findMany({
         where,
         orderBy: { weekStart: 'desc' },

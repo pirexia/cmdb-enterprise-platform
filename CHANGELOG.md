@@ -7,6 +7,33 @@ Versioning: [Semantic Versioning](https://semver.org/)
 
 ---
 
+## [3.5.10] — 2026-07-26
+
+### Added
+
+- **Puerta de grupo de Active Directory en el login LDAP.** Con `LDAP_REQUIRED_GROUP` configurado, solo los miembros de ese grupo de seguridad pueden iniciar sesión vía LDAP. La pertenencia se resuelve de forma anidada (`LDAP_MATCHING_RULE_IN_CHAIN`) y es configurable a directa. Nuevo servicio `services/ldapDirectory.ts`, separado de `services/ldap.ts`: aquél prueba credenciales, éste consulta el directorio con la cuenta de servicio.
+- **Sincronización de usuarios del grupo con la BD**, con dos disparadores y una sola implementación: botón en Configuración → Integraciones (ADMIN) y workflow n8n `LDAP Group Sync` diario a las 03:00. Da de alta a los miembros nuevos, actualiza identidad y reactiva a quien vuelve.
+- **`users.display_name`**: el nombre real de Active Directory se muestra en el calendario, el panel de alertas, los selectores de usuario y el panel de usuarios, en lugar del `sAMAccountName`.
+- Seis variables de entorno nuevas, todas opcionales: `LDAP_REQUIRED_GROUP`, `LDAP_GROUP_NESTED`, `LDAP_GROUP_SEARCH_BASE`, `LDAP_SYNC_DEFAULT_ROLE`, `LDAP_SYNC_MAX_MEMBERS`, `LDAP_SYNC_CRON`.
+
+### Changed
+
+- **BREAKING (permisos): el rol `WORKER` pasa a llamarse `MANAGER` y amplía su alcance.** Quien tuviera `WORKER` conserva su fila (renombrado del valor de enum, sin migración de datos) pero **gana lectura de DCIM y de los informes de rango `AUDITOR`**. En el módulo de horarios pasa de solo lectura a **crear, editar y publicar** los horarios de los departamentos que gestiona. Sigue sin acceso a los registros de auditoría: `requireAudit` lo excluye y el informe `audit-trail` está en una denylist explícita, porque el rango lineal de roles por sí solo se lo concedería.
+- **`VIEWER` recupera el acceso al módulo de horarios**, limitado a los publicados. `AUDITOR` deja de ver borradores: antes veía cualquier horario en cualquier estado. La visibilidad se aplica en la cláusula `WHERE` de Prisma, no por filtrado posterior, y un horario fuera de alcance devuelve `404` en lugar de `403` para no revelar su existencia.
+- El enmascaramiento de datos de salud (GDPR art. 9) **no se ve afectado**: nunca dependió de que `VIEWER` estuviera bloqueado del módulo.
+
+### Removed
+
+- Endpoints `GET /api/internal/users/ldap-sync-candidates` y `POST /api/internal/users/ldap-sync`, y el workflow n8n `LDAP/AD Sync` que consultaba el directorio con un nodo LDAP y calculaba el diff en un nodo Code. Eran una segunda implementación de la misma regla de acceso, con capacidad de divergir de la del login.
+- Variables `LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN`, que solo alimentaban el workflow retirado.
+
+### Security
+
+- Un usuario que deja de pertenecer al grupo recibe `401` **con el mismo mensaje que unas credenciales erróneas** (para no permitir enumerar cuentas), se le desactiva la fila y se registra `LDAP_GROUP_DENIED`, todo en una única transacción.
+- **Fail-closed**: si la pertenencia no se puede verificar —falta `LDAP_BIND_DN`, el directorio no responde, el grupo no resuelve— no se entra. Degradar a "permitir" convertiría una caída del directorio en una desactivación silenciosa de la política de acceso. Las cuentas locales quedan al margen, de modo que un directorio caído nunca deja fuera al administrador.
+- La sincronización **nunca borra usuarios** (desactiva) ni **reescribe roles**, y excluye a los usuarios creados a mano mediante cláusula de BD.
+- `ldapts` 8.2.0 como dependencia directa: la rama 7.x arrastra el CVE de `uuid` (GHSA-w5hq-g745-h8pq); la 8.1+ está limpia en `npm audit`.
+
 ## [2.9.0] — 2026-06-20
 
 ### Changed

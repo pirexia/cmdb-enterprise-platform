@@ -5,7 +5,7 @@ import { createInternalAlertsRouter }      from './alerts.js';
 import { createInternalMaintenanceRouter } from './maintenance.js';
 import { createInternalRagRouter, type RagQueueFunctions } from './rag.js';
 import { createInternalBulkRouter }  from './bulk.js';
-import { createInternalUsersRouter }  from './users.js';
+import { createInternalLdapSyncRouter } from './ldapSync.js';
 import { createInternalBackupRouter }  from './backup.js';
 import { createInternalNotifyRouter }  from './notify.js';
 import { createInternalVCenterRouter } from './vcenter.js';
@@ -101,8 +101,9 @@ export function createInternalRouter(
   // Importaciones masivas CI vía n8n (T5)
   router.use('/bulk', authenticateService, createInternalBulkRouter(prisma));
 
-  // Sincronización LDAP/AD vía n8n (T6)
-  router.use('/users', authenticateService, createInternalUsersRouter(prisma));
+  // Sincronización LDAP/AD del grupo de acceso (v3.5.10 — sustituye al diff
+  // que antes calculaba n8n con nodos LDAP+Code)
+  router.use('/ldap', authenticateService, createInternalLdapSyncRouter(prisma));
 
   // Backup automatizado vía n8n (T7)
   router.use('/backup', authenticateService, createInternalBackupRouter(prisma));

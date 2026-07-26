@@ -10,7 +10,7 @@ function cfg(over: Partial<N8nProvisioningConfig> = {}): N8nProvisioningConfig {
     apiBaseUrl: 'http://n8n-main:5678', apiKey: 'k', serviceToken: 'tok',
     smtp: { host: 's', port: 25, secure: false, from: 'cmdb-alerts@acme.com' },
     ldap: { useLdap: true, url: 'ldap://dc.acme.com:389', baseDN: 'DC=acme,DC=com',
-            groupDN: 'CN=CMDB-Users,DC=acme,DC=com', syncDomain: 'acme.com' },
+            requiredGroup: 'GS-CMDB-Iberia-Access', syncCron: '0 3 * * *' },
     vcenter: null,
     ...over,
   };
@@ -24,7 +24,7 @@ describe('renderWorkflows', () => {
   it('devuelve las 8 plantillas con nombres estables', () => {
     const names = renderWorkflows(cfg()).map((w) => w.name).sort();
     expect(names).toEqual([
-      'Alertas CMDB', 'Backup CMDB', 'Bulk Import CIs', 'LDAP/AD Sync',
+      'Alertas CMDB', 'Backup CMDB', 'Bulk Import CIs', 'LDAP Group Sync',
       'Mantenimiento CMDB', 'Notificaciones CMDB', 'RAG Indexing', 'vCenter Sync',
     ]);
   });
@@ -35,17 +35,26 @@ describe('renderWorkflows', () => {
     expect(send.parameters.fromEmail).toBe('cmdb-alerts@acme.com');
   });
 
-  it('sustituye LDAP_BASE_DN y mete el grupo en el filtro del nodo LDAP', () => {
-    const ldap = findWf(renderWorkflows(cfg()), 'LDAP/AD Sync');
-    const node = ldap.nodes.find((n: any) => n.type === 'n8n-nodes-base.ldap') as any;
-    expect(node.parameters.baseDN).toBe('DC=acme,DC=com');
-    expect(node.parameters.filter).toContain('memberOf=CN=CMDB-Users,DC=acme,DC=com');
+  // v3.5.10 — El workflow ya no consulta el directorio: solo dispara el
+  // endpoint interno, que es quien posee la regla completa (D8).
+  it('dispara el endpoint interno de sincronización, sin nodo LDAP', () => {
+    const ldap = findWf(renderWorkflows(cfg()), 'LDAP Group Sync');
+    expect(ldap.nodes.find((n: any) => n.type === 'n8n-nodes-base.ldap')).toBeUndefined();
+    const http = ldap.nodes.find((n: any) => n.name === 'Trigger LDAP sync') as any;
+    expect(http.parameters.url).toBe('http://backend:3000/api/internal/ldap/sync');
+    expect(http.parameters.method).toBe('POST');
+  });
+
+  it('sustituye LDAP_SYNC_CRON en el disparador programado', () => {
+    const ldap = findWf(renderWorkflows(cfg()), 'LDAP Group Sync');
+    const trigger = ldap.nodes.find((n: any) => n.type === 'n8n-nodes-base.scheduleTrigger') as any;
+    expect(trigger.parameters.rule.interval[0].expression).toBe('0 3 * * *');
   });
 
   it('activateWhen por workflow (smtp / ldap / always / vcenter)', () => {
     const wfs = renderWorkflows(cfg());
     expect(findWf(wfs, 'Alertas CMDB').activateWhen).toBe('smtp');
-    expect(findWf(wfs, 'LDAP/AD Sync').activateWhen).toBe('ldap');
+    expect(findWf(wfs, 'LDAP Group Sync').activateWhen).toBe('ldap');
     expect(findWf(wfs, 'RAG Indexing').activateWhen).toBe('always');
     expect(findWf(wfs, 'vCenter Sync').activateWhen).toBe('vcenter');
   });
@@ -77,13 +86,19 @@ describe('renderWorkflows', () => {
     expect(http.credentials.httpHeaderAuth.name).toBe(CRED_NAMES.headerAuth);
   });
 
-  it('inyecta binding smtp en Send Email y ldap en el nodo LDAP', () => {
+  it('inyecta binding smtp en Send Email', () => {
     const alertas = findWf(renderWorkflows(cfg()), 'Alertas CMDB');
     const send = alertas.nodes.find((n: any) => n.type === 'n8n-nodes-base.emailSend') as any;
     expect(send.credentials.smtp.name).toBe(CRED_NAMES.smtp);
+  });
 
-    const ldap = findWf(renderWorkflows(cfg()), 'LDAP/AD Sync');
-    const node = ldap.nodes.find((n: any) => n.type === 'n8n-nodes-base.ldap') as any;
-    expect(node.credentials.ldap.name).toBe(CRED_NAMES.ldap);
+  // v3.5.10 — Ninguna plantilla usa ya el nodo LDAP: el backend consulta el
+  // directorio. La credencial LDAP se sigue aprovisionando (queda disponible
+  // para workflows que el administrador cree a mano), pero el binding
+  // automático ya no tiene destino en las plantillas que enviamos.
+  it('ninguna plantilla contiene un nodo LDAP', () => {
+    const withLdapNode = renderWorkflows(cfg())
+      .filter((w) => w.nodes.some((n: any) => n.type === 'n8n-nodes-base.ldap'));
+    expect(withLdapNode).toEqual([]);
   });
 });

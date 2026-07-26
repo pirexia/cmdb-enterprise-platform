@@ -22,7 +22,7 @@ export interface RenderedWorkflow {
 
 const ACTIVATE_POLICY: Record<string, ActivateWhen> = {
   'Alertas CMDB': 'smtp',
-  'LDAP/AD Sync': 'ldap',
+  'LDAP Group Sync': 'ldap',
   'vCenter Sync': 'vcenter',
 };
 
@@ -46,9 +46,7 @@ function injectCredentials(nodes: Record<string, unknown>[]): void {
 export function renderWorkflows(cfg: N8nProvisioningConfig): RenderedWorkflow[] {
   const env: Record<string, string> = {
     ALERT_FROM_EMAIL:   cfg.smtp?.from ?? '',
-    LDAP_BASE_DN:       cfg.ldap?.baseDN ?? '',
-    LDAP_SYNC_GROUP_DN: cfg.ldap?.groupDN ?? '',
-    LDAP_SYNC_DOMAIN:   cfg.ldap?.syncDomain ?? '',
+    LDAP_SYNC_CRON:     cfg.ldap?.syncCron ?? '0 3 * * *',
     VCENTER_SYNC_CRON:  cfg.vcenter?.cron ?? '0 */6 * * *',
   };
 

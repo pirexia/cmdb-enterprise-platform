@@ -1620,3 +1620,13 @@ Campos de estado/severidad/tipo como **TEXT + allowlist Zod**, no enum PostgreSQ
 | `GUARDIA_COVERAGE`/`BAJA_CONFLICT` a nivel semanal | "Mismo día" (spec original) | `ScheduleEntry` tiene un único `status` por `(schedule,user,date)` — la regla literal sería código muerto |
 | FKs `ON DELETE CASCADE` a `User` | `Restrict` (default Prisma) | La erasure GDPR existente (`DELETE /api/admin/users/:id`) hace hard-delete; sin cascade fallaría |
 | `SummerSchedule` solo periodo global | Horas de verano también en `SummerSchedule` (spec original, duplicado) | Fuente de verdad única; las horas ya viven en `DepartmentScheduleConfig` |
+
+
+### Servicios LDAP (v3.5.10)
+
+La autenticación y la consulta al directorio están deliberadamente separadas:
+
+- `backend/src/services/ldap.ts` — **prueba credenciales**. Hace el bind del usuario contra AD y devuelve sus atributos de identidad. No consulta nada más.
+- `backend/src/services/ldapDirectory.ts` — **lee metadatos del directorio** con la cuenta de servicio: resuelve el DN del grupo de acceso, comprueba la pertenencia (anidada por defecto) y lista los miembros del grupo con paginación y tope duro.
+
+Sobre el segundo se apoyan la puerta de grupo del login (`index.ts`) y la sincronización de usuarios (`modules/integrations/ldapSyncService.ts`), que expone `runLdapGroupSync()` — una sola implementación compartida por el botón de la UI y el disparo diario de n8n.

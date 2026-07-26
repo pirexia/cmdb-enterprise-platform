@@ -200,3 +200,80 @@ No existe un vCenter real disponible en CI, por lo que la ruta feliz (sesión + 
 6. **Verificar los CIs creados** en `/inventory`, filtrando por tipo **"Servidor Virtual"** — deben aparecer las VMs descubiertas, con `vCpus`/`ram`/`adminIp`/`hostName` poblados, `status = ACTIVO`, `hypervisorId` apuntando a la fila `VMWARE` sembrada y `powerState` reflejando el estado real de encendido. (Nota: crear o editar manualmente un CI `VIRTUAL_SERVER` desde la UI ahora exige seleccionar un **Hipervisor** en el desplegable de `AddCIModal`/`EditCIModal` — es un campo obligatorio desde el rediseño Tasks G1-G4.)
 7. **Repetir el paso 5** una segunda vez y confirmar que las VMs ya existentes se reportan en `updated` (no se duplican), que `status` no cambia si se había modificado manualmente entre medias (D2), y que `hypervisorId` tampoco cambia (solo se asigna en la creación).
 8. (Opcional) Apagar/eliminar una VM de prueba en vCenter y volver a sincronizar — el CI correspondiente debe pasar a `status = RETIRADO` sin ser eliminado de la base de datos.
+
+
+---
+
+## 8. LDAP / Active Directory — grupo de acceso y sincronización de usuarios (v3.5.10)
+
+A diferencia de los conectores de las secciones anteriores, que traen **elementos de configuración** desde un sistema externo, esta integración gobierna **quién puede entrar** en la aplicación. Por eso no sigue el patrón `BaseConnector`: vive en `services/ldapDirectory.ts` (consultas al directorio) y `modules/integrations/ldapSyncService.ts` (sincronización).
+
+### 8.1 Puerta de grupo en el login
+
+Con `LDAP_REQUIRED_GROUP` configurado, un usuario solo puede iniciar sesión vía LDAP si pertenece a ese grupo de seguridad de AD. La comprobación ocurre **después** del bind correcto, con el `sAMAccountName` autoritativo ya resuelto, y **antes** de crear o rehabilitar cualquier fila local: quien no tiene derecho de acceso no llega a existir en la aplicación.
+
+| Situación | Respuesta | Efecto secundario |
+|---|---|---|
+| `LDAP_REQUIRED_GROUP` vacío | Login normal | Ninguno — comportamiento anterior a v3.5.10 |
+| Pertenece al grupo | Login normal | Se refresca `display_name` |
+| No pertenece | `401 Invalid credentials` | `active = false` + `AuditLog LDAP_GROUP_DENIED`, en una transacción |
+| No se puede verificar | `401 Invalid credentials` | Ninguno; log `LDAP_GROUP_CHECK_UNAVAILABLE` |
+
+Dos decisiones que conviene entender antes de tocar este código:
+
+- **El 401 de "no pertenece" es idéntico al de credenciales erróneas.** Distinguirlos permitiría a un atacante enumerar qué cuentas existen en el directorio.
+- **Si la pertenencia no se puede comprobar, no se entra** (falta `LDAP_BIND_DN`, el directorio no responde, el grupo no se resuelve). Degradar a "permitir" convertiría una caída parcial del directorio en una desactivación silenciosa de la política de acceso. Las cuentas locales (`@cmdb.local` / `@cmdb.internal`) no pasan por esta puerta, así que un directorio caído nunca deja al administrador fuera del sistema.
+
+La pertenencia se resuelve **anidada** por defecto, con `memberOf:1.2.840.113556.1.4.1941:` (`LDAP_MATCHING_RULE_IN_CHAIN`), porque en AD corporativo el grupo de acceso suele contener otros grupos. `LDAP_GROUP_NESTED=false` exige pertenencia directa.
+
+### 8.2 Sincronización de usuarios
+
+Una única función, `runLdapGroupSync()`, alimenta las dos entradas —el botón de Configuración → Integraciones y el workflow diario de n8n— precisamente para que la regla no pueda divergir entre ambas.
+
+Qué hace con cada miembro del grupo:
+
+| Situación | Acción |
+|---|---|
+| En el grupo, sin fila local | **Alta** con `LDAP_SYNC_DEFAULT_ROLE` y contraseña = bcrypt de 32 bytes aleatorios |
+| En el grupo, con fila, datos distintos | **Actualiza** `email`, `username`, `display_name` |
+| En el grupo, con fila inactiva | **Reactiva** |
+| Ya no está en el grupo, o deshabilitado en AD | **Desactiva** (`active = false`) |
+| Fila manual (`sso_external_id IS NULL`) | **Intocable** — excluida por cláusula de BD |
+
+Invariantes:
+
+- **Nunca se hace `DELETE`.** Quien sale del grupo se desactiva, para que la auditoría conserve el histórico.
+- **Nunca se reescribe el rol** de un usuario existente. AD posee la identidad; el operador posee la gobernanza — el mismo principio D5 del conector vCenter. Una promoción manual a `MANAGER` o `ADMIN` sobrevive a la pasada nocturna.
+- Cada mutación va con su `AuditLog` en la misma transacción.
+- Un fallo en una fila se acumula en `errors[]` y devuelve `207`; no aborta la pasada.
+- Un lock en proceso impide que el botón y la pasada de n8n se solapen (`409 SYNC_IN_PROGRESS`).
+
+### 8.3 Endpoints
+
+| Ruta | Auth | Uso |
+|---|---|---|
+| `GET /api/integrations/ldap/status` | `requireAudit` | Estado de configuración |
+| `POST /api/integrations/ldap/sync` | `requireAdmin` | Botón de la UI |
+| `GET /api/integrations/ldap/sync-log` | `requireAudit` | Historial, leído de `audit_logs` |
+| `POST /api/internal/ldap/sync` | `X-CMDB-Service-Token` | Disparo diario desde n8n |
+
+Códigos: `200` correcto · `207` parcial con `errors[]` · `400 LDAP_GROUP_NOT_CONFIGURED` · `409 SYNC_IN_PROGRESS` · `502 LDAP_DIRECTORY_UNAVAILABLE`.
+
+### 8.4 Workflow n8n
+
+`LDAP Group Sync` — Schedule diario (por defecto 03:00, `LDAP_SYNC_CRON`) → `POST /api/internal/ldap/sync` → notificación si falla. Code-provisioned, como el resto. Se auto-activa solo si `USE_LDAP=true` **y** `LDAP_REQUIRED_GROUP` no está vacío.
+
+Sustituye al workflow `LDAP/AD Sync`, que consultaba el directorio con un nodo LDAP y calculaba el diff en un nodo Code. Se retiró junto con los endpoints `/api/internal/users/ldap-sync*`: eran una segunda implementación de la misma regla de acceso, con capacidad de divergir de la del login.
+
+### 8.5 Variables de entorno
+
+| Variable | Por defecto | Significado |
+|---|---|---|
+| `LDAP_REQUIRED_GROUP` | *(vacío)* | CN o DN del grupo. Vacío ⇒ sin restricción |
+| `LDAP_GROUP_NESTED` | `true` | `false` ⇒ `memberOf` directo |
+| `LDAP_GROUP_SEARCH_BASE` | *(cae a `LDAP_SEARCH_BASE`)* | Base para buscar el grupo |
+| `LDAP_SYNC_DEFAULT_ROLE` | `VIEWER` | Rol de alta; nunca se reaplica |
+| `LDAP_SYNC_MAX_MEMBERS` | `5000` | Tope duro por pasada |
+| `LDAP_SYNC_CRON` | `0 3 * * *` | Cadencia del workflow |
+
+`LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN` quedaron **obsoletas**: alimentaban el workflow retirado.

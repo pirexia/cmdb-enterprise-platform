@@ -2222,7 +2222,9 @@
       "removeManager": "Entfernen",
       "assignDepartment": "Abteilung zuweisen",
       "configure": "Konfigurieren",
-      "applyWeek": "Auf die ganze Woche anwenden"
+      "applyWeek": "Auf die ganze Woche anwenden",
+      "syncMembers": "Mitglieder synchronisieren",
+      "deleteSchedule": "Planung löschen"
     },
     "config": {
       "title": "Dienstplankonfiguration",
@@ -2247,7 +2249,9 @@
       "fridayNetHours": "Effektive Stunden Freitag (verkürzt)",
       "newDepartment": "Neue Abteilung",
       "weeklyHoursOverride": "Wochenstunden (Mitarbeiter)",
-      "weeklyHoursDefault": "Abteilungsstandard"
+      "weeklyHoursDefault": "Abteilungsstandard",
+      "weeklyHoursWorker": "Wochenstunden (Mitarbeiter)",
+      "weeklyHoursSaved": "Wochenstunden gespeichert."
     },
     "summary": {
       "weeklyHours": "Wochenstunden",
@@ -2272,7 +2276,8 @@
     },
     "manager": {
       "title": "Abteilungsverantwortliche",
-      "selectUser": "Benutzer auswählen"
+      "selectUser": "Benutzer auswählen",
+      "none": "Keine Verantwortlichen zugewiesen."
     },
     "gdpr": {
       "maskedNotice": "Einige Status werden aus Gründen des Gesundheitsdatenschutzes allgemein angezeigt"
@@ -2280,7 +2285,8 @@
     "empty": {
       "noSchedule": "Kein Dienstplan für diese Woche",
       "createSchedule": "Dienstplan erstellen",
-      "importPreviousWeek": "Vorherige Woche importieren"
+      "importPreviousWeek": "Vorherige Woche importieren",
+      "hasNoMembers": "Diese Planung hat keine Mitarbeiter. Synchronisieren Sie, um die aktuellen Abteilungsmitglieder aufzunehmen, oder löschen Sie sie, um die Woche neu zu klonen."
     },
     "calendar": {
       "person": "Person"
@@ -2303,6 +2309,16 @@
       "pickWeek": "Zielwoche auswählen",
       "targetWeek": "Zielwoche",
       "mustBeFutureEmpty": "Muss eine zukünftige Woche ohne bestehenden Zeitplan sein"
+    },
+    "members": {
+      "title": "Abteilungsmitglieder",
+      "none": "Keine Mitglieder zugewiesen."
+    },
+    "confirm": {
+      "deleteSchedule": "Diese Planung löschen? Alle Einträge gehen verloren. Diese Aktion kann nicht rückgängig gemacht werden."
+    },
+    "syncMembers": {
+      "added": "{n} Mitarbeiter zur Planung hinzugefügt."
     }
   }
 }

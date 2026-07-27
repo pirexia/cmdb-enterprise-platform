@@ -2341,7 +2341,9 @@
       "removeManager": "Remove",
       "assignDepartment": "Assign department",
       "configure": "Configure",
-      "applyWeek": "Apply to whole week"
+      "applyWeek": "Apply to whole week",
+      "syncMembers": "Sync members",
+      "deleteSchedule": "Delete schedule"
     },
     "config": {
       "title": "Schedule configuration",
@@ -2366,7 +2368,9 @@
       "fridayNetHours": "Friday reduced-hours net time",
       "newDepartment": "New department",
       "weeklyHoursOverride": "Weekly hours (worker)",
-      "weeklyHoursDefault": "Department default"
+      "weeklyHoursDefault": "Department default",
+      "weeklyHoursWorker": "Weekly hours (worker)",
+      "weeklyHoursSaved": "Weekly hours saved."
     },
     "summary": {
       "weeklyHours": "Weekly hours",
@@ -2391,7 +2395,8 @@
     },
     "manager": {
       "title": "Department managers",
-      "selectUser": "Select user"
+      "selectUser": "Select user",
+      "none": "No managers assigned."
     },
     "gdpr": {
       "maskedNotice": "Some statuses are shown generically to protect health data"
@@ -2399,7 +2404,8 @@
     "empty": {
       "noSchedule": "No schedule for this week",
       "createSchedule": "Create schedule",
-      "importPreviousWeek": "Import previous week"
+      "importPreviousWeek": "Import previous week",
+      "hasNoMembers": "This schedule has no workers. Sync to bring in the department's current members, or delete it to re-clone the week."
     },
     "calendar": {
       "person": "Person"
@@ -2422,6 +2428,16 @@
       "pickWeek": "Choose target week",
       "targetWeek": "Target week",
       "mustBeFutureEmpty": "Must be a future week with no existing schedule"
+    },
+    "members": {
+      "title": "Department members",
+      "none": "No members assigned."
+    },
+    "confirm": {
+      "deleteSchedule": "Delete this schedule? All its entries will be lost. This action cannot be undone."
+    },
+    "syncMembers": {
+      "added": "{n} worker(s) added to the schedule."
     }
   }
 }

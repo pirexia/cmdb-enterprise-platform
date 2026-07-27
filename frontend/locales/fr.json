@@ -2222,7 +2222,9 @@
       "removeManager": "Retirer",
       "assignDepartment": "Attribuer un service",
       "configure": "Configurer",
-      "applyWeek": "Appliquer à toute la semaine"
+      "applyWeek": "Appliquer à toute la semaine",
+      "syncMembers": "Synchroniser les membres",
+      "deleteSchedule": "Supprimer la planification"
     },
     "config": {
       "title": "Configuration des horaires",
@@ -2247,7 +2249,9 @@
       "fridayNetHours": "Heures effectives du vendredi réduit",
       "newDepartment": "Nouveau service",
       "weeklyHoursOverride": "Heures hebdomadaires (employé)",
-      "weeklyHoursDefault": "Valeur par défaut du département"
+      "weeklyHoursDefault": "Valeur par défaut du département",
+      "weeklyHoursWorker": "Heures hebdomadaires (travailleur)",
+      "weeklyHoursSaved": "Heures hebdomadaires enregistrées."
     },
     "summary": {
       "weeklyHours": "Heures hebdomadaires",
@@ -2272,7 +2276,8 @@
     },
     "manager": {
       "title": "Responsables de service",
-      "selectUser": "Sélectionner un utilisateur"
+      "selectUser": "Sélectionner un utilisateur",
+      "none": "Aucun responsable assigné."
     },
     "gdpr": {
       "maskedNotice": "Certains statuts sont affichés de manière générique pour protéger les données de santé"
@@ -2280,7 +2285,8 @@
     "empty": {
       "noSchedule": "Aucune planification pour cette semaine",
       "createSchedule": "Créer une planification",
-      "importPreviousWeek": "Importer la semaine précédente"
+      "importPreviousWeek": "Importer la semaine précédente",
+      "hasNoMembers": "Cette planification n'a aucun travailleur. Synchronisez pour intégrer les membres actuels du département, ou supprimez-la pour pouvoir la recloner."
     },
     "calendar": {
       "person": "Personne"
@@ -2303,6 +2309,16 @@
       "pickWeek": "Choisir la semaine cible",
       "targetWeek": "Semaine cible",
       "mustBeFutureEmpty": "Doit être une semaine future sans planning existant"
+    },
+    "members": {
+      "title": "Membres du département",
+      "none": "Aucun membre assigné."
+    },
+    "confirm": {
+      "deleteSchedule": "Supprimer cette planification ? Toutes ses entrées seront perdues. Cette action est irréversible."
+    },
+    "syncMembers": {
+      "added": "{n} travailleur(s) ajouté(s) à la planification."
     }
   }
 }

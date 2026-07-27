@@ -10,6 +10,7 @@ import {
   UserDeptAssignSchema,
   CloneScheduleSchema,
   UserWeeklyHoursSchema,
+  UserTeleworkQuotaSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
 import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers } from './queries.js';
@@ -243,6 +244,33 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
       console.error('[StaffSchedule] user weekly-hours update error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/staff-schedule/users/:userId/telework-quota  (ADMIN)
+  // { teleworkFull, teleworkQuotaDays, teleworkQuotaPct }
+  router.put('/users/:userId/telework-quota', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserTeleworkQuotaSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: req.params.userId as string },
+          data: {
+            teleworkFull: parsed.data.teleworkFull,
+            teleworkQuotaDays: parsed.data.teleworkQuotaDays,
+            teleworkQuotaPct: parsed.data.teleworkQuotaPct,
+          },
+          select: { id: true, username: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+        });
+        await auditStaffSchedule(tx, { action: 'SET_USER_TELEWORK_QUOTA', entity: 'DEPARTMENT', entityId: req.params.userId as string, userEmail: req.user!.email });
+        return u;
+      });
+      res.json(user);
+    } catch (err: any) {
+      if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
+      console.error('[StaffSchedule] user telework-quota update error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

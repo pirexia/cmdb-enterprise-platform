@@ -11,6 +11,9 @@ export const STATUS_META: Record<string, { bg: string; text: string }> = {
   BAJA_MEDICA: { bg: "bg-red-100", text: "text-red-800" },
   BAJA_PATERNIDAD: { bg: "bg-emerald-200", text: "text-emerald-900" },
   INTENSIVO: { bg: "bg-purple-100", text: "text-purple-800" },
+  // Intensive shift worked remotely (v3.5.11): purple family (intensive) with
+  // the teal cast that distinguishes it from the on-site intensive day.
+  INTENSIVO_TELETRABAJO: { bg: "bg-teal-100", text: "text-teal-800" },
   VIAJE: { bg: "bg-cyan-100", text: "text-cyan-800" },
   AUSENTE: { bg: "bg-slate-100", text: "text-slate-600" },
 };

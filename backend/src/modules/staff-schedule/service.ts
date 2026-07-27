@@ -11,7 +11,8 @@ import {
   GeneratedAlert,
 } from './validationEngine.js';
 import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
-         buildScheduleVisibilityFilter, loadManagedDepartmentIds } from './queries.js';
+         buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
+         loadDepartmentManagerIds } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -306,6 +307,48 @@ export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: st
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
+// syncScheduleMembers — DRAFT only. Adds base PRESENCIAL entries (Mon-Fri) for
+// active department members who do not yet have ANY entry in this schedule.
+// Never touches existing entries — idempotent and non-destructive, unlike
+// deleteSchedule. Added in the v3.5.10 refinement round to cover two related
+// gaps: a schedule created/cloned before the department had its final
+// membership (entries missing for members added later), and a new hire
+// joining a department that already has schedules planned months ahead.
+export async function syncScheduleMembers(
+  prisma: Prisma.TransactionClient,
+  scheduleId: string,
+): Promise<{ added: number }> {
+  const schedule = await prisma.staffSchedule.findUnique({
+    where: { id: scheduleId },
+    select: { status: true, departmentId: true, weekStart: true },
+  });
+  if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
+  if (schedule.status !== 'DRAFT') {
+    throw new ScheduleServiceError(409, 'Cannot sync members on a published schedule; unpublish first');
+  }
+
+  const [members, present] = await Promise.all([
+    loadDepartmentMembers(prisma, schedule.departmentId),
+    prisma.scheduleEntry.findMany({ where: { scheduleId }, distinct: ['userId'], select: { userId: true } }),
+  ]);
+  const presentIds = new Set(present.map((p) => p.userId));
+  const missing = members.filter((m) => !presentIds.has(m.id));
+
+  const entriesData = missing.flatMap((m) =>
+    Array.from({ length: 5 }, (_, i) => ({
+      scheduleId,
+      userId: m.id,
+      departmentId: schedule.departmentId,
+      date: addDaysUtc(schedule.weekStart, i),
+      status: 'PRESENCIAL',
+    })),
+  );
+  if (entriesData.length > 0) {
+    await prisma.scheduleEntry.createMany({ data: entriesData });
+  }
+  return { added: missing.length };
+}
+
 // deleteSchedule — DRAFT only (D10: PUBLISHED is immutable; unpublish first).
 // ScheduleEntry/ScheduleAlert cascade via onDelete: Cascade in schema.prisma.
 // Added in the v3.5.10 refinement round: a schedule cloned/created before the
@@ -417,6 +460,20 @@ export interface ScheduleView {
   canEdit: boolean;
 }
 
+// Comparador puro para el orden manager-first (v3.5.10 refinamiento).
+// Extraído para poder probarlo sin montar toda la maquinaria de
+// buildScheduleView (consultas a BD, masking, resúmenes semanales, etc.).
+export function sortRowManagerFirst(
+  a: { userId: string; displayName: string | null; username: string },
+  b: { userId: string; displayName: string | null; username: string },
+  managerIds: Set<string>,
+): number {
+  const aIsManager = managerIds.has(a.userId) ? 0 : 1;
+  const bIsManager = managerIds.has(b.userId) ? 0 : 1;
+  if (aIsManager !== bIsManager) return aIsManager - bIsManager;
+  return (a.displayName ?? a.username).localeCompare(b.displayName ?? b.username);
+}
+
 // buildScheduleView — the GET /:id shape (masked per viewer, D4). Also the
 // backbone reused by export.ts (which must always receive an already-masked view).
 export async function buildScheduleView(
@@ -495,6 +552,13 @@ export async function buildScheduleView(
       summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
     });
   }
+
+  // v3.5.10 refinamiento — el responsable del departamento aparece primero;
+  // el resto se ordena alfabéticamente por nombre para mostrar. Antes las
+  // filas salían en el orden de iteración del Map (efectivamente por userId,
+  // un UUID sin significado para el usuario).
+  const managerIds = await loadDepartmentManagerIds(prisma, schedule.departmentId);
+  rows.sort((a, b) => sortRowManagerFirst(a, b, managerIds));
 
   const alerts = schedule.alerts.map((a) => {
     const masked = maskAlertForViewer(

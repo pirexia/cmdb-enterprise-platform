@@ -21,6 +21,7 @@ import {
   publish,
   unpublish,
   deleteSchedule,
+  syncScheduleMembers,
   cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
@@ -420,6 +421,25 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.status(204).end();
     } catch (err) {
       handleServiceError(err, res, 'delete');
+    }
+  });
+
+  // POST /api/staff-schedule/:id/sync-members  (deptEdit, DRAFT only) — v3.5.10
+  // refinamiento: añade entradas base para miembros del departamento que
+  // todavía no tengan ninguna en este horario. No destructivo — nunca toca
+  // entradas existentes. Cubre tanto un horario vacío (creado/clonado antes de
+  // que el departamento tuviera su membresía final) como un trabajador nuevo
+  // que se incorpora a un departamento con horarios ya planificados.
+  router.post('/:id/sync-members', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const r = await syncScheduleMembers(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'SYNC_STAFF_SCHEDULE_MEMBERS', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+        return r;
+      });
+      res.json(result);
+    } catch (err) {
+      handleServiceError(err, res, 'sync members');
     }
   });
 

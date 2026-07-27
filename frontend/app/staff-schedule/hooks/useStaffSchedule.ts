@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "@/lib/apiFetch";
 import type {
   Department,
+  DepartmentManagerInfo,
+  DepartmentMemberInfo,
   DepartmentScheduleConfig,
   EntryUpdateInput,
   ScheduleView,
@@ -167,6 +169,32 @@ export function useSchedule(departmentId: string | null, weekStart: string) {
     }
   }, [scheduleId]);
 
+  // v3.5.10 refinamiento — añade entradas base para los miembros del
+  // departamento que aún no tengan ninguna en este horario. No destructivo.
+  const syncMembers = useCallback(async (): Promise<{ added: number }> => {
+    if (!scheduleId) return { added: 0 };
+    const res = await apiFetch(`/api/staff-schedule/${scheduleId}/sync-members`, { method: "POST" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `Status ${res.status}`);
+    }
+    const result = await res.json();
+    await load();
+    return result;
+  }, [scheduleId, load]);
+
+  // v3.5.10 refinamiento — descarta un horario en DRAFT (permite re-clonar la
+  // semana). Un PUBLISHED debe despublicarse primero (D10).
+  const deleteSchedule = useCallback(async () => {
+    if (!scheduleId) return;
+    const res = await apiFetch(`/api/staff-schedule/${scheduleId}`, { method: "DELETE" });
+    if (!res.ok && res.status !== 204) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `Status ${res.status}`);
+    }
+    await load();
+  }, [scheduleId, load]);
+
   // Import the previous week's schedule (same department) onto the currently
   // viewed, empty week. Looks up the previous week's schedule id, then clones
   // it forward via the same endpoint used by the "Clone to week..." picker.
@@ -203,6 +231,8 @@ export function useSchedule(departmentId: string | null, weekStart: string) {
     unpublish,
     clone,
     importPreviousWeek,
+    syncMembers,
+    deleteSchedule,
   };
 }
 
@@ -267,6 +297,59 @@ export function useDepartmentConfig(departmentId: string | null) {
   );
 
   return { config, loading, refetch, save };
+}
+
+// v3.5.10 refinamiento — antes no había ningún GET para ver quién gestiona un
+// departamento ni quién pertenece a él; el panel de configuración solo podía
+// añadir/quitar managers a ciegas.
+export function useDepartmentManagers(departmentId: string | null) {
+  const [managers, setManagers] = useState<DepartmentManagerInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const refetch = useCallback(async () => {
+    if (!departmentId) {
+      setManagers([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/departments/${departmentId}/managers`);
+      setManagers(res.ok ? await res.json() : []);
+    } finally {
+      setLoading(false);
+    }
+  }, [departmentId]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { managers, loading, refetch };
+}
+
+export function useDepartmentMembers(departmentId: string | null) {
+  const [members, setMembers] = useState<DepartmentMemberInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const refetch = useCallback(async () => {
+    if (!departmentId) {
+      setMembers([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/departments/${departmentId}/members`);
+      setMembers(res.ok ? await res.json() : []);
+    } finally {
+      setLoading(false);
+    }
+  }, [departmentId]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { members, loading, refetch };
 }
 
 export function useSummerSchedule(year: number) {

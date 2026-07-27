@@ -12,7 +12,7 @@ import {
   UserWeeklyHoursSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
-import { buildScheduleVisibilityFilter, loadManagedDepartmentIds } from './queries.js';
+import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers } from './queries.js';
 import { auditStaffSchedule } from './audit.js';
 import {
   createSchedule,
@@ -130,6 +130,33 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // ─── Managers (D3 row-level authorization) ─────────────────────────────
+
+  // GET /api/staff-schedule/departments/:id/managers — v3.5.10 refinamiento.
+  // Lectura pura: cualquiera con acceso al módulo (requireScheduleAccess, ya
+  // aplicado por el montaje del router) puede ver quién gestiona un
+  // departamento. Antes no existía ningún GET; el panel de configuración
+  // solo podía añadir/quitar a ciegas.
+  router.get('/departments/:id/managers', requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const managers = await loadDepartmentManagers(prisma, req.params.id as string);
+      res.json(managers);
+    } catch (err) {
+      console.error('[StaffSchedule] managers list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/staff-schedule/departments/:id/members — v3.5.10 refinamiento.
+  // Lectura pura, mismo criterio de acceso que arriba.
+  router.get('/departments/:id/members', requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const members = await loadDepartmentMembers(prisma, req.params.id as string);
+      res.json(members);
+    } catch (err) {
+      console.error('[StaffSchedule] members list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // POST /api/staff-schedule/departments/:id/managers  (ADMIN)  { userId }
   router.post('/departments/:id/managers', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {

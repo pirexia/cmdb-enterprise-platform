@@ -16,6 +16,7 @@ export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER";
 export interface AuthUser {
   id:          string;
   username:    string;
+  displayName?: string | null; // AD displayName (v3.5.10); fallback to username via displayLabel()
   email:       string;
   role:        UserRole;
   mfa_enabled: boolean;

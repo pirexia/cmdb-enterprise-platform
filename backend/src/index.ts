@@ -910,7 +910,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
   try {
     type UserRow = {
-      id: string; username: string; email: string; password: string | null;
+      id: string; username: string; displayName: string | null; email: string; password: string | null;
       role: string; active: boolean;
       mfa_enabled: boolean; mfa_secret: string | null; mfa_prompted_at: Date | null;
     };
@@ -1005,7 +1005,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
       if (ldapSuccess && sam && ad) {
         let rows = await prisma.$queryRaw<UserRow[]>`
-          SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+          SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                  mfa_enabled, mfa_secret, mfa_prompted_at
           FROM "users" WHERE sso_external_id = ${sam} AND sso_provider = 'ldap' LIMIT 1
         `;
@@ -1026,7 +1026,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
               VALUES(gen_random_uuid(), 'UPDATE', 'User', ${byMail[0].id}::uuid, ${ad.mail}, now())
             `;
             rows = await prisma.$queryRaw<UserRow[]>`
-              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+              SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                      mfa_enabled, mfa_secret, mfa_prompted_at
               FROM "users" WHERE id = ${byMail[0].id}::uuid LIMIT 1
             `;
@@ -1049,7 +1049,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
               VALUES(gen_random_uuid(), 'CREATE', 'User', ${inserted[0].id}::uuid, ${provisionEmail}, now())
             `;
             rows = await prisma.$queryRaw<UserRow[]>`
-              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+              SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                      mfa_enabled, mfa_secret, mfa_prompted_at
               FROM "users" WHERE id = ${inserted[0].id}::uuid LIMIT 1
             `;
@@ -1090,7 +1090,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       }
 
       const rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+        SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                mfa_enabled, mfa_secret, mfa_prompted_at
         FROM "users" WHERE email = ${email} LIMIT 1
       `;
@@ -1131,7 +1131,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
       return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     };
-    const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
+    const userObj = () => ({ id: user!.id, username: user!.username, displayName: user!.displayName, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
 
     // ── Helper: create trusted device record ──────────────────────────────────
     const createTrustedDevice = async (): Promise<string> => {

@@ -16,7 +16,7 @@ export function requireReportAccess(req: Request, res: Response, next: NextFunct
   const id = String(req.params['id'] ?? '');
   const def = getReport(id);
   if (!def) { res.status(404).json({ error: 'Report not found' }); return; }
-  if (!hasRoleAccess((user.role ?? 'VIEWER') as UserRole, def.minRole)) {
+  if (!hasRoleAccess((user.role ?? 'VIEWER') as UserRole, def.minRole, def.id)) {
     res.status(403).json({ error: 'Insufficient role', required: def.minRole });
     return;
   }

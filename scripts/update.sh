@@ -474,6 +474,14 @@ check_new_env_vars() {
     "LDAP_SEARCH_BASE"
     "LDAP_SYNC_GROUP_DN"
     "LDAP_SYNC_DOMAIN"
+    # v3.5.10 — grupo de acceso AD y sincronización de usuarios. Todas
+    # opcionales: con LDAP_REQUIRED_GROUP vacío el login LDAP no cambia.
+    "LDAP_REQUIRED_GROUP"
+    "LDAP_GROUP_NESTED"
+    "LDAP_GROUP_SEARCH_BASE"
+    "LDAP_SYNC_DEFAULT_ROLE"
+    "LDAP_SYNC_MAX_MEMBERS"
+    "LDAP_SYNC_CRON"
     # v3.5.3 — vCenter connector (optional)
     "VCENTER_URL"
     "VCENTER_USER"

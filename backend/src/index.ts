@@ -17,6 +17,10 @@ import { PrismaClient, Prisma, Criticality, Environment } from '@prisma/client';
 import { runAlertsPipeline } from './modules/alerts/pipeline';
 import { authenticateLDAP, type LdapUserIdentity } from './services/ldap';
 import { parseLoginIdentifier } from './services/ldapIdentity';
+import {
+  isGroupGateEnabled, isUserInRequiredGroup, decideGroupGate,
+  LdapDirectoryError, type LdapDirectoryErrorCode,
+} from './services/ldapDirectory';
 import { lookupEolWithFallbacks } from './services/eolService';
 import { getSystemInfo } from './services/systemInfoService';
 import {
@@ -906,7 +910,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
   try {
     type UserRow = {
-      id: string; username: string; email: string; password: string | null;
+      id: string; username: string; displayName: string | null; email: string; password: string | null;
       role: string; active: boolean;
       mfa_enabled: boolean; mfa_secret: string | null; mfa_prompted_at: Date | null;
     };
@@ -938,9 +942,70 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
         ldapSuccess = false;
       }
 
+      // ── Puerta de grupo de seguridad AD (v3.5.10) ────────────────────────────
+      // Se evalúa aquí, con el sAMAccountName autoritativo ya resuelto y ANTES
+      // de cualquier auto-heal o auto-provisión: un usuario sin derecho de
+      // acceso no debe llegar siquiera a tener fila en la aplicación.
+      if (ldapSuccess && sam) {
+        let member: boolean | null = null;
+        let gateError: LdapDirectoryErrorCode | null = null;
+        const gateEnabled = isGroupGateEnabled();
+
+        if (gateEnabled) {
+          try {
+            member = await isUserInRequiredGroup(sam);
+          } catch (e) {
+            gateError = e instanceof LdapDirectoryError ? e.code : 'UNAVAILABLE';
+            log.error(`[POST /api/auth/login] LDAP_GROUP_CHECK_UNAVAILABLE (${gateError}) al verificar el grupo requerido`);
+          }
+        }
+
+        const decision = decideGroupGate({ enabled: gateEnabled, member, error: gateError });
+
+        if (decision === 'DENY_UNAVAILABLE') {
+          // Fail-closed (D7): no se pudo comprobar la política, así que no se
+          // entra. No se toca la fila local — el usuario puede ser perfectamente
+          // legítimo y el problema estar en el directorio. Las cuentas locales
+          // no pasan por esta rama, de modo que un directorio caído nunca deja
+          // al administrador fuera del sistema (ISO 22301).
+          res.status(401).json({ error: 'Invalid credentials' });
+          return;
+        }
+
+        if (decision === 'DENY_AND_DEACTIVATE') {
+          const existing = await prisma.$queryRaw<{ id: string }[]>`
+            SELECT id::text AS id FROM "users"
+            WHERE sso_external_id = ${sam} AND sso_provider = 'ldap' LIMIT 1
+          `;
+          if (existing.length > 0) {
+            // Mutación + auditoría en la MISMA transacción (#172, A.8.15): si el
+            // registro falla, la desactivación revierte y no queda una escritura
+            // sin rastro.
+            await prisma.$transaction(async (tx) => {
+              await tx.$executeRaw`
+                UPDATE "users" SET active = false, updated_at = now()
+                WHERE id = ${existing[0].id}::uuid
+              `;
+              await tx.$executeRaw`
+                INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
+                VALUES(gen_random_uuid(), 'LDAP_GROUP_DENIED', 'User', ${existing[0].id}::uuid,
+                       'system@cmdb.local',
+                       ${JSON.stringify({ reason: 'not_in_required_group' })}::jsonb, now())
+              `;
+            });
+          }
+          // Solo el id técnico en el log, nunca el email ni el nombre (GDPR).
+          log.warn(`[POST /api/auth/login] acceso denegado: cuenta LDAP fuera del grupo requerido (userId=${existing[0]?.id ?? 'sin fila local'})`);
+          // Mensaje idéntico al de credenciales erróneas: no revelar que la
+          // cuenta existe pero carece de grupo (enumeración de usuarios).
+          res.status(401).json({ error: 'Invalid credentials' });
+          return;
+        }
+      }
+
       if (ldapSuccess && sam && ad) {
         let rows = await prisma.$queryRaw<UserRow[]>`
-          SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+          SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                  mfa_enabled, mfa_secret, mfa_prompted_at
           FROM "users" WHERE sso_external_id = ${sam} AND sso_provider = 'ldap' LIMIT 1
         `;
@@ -961,7 +1026,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
               VALUES(gen_random_uuid(), 'UPDATE', 'User', ${byMail[0].id}::uuid, ${ad.mail}, now())
             `;
             rows = await prisma.$queryRaw<UserRow[]>`
-              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+              SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                      mfa_enabled, mfa_secret, mfa_prompted_at
               FROM "users" WHERE id = ${byMail[0].id}::uuid LIMIT 1
             `;
@@ -975,8 +1040,8 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
           const dummyHash      = await bcrypt.hash(`ldap-provisioned-${Date.now()}`, BCRYPT_ROUNDS);
           try {
             const inserted = await prisma.$queryRaw<{ id: string }[]>`
-              INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, created_at, updated_at)
-              VALUES (gen_random_uuid(), ${username}, ${provisionEmail}, ${dummyHash}, 'VIEWER', ${sam}, 'ldap', now(), now())
+              INSERT INTO "users" (id, username, email, password, role, sso_external_id, sso_provider, display_name, created_at, updated_at)
+              VALUES (gen_random_uuid(), ${username}, ${provisionEmail}, ${dummyHash}, 'VIEWER', ${sam}, 'ldap', ${ad.displayName ?? null}, now(), now())
               RETURNING id
             `;
             await prisma.$executeRaw`
@@ -984,7 +1049,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
               VALUES(gen_random_uuid(), 'CREATE', 'User', ${inserted[0].id}::uuid, ${provisionEmail}, now())
             `;
             rows = await prisma.$queryRaw<UserRow[]>`
-              SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+              SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                      mfa_enabled, mfa_secret, mfa_prompted_at
               FROM "users" WHERE id = ${inserted[0].id}::uuid LIMIT 1
             `;
@@ -999,6 +1064,17 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
           }
         }
         user = rows[0];
+
+        // v3.5.10 — El directorio es la fuente de verdad del nombre para
+        // mostrar: se refresca en cada login si ha cambiado. No se audita (no
+        // es un cambio de gobernanza ni de acceso) y el valor no se escribe en
+        // ningún log, por ser dato personal.
+        if (ad.displayName) {
+          await prisma.$executeRaw`
+            UPDATE "users" SET display_name = ${ad.displayName}, updated_at = now()
+            WHERE id = ${user.id}::uuid AND display_name IS DISTINCT FROM ${ad.displayName}
+          `;
+        }
       }
     }
 
@@ -1014,7 +1090,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       }
 
       const rows = await prisma.$queryRaw<UserRow[]>`
-        SELECT id, username, email, password, role, COALESCE(active, true) AS active,
+        SELECT id, username, display_name AS "displayName", email, password, role, COALESCE(active, true) AS active,
                mfa_enabled, mfa_secret, mfa_prompted_at
         FROM "users" WHERE email = ${email} LIMIT 1
       `;
@@ -1055,7 +1131,7 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
       const p: JwtPayload = { id: user!.id, username: user!.username, email: user!.email, role: user!.role as UserRole };
       return jwt.sign(p, JWT_SECRET_VALUE, { expiresIn: '8h', algorithm: 'HS256' as const });
     };
-    const userObj = () => ({ id: user!.id, username: user!.username, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
+    const userObj = () => ({ id: user!.id, username: user!.username, displayName: user!.displayName, email: user!.email, role: user!.role, mfa_enabled: user!.mfa_enabled });
 
     // ── Helper: create trusted device record ──────────────────────────────────
     const createTrustedDevice = async (): Promise<string> => {
@@ -1159,9 +1235,9 @@ app.post('/api/auth/login', loginLimiter, async (req: Request, res: Response) =>
 
 app.get('/api/users', authenticateToken, async (_req: Request, res: Response) => {
   try {
-    type UserRow = { id: string; username: string; email: string; role: string; active: boolean; sso_external_id: string | null; mfa_enabled: boolean; created_at: Date };
+    type UserRow = { id: string; username: string; displayName: string | null; email: string; role: string; active: boolean; sso_external_id: string | null; mfa_enabled: boolean; created_at: Date };
     const users = await prisma.$queryRaw<UserRow[]>`
-      SELECT id, username, email, role,
+      SELECT id, username, display_name AS "displayName", email, role,
              COALESCE(active, true) AS active,
              sso_external_id, mfa_enabled, created_at
       FROM "users" ORDER BY username ASC
@@ -1180,8 +1256,8 @@ app.get('/api/users', authenticateToken, async (_req: Request, res: Response) =>
 app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { role } = req.body as { role?: string };
-  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'WORKER'] as string[]).includes(role)) {
-    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER" or "WORKER"' });
+  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'MANAGER'] as string[]).includes(role)) {
+    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER" or "MANAGER"' });
     return;
   }
   try {

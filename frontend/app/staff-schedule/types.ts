@@ -90,6 +90,7 @@ export interface MaskedEntryFields {
 export interface ScheduleRow {
   userId: string;
   username: string;
+  displayName: string | null;
   entries: Record<string, MaskedEntryFields>;
   summary: {
     weeklyNetHours: number;
@@ -140,6 +141,23 @@ export interface EntryUpdateInput {
 export interface SimpleUser {
   id: string;
   username: string;
+  displayName?: string | null;
   email: string;
   role: string;
+}
+
+// v3.5.10 refinamiento — GET /departments/:id/managers y .../members.
+export interface DepartmentManagerInfo {
+  id: string;
+  username: string;
+  displayName: string | null;
+  email: string;
+}
+
+export interface DepartmentMemberInfo {
+  id: string;
+  username: string;
+  displayName: string | null;
+  email: string;
+  weeklyTargetHours: number | null;
 }

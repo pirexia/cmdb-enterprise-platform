@@ -1374,3 +1374,13 @@ Status/severity/type fields are **TEXT + Zod allowlist**, not PostgreSQL enums (
 | `GUARDIA_COVERAGE`/`BAJA_CONFLICT` at week granularity | "Same day" (original spec) | `ScheduleEntry` has a single `status` per `(schedule,user,date)` — the literal rule would be dead code |
 | `ON DELETE CASCADE` FKs to `User` | `Restrict` (Prisma default) | The existing GDPR erasure endpoint (`DELETE /api/admin/users/:id`) hard-deletes; without cascade it would fail |
 | `SummerSchedule` holds only the global period | Summer hours also on `SummerSchedule` (original spec, duplicated) | Single source of truth; hours already live on `DepartmentScheduleConfig` |
+
+
+### LDAP services (v3.5.10)
+
+Authentication and directory lookup are deliberately separated:
+
+- `backend/src/services/ldap.ts` — **verifies credentials**. Binds the user against AD and returns their identity attributes. Nothing else.
+- `backend/src/services/ldapDirectory.ts` — **reads directory metadata** using the service account: resolves the access group's DN, checks membership (nested by default) and lists group members with paging and a hard cap.
+
+The login group gate (`index.ts`) and the user synchronisation (`modules/integrations/ldapSyncService.ts`) both build on the second one. The latter exposes `runLdapGroupSync()` — a single implementation shared by the UI button and the nightly n8n trigger.

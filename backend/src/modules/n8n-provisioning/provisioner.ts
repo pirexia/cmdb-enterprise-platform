@@ -28,7 +28,10 @@ export interface ProvisionReport {
 function shouldActivate(policy: ActivateWhen, cfg: N8nProvisioningConfig): boolean {
   if (policy === 'always') return true;
   if (policy === 'smtp')   return cfg.smtp !== null;
-  if (policy === 'ldap')   return cfg.ldap?.useLdap === true;
+  // v3.5.10 — El workflow de sincronización solo tiene sentido si además hay
+  // grupo de acceso configurado: sin él, runLdapGroupSync devuelve 400 y el
+  // workflow fallaría cada noche sin aportar nada.
+  if (policy === 'ldap')   return cfg.ldap?.useLdap === true && !!cfg.ldap?.requiredGroup?.trim();
   if (policy === 'vcenter') return cfg.vcenter?.enabled === true;
   return false;
 }

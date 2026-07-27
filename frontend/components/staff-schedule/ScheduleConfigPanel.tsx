@@ -6,9 +6,12 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
   useDepartmentConfig,
+  useDepartmentManagers,
+  useDepartmentMembers,
 } from "@/app/staff-schedule/hooks/useStaffSchedule";
 import type { Department, DepartmentScheduleConfig, SimpleUser } from "@/app/staff-schedule/types";
 import SummerScheduleConfig from "./SummerScheduleConfig";
+import { displayLabel } from "@/lib/displayLabel";
 
 interface Props {
   departments: Department[];
@@ -39,14 +42,19 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
   const [cfgSaving, setCfgSaving] = useState(false);
   const [cfgError, setCfgError] = useState<string | null>(null);
 
+  const { managers: currentManagers, refetch: refetchManagers } = useDepartmentManagers(creatingNew ? null : selectedDeptId);
+  const { members: currentMembers, refetch: refetchMembers } = useDepartmentMembers(creatingNew ? null : selectedDeptId);
+
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [managerUserId, setManagerUserId] = useState("");
   const [assignUserId, setAssignUserId] = useState("");
   const [assignDeptId, setAssignDeptId] = useState<string>("");
   const [managersError, setManagersError] = useState<string | null>(null);
+  const [weeklyHoursUserId, setWeeklyHoursUserId] = useState("");
   const [assignWeeklyHours, setAssignWeeklyHours] = useState("");
   const [weeklyHoursError, setWeeklyHoursError] = useState<string | null>(null);
   const [weeklyHoursSaving, setWeeklyHoursSaving] = useState(false);
+  const [weeklyHoursSuccess, setWeeklyHoursSuccess] = useState(false);
 
   useEffect(() => {
     apiFetch("/api/users")
@@ -58,6 +66,16 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
   useEffect(() => {
     if (config) setCfgForm(config);
   }, [config]);
+
+  // v3.5.10 refinamiento — al elegir un trabajador en el selector de horas
+  // semanales, prefija el campo con su valor efectivo actual (o vacío si usa
+  // el valor por defecto del departamento).
+  useEffect(() => {
+    if (!weeklyHoursUserId) { setAssignWeeklyHours(""); return; }
+    const member = currentMembers.find((m) => m.id === weeklyHoursUserId);
+    setAssignWeeklyHours(member?.weeklyTargetHours != null ? String(member.weeklyTargetHours) : "");
+    setWeeklyHoursSuccess(false);
+  }, [weeklyHoursUserId, currentMembers]);
 
   const selectedDept = departments.find((d) => d.id === selectedDeptId) ?? null;
 
@@ -140,27 +158,28 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
         throw new Error(body.error ?? `Status ${res.status}`);
       }
       setManagerUserId("");
+      await refetchManagers();
       onDepartmentsChanged();
     } catch (e) {
       setManagersError(e instanceof Error ? e.message : "error");
     }
   };
 
-  // There is no GET endpoint to list a department's current managers (only
-  // POST/DELETE by userId exist), so removal works by picking the user to
-  // remove from the same select rather than from a fetched list.
-  const handleRemoveManager = async () => {
-    if (!selectedDeptId || !managerUserId) return;
+  // v3.5.10 refinamiento — antes no había GET de managers, así que quitar
+  // solo podía hacerse a ciegas desde el mismo select de añadir. Ahora se
+  // quita desde la lista de responsables actuales (ver JSX más abajo).
+  const handleRemoveManager = async (userId: string) => {
+    if (!selectedDeptId) return;
     setManagersError(null);
     try {
-      const res = await apiFetch(`/api/staff-schedule/departments/${selectedDeptId}/managers/${managerUserId}`, {
+      const res = await apiFetch(`/api/staff-schedule/departments/${selectedDeptId}/managers/${userId}`, {
         method: "DELETE",
       });
       if (!res.ok && res.status !== 204) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `Status ${res.status}`);
       }
-      setManagerUserId("");
+      await refetchManagers();
       onDepartmentsChanged();
     } catch (e) {
       setManagersError(e instanceof Error ? e.message : "error");
@@ -181,17 +200,25 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
       }
       setAssignUserId("");
       setAssignDeptId("");
+      await refetchMembers();
+      onDepartmentsChanged();
     } catch (e) {
       setManagersError(e instanceof Error ? e.message : "error");
     }
   };
 
+  // v3.5.10 refinamiento — antes dependía de assignUserId (el selector de la
+  // sección "asignar departamento" de arriba): sin elegir un trabajador ahí,
+  // el botón de esta sección nunca se habilitaba. Ahora tiene su propio
+  // selector (weeklyHoursUserId, poblado con los miembros del departamento) y
+  // el campo se prefija con las horas actuales del trabajador elegido.
   const handleSetWeeklyHours = async () => {
-    if (!assignUserId) return;
+    if (!weeklyHoursUserId) return;
     setWeeklyHoursError(null);
+    setWeeklyHoursSuccess(false);
     setWeeklyHoursSaving(true);
     try {
-      const res = await apiFetch(`/api/staff-schedule/users/${assignUserId}/weekly-hours`, {
+      const res = await apiFetch(`/api/staff-schedule/users/${weeklyHoursUserId}/weekly-hours`, {
         method: "PUT",
         body: JSON.stringify({ weeklyTargetHours: assignWeeklyHours === "" ? null : Number(assignWeeklyHours) }),
       });
@@ -199,7 +226,8 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error ?? `Status ${res.status}`);
       }
-      setAssignWeeklyHours("");
+      setWeeklyHoursSuccess(true);
+      await refetchMembers();
     } catch (e) {
       setWeeklyHoursError(e instanceof Error ? e.message : "error");
     } finally {
@@ -409,6 +437,29 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
           {selectedDeptId && !creatingNew && (
             <section className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-900">{t("staffSchedule.manager.title")}</h3>
+
+              {/* v3.5.10 refinamiento — responsables actuales, antes invisibles
+                  (no existía ningún GET; solo se podía añadir/quitar a ciegas). */}
+              {currentManagers.length > 0 ? (
+                <ul className="space-y-1">
+                  {currentManagers.map((m) => (
+                    <li key={m.id} className="flex items-center justify-between bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
+                      <span className="text-slate-700">{displayLabel(m)} <span className="text-slate-400">({m.email})</span></span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveManager(m.id)}
+                        title={t("staffSchedule.action.removeManager")}
+                        className="text-slate-400 hover:text-red-600"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-400">{t("staffSchedule.manager.none")}</p>
+              )}
+
               <div className="flex items-center gap-2">
                 <select
                   value={managerUserId}
@@ -418,7 +469,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   <option value="">{t("staffSchedule.manager.selectUser")}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.username} ({u.email})
+                      {displayLabel(u)} ({u.email})
                     </option>
                   ))}
                 </select>
@@ -430,17 +481,27 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 >
                   {t("staffSchedule.action.addManager")}
                 </button>
-                <button
-                  type="button"
-                  onClick={handleRemoveManager}
-                  disabled={!managerUserId}
-                  title={t("staffSchedule.action.removeManager")}
-                  className="rounded-none border border-slate-300 bg-white p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
               </div>
               {managersError && <p className="text-xs text-red-600">{managersError}</p>}
+            </section>
+          )}
+
+          {/* Members — v3.5.10 refinamiento: lectura, antes invisible */}
+          {selectedDeptId && !creatingNew && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-semibold text-slate-900">{t("staffSchedule.members.title")}</h3>
+              {currentMembers.length > 0 ? (
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {currentMembers.map((m) => (
+                    <li key={m.id} className="flex items-center justify-between bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
+                      <span className="text-slate-700">{displayLabel(m)}</span>
+                      <span className="text-slate-400">{m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs text-slate-400">{t("staffSchedule.members.none")}</p>
+              )}
             </section>
           )}
 
@@ -456,7 +517,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 <option value="">{t("staffSchedule.manager.selectUser")}</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.username} ({u.email})
+                    {displayLabel(u)} ({u.email})
                   </option>
                 ))}
               </select>
@@ -483,10 +544,26 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
             </div>
             {managersError && <p className="text-xs text-red-600">{managersError}</p>}
 
+            {/* v3.5.10 refinamiento — selector propio (antes reutilizaba
+                assignUserId de la sección de arriba: sin elegir un
+                trabajador ahí, este botón nunca se habilitaba). El valor se
+                prefija con las horas efectivas actuales del trabajador. */}
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-slate-600 min-w-[10rem]">
-                {t("staffSchedule.config.weeklyHoursOverride")}
+                {t("staffSchedule.config.weeklyHoursWorker")}
               </label>
+              <select
+                value={weeklyHoursUserId}
+                onChange={(e) => setWeeklyHoursUserId(e.target.value)}
+                className="flex-1 rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+              >
+                <option value="">{t("staffSchedule.manager.selectUser")}</option>
+                {(currentMembers.length > 0 ? currentMembers : users).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {displayLabel(u)}
+                  </option>
+                ))}
+              </select>
               <input
                 type="number"
                 min={0}
@@ -500,12 +577,13 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
               <button
                 type="button"
                 onClick={handleSetWeeklyHours}
-                disabled={!assignUserId || weeklyHoursSaving}
+                disabled={!weeklyHoursUserId || weeklyHoursSaving}
                 className="rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >
                 {t("staffSchedule.action.save")}
               </button>
             </div>
+            {weeklyHoursSuccess && <p className="text-xs text-green-700">{t("staffSchedule.config.weeklyHoursSaved")}</p>}
             {weeklyHoursError && <p className="text-xs text-red-600">{weeklyHoursError}</p>}
           </section>
 

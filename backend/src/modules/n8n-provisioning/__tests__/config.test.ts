@@ -7,7 +7,7 @@ const PROV_KEYS = [
   'N8N_INTERNAL_URL', 'N8N_API_KEY', 'CMDB_SERVICE_TOKEN',
   'SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'ALERT_FROM_EMAIL',
   'USE_LDAP', 'LDAP_URL', 'LDAP_BASE_DN', 'LDAP_BIND_DN', 'LDAP_BIND_PASSWORD',
-  'LDAP_SYNC_GROUP_DN', 'LDAP_SYNC_DOMAIN',
+  'LDAP_REQUIRED_GROUP', 'LDAP_SYNC_CRON',
   'VCENTER_SYNC_ENABLED', 'VCENTER_SYNC_CRON',
 ];
 
@@ -80,16 +80,16 @@ describe('loadN8nProvisioningConfig', () => {
     process.env.LDAP_BASE_DN = 'DC=example,DC=com';
     process.env.LDAP_BIND_DN = 'CN=svc,DC=example,DC=com';
     process.env.LDAP_BIND_PASSWORD = 'secret';
-    process.env.LDAP_SYNC_GROUP_DN = 'CN=CMDB-Users,DC=example,DC=com';
-    process.env.LDAP_SYNC_DOMAIN = 'example.com';
+    process.env.LDAP_REQUIRED_GROUP = 'GS-CMDB-Iberia-Access';
+    process.env.LDAP_SYNC_CRON = '0 4 * * *';
     const ldap = loadN8nProvisioningConfig().ldap!;
     expect(ldap.useLdap).toBe(true);
     expect(ldap.url).toBe('ldap://dc.example.com:389');
     expect(ldap.baseDN).toBe('DC=example,DC=com');
     expect(ldap.bindDN).toBe('CN=svc,DC=example,DC=com');
     expect(ldap.bindPassword).toBe('secret');
-    expect(ldap.groupDN).toBe('CN=CMDB-Users,DC=example,DC=com');
-    expect(ldap.syncDomain).toBe('example.com');
+    expect(ldap.requiredGroup).toBe('GS-CMDB-Iberia-Access');
+    expect(ldap.syncCron).toBe('0 4 * * *');
   });
 
   it('serviceToken: refleja CMDB_SERVICE_TOKEN', () => {

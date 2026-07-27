@@ -59,11 +59,20 @@ Una planificación con alertas `ERROR` sin resolver **no puede publicarse** (`PO
 
 ## 6. Autorización
 
-- **VIEWER**: sin acceso al módulo (bloqueado en el middleware de montaje, igual que DCIM).
-- **WORKER** (nuevo en v3.5.9, ver §13.6): idéntico a `VIEWER` en el resto de la aplicación, pero con lectura de este módulo — mismo nivel de acceso y el mismo enmascaramiento que `AUDITOR` (ver §7). Sin escritura.
-- **AUDITOR**: lectura, vista enmascarada (ver §7 si no es el interesado).
-- **Manager de departamento** (`DepartmentManager`): lectura + escritura, solo para su(s) departamento(s). Row-level, no requiere rol ADMIN.
-- **ADMIN**: acceso total, incluida configuración de departamentos/verano/managers y `unpublish`.
+> **Cambiado en v3.5.10** (ver §14). `WORKER` pasa a llamarse `MANAGER` y `VIEWER` recupera el acceso de lectura al módulo, limitado a horarios publicados.
+
+| Rol | Horarios publicados | Borradores | Editar / publicar | Configuración del módulo |
+|---|---|---|---|---|
+| `VIEWER` | ✅ lectura (enmascarada) | ❌ | ❌ | ❌ |
+| `AUDITOR` | ✅ lectura (enmascarada) | ❌ | ❌ | ❌ |
+| `MANAGER` | ✅ lectura (enmascarada) | ✅ solo los departamentos que gestiona | ✅ solo los departamentos que gestiona | ❌ |
+| `ADMIN` | ✅ todos | ✅ todos | ✅ todos | ✅ departamentos, verano, managers, `unpublish` |
+
+- Los cuatro roles superan `requireScheduleAccess`; **qué** ven se decide en la consulta, no en el middleware.
+- La visibilidad se aplica **en la cláusula `WHERE` de Prisma** (`buildScheduleVisibilityFilter`, `queries.ts`), nunca por filtrado posterior en memoria — los controles de acceso a filas deben ser filtros de BD (OWASP A01). Un horario fuera de alcance devuelve **404**, no 403: un borrador ajeno no debe revelar siquiera que existe.
+- Un rol desconocido cae en la rama más restrictiva (solo publicados), de modo que añadir un rol al enum sin tocar esa función no abre datos por accidente.
+- **`MANAGER` fuera de este módulo**: equivalente a `AUDITOR` (lectura, incluida DCIM), salvo los registros de auditoría, que le quedan vetados — `requireAudit` sigue admitiendo solo `ADMIN` y `AUDITOR`, y el informe `audit-trail` está en una denylist explícita porque el rango lineal de roles por sí solo se lo concedería.
+- **Manager de departamento** (`DepartmentManager`): la autorización de escritura sigue siendo row-level y no cambia. Tener rol `MANAGER` no otorga por sí solo edición: hace falta la fila `DepartmentManager` del departamento concreto.
 
 `canUserEditDepartment(prisma, userId, role, departmentId)` (`authz.ts`) es la función compartida entre el middleware (`requireDeptEditAccess`) y el cálculo del campo `canEdit` devuelto al frontend — el cliente nunca decide por sí mismo si puede editar.
 
@@ -160,3 +169,58 @@ Ya garantizado estructuralmente por el modelo de datos: `User` tiene una única 
 ### 13.11 Limitación conocida: sin endpoint de borrado
 
 No existe un endpoint para eliminar una planificación (`StaffSchedule`). Una planificación en estado `DRAFT` solo puede dejarse tal cual o publicarse — nunca borrarse vía API.
+
+
+## 14. Changelog v3.5.10
+
+### 14.1 `WORKER` pasa a `MANAGER`, un perfil intermedio real
+
+El rol `WORKER` introducido en v3.5.9 era `VIEWER` con una excepción para este módulo. Se renombra a `MANAGER` y se le da el alcance que su nombre sugiere: administra y publica los horarios de los departamentos que gestiona, y fuera del módulo lee lo mismo que un `AUDITOR` **salvo los registros de auditoría**.
+
+El renombrado se hizo con `ALTER TYPE "UserRole" RENAME VALUE 'WORKER' TO 'MANAGER'`, así que las filas existentes conservaron su rol sin migración de datos.
+
+**Cambio de permisos a tener en cuenta al actualizar**: quien tuviera `WORKER` gana lectura de DCIM y de los informes de rango `AUDITOR`.
+
+### 14.2 `VIEWER` recupera el módulo, limitado a lo publicado
+
+Antes `VIEWER` estaba bloqueado del módulo entero. Ahora entra y ve los horarios **publicados** de todos los departamentos, con el mismo enmascaramiento de datos de salud que ya se aplicaba a `AUDITOR`. Reabrir el módulo no debilita el masking: éste nunca dependió de que `VIEWER` estuviera bloqueado, sino de si el visor es `ADMIN` o el propio interesado (§7).
+
+### 14.3 Nombre real de AD en lugar del `sAMAccountName`
+
+Nueva columna `users.display_name`, poblada desde el `displayName` del directorio en la auto-provisión y refrescada en cada login. El calendario, el popover de entrada, el panel de alertas y los selectores de usuario muestran «Andrés Matías López» en lugar de «andres.matias», con respaldo al `username` para cuentas locales o filas anteriores a v3.5.10 (`displayLabel`, `frontend/lib/displayLabel.ts`).
+
+Es dato personal: no aparece en ningún mensaje de log, y desaparece con la fila en la erasure GDPR, que hace `DELETE` y no anonimización por campos (§8).
+
+### 14.4 Resumen mensual
+
+`getMonthlySummary` agrega ahora solo los horarios que el visor tiene derecho a ver, filtrando por la relación en la propia consulta. Excepción deliberada: el propio usuario ve siempre su resumen completo aunque el horario esté en borrador — son sus datos.
+
+## 15. Refinamientos v3.5.10 (segunda tanda, detectados en verificación en vivo)
+
+### 15.1 `FLEX_RANGE` no aplica a `INTENSIVO`
+
+La alerta "fuera de horario flexible" se disparaba para entradas `INTENSIVO`, que es jornada continua con horario propio y no usa la ventana flexible de entrada/salida. La regla se restringe a los estados que sí la usan (`PRESENCIAL`, `TELETRABAJO`) en lugar de excluir solo `INTENSIVO`.
+
+### 15.2 Endpoints GET de managers y miembros de departamento
+
+`GET /departments/:id/managers` y `GET /departments/:id/members` — antes no existía ninguno de los dos; el panel de configuración solo podía añadir/quitar managers a ciegas y no mostraba quién pertenecía al departamento. Lectura pura, sin auditoría, protegida por `requireScheduleAccess`.
+
+### 15.3 `DELETE /:id` — descartar un horario en borrador
+
+Solo `DRAFT` (D10: un `PUBLISHED` debe despublicarse antes). `ScheduleEntry`/`ScheduleAlert` caen por `onDelete: Cascade`. Resuelve el callejón sin salida de un horario creado o clonado antes de que el departamento tuviera su membresía final: sin este endpoint, la semana quedaba permanentemente bloqueada para volver a clonarse.
+
+### 15.4 `POST /:id/sync-members` — resincronizar miembros
+
+Añade entradas base `PRESENCIAL` para los miembros activos del departamento que aún no tengan ninguna entrada en el horario. **No destructivo**: nunca toca entradas existentes, idempotente. Solo `DRAFT`. Cubre dos escenarios: un horario vacío o parcial (creado antes de la membresía final del departamento) y un trabajador nuevo que se incorpora a un departamento con horarios ya planificados meses por delante.
+
+### 15.5 Orden manager-first en el calendario
+
+`buildScheduleView` ordenaba las filas por el orden de iteración interno del `Map` (efectivamente por `userId`, sin significado para quien lo lee). Ahora el/los responsables del departamento (`DepartmentManager`) aparecen primero, y el resto se ordena alfabéticamente por `displayName` (con respaldo a `username`). Comparador puro `sortRowManagerFirst`, testeado sin necesidad de montar toda la maquinaria de `buildScheduleView`.
+
+### 15.6 Panel de configuración: managers y miembros visibles
+
+El panel ahora lista los managers actuales de cada departamento (con botón de quitar por fila, ya no a ciegas desde el mismo `<select>` de añadir) y los miembros activos. La edición de horas semanales del trabajador pasa a tener su propio selector — antes reutilizaba el de la sección "asignar departamento", así que sin elegir un trabajador ahí el botón de guardar nunca se habilitaba — y el campo se prefija con las horas efectivas actuales del trabajador elegido.
+
+### 15.7 UI de horario vacío
+
+Cuando un horario existe (`StaffSchedule`) pero no tiene ninguna fila, se muestra un aviso con los botones "Sincronizar miembros" y "Eliminar" en lugar de una rejilla vacía sin ninguna acción disponible. Los mismos dos botones aparecen en la cabecera para cualquier horario `DRAFT` editable, para poder incorporar nuevos trabajadores a una planificación ya hecha.

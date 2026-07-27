@@ -12,6 +12,7 @@ import {
   UserWeeklyHoursSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
+import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers } from './queries.js';
 import { auditStaffSchedule } from './audit.js';
 import {
   createSchedule,
@@ -19,6 +20,8 @@ import {
   runValidation,
   publish,
   unpublish,
+  deleteSchedule,
+  syncScheduleMembers,
   cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
@@ -129,6 +132,33 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // ─── Managers (D3 row-level authorization) ─────────────────────────────
+
+  // GET /api/staff-schedule/departments/:id/managers — v3.5.10 refinamiento.
+  // Lectura pura: cualquiera con acceso al módulo (requireScheduleAccess, ya
+  // aplicado por el montaje del router) puede ver quién gestiona un
+  // departamento. Antes no existía ningún GET; el panel de configuración
+  // solo podía añadir/quitar a ciegas.
+  router.get('/departments/:id/managers', requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const managers = await loadDepartmentManagers(prisma, req.params.id as string);
+      res.json(managers);
+    } catch (err) {
+      console.error('[StaffSchedule] managers list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/staff-schedule/departments/:id/members — v3.5.10 refinamiento.
+  // Lectura pura, mismo criterio de acceso que arriba.
+  router.get('/departments/:id/members', requireUuidParam('id'), async (req: Request, res: Response) => {
+    try {
+      const members = await loadDepartmentMembers(prisma, req.params.id as string);
+      res.json(members);
+    } catch (err) {
+      console.error('[StaffSchedule] members list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // POST /api/staff-schedule/departments/:id/managers  (ADMIN)  { userId }
   router.post('/departments/:id/managers', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
@@ -265,6 +295,16 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       const where: any = {};
       if (departmentId) where.departmentId = departmentId;
       if (weekStart && !Number.isNaN(Date.parse(weekStart))) where.weekStart = new Date(weekStart);
+
+      // v3.5.10 — Visibilidad por rol aplicada en la propia cláusula WHERE
+      // (A01: los controles de acceso a filas son filtros de BD, nunca
+      // post-filtrado). VIEWER/AUDITOR solo ven publicados; MANAGER además
+      // cualquier estado de los departamentos que gestiona; ADMIN todo.
+      const managed = req.user!.role === 'ADMIN'
+        ? []
+        : await loadManagedDepartmentIds(prisma, req.user!.id);
+      where.AND = [buildScheduleVisibilityFilter(req.user!.role, managed)];
+
       const schedules = await prisma.staffSchedule.findMany({
         where,
         orderBy: { weekStart: 'desc' },
@@ -366,6 +406,40 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.json(schedule);
     } catch (err) {
       handleServiceError(err, res, 'unpublish');
+    }
+  });
+
+  // DELETE /api/staff-schedule/:id  (deptEdit, DRAFT only — D10) — v3.5.10
+  // refinamiento: permite descartar un horario creado/clonado con una
+  // membresía de departamento desactualizada, para poder re-clonar la semana.
+  router.delete('/:id', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await deleteSchedule(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'DELETE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+      });
+      res.status(204).end();
+    } catch (err) {
+      handleServiceError(err, res, 'delete');
+    }
+  });
+
+  // POST /api/staff-schedule/:id/sync-members  (deptEdit, DRAFT only) — v3.5.10
+  // refinamiento: añade entradas base para miembros del departamento que
+  // todavía no tengan ninguna en este horario. No destructivo — nunca toca
+  // entradas existentes. Cubre tanto un horario vacío (creado/clonado antes de
+  // que el departamento tuviera su membresía final) como un trabajador nuevo
+  // que se incorpora a un departamento con horarios ya planificados.
+  router.post('/:id/sync-members', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const r = await syncScheduleMembers(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'SYNC_STAFF_SCHEDULE_MEMBERS', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+        return r;
+      });
+      res.json(result);
+    } catch (err) {
+      handleServiceError(err, res, 'sync members');
     }
   });
 

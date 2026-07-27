@@ -11,7 +11,7 @@ enum UserRole {
   ADMIN
   AUDITOR
   VIEWER
-  WORKER
+  MANAGER
 }
 
 enum Criticality {
@@ -129,6 +129,10 @@ enum CIStatus {
 model User {
   id              String          @id @default(uuid()) @db.Uuid
   username        String          @unique @db.VarChar(100)
+  /// displayName tal como lo devuelve Active Directory ("Andrés Matías López").
+  /// Poblado en el login LDAP y en cada pasada de runLdapGroupSync().
+  /// PII — incluido en la anonimización de DELETE /api/users/:id/erase.
+  displayName     String?         @map("display_name") @db.VarChar(255)
   email           String          @unique @db.VarChar(255)
   password        String?         @map("password") @db.VarChar(255)
   role            UserRole        @default(VIEWER)

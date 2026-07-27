@@ -746,7 +746,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
-      "role_worker": "WORKER",
+      "role_manager": "Manager",
       "me_label": "(ich)",
       "viewer_notice": "Sie benötigen die Rolle {role} um die Konfiguration zu ändern. Nur-Lese-Modus.",
       "confirm_activate": "Benutzer \"{name}\" aktivieren?",
@@ -809,7 +809,31 @@
       "vcenter_synclog_updated": "Aktualisiert",
       "vcenter_synclog_retired": "Stillgelegt",
       "vcenter_synclog_errors": "Fehler",
-      "vcenter_synclog_empty": "Es wurde noch keine Synchronisierung ausgeführt."
+      "vcenter_synclog_empty": "Es wurde noch keine Synchronisierung ausgeführt.",
+      "ldapSync": {
+        "title": "AD-Benutzersynchronisierung",
+        "description": "Legt die Mitglieder der Active-Directory-Zugriffsgruppe in der CMDB an und aktualisiert sie.",
+        "group": "Zugriffsgruppe",
+        "nested": "Verschachtelte Mitgliedschaft",
+        "defaultRole": "Rolle bei Anlage",
+        "active": "Aktiv",
+        "notConfigured": "Nicht konfiguriert",
+        "notConfiguredHint": "Setzen Sie LDAP_REQUIRED_GROUP in der .env, um den Zugriff auf die Gruppe zu beschränken und die Synchronisierung zu aktivieren.",
+        "syncNow": "Jetzt synchronisieren",
+        "syncing": "Synchronisierung läuft…",
+        "resultCreated": "Angelegt",
+        "resultUpdated": "Aktualisiert",
+        "resultReactivated": "Reaktiviert",
+        "resultDeactivated": "Deaktiviert",
+        "errorNotConfigured": "In der .env ist keine Zugriffsgruppe konfiguriert.",
+        "errorInProgress": "Es läuft bereits eine Synchronisierung.",
+        "errorUnavailable": "Das Verzeichnis konnte nicht abgefragt werden. Prüfen Sie Verbindung und Dienstkonto.",
+        "historyTitle": "Letzte Vorgänge",
+        "historyEmpty": "Noch keine Synchronisierungen erfasst.",
+        "colAction": "Aktion",
+        "colDate": "Datum",
+        "colActor": "Quelle"
+      }
     },
     "branding": {
       "tab": "Erscheinungsbild",
@@ -2198,7 +2222,9 @@
       "removeManager": "Entfernen",
       "assignDepartment": "Abteilung zuweisen",
       "configure": "Konfigurieren",
-      "applyWeek": "Auf die ganze Woche anwenden"
+      "applyWeek": "Auf die ganze Woche anwenden",
+      "syncMembers": "Mitglieder synchronisieren",
+      "deleteSchedule": "Planung löschen"
     },
     "config": {
       "title": "Dienstplankonfiguration",
@@ -2223,7 +2249,9 @@
       "fridayNetHours": "Effektive Stunden Freitag (verkürzt)",
       "newDepartment": "Neue Abteilung",
       "weeklyHoursOverride": "Wochenstunden (Mitarbeiter)",
-      "weeklyHoursDefault": "Abteilungsstandard"
+      "weeklyHoursDefault": "Abteilungsstandard",
+      "weeklyHoursWorker": "Wochenstunden (Mitarbeiter)",
+      "weeklyHoursSaved": "Wochenstunden gespeichert."
     },
     "summary": {
       "weeklyHours": "Wochenstunden",
@@ -2248,7 +2276,8 @@
     },
     "manager": {
       "title": "Abteilungsverantwortliche",
-      "selectUser": "Benutzer auswählen"
+      "selectUser": "Benutzer auswählen",
+      "none": "Keine Verantwortlichen zugewiesen."
     },
     "gdpr": {
       "maskedNotice": "Einige Status werden aus Gründen des Gesundheitsdatenschutzes allgemein angezeigt"
@@ -2256,7 +2285,8 @@
     "empty": {
       "noSchedule": "Kein Dienstplan für diese Woche",
       "createSchedule": "Dienstplan erstellen",
-      "importPreviousWeek": "Vorherige Woche importieren"
+      "importPreviousWeek": "Vorherige Woche importieren",
+      "hasNoMembers": "Diese Planung hat keine Mitarbeiter. Synchronisieren Sie, um die aktuellen Abteilungsmitglieder aufzunehmen, oder löschen Sie sie, um die Woche neu zu klonen."
     },
     "calendar": {
       "person": "Person"
@@ -2279,6 +2309,16 @@
       "pickWeek": "Zielwoche auswählen",
       "targetWeek": "Zielwoche",
       "mustBeFutureEmpty": "Muss eine zukünftige Woche ohne bestehenden Zeitplan sein"
+    },
+    "members": {
+      "title": "Abteilungsmitglieder",
+      "none": "Keine Mitglieder zugewiesen."
+    },
+    "confirm": {
+      "deleteSchedule": "Diese Planung löschen? Alle Einträge gehen verloren. Diese Aktion kann nicht rückgängig gemacht werden."
+    },
+    "syncMembers": {
+      "added": "{n} Mitarbeiter zur Planung hinzugefügt."
     }
   }
 }

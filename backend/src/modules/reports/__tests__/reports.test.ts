@@ -103,6 +103,23 @@ describe('reports/registry', () => {
     expect(hasRoleAccess('VIEWER', 'ADMIN')).toBe(false);
   });
 
+  // v3.5.10 — MANAGER comparte rango con AUDITOR, salvo los informes de
+  // auditoría, que la denylist le veta explícitamente (D3).
+  test('hasRoleAccess: MANAGER accede a los informes de rango AUDITOR', () => {
+    expect(hasRoleAccess('MANAGER', 'AUDITOR', 'compliance')).toBe(true);
+    expect(hasRoleAccess('MANAGER', 'VIEWER', 'inventory')).toBe(true);
+  });
+
+  test('hasRoleAccess: MANAGER NO accede al informe de auditoría pese a su rango', () => {
+    expect(hasRoleAccess('MANAGER', 'AUDITOR', 'audit-trail')).toBe(false);
+    expect(hasRoleAccess('AUDITOR', 'AUDITOR', 'audit-trail')).toBe(true);
+    expect(hasRoleAccess('ADMIN', 'AUDITOR', 'audit-trail')).toBe(true);
+  });
+
+  test('hasRoleAccess: MANAGER sigue sin acceder a los informes ADMIN', () => {
+    expect(hasRoleAccess('MANAGER', 'ADMIN', 'contracts')).toBe(false);
+  });
+
   test('hasRoleAccess: AUDITOR can access AUDITOR + VIEWER reports', () => {
     expect(hasRoleAccess('AUDITOR', 'VIEWER')).toBe(true);
     expect(hasRoleAccess('AUDITOR', 'AUDITOR')).toBe(true);

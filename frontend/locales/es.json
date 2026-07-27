@@ -791,7 +791,7 @@
       "role_admin": "ADMIN",
       "role_auditor": "AUDITOR",
       "role_viewer": "VIEWER",
-      "role_worker": "WORKER",
+      "role_manager": "Gestor",
       "me_label": "(yo)",
       "viewer_notice": "Necesitas rol {role} para modificar la configuración. Modo de sólo lectura.",
       "confirm_activate": "¿Activar al usuario \"{name}\"?",
@@ -854,7 +854,31 @@
       "vcenter_synclog_updated": "Actualizadas",
       "vcenter_synclog_retired": "Retiradas",
       "vcenter_synclog_errors": "Errores",
-      "vcenter_synclog_empty": "Todavía no se ha ejecutado ninguna sincronización."
+      "vcenter_synclog_empty": "Todavía no se ha ejecutado ninguna sincronización.",
+      "ldapSync": {
+        "title": "Sincronización de usuarios AD",
+        "description": "Da de alta y actualiza en CMDB los usuarios del grupo de acceso de Active Directory.",
+        "group": "Grupo de acceso",
+        "nested": "Pertenencia anidada",
+        "defaultRole": "Rol de alta",
+        "active": "Activa",
+        "notConfigured": "Sin configurar",
+        "notConfiguredHint": "Define LDAP_REQUIRED_GROUP en el .env para restringir el acceso al grupo y habilitar la sincronización.",
+        "syncNow": "Sincronizar ahora",
+        "syncing": "Sincronizando…",
+        "resultCreated": "Altas",
+        "resultUpdated": "Actualizados",
+        "resultReactivated": "Reactivados",
+        "resultDeactivated": "Desactivados",
+        "errorNotConfigured": "No hay grupo de acceso configurado en el .env.",
+        "errorInProgress": "Ya hay una sincronización en curso.",
+        "errorUnavailable": "No se pudo consultar el directorio. Revisa la conectividad y la cuenta de servicio.",
+        "historyTitle": "Historial reciente",
+        "historyEmpty": "Todavía no hay sincronizaciones registradas.",
+        "colAction": "Acción",
+        "colDate": "Fecha",
+        "colActor": "Origen"
+      }
     },
     "branding": {
       "tab": "Apariencia",
@@ -2317,7 +2341,9 @@
       "removeManager": "Quitar",
       "assignDepartment": "Asignar departamento",
       "configure": "Configurar",
-      "applyWeek": "Aplicar a toda la semana"
+      "applyWeek": "Aplicar a toda la semana",
+      "syncMembers": "Sincronizar miembros",
+      "deleteSchedule": "Eliminar planificación"
     },
     "config": {
       "title": "Configuración de horario",
@@ -2342,7 +2368,9 @@
       "fridayNetHours": "Horas viernes intensivo",
       "newDepartment": "Nuevo departamento",
       "weeklyHoursOverride": "Horas semanales (trabajador)",
-      "weeklyHoursDefault": "Por defecto (departamento)"
+      "weeklyHoursDefault": "Por defecto (departamento)",
+      "weeklyHoursWorker": "Horas semanales (trabajador)",
+      "weeklyHoursSaved": "Horas semanales guardadas."
     },
     "summary": {
       "weeklyHours": "Horas semanales",
@@ -2367,7 +2395,8 @@
     },
     "manager": {
       "title": "Responsables de departamento",
-      "selectUser": "Seleccionar usuario"
+      "selectUser": "Seleccionar usuario",
+      "none": "Sin responsables asignados."
     },
     "gdpr": {
       "maskedNotice": "Algunos estados se muestran de forma genérica por protección de datos de salud"
@@ -2375,7 +2404,8 @@
     "empty": {
       "noSchedule": "No hay planificación para esta semana",
       "createSchedule": "Crear planificación",
-      "importPreviousWeek": "Importar semana anterior"
+      "importPreviousWeek": "Importar semana anterior",
+      "hasNoMembers": "Esta planificación no tiene trabajadores. Sincroniza para incorporar a los miembros actuales del departamento, o elimínala para poder clonarla de nuevo."
     },
     "calendar": {
       "person": "Persona"
@@ -2398,6 +2428,16 @@
       "pickWeek": "Elegir semana destino",
       "targetWeek": "Semana destino",
       "mustBeFutureEmpty": "Debe ser una semana futura sin calendario existente"
+    },
+    "members": {
+      "title": "Miembros del departamento",
+      "none": "Sin miembros asignados."
+    },
+    "confirm": {
+      "deleteSchedule": "¿Eliminar esta planificación? Se perderán todas sus entradas. Esta acción no se puede deshacer."
+    },
+    "syncMembers": {
+      "added": "{n} trabajador(es) añadido(s) a la planificación."
     }
   }
 }

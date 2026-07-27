@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown } from "lucide-react";
+import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown, Users, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf } from "./hooks/useStaffSchedule";
@@ -13,6 +13,7 @@ import AlertPanel from "@/components/staff-schedule/AlertPanel";
 import ScheduleConfigPanel from "@/components/staff-schedule/ScheduleConfigPanel";
 import WeekTargetPicker from "@/components/staff-schedule/WeekTargetPicker";
 import AllDepartmentsView from "@/components/staff-schedule/AllDepartmentsView";
+import { displayLabel } from "@/lib/displayLabel";
 
 export default function StaffSchedulePage() {
   const { t } = useLanguage();
@@ -39,10 +40,12 @@ export default function StaffSchedulePage() {
     unpublish,
     clone,
     importPreviousWeek,
+    syncMembers,
+    deleteSchedule,
   } = useSchedule(departmentId, weekStart);
   const { exportSchedule } = useScheduleExport();
 
-  const usernameByUserId = Object.fromEntries((view?.rows ?? []).map((r) => [r.userId, r.username]));
+  const usernameByUserId = Object.fromEntries((view?.rows ?? []).map((r) => [r.userId, displayLabel(r)]));
 
   const runAction = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -67,6 +70,20 @@ export default function StaffSchedulePage() {
   });
 
   const handleImportPreviousWeek = () => runAction(importPreviousWeek);
+
+  // v3.5.10 refinamiento — cubre tanto un horario vacío (creado/clonado antes
+  // de que el departamento tuviera su membresía final) como un trabajador
+  // nuevo que se incorpora a un departamento con horarios ya planificados.
+  const [syncResult, setSyncResult] = useState<{ added: number } | null>(null);
+  const handleSyncMembers = () => runAction(async () => {
+    const result = await syncMembers();
+    setSyncResult(result);
+  });
+
+  const handleDeleteSchedule = () => runAction(async () => {
+    if (!window.confirm(t("staffSchedule.confirm.deleteSchedule"))) return;
+    await deleteSchedule();
+  });
 
   const canEdit = !!view?.canEdit;
   const status = view?.schedule.status;
@@ -119,6 +136,28 @@ export default function StaffSchedulePage() {
                     <Copy className="h-4 w-4" /> {t("staffSchedule.action.clone")}
                   </button>
                 )}
+                {/* v3.5.10 refinamiento — incorpora a un trabajador nuevo a un
+                    horario ya planificado, sin tocar las entradas existentes. */}
+                {canEdit && status === "DRAFT" && (
+                  <button
+                    onClick={handleSyncMembers}
+                    disabled={busy}
+                    title={t("staffSchedule.action.syncMembers")}
+                    className="rounded-none border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Users className="h-4 w-4" /> {t("staffSchedule.action.syncMembers")}
+                  </button>
+                )}
+                {canEdit && status === "DRAFT" && (
+                  <button
+                    onClick={handleDeleteSchedule}
+                    disabled={busy}
+                    title={t("staffSchedule.action.deleteSchedule")}
+                    className="rounded-none border border-red-200 bg-white px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
                 <div className="relative group">
                   <button className="rounded-none border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
                     <Download className="h-4 w-4" /> {t("staffSchedule.action.export")}
@@ -168,6 +207,38 @@ export default function StaffSchedulePage() {
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {actionError.toLowerCase().includes("cannot publish") ? t("staffSchedule.publish.blockedByErrors") : actionError}
+          </div>
+        )}
+
+        {syncResult && (
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+            <Users className="h-4 w-4 shrink-0" />
+            {t("staffSchedule.syncMembers.added", { n: syncResult.added })}
+          </div>
+        )}
+
+        {/* v3.5.10 refinamiento — un horario existe (StaffSchedule creado o
+            clonado) pero sin entradas: callejón sin salida antes de esto,
+            porque el resto de la UI asume que hay filas. */}
+        {view && view.rows.length === 0 && canEdit && status === "DRAFT" && (
+          <div className="flex items-center justify-between gap-3 bg-amber-50 border-l-4 border-amber-400 px-4 py-3 text-sm text-amber-800">
+            <span>{t("staffSchedule.empty.hasNoMembers")}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={handleSyncMembers}
+                disabled={busy}
+                className="rounded-none bg-[var(--accent)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 shadow-sm disabled:opacity-50"
+              >
+                {t("staffSchedule.action.syncMembers")}
+              </button>
+              <button
+                onClick={handleDeleteSchedule}
+                disabled={busy}
+                className="rounded-none border border-red-300 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t("staffSchedule.action.deleteSchedule")}
+              </button>
+            </div>
           </div>
         )}
 

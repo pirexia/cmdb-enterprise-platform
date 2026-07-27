@@ -10,7 +10,9 @@ import {
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
-import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours } from './queries.js';
+import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
+         buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
+         loadDepartmentManagerIds } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -305,6 +307,62 @@ export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: st
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
+// syncScheduleMembers — DRAFT only. Adds base PRESENCIAL entries (Mon-Fri) for
+// active department members who do not yet have ANY entry in this schedule.
+// Never touches existing entries — idempotent and non-destructive, unlike
+// deleteSchedule. Added in the v3.5.10 refinement round to cover two related
+// gaps: a schedule created/cloned before the department had its final
+// membership (entries missing for members added later), and a new hire
+// joining a department that already has schedules planned months ahead.
+export async function syncScheduleMembers(
+  prisma: Prisma.TransactionClient,
+  scheduleId: string,
+): Promise<{ added: number }> {
+  const schedule = await prisma.staffSchedule.findUnique({
+    where: { id: scheduleId },
+    select: { status: true, departmentId: true, weekStart: true },
+  });
+  if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
+  if (schedule.status !== 'DRAFT') {
+    throw new ScheduleServiceError(409, 'Cannot sync members on a published schedule; unpublish first');
+  }
+
+  const [members, present] = await Promise.all([
+    loadDepartmentMembers(prisma, schedule.departmentId),
+    prisma.scheduleEntry.findMany({ where: { scheduleId }, distinct: ['userId'], select: { userId: true } }),
+  ]);
+  const presentIds = new Set(present.map((p) => p.userId));
+  const missing = members.filter((m) => !presentIds.has(m.id));
+
+  const entriesData = missing.flatMap((m) =>
+    Array.from({ length: 5 }, (_, i) => ({
+      scheduleId,
+      userId: m.id,
+      departmentId: schedule.departmentId,
+      date: addDaysUtc(schedule.weekStart, i),
+      status: 'PRESENCIAL',
+    })),
+  );
+  if (entriesData.length > 0) {
+    await prisma.scheduleEntry.createMany({ data: entriesData });
+  }
+  return { added: missing.length };
+}
+
+// deleteSchedule — DRAFT only (D10: PUBLISHED is immutable; unpublish first).
+// ScheduleEntry/ScheduleAlert cascade via onDelete: Cascade in schema.prisma.
+// Added in the v3.5.10 refinement round: a schedule cloned/created before the
+// department had its final membership had no way to be discarded so the week
+// could be re-cloned from scratch.
+export async function deleteSchedule(prisma: Prisma.TransactionClient, scheduleId: string): Promise<void> {
+  const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { status: true } });
+  if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
+  if (schedule.status !== 'DRAFT') {
+    throw new ScheduleServiceError(409, 'Cannot delete a published schedule; unpublish first');
+  }
+  await prisma.staffSchedule.delete({ where: { id: scheduleId } });
+}
+
 // cloneToWeek — copies all entries from `scheduleId` onto a caller-chosen
 // target Monday. Used both by the "Clone to week..." picker and by
 // "Import previous week" (source = previous week's schedule, target = the
@@ -386,6 +444,7 @@ export interface ScheduleView {
   rows: Array<{
     userId: string;
     username: string;
+    displayName: string | null;
     entries: Record<string, MaskedEntryFields>;
     summary: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
   }>;
@@ -401,6 +460,20 @@ export interface ScheduleView {
   canEdit: boolean;
 }
 
+// Comparador puro para el orden manager-first (v3.5.10 refinamiento).
+// Extraído para poder probarlo sin montar toda la maquinaria de
+// buildScheduleView (consultas a BD, masking, resúmenes semanales, etc.).
+export function sortRowManagerFirst(
+  a: { userId: string; displayName: string | null; username: string },
+  b: { userId: string; displayName: string | null; username: string },
+  managerIds: Set<string>,
+): number {
+  const aIsManager = managerIds.has(a.userId) ? 0 : 1;
+  const bIsManager = managerIds.has(b.userId) ? 0 : 1;
+  if (aIsManager !== bIsManager) return aIsManager - bIsManager;
+  return (a.displayName ?? a.username).localeCompare(b.displayName ?? b.username);
+}
+
 // buildScheduleView — the GET /:id shape (masked per viewer, D4). Also the
 // backbone reused by export.ts (which must always receive an already-masked view).
 export async function buildScheduleView(
@@ -408,7 +481,15 @@ export async function buildScheduleView(
   scheduleId: string,
   viewer: Viewer,
 ): Promise<ScheduleView | null> {
-  const schedule = await loadScheduleWithEntries(prisma, scheduleId);
+  // v3.5.10 — La visibilidad se resuelve EN la consulta: VIEWER y AUDITOR solo
+  // alcanzan horarios publicados; MANAGER además cualquier estado de los
+  // departamentos que gestiona; ADMIN todo. Un horario fuera de alcance
+  // devuelve null y el router responde 404 — nunca 403, para no revelar que
+  // existe un borrador ajeno.
+  const managed = viewer.role === 'ADMIN' ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const visibility = buildScheduleVisibilityFilter(viewer.role, managed);
+
+  const schedule = await loadScheduleWithEntries(prisma, scheduleId, visibility);
   if (!schedule) return null;
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
@@ -416,10 +497,10 @@ export async function buildScheduleView(
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
-  const byUser = new Map<string, { username: string; entriesReal: typeof schedule.entries }>();
+  const byUser = new Map<string, { username: string; displayName: string | null; entriesReal: typeof schedule.entries }>();
   for (const e of schedule.entries) {
     if (!byUser.has(e.userId)) {
-      byUser.set(e.userId, { username: e.user.username, entriesReal: [] });
+      byUser.set(e.userId, { username: e.user.username, displayName: e.user.displayName ?? null, entriesReal: [] });
     }
     byUser.get(e.userId)!.entriesReal.push(e);
   }
@@ -466,10 +547,18 @@ export async function buildScheduleView(
     rows.push({
       userId,
       username: data.username,
+      displayName: data.displayName,
       entries,
       summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
     });
   }
+
+  // v3.5.10 refinamiento — el responsable del departamento aparece primero;
+  // el resto se ordena alfabéticamente por nombre para mostrar. Antes las
+  // filas salían en el orden de iteración del Map (efectivamente por userId,
+  // un UUID sin significado para el usuario).
+  const managerIds = await loadDepartmentManagerIds(prisma, schedule.departmentId);
+  rows.sort((a, b) => sortRowManagerFirst(a, b, managerIds));
 
   const alerts = schedule.alerts.map((a) => {
     const masked = maskAlertForViewer(
@@ -530,8 +619,18 @@ export async function getMonthlySummary(
 ): Promise<MonthlySummary> {
   const start = new Date(Date.UTC(year, month - 1, 1));
   const end = new Date(Date.UTC(year, month, 1));
+  // v3.5.10 — El resumen mensual solo agrega horarios que el visor tiene
+  // derecho a ver, filtrando por la relación en la propia consulta. Excepción
+  // deliberada: el propio usuario ve siempre su resumen completo (son sus
+  // datos), igual que el ADMIN.
+  const isSelfOrAdmin = viewer.role === 'ADMIN' || viewer.id === userId;
+  const managed = isSelfOrAdmin ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const scheduleFilter = isSelfOrAdmin
+    ? {}
+    : buildScheduleVisibilityFilter(viewer.role, managed);
+
   const entries = await prisma.scheduleEntry.findMany({
-    where: { userId, date: { gte: start, lt: end } },
+    where: { userId, date: { gte: start, lt: end }, schedule: scheduleFilter },
     include: { schedule: { select: { isSummerWeek: true, departmentId: true } } },
   });
 

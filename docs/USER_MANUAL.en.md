@@ -1811,3 +1811,33 @@ From the "Configure" button you can:
 - Configure the yearly summer-schedule period (start and end date).
 - Assign and remove department managers (people who can edit that department's schedules without being ADMIN).
 - Assign each user's department.
+
+
+## Roles and schedule access (v3.5.10)
+
+The application has four profiles. **Manager** (`MANAGER`) replaces the former `WORKER`.
+
+| Profile | What it can do |
+|---|---|
+| **Viewer** (`VIEWER`) | Browses the inventory and **published schedules**. No drafts, no DCIM |
+| **Auditor** (`AUDITOR`) | Everything a viewer can, plus audit records and DCIM. Published schedules only |
+| **Manager** (`MANAGER`) | Reads what an auditor reads except audit records. Additionally **creates, edits and publishes schedules for the departments it manages** |
+| **Administrator** (`ADMIN`) | Everything, including department configuration, the summer period, manager assignment and unpublishing schedules |
+
+Holding the Manager role is not enough to edit a given department: you must be assigned as a manager of that department (an administrator does this from the module configuration). A manager trying to edit someone else's department gets a permission-denied notice.
+
+Medical and paternity leave remain hidden from everyone except the person concerned and administrators, across all four profiles.
+
+## Names in the calendar
+
+The calendar shows the full name as held in the corporate directory (for example "Andrés Matías López") instead of the account name ("andres.matias"). Users without a directory name — local accounts, for instance — still show their account name.
+
+## Access restricted by directory group
+
+Your organisation may restrict application access to the members of a specific directory security group. If that is your case and you cannot log in despite correct credentials, ask your administrator to add you to that group: the application deliberately does not distinguish, in the error message, between a wrong password and an account without access rights.
+
+## Synchronising users from the directory
+
+An administrator can go to **Settings → Integrations → AD user synchronisation** and click "Sync now" to create the group members that do not yet exist in the application and refresh the details of those that do. The synchronisation also runs automatically every night.
+
+Users who leave the group are **deactivated**, never deleted, so the audit history is preserved. A profile assigned manually to a user is never overwritten.

@@ -93,6 +93,25 @@ export function buildMembershipFilter(sam: string, groupDn: string, nested: bool
   return `(&(objectClass=user)(sAMAccountName=${escapeFilter(sam)})${buildMemberOfClause(groupDn, nested)})`;
 }
 
+/**
+ * Opciones del `Client` de ldapts. `ldapts` (y por debajo `ldap-authentication`,
+ * que usa la misma librería) solo acepta `tlsOptions` en el constructor para
+ * `ldaps://`. Pasarlo también en `ldap://` hace que este AD corte la conexión
+ * (ECONNRESET) — confirmado aislando el fallo contra un AD real: el bind
+ * funciona sin `tlsOptions` y falla en cuanto se incluye, incluso con valores
+ * no-op (`rejectUnauthorized: true`). Mismo criterio que `services/ldap.ts`
+ * (función `_ldapBind` en `ldap-authentication/index.js`).
+ */
+export function buildClientOptions(url: string, rejectUnauthorized: boolean) {
+  const isLdaps = url.startsWith('ldaps://');
+  return {
+    url,
+    timeout: LDAP_TIMEOUT_MS,
+    connectTimeout: LDAP_TIMEOUT_MS,
+    ...(isLdaps ? { tlsOptions: { rejectUnauthorized } } : {}),
+  };
+}
+
 async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
   const bindDn = env.bindDn();
   if (!bindDn) {
@@ -104,12 +123,7 @@ async function withClient<T>(fn: (c: Client) => Promise<T>): Promise<T> {
     );
   }
 
-  const client = new Client({
-    url: env.url(),
-    timeout: LDAP_TIMEOUT_MS,
-    connectTimeout: LDAP_TIMEOUT_MS,
-    tlsOptions: { rejectUnauthorized: env.rejectUnauthorized() },
-  });
+  const client = new Client(buildClientOptions(env.url(), env.rejectUnauthorized()));
 
   try {
     await client.bind(bindDn, env.bindPassword());

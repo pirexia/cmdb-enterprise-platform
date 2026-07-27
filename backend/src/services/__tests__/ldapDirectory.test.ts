@@ -1,6 +1,7 @@
 import {
   buildMembershipFilter,
   buildMemberOfClause,
+  buildClientOptions,
   isGroupGateEnabled,
   decideGroupGate,
   LdapDirectoryError,
@@ -96,6 +97,30 @@ describe('decideGroupGate', () => {
 
   it('un error nunca produce ALLOW, ni siquiera si member viniera a true', () => {
     expect(decideGroupGate({ enabled: true, member: true, error: 'UNAVAILABLE' })).toBe('DENY_UNAVAILABLE');
+  });
+});
+
+describe('buildClientOptions', () => {
+  // Regresión encontrada en la verificación en vivo contra un AD real:
+  // pasar tlsOptions al Client de ldapts sobre ldap:// (no ldaps://) provoca
+  // ECONNRESET al bind, incluso con valores no-op. ldap-authentication ya
+  // evita esto para el bind de usuario; este servicio debe hacer lo mismo
+  // para la cuenta de servicio.
+  it('NO incluye tlsOptions para ldap:// (texto plano)', () => {
+    const opts = buildClientOptions('ldap://dc.corp.local:389', true);
+    expect(opts).not.toHaveProperty('tlsOptions');
+    expect(opts.url).toBe('ldap://dc.corp.local:389');
+  });
+
+  it('SÍ incluye tlsOptions para ldaps://', () => {
+    const opts = buildClientOptions('ldaps://dc.corp.local:636', false);
+    expect(opts).toHaveProperty('tlsOptions', { rejectUnauthorized: false });
+  });
+
+  it('siempre incluye timeout y connectTimeout', () => {
+    const opts = buildClientOptions('ldap://dc.corp.local:389', true);
+    expect(opts.timeout).toBeGreaterThan(0);
+    expect(opts.connectTimeout).toBeGreaterThan(0);
   });
 });
 

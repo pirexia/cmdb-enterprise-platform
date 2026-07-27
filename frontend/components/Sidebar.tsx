@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage, LOCALE_NAMES } from "@/contexts/LanguageContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { Locale } from "@/contexts/LanguageContext";
+import { displayLabel } from "@/lib/displayLabel";
 
 type NavLink = { type: "link"; labelKey: string; href: string; icon: React.ElementType; roles?: string[] };
 type NavSeparator = { type: "separator" };
@@ -161,7 +162,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
               <User className="h-4 w-4" style={{ color: "var(--accent)", opacity: 1 }} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-300 truncate">{user.username}</p>
+              <p className="text-xs font-semibold text-slate-300 truncate">{displayLabel(user)}</p>
               <span className={`inline-block px-1.5 py-0.5 text-[10px] font-semibold ${
                 user.role === "ADMIN"   ? "bg-red-900/60 text-red-300"    :
                 user.role === "AUDITOR" ? "bg-amber-900/60 text-amber-300" :

@@ -56,6 +56,15 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
   const [weeklyHoursSaving, setWeeklyHoursSaving] = useState(false);
   const [weeklyHoursSuccess, setWeeklyHoursSuccess] = useState(false);
 
+  // v3.5.11 — cuota de teletrabajo por trabajador (días / porcentaje / total).
+  const [teleworkUserId, setTeleworkUserId] = useState("");
+  const [teleworkFull, setTeleworkFull] = useState(false);
+  const [teleworkDays, setTeleworkDays] = useState("");
+  const [teleworkPct, setTeleworkPct] = useState("");
+  const [teleworkError, setTeleworkError] = useState<string | null>(null);
+  const [teleworkSaving, setTeleworkSaving] = useState(false);
+  const [teleworkSuccess, setTeleworkSuccess] = useState(false);
+
   useEffect(() => {
     apiFetch("/api/users")
       .then((r) => (r.ok ? r.json() : []))
@@ -76,6 +85,20 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     setAssignWeeklyHours(member?.weeklyTargetHours != null ? String(member.weeklyTargetHours) : "");
     setWeeklyHoursSuccess(false);
   }, [weeklyHoursUserId, currentMembers]);
+
+  // Prefija los tres campos de cuota con los valores actuales del trabajador
+  // elegido (vacío = usa el tope del departamento).
+  useEffect(() => {
+    if (!teleworkUserId) {
+      setTeleworkFull(false); setTeleworkDays(""); setTeleworkPct("");
+      return;
+    }
+    const member = currentMembers.find((m) => m.id === teleworkUserId);
+    setTeleworkFull(member?.teleworkFull ?? false);
+    setTeleworkDays(member?.teleworkQuotaDays != null ? String(member.teleworkQuotaDays) : "");
+    setTeleworkPct(member?.teleworkQuotaPct != null ? String(member.teleworkQuotaPct) : "");
+    setTeleworkSuccess(false);
+  }, [teleworkUserId, currentMembers]);
 
   const selectedDept = departments.find((d) => d.id === selectedDeptId) ?? null;
 
@@ -232,6 +255,36 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
       setWeeklyHoursError(e instanceof Error ? e.message : "error");
     } finally {
       setWeeklyHoursSaving(false);
+    }
+  };
+
+  // v3.5.11 — la cuota efectiva se resuelve en el servidor con la prioridad
+  // total > días > porcentaje > tope del departamento; aquí solo se envían los
+  // tres campos tal cual los deja el administrador.
+  const handleSetTeleworkQuota = async () => {
+    if (!teleworkUserId) return;
+    setTeleworkError(null);
+    setTeleworkSuccess(false);
+    setTeleworkSaving(true);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${teleworkUserId}/telework-quota`, {
+        method: "PUT",
+        body: JSON.stringify({
+          teleworkFull,
+          teleworkQuotaDays: teleworkDays === "" ? null : Number(teleworkDays),
+          teleworkQuotaPct: teleworkPct === "" ? null : Number(teleworkPct),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ? JSON.stringify(body.error) : `Status ${res.status}`);
+      }
+      setTeleworkSuccess(true);
+      await refetchMembers();
+    } catch (e) {
+      setTeleworkError(e instanceof Error ? e.message : "error");
+    } finally {
+      setTeleworkSaving(false);
     }
   };
 
@@ -495,7 +548,16 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   {currentMembers.map((m) => (
                     <li key={m.id} className="flex items-center justify-between bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
                       <span className="text-slate-700">{displayLabel(m)}</span>
-                      <span className="text-slate-400">{m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}</span>
+                      <span className="text-slate-400">
+                        {m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}
+                        {m.teleworkFull
+                          ? ` · ${t("staffSchedule.telework.fullShort")}`
+                          : m.teleworkQuotaDays != null
+                            ? ` · ${m.teleworkQuotaDays}d`
+                            : m.teleworkQuotaPct != null
+                              ? ` · ${m.teleworkQuotaPct}%`
+                              : ""}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -585,6 +647,73 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
             </div>
             {weeklyHoursSuccess && <p className="text-xs text-green-700">{t("staffSchedule.config.weeklyHoursSaved")}</p>}
             {weeklyHoursError && <p className="text-xs text-red-600">{weeklyHoursError}</p>}
+
+            {/* v3.5.11 — cuota de teletrabajo por trabajador. Deja los tres
+                campos vacíos/desmarcados para que use el tope mensual del
+                departamento. */}
+            <div className="space-y-2 border-t border-slate-200 pt-3">
+              <label className="block text-xs font-medium text-slate-600">
+                {t("staffSchedule.telework.title")}
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={teleworkUserId}
+                  onChange={(e) => setTeleworkUserId(e.target.value)}
+                  className="flex-1 min-w-[12rem] rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+                >
+                  <option value="">{t("staffSchedule.manager.selectUser")}</option>
+                  {(currentMembers.length > 0 ? currentMembers : users).map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {displayLabel(u)}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={teleworkFull}
+                    onChange={(e) => setTeleworkFull(e.target.checked)}
+                    className="h-4 w-4 rounded-none border-slate-300"
+                  />
+                  {t("staffSchedule.telework.full")}
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  max={31}
+                  step={1}
+                  disabled={teleworkFull}
+                  placeholder={t("staffSchedule.telework.days")}
+                  title={t("staffSchedule.telework.days")}
+                  value={teleworkDays}
+                  onChange={(e) => setTeleworkDays(e.target.value)}
+                  className="w-24 rounded-none border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={1}
+                  disabled={teleworkFull || teleworkDays !== ""}
+                  placeholder={t("staffSchedule.telework.pct")}
+                  title={t("staffSchedule.telework.pct")}
+                  value={teleworkPct}
+                  onChange={(e) => setTeleworkPct(e.target.value)}
+                  className="w-24 rounded-none border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleSetTeleworkQuota}
+                  disabled={!teleworkUserId || teleworkSaving}
+                  className="rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  {t("staffSchedule.action.save")}
+                </button>
+              </div>
+              <p className="text-xs text-slate-400">{t("staffSchedule.telework.hint")}</p>
+              {teleworkSuccess && <p className="text-xs text-green-700">{t("staffSchedule.telework.saved")}</p>}
+              {teleworkError && <p className="text-xs text-red-600">{teleworkError}</p>}
+            </div>
           </section>
 
           {/* Summer schedule */}

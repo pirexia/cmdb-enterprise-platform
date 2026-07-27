@@ -1,4 +1,4 @@
-import { AlertSeverity, AlertType, HEALTH_STATUSES } from './schemas.js';
+import { AlertSeverity, AlertType, HEALTH_STATUSES, INTENSIVE_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 
 // Floating point tolerance for hour comparisons (D8).
 export const EPS = 0.01;
@@ -88,7 +88,7 @@ export function computeNetHours(entry: EntryLike, cfg: ValidationConfig, isSumme
   if (!entry.startTime || !entry.endTime) return 0;
 
   const gross = minutesBetween(entry.startTime, entry.endTime) / 60;
-  const isIntensive = entry.status === 'INTENSIVO';
+  const isIntensive = INTENSIVE_STATUSES.includes(entry.status);
 
   // The break applies every working day, including Fridays — only an
   // INTENSIVO (continuous) day skips it. Fixes issue #195: a normal Friday
@@ -99,6 +99,47 @@ export function computeNetHours(entry: EntryLike, cfg: ValidationConfig, isSumme
     : (isSummer ? cfg.summerBreakMinutes : cfg.winterBreakMinutes) / 60;
 
   return gross - brk;
+}
+
+// ─── Per-user telework quota (v3.5.11) ─────────────────────────────────────
+
+// Per-user override of the department's monthly telework cap. Every field is
+// optional: a user with none of them set falls back to the department default.
+export interface TeleworkQuota {
+  teleworkFull: boolean;
+  teleworkQuotaDays: number | null;
+  teleworkQuotaPct: number | null;
+}
+
+// Number of Mon-Fri days in a calendar month — the base for a percentage
+// quota. Deliberately independent of what has been planned: the cap must not
+// move as the schedule gets filled in (user decision, v3.5.11).
+export function workingDaysInMonth(year: number, month: number): number {
+  const days = new Date(Date.UTC(year, month, 0)).getUTCDate(); // month is 1-12
+  let count = 0;
+  for (let d = 1; d <= days; d++) {
+    const wd = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
+    if (wd >= 1 && wd <= 5) count++;
+  }
+  return count;
+}
+
+// Resolves the effective monthly telework cap for a user.
+// Priority: full telework > fixed days > percentage > department default.
+// Returns `null` when the user is exempt (100% telework) — no cap to breach.
+export function resolveTeleworkCap(
+  quota: TeleworkQuota | undefined,
+  departmentCap: number,
+  year: number,
+  month: number,
+): number | null {
+  if (!quota) return departmentCap;
+  if (quota.teleworkFull) return null;
+  if (quota.teleworkQuotaDays != null) return quota.teleworkQuotaDays;
+  if (quota.teleworkQuotaPct != null) {
+    return Math.round((quota.teleworkQuotaPct / 100) * workingDaysInMonth(year, month));
+  }
+  return departmentCap;
 }
 
 // detectSummer(weekStart, summerSchedule) — D7 pseudocode.
@@ -135,9 +176,13 @@ export function validate(
   summer: SummerPeriodLike | null | undefined,
   teleworkCountsByUser: Record<string, number>,
   weeklyTargetsByUser: Record<string, number> = {},
+  teleworkQuotasByUser: Record<string, TeleworkQuota> = {},
 ): GeneratedAlert[] {
   const alerts: GeneratedAlert[] = [];
   const isSummer = detectSummer(schedule.weekStart, summer ?? null);
+  // Month the week belongs to — the same month countTeleworkThisMonth uses,
+  // and the base for a percentage-expressed telework quota.
+  const month = Number(schedule.weekStart.slice(5, 7));
   const maxDaily = isSummer ? cfg.summerMaxDailyNetHours : cfg.winterMaxDailyNetHours;
 
   // ── DAILY_HOURS (ERROR): Mon-Thu net hours over the daily maximum ─────────
@@ -167,7 +212,7 @@ export function validate(
   for (const [userId, es] of byUser) {
     // ── WEEKLY_HOURS (ERROR): intensive Friday but week total below target ──
     const target = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
-    const hasIntensiveFriday = es.some((e) => e.status === 'INTENSIVO' && weekdayIso(e.date) === 5);
+    const hasIntensiveFriday = es.some((e) => INTENSIVE_STATUSES.includes(e.status) && weekdayIso(e.date) === 5);
     if (hasIntensiveFriday) {
       const weekly = es.reduce((sum, e) => sum + computeNetHours(e, cfg, isSummer), 0);
       if (weekly < target - EPS) {
@@ -181,12 +226,16 @@ export function validate(
     }
 
     // ── TELEWORK_QUOTA (ERROR): monthly telework days over the cap ──────────
+    // The cap is per user (v3.5.11): a worker on full remote for medical
+    // reasons is exempt (cap === null) and must never be flagged; others may
+    // carry a days- or percentage-based override of the department cap.
     const teleMonth = teleworkCountsByUser[userId] ?? 0;
-    if (teleMonth > cfg.monthlyTeleworkCap) {
+    const teleCap = resolveTeleworkCap(teleworkQuotasByUser[userId], cfg.monthlyTeleworkCap, schedule.year, month);
+    if (teleCap !== null && teleMonth > teleCap) {
       alerts.push({
         type: 'TELEWORK_QUOTA',
         severity: 'ERROR',
-        message: `Telework days this month (${teleMonth}) exceed the cap (${cfg.monthlyTeleworkCap})`,
+        message: `Telework days this month (${teleMonth}) exceed the cap (${teleCap})`,
         userId,
       });
     }
@@ -272,18 +321,34 @@ export function validate(
     }
   }
 
-  // ── PRESENCE_PCT (WARNING): per day, % of PRESENCIAL covering the core ────
+  // ── PRESENCE_PCT (WARNING): per day, % of the available team on site ──────
+  //
+  // Two fixes over the original rule (v3.5.11, reported as "always 0.0%"):
+  //
+  // 1. A worker counts as present when their PRESENCIAL shift *overlaps* the
+  //    core window, not when it fully contains it. The old containment test
+  //    (start <= presenceStart && end >= presenceEnd) was unsatisfiable in
+  //    practice: with a 09:00-18:00 core window (9 h) and ~8.5 h shifts, no
+  //    real workday could ever qualify, so the coverage was reported as 0.0%
+  //    no matter who was in the office.
+  // 2. The denominator only counts workers who are actually available that
+  //    day. Somebody on holiday or sick leave cannot be present, so counting
+  //    them made a holiday week permanently breach the minimum.
   const days = Array.from(new Set(entries.map((e) => e.date))).sort();
-  const deptUserCount = new Set(entries.map((e) => e.userId)).size;
   for (const day of days) {
-    if (deptUserCount === 0) continue;
     const dayEntries = entries.filter((e) => e.date === day);
-    const present = dayEntries.filter((e) =>
-      e.status === 'PRESENCIAL' &&
-      !!e.startTime && !!e.endTime &&
-      e.startTime <= cfg.presenceStart && e.endTime >= cfg.presenceEnd,
-    ).length;
-    const pct = (present / deptUserCount) * 100;
+    const availableCount = dayEntries.filter((e) => !NON_WORKING_STATUSES.has(e.status)).length;
+    if (availableCount === 0) continue;
+    // A PRESENCIAL entry with no times yet (the shape createSchedule seeds a
+    // new week with) counts as present: the planner has declared the person on
+    // site, and the window check only makes sense once hours are filled in.
+    // Otherwise a brand-new week would always report 0% coverage.
+    const present = dayEntries.filter((e) => {
+      if (e.status !== 'PRESENCIAL') return false;
+      if (!e.startTime || !e.endTime) return true;
+      return e.startTime < cfg.presenceEnd && e.endTime > cfg.presenceStart;
+    }).length;
+    const pct = (present / availableCount) * 100;
     if (pct < cfg.minPresencePct - EPS) {
       alerts.push({
         type: 'PRESENCE_PCT',

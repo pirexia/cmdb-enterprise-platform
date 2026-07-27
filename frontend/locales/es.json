@@ -2309,6 +2309,7 @@
       "BAJA_MEDICA": "Baja médica",
       "BAJA_PATERNIDAD": "Baja por paternidad/maternidad",
       "INTENSIVO": "Jornada intensiva",
+      "INTENSIVO_TELETRABAJO": "Jornada intensiva en teletrabajo",
       "VIAJE": "Viaje",
       "AUSENTE": "Ausente",
       "masked": "Ausente",
@@ -2438,6 +2439,15 @@
     },
     "syncMembers": {
       "added": "{n} trabajador(es) añadido(s) a la planificación."
+    },
+    "telework": {
+      "title": "Cuota de teletrabajo por trabajador",
+      "full": "Teletrabajo total",
+      "fullShort": "TT total",
+      "days": "Días",
+      "pct": "%",
+      "hint": "Prioridad: teletrabajo total > días > porcentaje > tope del departamento. Déjalo vacío para usar el tope del departamento.",
+      "saved": "Cuota de teletrabajo guardada"
     }
   }
 }

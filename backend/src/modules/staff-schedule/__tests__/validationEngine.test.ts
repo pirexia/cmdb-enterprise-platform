@@ -1,4 +1,7 @@
-import { validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours } from '../validationEngine';
+import {
+  validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours,
+  resolveTeleworkCap, workingDaysInMonth,
+} from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
 const cfg: ValidationConfig = {
@@ -187,6 +190,126 @@ describe('validationEngine.validate', () => {
     ];
     const alerts = validate(schedule, entries, cfg, null, {});
     expect(alertsOfType(alerts, 'FLEX_RANGE')).toHaveLength(1);
+  });
+});
+
+// ─── v3.5.11 ───────────────────────────────────────────────────────────────
+
+describe('INTENSIVO_TELETRABAJO (v3.5.11)', () => {
+  it('no deduce descanso, igual que INTENSIVO', () => {
+    const e: EntryLike = { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO_TELETRABAJO', startTime: '08:00', endTime: '14:00' };
+    expect(computeNetHours(e, cfg, false)).toBeCloseTo(6.0, 5);
+    // El mismo tramo como PRESENCIAL sí descuenta la hora de descanso.
+    expect(computeNetHours({ ...e, status: 'PRESENCIAL' }, cfg, false)).toBeCloseTo(5.0, 5);
+  });
+
+  it('no genera FLEX_RANGE (jornada continua con horario propio)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'INTENSIVO_TELETRABAJO', startTime: '06:00', endTime: '14:00' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, cfg, null, {}), 'FLEX_RANGE')).toHaveLength(0);
+  });
+
+  it('cuenta como viernes intensivo para WEEKLY_HOURS', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO_TELETRABAJO', startTime: '08:00', endTime: '14:00' },
+    ];
+    const weekly = alertsOfType(validate(schedule, entries, cfg, null, {}), 'WEEKLY_HOURS');
+    expect(weekly).toHaveLength(1); // 6h < 40h de objetivo
+  });
+});
+
+describe('resolveTeleworkCap (v3.5.11)', () => {
+  it('sin override -> tope del departamento', () => {
+    expect(resolveTeleworkCap(undefined, 10, 2026, 7)).toBe(10);
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null }, 10, 2026, 7)).toBe(10);
+  });
+
+  it('teleworkFull -> exento (null), aunque haya días/porcentaje fijados', () => {
+    expect(resolveTeleworkCap({ teleworkFull: true, teleworkQuotaDays: 3, teleworkQuotaPct: 20 }, 10, 2026, 7)).toBeNull();
+  });
+
+  it('días manda sobre porcentaje', () => {
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: 4, teleworkQuotaPct: 90 }, 10, 2026, 7)).toBe(4);
+  });
+
+  it('porcentaje se calcula sobre los días L-V del mes natural', () => {
+    // Julio 2026 tiene 23 días laborables -> 50% = 11.5 -> redondea a 12.
+    expect(workingDaysInMonth(2026, 7)).toBe(23);
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: 50 }, 10, 2026, 7)).toBe(12);
+  });
+});
+
+describe('TELEWORK_QUOTA con cuota por usuario (v3.5.11)', () => {
+  const entries: EntryLike[] = [
+    { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '17:00' },
+  ];
+
+  it('el trabajador 100% teletrabajo nunca dispara la alerta', () => {
+    const alerts = validate(schedule, entries, cfg, null, { u1: 22 }, {}, {
+      u1: { teleworkFull: true, teleworkQuotaDays: null, teleworkQuotaPct: null },
+    });
+    expect(alertsOfType(alerts, 'TELEWORK_QUOTA')).toHaveLength(0);
+  });
+
+  it('un tope propio en días sustituye al del departamento', () => {
+    const quota = { u1: { teleworkFull: false, teleworkQuotaDays: 2, teleworkQuotaPct: null } };
+    // 3 días > tope propio de 2, aunque el tope del departamento (10) no se supere.
+    const alerts = validate(schedule, entries, cfg, null, { u1: 3 }, {}, quota);
+    const fired = alertsOfType(alerts, 'TELEWORK_QUOTA');
+    expect(fired).toHaveLength(1);
+    expect(fired[0].message).toContain('(2)');
+  });
+});
+
+describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
+  // Configuración real de producción que provocaba el fallo: franja núcleo de
+  // 9h que ninguna jornada de ~8.5h puede contener por completo.
+  const wideCfg: ValidationConfig = { ...cfg, presenceStart: '09:00', presenceEnd: '18:00' };
+
+  it('una jornada que solapa la franja cuenta como presente (antes: siempre 0.0%)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '07:30', endTime: '16:00' },
+      { userId: 'u2', date: '2026-07-06', status: 'PRESENCIAL', startTime: '09:00', endTime: '17:30' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+  });
+
+  it('los ausentes salen del denominador: 1 presente + 3 de vacaciones = 100%', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '16:30' },
+      { userId: 'u2', date: '2026-07-06', status: 'VACACIONES' },
+      { userId: 'u3', date: '2026-07-06', status: 'BAJA_MEDICA' },
+      { userId: 'u4', date: '2026-07-06', status: 'VIAJE' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+  });
+
+  it('una semana recién creada (PRESENCIAL sin horas) no reporta 0%', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL' },
+      { userId: 'u2', date: '2026-07-06', status: 'PRESENCIAL' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+  });
+
+  it('sigue avisando cuando la presencialidad real es insuficiente', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '16:30' },
+      { userId: 'u2', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '16:30' },
+      { userId: 'u3', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '16:30' },
+    ];
+    const fired = alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT');
+    expect(fired).toHaveLength(1);
+    expect(fired[0].message).toContain('33.3%');
+  });
+
+  it('un día enteramente de vacaciones no genera alerta (denominador 0)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' },
+      { userId: 'u2', date: '2026-07-06', status: 'VACACIONES' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 });
 

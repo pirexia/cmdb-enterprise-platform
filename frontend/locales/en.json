@@ -2309,6 +2309,7 @@
       "BAJA_MEDICA": "Sick leave",
       "BAJA_PATERNIDAD": "Parental leave",
       "INTENSIVO": "Reduced hours",
+      "INTENSIVO_TELETRABAJO": "Intensive shift (remote)",
       "VIAJE": "Business travel",
       "AUSENTE": "Absent",
       "masked": "Absent",
@@ -2438,6 +2439,15 @@
     },
     "syncMembers": {
       "added": "{n} worker(s) added to the schedule."
+    },
+    "telework": {
+      "title": "Per-worker telework quota",
+      "full": "Full telework",
+      "fullShort": "Full TW",
+      "days": "Days",
+      "pct": "%",
+      "hint": "Priority: full telework > days > percentage > department cap. Leave empty to use the department cap.",
+      "saved": "Telework quota saved"
     }
   }
 }

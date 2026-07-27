@@ -1,4 +1,6 @@
 import { Prisma } from '@prisma/client';
+import { TELEWORK_STATUSES } from './schemas.js';
+import type { TeleworkQuota } from './validationEngine.js';
 
 // Client type accepted by every query helper: the base PrismaClient OR an
 // interactive transaction client. Read helpers can run inside a transaction
@@ -28,7 +30,7 @@ export async function loadScheduleWithEntries(
   });
 }
 
-// Count TELETRABAJO entries for a user within a given calendar month.
+// Count telework entries for a user within a given calendar month.
 // A user belongs to exactly one department, so we can filter directly on
 // userId + date range without needing to join back through the department.
 export async function countTeleworkThisMonth(
@@ -42,7 +44,9 @@ export async function countTeleworkThisMonth(
   return prisma.scheduleEntry.count({
     where: {
       userId,
-      status: 'TELETRABAJO',
+      // Every remote status consumes the quota, including the intensive
+      // (continuous) remote shift added in v3.5.11.
+      status: { in: [...TELEWORK_STATUSES] },
       date: { gte: start, lt: end },
     },
   });
@@ -114,14 +118,42 @@ export interface DepartmentMemberInfo {
   displayName: string | null;
   email: string;
   weeklyTargetHours: number | null;
+  teleworkFull: boolean;
+  teleworkQuotaDays: number | null;
+  teleworkQuotaPct: number | null;
 }
 
 export async function loadDepartmentMembers(prisma: Db, departmentId: string): Promise<DepartmentMemberInfo[]> {
   return prisma.user.findMany({
     where: { departmentId, active: true },
-    select: { id: true, username: true, displayName: true, email: true, weeklyTargetHours: true },
+    select: {
+      id: true, username: true, displayName: true, email: true, weeklyTargetHours: true,
+      teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true,
+    },
     orderBy: { username: 'asc' },
   });
+}
+
+// Per-user telework quota overrides, keyed by user id. Users without a row in
+// the result simply fall back to the department cap (resolveTeleworkCap).
+export async function loadTeleworkQuotas(
+  prisma: Db,
+  userIds: string[],
+): Promise<Record<string, TeleworkQuota>> {
+  if (userIds.length === 0) return {};
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+  });
+  const map: Record<string, TeleworkQuota> = {};
+  for (const u of users) {
+    map[u.id] = {
+      teleworkFull: u.teleworkFull,
+      teleworkQuotaDays: u.teleworkQuotaDays,
+      teleworkQuotaPct: u.teleworkQuotaPct,
+    };
+  }
+  return map;
 }
 
 // Solo los userId de los managers — usado para el ordenado manager-first de

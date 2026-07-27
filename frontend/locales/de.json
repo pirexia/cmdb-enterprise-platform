@@ -2190,6 +2190,7 @@
       "BAJA_MEDICA": "Krankheitsurlaub",
       "BAJA_PATERNIDAD": "Elternzeit",
       "INTENSIVO": "Verkürzte Arbeitszeit",
+      "INTENSIVO_TELETRABAJO": "Durchgehende Schicht (Homeoffice)",
       "VIAJE": "Dienstreise",
       "AUSENTE": "Abwesend",
       "masked": "Abwesend",
@@ -2319,6 +2320,15 @@
     },
     "syncMembers": {
       "added": "{n} Mitarbeiter zur Planung hinzugefügt."
+    },
+    "telework": {
+      "title": "Telearbeitskontingent pro Mitarbeiter",
+      "full": "Vollständige Telearbeit",
+      "fullShort": "Voll-TA",
+      "days": "Tage",
+      "pct": "%",
+      "hint": "Priorität: vollständige Telearbeit > Tage > Prozentsatz > Abteilungsgrenze. Leer lassen, um die Abteilungsgrenze zu verwenden.",
+      "saved": "Telearbeitskontingent gespeichert"
     }
   }
 }

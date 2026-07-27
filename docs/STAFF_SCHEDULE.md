@@ -1,4 +1,4 @@
-# Módulo Staff Schedule — Documentación Técnica (v3.5.0, actualizado v3.5.9 — ver §13)
+# Módulo Staff Schedule — Documentación Técnica (v3.5.0, actualizado v3.5.11 — ver §16)
 
 > Gestión de horarios del personal. **No es un sistema de fichajes** — solo planificación, visualización y validación de horarios semanales por departamento.
 
@@ -22,9 +22,11 @@ Módulo **core** (patrón DCIM, no Plugin Engine — ver §6 decisiones) que per
 
 Todos los campos de estado/severidad/tipo son **TEXT validados por Zod** (`SCHEDULE_STATUS`, `ALERT_TYPE`, `ALERT_SEVERITY`, `SCHEDULE_STATE` en `backend/src/modules/staff-schedule/schemas.ts`), no enums de PostgreSQL — evita la fricción de migración de enums (lección de v3.4.4).
 
-## 3. Estados de jornada (8) + guardia como complemento
+## 3. Estados de jornada (9) + guardia como complemento
 
-`PRESENCIAL`, `TELETRABAJO`, `VACACIONES`, `BAJA_MEDICA`, `BAJA_PATERNIDAD`, `INTENSIVO`, `VIAJE`, `AUSENTE`.
+`PRESENCIAL`, `TELETRABAJO`, `VACACIONES`, `BAJA_MEDICA`, `BAJA_PATERNIDAD`, `INTENSIVO`, `INTENSIVO_TELETRABAJO`, `VIAJE`, `AUSENTE`.
+
+**Desde v3.5.11** (§16.1), `INTENSIVO_TELETRABAJO` (jornada intensiva desde casa) combina las dos semánticas: cuenta como jornada continua para el cómputo de horas y como teletrabajo para la cuota. Ambas se centralizan en dos allowlists de `schemas.ts` — `INTENSIVE_STATUSES` (sin descanso, sin `FLEX_RANGE`) y `TELEWORK_STATUSES` (consumen cuota) — en lugar de comparar contra literales dispersos por el módulo.
 
 `BAJA_MEDICA` y `BAJA_PATERNIDAD` son datos de salud (GDPR Art. 9) — ver §5.
 
@@ -35,7 +37,7 @@ Todos los campos de estado/severidad/tipo son **TEXT validados por Zod** (`SCHED
 `computeNetHours(entry, cfg, isSummer)` (`validationEngine.ts`):
 - Estados que no computan jornada (`VACACIONES`, `BAJA_*`, `AUSENTE`, `VIAJE`) → 0h.
 - Si no hay `startTime`/`endTime` → 0h.
-- Horas brutas = `endTime - startTime`. Se resta el descanso (`winterBreakMinutes`/`summerBreakMinutes`) salvo que el estado del día sea `INTENSIVO` (sin descanso). **Corregido en v3.5.9** — ver §13.1: la versión anterior excluía el descanso en todos los viernes, no solo en los `INTENSIVO`, inflando una semana normal de 40h a 40.5h.
+- Horas brutas = `endTime - startTime`. Se resta el descanso (`winterBreakMinutes`/`summerBreakMinutes`) salvo que el estado del día esté en `INTENSIVE_STATUSES` — `INTENSIVO` o `INTENSIVO_TELETRABAJO`, jornada continua sin descanso (v3.5.11). **Corregido en v3.5.9** — ver §13.1: la versión anterior excluía el descanso en todos los viernes, no solo en los `INTENSIVO`, inflando una semana normal de 40h a 40.5h.
 - `detectSummer(weekStart, summerSchedule)` compara `weekStart` contra el periodo `[startDate,endDate]` del `SummerSchedule` del año.
 
 ## 5. Motor de validaciones (V1-V8, antes V1-V7)
@@ -46,12 +48,12 @@ Ejecutado por `POST /:id/validate` (`validationEngine.validate()`, puro y síncr
 |---|---|---|
 | `DAILY_HOURS` | ERROR | Un día lunes-jueves supera el máximo diario configurado |
 | `WEEKLY_HOURS` | ERROR | Hay viernes `INTENSIVO` pero el total semanal no alcanza el objetivo (40h por defecto, o el override individual del usuario — v3.5.9, §13.5) |
-| `TELEWORK_QUOTA` | ERROR | Días de teletrabajo del mes superan la cuota mensual configurada |
+| `TELEWORK_QUOTA` | ERROR | Días de teletrabajo del mes superan la cuota mensual **efectiva del trabajador** (v3.5.11, §16.2: override propio si lo tiene, si no el tope del departamento; un trabajador marcado como 100% teletrabajo queda exento) |
 | `GUARDIA_COVERAGE` | ERROR | Un usuario tiene `onGuard: true` y `VIAJE`/`VACACIONES` en la misma semana (antes de v3.5.9: estado `GUARDIA` en vez de `onGuard`) |
 | `GUARDIA_UNIQUE` | ERROR | **Nuevo en v3.5.9** (§13.3) — más de un usuario con `onGuard: true` el mismo día dentro de la misma planificación. Aviso temprano en la UI de validación de un `DRAFT`; la garantía dura entre planificaciones históricas es el índice único parcial `schedule_entries_on_guard_unique`, aplicado en `service.ts` al escribir |
 | `BAJA_CONFLICT` | WARNING | Un usuario tiene baja médica/paternidad y también `PRESENCIAL`/`TELETRABAJO` en la misma semana |
 | `FLEX_RANGE` | WARNING | Entrada/salida fuera de la ventana flexible configurada |
-| `PRESENCE_PCT` | WARNING | El % de personal presencial en la franja de presencialidad no alcanza el mínimo del departamento |
+| `PRESENCE_PCT` | WARNING | El % de personal presencial que **solapa** la franja de presencialidad no alcanza el mínimo del departamento. El denominador cuenta solo a quien está disponible ese día (v3.5.11, §16.3 — corrige un 0.0% permanente) |
 
 **Desviación documentada respecto al diseño original**: `GUARDIA_COVERAGE` y `BAJA_CONFLICT` se evalúan a **nivel semanal**, no "mismo día", porque `ScheduleEntry` tiene un único `status` por `(schedule, user, date)` — un día no puede tener dos estados simultáneos, así que la regla "mismo día con dos estados" sería código muerto bajo el schema real.
 
@@ -224,3 +226,46 @@ El panel ahora lista los managers actuales de cada departamento (con botón de q
 ### 15.7 UI de horario vacío
 
 Cuando un horario existe (`StaffSchedule`) pero no tiene ninguna fila, se muestra un aviso con los botones "Sincronizar miembros" y "Eliminar" en lugar de una rejilla vacía sin ninguna acción disponible. Los mismos dos botones aparecen en la cabecera para cualquier horario `DRAFT` editable, para poder incorporar nuevos trabajadores a una planificación ya hecha.
+
+## 16. Cambios de v3.5.11
+
+### 16.1 Estado `INTENSIVO_TELETRABAJO`
+
+Jornada intensiva realizada desde casa. Combina las dos semánticas ya existentes: no deduce descanso (como `INTENSIVO`) y consume cuota mensual de teletrabajo (como `TELETRABAJO`). Queda fuera de `FLEX_RANGE` por la misma razón que `INTENSIVO` (§15.1): es jornada continua con horario propio y no usa la ventana flexible.
+
+Las tres semánticas no se expresan como comparaciones sueltas contra literales, sino mediante dos allowlists en `schemas.ts`:
+
+- `INTENSIVE_STATUSES` = `['INTENSIVO', 'INTENSIVO_TELETRABAJO']` → sin descanso en `computeNetHours`, fuera de `FLEX_RANGE`, cuentan como "viernes intensivo" para `WEEKLY_HOURS`.
+- `TELEWORK_STATUSES` = `['TELETRABAJO', 'INTENSIVO_TELETRABAJO']` → consumen cuota (`countTeleworkThisMonth`) y suman a los contadores `teleworkDaysWeek` / `teleworkDaysMonth`.
+
+Un estado futuro que sea intensivo, teletrabajo o ambos se añade a la lista correspondiente, sin tener que cazar comparaciones dispersas por el módulo.
+
+### 16.2 Cuota de teletrabajo por trabajador
+
+Tres campos nuevos en `users`, todos opcionales — sin ninguno fijado, el comportamiento es exactamente el anterior (tope del departamento):
+
+| Campo | Significado |
+|---|---|
+| `telework_full` | Exento de la cuota (p. ej. 100% teletrabajo por motivos médicos) |
+| `telework_quota_days` | Tope mensual propio, en días |
+| `telework_quota_pct` | Tope mensual propio, como % de los días laborables del mes |
+
+`resolveTeleworkCap()` (puro, en `validationEngine.ts`) resuelve el tope efectivo con prioridad **total > días > porcentaje > tope del departamento** (D1). Devuelve `null` para el trabajador exento — explícitamente "sin tope", no un `Infinity` que se pudiera comparar por accidente.
+
+**D2 — la base del porcentaje son los días L-V del mes natural**, no los días efectivamente planificados como trabajo. Con la segunda opción el tope se movería según se rellena el horario, que es justo lo contrario de lo que se espera de una cuota.
+
+Edición: `PUT /api/staff-schedule/users/:userId/telework-quota` (solo ADMIN, mutación + `AuditLog` en una única transacción) y el panel de configuración del módulo. Los rangos se validan en Zod **y** con `CHECK` constraints en la BD, para que el invariante aguante también una escritura que no pase por la API.
+
+### 16.3 Fix: `PRESENCE_PCT` reportaba siempre 0.0%
+
+**Causa raíz.** La regla contaba a un trabajador como presente solo si su jornada **contenía por completo** la franja núcleo (`startTime <= presenceStart && endTime >= presenceEnd`). Con la configuración real del departamento —franja `09:00–18:00`, 9 h— y jornadas de ~8.5 h, ninguna jornada real podía satisfacerla nunca: el numerador era 0 por construcción y la alerta se disparaba todos los días con `0.0%`, hubiera quien hubiera en la oficina.
+
+**Correcciones.**
+
+1. **Solape en vez de contención**: `startTime < presenceEnd && endTime > presenceStart`. La métrica pasa a significar "% de la plantilla disponible que está en la oficina ese día", que es lo que expresa "presencialidad mínima del 50%".
+2. **Denominador = personal disponible**: se excluyen los estados que no computan jornada (`VACACIONES`, `BAJA_*`, `AUSENTE`, `VIAJE`). Quien está de vacaciones no puede estar presente; contarlo hacía que una semana de vacaciones incumpliera el mínimo por definición.
+3. **`PRESENCIAL` sin horas cuenta como presente**: es la forma exacta en que `createSchedule` siembra una semana nueva. Sin esta regla, toda semana recién creada reportaría 0% hasta rellenar los horarios uno a uno.
+
+Un día en que nadie está disponible (todo el departamento de vacaciones) no genera alerta: el denominador es 0 y la métrica no está definida.
+
+**Verificación en producción** contra el departamento real, día 2026-07-27: 1 presente de 3 disponibles (1 de vacaciones y 1 de baja fuera del denominador) → `33.3%`, contrastado contra las filas de la BD. Bajo la regla anterior el mismo día daba `0/5 = 0.0%`.

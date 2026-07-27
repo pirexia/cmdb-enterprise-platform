@@ -2341,7 +2341,9 @@
       "removeManager": "Quitar",
       "assignDepartment": "Asignar departamento",
       "configure": "Configurar",
-      "applyWeek": "Aplicar a toda la semana"
+      "applyWeek": "Aplicar a toda la semana",
+      "syncMembers": "Sincronizar miembros",
+      "deleteSchedule": "Eliminar planificación"
     },
     "config": {
       "title": "Configuración de horario",
@@ -2366,7 +2368,9 @@
       "fridayNetHours": "Horas viernes intensivo",
       "newDepartment": "Nuevo departamento",
       "weeklyHoursOverride": "Horas semanales (trabajador)",
-      "weeklyHoursDefault": "Por defecto (departamento)"
+      "weeklyHoursDefault": "Por defecto (departamento)",
+      "weeklyHoursWorker": "Horas semanales (trabajador)",
+      "weeklyHoursSaved": "Horas semanales guardadas."
     },
     "summary": {
       "weeklyHours": "Horas semanales",
@@ -2391,7 +2395,8 @@
     },
     "manager": {
       "title": "Responsables de departamento",
-      "selectUser": "Seleccionar usuario"
+      "selectUser": "Seleccionar usuario",
+      "none": "Sin responsables asignados."
     },
     "gdpr": {
       "maskedNotice": "Algunos estados se muestran de forma genérica por protección de datos de salud"
@@ -2399,7 +2404,8 @@
     "empty": {
       "noSchedule": "No hay planificación para esta semana",
       "createSchedule": "Crear planificación",
-      "importPreviousWeek": "Importar semana anterior"
+      "importPreviousWeek": "Importar semana anterior",
+      "hasNoMembers": "Esta planificación no tiene trabajadores. Sincroniza para incorporar a los miembros actuales del departamento, o elimínala para poder clonarla de nuevo."
     },
     "calendar": {
       "person": "Persona"
@@ -2422,6 +2428,16 @@
       "pickWeek": "Elegir semana destino",
       "targetWeek": "Semana destino",
       "mustBeFutureEmpty": "Debe ser una semana futura sin calendario existente"
+    },
+    "members": {
+      "title": "Miembros del departamento",
+      "none": "Sin miembros asignados."
+    },
+    "confirm": {
+      "deleteSchedule": "¿Eliminar esta planificación? Se perderán todas sus entradas. Esta acción no se puede deshacer."
+    },
+    "syncMembers": {
+      "added": "{n} trabajador(es) añadido(s) a la planificación."
     }
   }
 }

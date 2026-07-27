@@ -2222,7 +2222,9 @@
       "removeManager": "Rimuovi",
       "assignDepartment": "Assegna reparto",
       "configure": "Configura",
-      "applyWeek": "Applica a tutta la settimana"
+      "applyWeek": "Applica a tutta la settimana",
+      "syncMembers": "Sincronizza membri",
+      "deleteSchedule": "Elimina pianificazione"
     },
     "config": {
       "title": "Configurazione orario",
@@ -2247,7 +2249,9 @@
       "fridayNetHours": "Ore effettive venerdì ridotto",
       "newDepartment": "Nuovo reparto",
       "weeklyHoursOverride": "Ore settimanali (dipendente)",
-      "weeklyHoursDefault": "Predefinito del reparto"
+      "weeklyHoursDefault": "Predefinito del reparto",
+      "weeklyHoursWorker": "Ore settimanali (lavoratore)",
+      "weeklyHoursSaved": "Ore settimanali salvate."
     },
     "summary": {
       "weeklyHours": "Ore settimanali",
@@ -2272,7 +2276,8 @@
     },
     "manager": {
       "title": "Responsabili di reparto",
-      "selectUser": "Seleziona utente"
+      "selectUser": "Seleziona utente",
+      "none": "Nessun responsabile assegnato."
     },
     "gdpr": {
       "maskedNotice": "Alcuni stati vengono mostrati in forma generica per la protezione dei dati sanitari"
@@ -2280,7 +2285,8 @@
     "empty": {
       "noSchedule": "Nessuna pianificazione per questa settimana",
       "createSchedule": "Crea pianificazione",
-      "importPreviousWeek": "Importa settimana precedente"
+      "importPreviousWeek": "Importa settimana precedente",
+      "hasNoMembers": "Questa pianificazione non ha lavoratori. Sincronizza per includere i membri attuali del dipartimento, oppure eliminala per poterla riclonare."
     },
     "calendar": {
       "person": "Persona"
@@ -2303,6 +2309,16 @@
       "pickWeek": "Scegli settimana di destinazione",
       "targetWeek": "Settimana di destinazione",
       "mustBeFutureEmpty": "Deve essere una settimana futura senza calendario esistente"
+    },
+    "members": {
+      "title": "Membri del dipartimento",
+      "none": "Nessun membro assegnato."
+    },
+    "confirm": {
+      "deleteSchedule": "Eliminare questa pianificazione? Tutte le voci andranno perse. Questa azione non può essere annullata."
+    },
+    "syncMembers": {
+      "added": "{n} lavoratore/i aggiunto/i alla pianificazione."
     }
   }
 }

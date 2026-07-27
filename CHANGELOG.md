@@ -34,6 +34,14 @@ Versioning: [Semantic Versioning](https://semver.org/)
 - La sincronización **nunca borra usuarios** (desactiva) ni **reescribe roles**, y excluye a los usuarios creados a mano mediante cláusula de BD.
 - `ldapts` 8.2.0 como dependencia directa: la rama 7.x arrastra el CVE de `uuid` (GHSA-w5hq-g745-h8pq); la 8.1+ está limpia en `npm audit`.
 
+### Fixed (segunda tanda, verificación en vivo)
+
+- `FLEX_RANGE` ya no aplica a `INTENSIVO` (jornada continua sin ventana flexible de entrada/salida).
+- Panel de configuración: ahora muestra los managers y miembros actuales de cada departamento (`GET /departments/:id/managers` y `.../members`, antes inexistentes).
+- El guardado de "horas semanales (trabajador)" tenía su selector compartido con otra sección y nunca se habilitaba sin elegir un trabajador allí; pasa a tener su propio selector con prefill del valor actual.
+- Orden de las filas del calendario: el/los responsables del departamento aparecen primero (antes, orden por `userId`).
+- **Nuevo**: `DELETE /api/staff-schedule/:id` (solo `DRAFT`) y `POST /:id/sync-members` (no destructivo) resuelven el callejón sin salida de un horario creado/clonado antes de la membresía final del departamento, y permiten incorporar nuevos trabajadores a una planificación ya hecha.
+
 ## [2.9.0] — 2026-06-20
 
 ### Changed

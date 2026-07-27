@@ -89,6 +89,51 @@ export async function loadManagedDepartmentIds(prisma: Db, userId: string): Prom
   return rows.map((r) => r.departmentId);
 }
 
+// ── Managers y miembros de un departamento (v3.5.10 refinamiento) ───────────
+// El panel de configuración necesitaba mostrar quién gestiona el departamento
+// y quién pertenece a él; no existía ningún GET para ninguna de las dos cosas.
+
+export interface DepartmentManagerInfo {
+  id: string;
+  username: string;
+  displayName: string | null;
+  email: string;
+}
+
+export async function loadDepartmentManagers(prisma: Db, departmentId: string): Promise<DepartmentManagerInfo[]> {
+  const rows = await prisma.departmentManager.findMany({
+    where: { departmentId },
+    select: { user: { select: { id: true, username: true, displayName: true, email: true } } },
+  });
+  return rows.map((r) => r.user);
+}
+
+export interface DepartmentMemberInfo {
+  id: string;
+  username: string;
+  displayName: string | null;
+  email: string;
+  weeklyTargetHours: number | null;
+}
+
+export async function loadDepartmentMembers(prisma: Db, departmentId: string): Promise<DepartmentMemberInfo[]> {
+  return prisma.user.findMany({
+    where: { departmentId, active: true },
+    select: { id: true, username: true, displayName: true, email: true, weeklyTargetHours: true },
+    orderBy: { username: 'asc' },
+  });
+}
+
+// Solo los userId de los managers — usado para el ordenado manager-first de
+// buildScheduleView, donde no hace falta el resto de campos.
+export async function loadDepartmentManagerIds(prisma: Db, departmentId: string): Promise<Set<string>> {
+  const rows = await prisma.departmentManager.findMany({
+    where: { departmentId },
+    select: { userId: true },
+  });
+  return new Set(rows.map((r) => r.userId));
+}
+
 // Resolve each user's effective weekly target: their own override if set,
 // otherwise the department's default (used for both V-WEEKLY_HOURS and the
 // client-side exit-time autofill).

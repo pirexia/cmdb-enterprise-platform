@@ -306,6 +306,20 @@ export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: st
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
+// deleteSchedule — DRAFT only (D10: PUBLISHED is immutable; unpublish first).
+// ScheduleEntry/ScheduleAlert cascade via onDelete: Cascade in schema.prisma.
+// Added in the v3.5.10 refinement round: a schedule cloned/created before the
+// department had its final membership had no way to be discarded so the week
+// could be re-cloned from scratch.
+export async function deleteSchedule(prisma: Prisma.TransactionClient, scheduleId: string): Promise<void> {
+  const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { status: true } });
+  if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
+  if (schedule.status !== 'DRAFT') {
+    throw new ScheduleServiceError(409, 'Cannot delete a published schedule; unpublish first');
+  }
+  await prisma.staffSchedule.delete({ where: { id: scheduleId } });
+}
+
 // cloneToWeek — copies all entries from `scheduleId` onto a caller-chosen
 // target Monday. Used both by the "Clone to week..." picker and by
 // "Import previous week" (source = previous week's schedule, target = the

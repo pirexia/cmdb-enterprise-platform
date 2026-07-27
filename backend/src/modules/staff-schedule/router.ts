@@ -20,6 +20,7 @@ import {
   runValidation,
   publish,
   unpublish,
+  deleteSchedule,
   cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
@@ -404,6 +405,21 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.json(schedule);
     } catch (err) {
       handleServiceError(err, res, 'unpublish');
+    }
+  });
+
+  // DELETE /api/staff-schedule/:id  (deptEdit, DRAFT only — D10) — v3.5.10
+  // refinamiento: permite descartar un horario creado/clonado con una
+  // membresía de departamento desactualizada, para poder re-clonar la semana.
+  router.delete('/:id', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await deleteSchedule(tx, req.params.id as string);
+        await auditStaffSchedule(tx, { action: 'DELETE_STAFF_SCHEDULE', entity: 'STAFF_SCHEDULE', entityId: req.params.id as string, userEmail: req.user!.email });
+      });
+      res.status(204).end();
+    } catch (err) {
+      handleServiceError(err, res, 'delete');
     }
   });
 

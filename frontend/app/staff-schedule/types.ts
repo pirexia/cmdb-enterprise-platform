@@ -9,6 +9,7 @@ export const SCHEDULE_STATUS = [
   "BAJA_MEDICA",
   "BAJA_PATERNIDAD",
   "INTENSIVO",
+  "INTENSIVO_TELETRABAJO",
   "VIAJE",
   "AUSENTE",
 ] as const;
@@ -160,4 +161,8 @@ export interface DepartmentMemberInfo {
   displayName: string | null;
   email: string;
   weeklyTargetHours: number | null;
+  // v3.5.11 — override de cuota de teletrabajo (total / días / porcentaje).
+  teleworkFull: boolean;
+  teleworkQuotaDays: number | null;
+  teleworkQuotaPct: number | null;
 }

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { HEALTH_STATUSES } from './schemas.js';
+import { HEALTH_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 import {
   computeNetHours,
   detectSummer,
@@ -12,7 +12,7 @@ import {
 } from './validationEngine.js';
 import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
-         loadDepartmentManagerIds } from './queries.js';
+         loadDepartmentManagerIds, loadTeleworkQuotas } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -266,9 +266,12 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
     teleworkCountsByUser[uid] = await countTeleworkThisMonth(prisma, uid, schedule.year, month);
   }
   const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, userIds, cfg.weeklyTargetNetHours);
+  const teleworkQuotasByUser = await loadTeleworkQuotas(prisma, userIds);
 
   const scheduleLike: ScheduleLike = { id: schedule.id, weekStart: isoDate(schedule.weekStart), year: schedule.year };
-  const alerts = validate(scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser, weeklyTargetsByUser);
+  const alerts = validate(
+    scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser, weeklyTargetsByUser, teleworkQuotasByUser,
+  );
 
   await prisma.scheduleAlert.deleteMany({ where: { scheduleId } });
   if (alerts.length > 0) {
@@ -540,7 +543,7 @@ export async function buildScheduleView(
     );
     const travelDays = data.entriesReal.filter((e) => e.status === 'VIAJE').length;
     const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
-    const teleworkDaysWeek = data.entriesReal.filter((e) => e.status === 'TELETRABAJO').length;
+    const teleworkDaysWeek = data.entriesReal.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
     const weeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
 
@@ -658,7 +661,7 @@ export async function getMonthlySummary(
     year,
     month,
     netHours,
-    teleworkDays: count((s) => s === 'TELETRABAJO'),
+    teleworkDays: count((s) => TELEWORK_STATUSES.includes(s)),
     travelDays: count((s) => s === 'VIAJE'),
     // onGuard is orthogonal to status (Task 4) and can be true on a BAJA_*
     // (health-leave) entry — exclude HEALTH_STATUSES entries so this count

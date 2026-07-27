@@ -2190,6 +2190,7 @@
       "BAJA_MEDICA": "Baixa médica",
       "BAJA_PATERNIDAD": "Licença parental",
       "INTENSIVO": "Horário reduzido",
+      "INTENSIVO_TELETRABAJO": "Jornada intensiva em teletrabalho",
       "VIAJE": "Viagem",
       "AUSENTE": "Ausente",
       "masked": "Ausente",
@@ -2319,6 +2320,15 @@
     },
     "syncMembers": {
       "added": "{n} trabalhador(es) adicionado(s) à planificação."
+    },
+    "telework": {
+      "title": "Quota de teletrabalho por trabalhador",
+      "full": "Teletrabalho total",
+      "fullShort": "TT total",
+      "days": "Dias",
+      "pct": "%",
+      "hint": "Prioridade: teletrabalho total > dias > percentagem > limite do departamento. Deixe vazio para usar o limite do departamento.",
+      "saved": "Quota de teletrabalho guardada"
     }
   }
 }

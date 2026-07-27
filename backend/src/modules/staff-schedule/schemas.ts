@@ -9,6 +9,7 @@ export const SCHEDULE_STATUS = [
   'BAJA_MEDICA',
   'BAJA_PATERNIDAD',
   'INTENSIVO',
+  'INTENSIVO_TELETRABAJO',
   'VIAJE',
   'AUSENTE',
 ] as const;
@@ -16,6 +17,15 @@ export type ScheduleStatus = (typeof SCHEDULE_STATUS)[number];
 
 // Subset of SCHEDULE_STATUS that is GDPR Art. 9 special-category health data (D2/D4).
 export const HEALTH_STATUSES: readonly string[] = ['BAJA_MEDICA', 'BAJA_PATERNIDAD'];
+
+// Statuses worked from home — they consume the monthly telework quota.
+// INTENSIVO_TELETRABAJO (v3.5.11) is a continuous shift done remotely: it is
+// telework for quota purposes and intensive for hour-computation purposes.
+export const TELEWORK_STATUSES: readonly string[] = ['TELETRABAJO', 'INTENSIVO_TELETRABAJO'];
+
+// Continuous-shift statuses: no break is deducted and the flexible entry/exit
+// window does not apply (they have their own fixed schedule).
+export const INTENSIVE_STATUSES: readonly string[] = ['INTENSIVO', 'INTENSIVO_TELETRABAJO'];
 
 export const ALERT_TYPE = [
   'TELEWORK_QUOTA',
@@ -120,4 +130,15 @@ export const CloneScheduleSchema = z.object({
 
 export const UserWeeklyHoursSchema = z.object({
   weeklyTargetHours: z.number().min(0).max(80).nullable(),
+});
+
+// ─── Per-user telework quota override (v3.5.11) ────────────────────────────
+//
+// Three independent knobs, resolved by priority full > days > pct > department
+// default (see resolveTeleworkCap in validationEngine.ts). All optional: a user
+// with none of them set keeps the department-wide monthly cap.
+export const UserTeleworkQuotaSchema = z.object({
+  teleworkFull: z.boolean(),
+  teleworkQuotaDays: z.number().int().min(0).max(31).nullable(),
+  teleworkQuotaPct: z.number().int().min(0).max(100).nullable(),
 });

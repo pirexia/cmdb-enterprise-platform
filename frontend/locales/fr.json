@@ -2190,6 +2190,7 @@
       "BAJA_MEDICA": "Arrêt maladie",
       "BAJA_PATERNIDAD": "Congé parental",
       "INTENSIVO": "Horaire réduit",
+      "INTENSIVO_TELETRABAJO": "Journée continue en télétravail",
       "VIAJE": "Déplacement professionnel",
       "AUSENTE": "Absent",
       "masked": "Absent",
@@ -2319,6 +2320,15 @@
     },
     "syncMembers": {
       "added": "{n} travailleur(s) ajouté(s) à la planification."
+    },
+    "telework": {
+      "title": "Quota de télétravail par collaborateur",
+      "full": "Télétravail intégral",
+      "fullShort": "TT intégral",
+      "days": "Jours",
+      "pct": "%",
+      "hint": "Priorité : télétravail intégral > jours > pourcentage > plafond du département. Laissez vide pour utiliser le plafond du département.",
+      "saved": "Quota de télétravail enregistré"
     }
   }
 }

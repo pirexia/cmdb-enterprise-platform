@@ -194,3 +194,33 @@ Es dato personal: no aparece en ningún mensaje de log, y desaparece con la fila
 ### 14.4 Resumen mensual
 
 `getMonthlySummary` agrega ahora solo los horarios que el visor tiene derecho a ver, filtrando por la relación en la propia consulta. Excepción deliberada: el propio usuario ve siempre su resumen completo aunque el horario esté en borrador — son sus datos.
+
+## 15. Refinamientos v3.5.10 (segunda tanda, detectados en verificación en vivo)
+
+### 15.1 `FLEX_RANGE` no aplica a `INTENSIVO`
+
+La alerta "fuera de horario flexible" se disparaba para entradas `INTENSIVO`, que es jornada continua con horario propio y no usa la ventana flexible de entrada/salida. La regla se restringe a los estados que sí la usan (`PRESENCIAL`, `TELETRABAJO`) en lugar de excluir solo `INTENSIVO`.
+
+### 15.2 Endpoints GET de managers y miembros de departamento
+
+`GET /departments/:id/managers` y `GET /departments/:id/members` — antes no existía ninguno de los dos; el panel de configuración solo podía añadir/quitar managers a ciegas y no mostraba quién pertenecía al departamento. Lectura pura, sin auditoría, protegida por `requireScheduleAccess`.
+
+### 15.3 `DELETE /:id` — descartar un horario en borrador
+
+Solo `DRAFT` (D10: un `PUBLISHED` debe despublicarse antes). `ScheduleEntry`/`ScheduleAlert` caen por `onDelete: Cascade`. Resuelve el callejón sin salida de un horario creado o clonado antes de que el departamento tuviera su membresía final: sin este endpoint, la semana quedaba permanentemente bloqueada para volver a clonarse.
+
+### 15.4 `POST /:id/sync-members` — resincronizar miembros
+
+Añade entradas base `PRESENCIAL` para los miembros activos del departamento que aún no tengan ninguna entrada en el horario. **No destructivo**: nunca toca entradas existentes, idempotente. Solo `DRAFT`. Cubre dos escenarios: un horario vacío o parcial (creado antes de la membresía final del departamento) y un trabajador nuevo que se incorpora a un departamento con horarios ya planificados meses por delante.
+
+### 15.5 Orden manager-first en el calendario
+
+`buildScheduleView` ordenaba las filas por el orden de iteración interno del `Map` (efectivamente por `userId`, sin significado para quien lo lee). Ahora el/los responsables del departamento (`DepartmentManager`) aparecen primero, y el resto se ordena alfabéticamente por `displayName` (con respaldo a `username`). Comparador puro `sortRowManagerFirst`, testeado sin necesidad de montar toda la maquinaria de `buildScheduleView`.
+
+### 15.6 Panel de configuración: managers y miembros visibles
+
+El panel ahora lista los managers actuales de cada departamento (con botón de quitar por fila, ya no a ciegas desde el mismo `<select>` de añadir) y los miembros activos. La edición de horas semanales del trabajador pasa a tener su propio selector — antes reutilizaba el de la sección "asignar departamento", así que sin elegir un trabajador ahí el botón de guardar nunca se habilitaba — y el campo se prefija con las horas efectivas actuales del trabajador elegido.
+
+### 15.7 UI de horario vacío
+
+Cuando un horario existe (`StaffSchedule`) pero no tiene ninguna fila, se muestra un aviso con los botones "Sincronizar miembros" y "Eliminar" en lugar de una rejilla vacía sin ninguna acción disponible. Los mismos dos botones aparecen en la cabecera para cualquier horario `DRAFT` editable, para poder incorporar nuevos trabajadores a una planificación ya hecha.

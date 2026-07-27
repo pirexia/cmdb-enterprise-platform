@@ -160,6 +160,34 @@ describe('validationEngine.validate', () => {
     expect(conflict).toHaveLength(1);
     expect(conflict[0].severity).toBe('WARNING');
   });
+
+  // v3.5.10 refinamiento — FLEX_RANGE no debe aplicar a INTENSIVO (jornada
+  // continua con horario propio, sin ventana flexible de entrada/salida).
+  it('INTENSIVO fuera de la ventana flexible NO genera FLEX_RANGE', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'INTENSIVO', startTime: '06:00', endTime: '14:00' }, // fuera de 07:00-10:30/16:00-19:00
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    expect(alertsOfType(alerts, 'FLEX_RANGE')).toHaveLength(0);
+  });
+
+  it('PRESENCIAL fuera de la ventana flexible SÍ genera FLEX_RANGE (WARNING)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '06:00', endTime: '14:00' },
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    const flex = alertsOfType(alerts, 'FLEX_RANGE');
+    expect(flex).toHaveLength(1);
+    expect(flex[0].severity).toBe('WARNING');
+  });
+
+  it('TELETRABAJO fuera de la ventana flexible SÍ genera FLEX_RANGE', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', startTime: '06:00', endTime: '14:00' },
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    expect(alertsOfType(alerts, 'FLEX_RANGE')).toHaveLength(1);
+  });
 });
 
 describe('service.maskEntryForViewer (GDPR Art. 9)', () => {

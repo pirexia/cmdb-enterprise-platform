@@ -222,7 +222,13 @@ export function validate(
     }
 
     // ── FLEX_RANGE (WARNING): entry/exit outside the flexible window ────────
+    // Only applies to statuses that actually use the flexible entry/exit
+    // window (PRESENCIAL, TELETRABAJO). INTENSIVO is a continuous shift with
+    // its own fixed schedule — the flexible window is not the right check for
+    // it (reported during v3.5.10 live verification: a normal INTENSIVO day
+    // was incorrectly flagged "outside flexible hours").
     for (const e of es) {
+      if (e.status !== 'PRESENCIAL' && e.status !== 'TELETRABAJO') continue;
       if (!e.startTime || !e.endTime) continue;
       if (
         e.startTime < cfg.flexEntryStart || e.startTime > cfg.flexEntryEnd ||

@@ -6,6 +6,8 @@ export const SCHEDULE_STATUS = [
   'PRESENCIAL',
   'TELETRABAJO',
   'VACACIONES',
+  'FESTIVO',
+  'FESTIVO_LOCAL',
   'BAJA_MEDICA',
   'BAJA_PATERNIDAD',
   'INTENSIVO',
@@ -26,6 +28,15 @@ export const TELEWORK_STATUSES: readonly string[] = ['TELETRABAJO', 'INTENSIVO_T
 // Continuous-shift statuses: no break is deducted and the flexible entry/exit
 // window does not apply (they have their own fixed schedule).
 export const INTENSIVE_STATUSES: readonly string[] = ['INTENSIVO', 'INTENSIVO_TELETRABAJO'];
+
+// Statuses that shrink the weekly hour target instead of counting as a
+// shortfall against it (v3.5.12): a vacation or holiday day is not "missing"
+// work, so a week containing one should be judged against fewer contracted
+// hours, not against a flat weeklyTargetNetHours. See
+// validationEngine.computeEffectiveWeeklyTarget. Deliberately narrower than
+// NON_WORKING_STATUSES (validationEngine.ts) — BAJA_*/AUSENTE/VIAJE still
+// count as a shortfall against the full target, per product decision.
+export const TARGET_REDUCING_STATUSES: readonly string[] = ['VACACIONES', 'FESTIVO', 'FESTIVO_LOCAL'];
 
 export const ALERT_TYPE = [
   'TELEWORK_QUOTA',

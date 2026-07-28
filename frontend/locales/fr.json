@@ -2200,7 +2200,9 @@
       "AUSENTE": "Absent",
       "masked": "Absent",
       "DRAFT": "Brouillon",
-      "PUBLISHED": "Publié"
+      "PUBLISHED": "Publié",
+      "FESTIVO": "Jour férié",
+      "FESTIVO_LOCAL": "Jour férié local"
     },
     "alert": {
       "title": "Alertes",

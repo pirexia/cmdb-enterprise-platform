@@ -2200,7 +2200,9 @@
       "AUSENTE": "Assente",
       "masked": "Assente",
       "DRAFT": "Bozza",
-      "PUBLISHED": "Pubblicato"
+      "PUBLISHED": "Pubblicato",
+      "FESTIVO": "Festivo nazionale",
+      "FESTIVO_LOCAL": "Festivo locale"
     },
     "alert": {
       "title": "Avvisi",

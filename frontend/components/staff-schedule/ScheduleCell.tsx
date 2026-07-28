@@ -8,6 +8,10 @@ export const STATUS_META: Record<string, { bg: string; text: string }> = {
   PRESENCIAL: { bg: "bg-blue-100", text: "text-blue-800" },
   TELETRABAJO: { bg: "bg-green-100", text: "text-green-800" },
   VACACIONES: { bg: "bg-orange-100", text: "text-orange-800" },
+  // v3.5.12 — national/local holidays: indigo/violet family, distinct from
+  // VACACIONES' orange so the two "day off" reasons stay visually separable.
+  FESTIVO: { bg: "bg-indigo-100", text: "text-indigo-800" },
+  FESTIVO_LOCAL: { bg: "bg-violet-100", text: "text-violet-800" },
   BAJA_MEDICA: { bg: "bg-red-100", text: "text-red-800" },
   BAJA_PATERNIDAD: { bg: "bg-emerald-200", text: "text-emerald-900" },
   INTENSIVO: { bg: "bg-purple-100", text: "text-purple-800" },

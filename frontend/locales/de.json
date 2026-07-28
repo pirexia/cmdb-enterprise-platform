@@ -2200,7 +2200,9 @@
       "AUSENTE": "Abwesend",
       "masked": "Abwesend",
       "DRAFT": "Entwurf",
-      "PUBLISHED": "Veröffentlicht"
+      "PUBLISHED": "Veröffentlicht",
+      "FESTIVO": "Feiertag",
+      "FESTIVO_LOCAL": "Lokaler Feiertag"
     },
     "alert": {
       "title": "Warnungen",

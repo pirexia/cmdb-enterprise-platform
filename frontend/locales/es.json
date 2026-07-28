@@ -2319,7 +2319,9 @@
       "AUSENTE": "Ausente",
       "masked": "Ausente",
       "DRAFT": "Borrador",
-      "PUBLISHED": "Publicado"
+      "PUBLISHED": "Publicado",
+      "FESTIVO": "Festivo",
+      "FESTIVO_LOCAL": "Festivo Local"
     },
     "alert": {
       "title": "Alertas",

@@ -1,10 +1,12 @@
-import { AlertSeverity, AlertType, HEALTH_STATUSES, INTENSIVE_STATUSES, TELEWORK_STATUSES } from './schemas.js';
+import { AlertSeverity, AlertType, HEALTH_STATUSES, INTENSIVE_STATUSES, TARGET_REDUCING_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 
 // Floating point tolerance for hour comparisons (D8).
 export const EPS = 0.01;
 
 // Statuses that never count as worked time (D9 / computeNetHours pseudocode).
-const NON_WORKING_STATUSES = new Set(['VACACIONES', 'BAJA_MEDICA', 'BAJA_PATERNIDAD', 'AUSENTE', 'VIAJE']);
+// FESTIVO/FESTIVO_LOCAL (v3.5.12) join this set for the same reason
+// VACACIONES already does: a holiday is not worked time.
+const NON_WORKING_STATUSES = new Set(['VACACIONES', 'FESTIVO', 'FESTIVO_LOCAL', 'BAJA_MEDICA', 'BAJA_PATERNIDAD', 'AUSENTE', 'VIAJE']);
 
 export interface EntryLike {
   userId: string;
@@ -142,6 +144,40 @@ export function resolveTeleworkCap(
   return departmentCap;
 }
 
+// dailyTargetHours — the contracted hours for a single weekday under the
+// department's configured schedule (Friday differs from Mon-Thu; summer
+// differs from winter). Used only to size the reduction in
+// computeEffectiveWeeklyTarget below, not to validate a specific day.
+function dailyTargetHours(wd: number, isSummer: boolean, cfg: ValidationConfig): number {
+  if (wd === 5) return isSummer ? cfg.summerFridayNetHours : cfg.winterFridayNetHours;
+  return isSummer ? cfg.summerDailyNetHours : cfg.winterDailyNetHours;
+}
+
+// computeEffectiveWeeklyTarget (v3.5.12) — reduces `baseTarget` (the
+// department default or the user's own weeklyTargetHours override) by the
+// contracted hours of every VACACIONES/FESTIVO/FESTIVO_LOCAL day in the
+// user's week. A week that includes a holiday should be judged against fewer
+// hours, not reported as a shortfall against a flat 40h target. Clamped at 0
+// so a week that is entirely holiday/vacation never goes negative.
+//
+// Deliberately narrower than NON_WORKING_STATUSES: BAJA_MEDICA,
+// BAJA_PATERNIDAD, AUSENTE and VIAJE still count as a shortfall against the
+// full target (product decision — only vacation/holiday days reduce it).
+export function computeEffectiveWeeklyTarget(
+  entries: EntryLike[],
+  cfg: ValidationConfig,
+  isSummer: boolean,
+  baseTarget: number,
+): number {
+  let reduction = 0;
+  for (const e of entries) {
+    if (TARGET_REDUCING_STATUSES.includes(e.status)) {
+      reduction += dailyTargetHours(weekdayIso(e.date), isSummer, cfg);
+    }
+  }
+  return Math.max(0, baseTarget - reduction);
+}
+
 // detectSummer(weekStart, summerSchedule) — D7 pseudocode.
 export function detectSummer(weekStart: string, summer?: SummerPeriodLike | null): boolean {
   if (!summer) return false;
@@ -211,7 +247,10 @@ export function validate(
 
   for (const [userId, es] of byUser) {
     // ── WEEKLY_HOURS (ERROR): intensive Friday but week total below target ──
-    const target = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    // Target reduced by VACACIONES/FESTIVO/FESTIVO_LOCAL days in the same
+    // week (v3.5.12) — see computeEffectiveWeeklyTarget.
+    const baseTarget = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    const target = computeEffectiveWeeklyTarget(es, cfg, isSummer, baseTarget);
     const hasIntensiveFriday = es.some((e) => INTENSIVE_STATUSES.includes(e.status) && weekdayIso(e.date) === 5);
     if (hasIntensiveFriday) {
       const weekly = es.reduce((sum, e) => sum + computeNetHours(e, cfg, isSummer), 0);

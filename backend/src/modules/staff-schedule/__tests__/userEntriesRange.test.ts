@@ -39,6 +39,7 @@ function makeMockPrisma(opts: {
     },
     department: { findUnique: async () => ({ id: DEPT_ID, presenceStart: '10:00', presenceEnd: '14:00', minPresencePct: 50 }) },
     departmentScheduleConfig: { findUnique: async () => null },
+    summerSchedule: { findUnique: async () => null },
     user: { findMany: async ({ where }: { where: { id: { in: string[] } } }) => where.id.in.map((id: string) => ({ id, weeklyTargetHours: null })) },
   };
 }

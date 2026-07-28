@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { HEALTH_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 import {
   computeNetHours,
+  computeEffectiveWeeklyTarget,
   detectSummer,
   validate,
   EntryLike,
@@ -108,6 +109,17 @@ function addDaysUtc(d: Date, days: number): Date {
 function parseDateOnly(v: string | Date): Date {
   if (v instanceof Date) return new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
   return new Date(`${v.slice(0, 10)}T00:00:00.000Z`);
+}
+
+// Monday (UTC) of the week containing `d` — used by listUserEntries (v3.5.12)
+// to group a worker's entries by week so the effective weekly target
+// (computeEffectiveWeeklyTarget) can be computed per week, not once flat
+// across the whole requested range.
+function mondayOfDate(d: Date): Date {
+  const copy = parseDateOnly(d);
+  const day = copy.getUTCDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  return addDaysUtc(copy, diff);
 }
 
 // Merge Department + DepartmentScheduleConfig into the shape validationEngine
@@ -569,7 +581,17 @@ export async function buildScheduleView(
     const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
     const teleworkDaysWeek = data.entriesReal.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
-    const weeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    // v3.5.12 — reduced by any VACACIONES/FESTIVO/FESTIVO_LOCAL day in this
+    // user's week (computeEffectiveWeeklyTarget), so the displayed "X / Y h"
+    // target reflects the week's actual working days instead of a flat
+    // department default.
+    const baseWeeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    const weeklyTargetHours = computeEffectiveWeeklyTarget(
+      data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status })),
+      cfg,
+      schedule.isSummerWeek,
+      baseWeeklyTargetHours,
+    );
 
     rows.push({
       userId,
@@ -746,10 +768,58 @@ export async function listUserEntries(
 
   // weeklyTargetHours (R2): a per-user override with a per-department
   // fallback (DepartmentScheduleConfig.weeklyTargetNetHours) — resolved once
-  // per department touched in the range, not once per entry.
+  // per department touched in the range, not once per entry. v3.5.12: the
+  // value attached is the EFFECTIVE target for that entry's own week (base
+  // target minus VACACIONES/FESTIVO/FESTIVO_LOCAL days in the same week, same
+  // rule as buildScheduleView's row.summary.weeklyTargetHours) — grouped by
+  // (departmentId, weekMonday) so a range spanning several weeks or a
+  // mid-range department change is handled correctly, not just averaged flat.
   const cfgCache = new Map<string, ValidationConfig>();
   const authCache = new Map<string, boolean>();
-  const targetCache = new Map<string, number>();
+  const baseTargetCache = new Map<string, number>();
+  const summerCache = new Map<number, SummerPeriodLike | null>();
+
+  const weekKey = (departmentId: string, monday: string) => `${departmentId}|${monday}`;
+  const weekGroups = new Map<string, { departmentId: string; monday: string; rows: typeof rows }>();
+  for (const row of rows) {
+    const monday = isoDate(mondayOfDate(row.date));
+    const key = weekKey(row.departmentId, monday);
+    const group = weekGroups.get(key);
+    if (group) group.rows.push(row);
+    else weekGroups.set(key, { departmentId: row.departmentId, monday, rows: [row] });
+  }
+
+  const effectiveTargetByKey = new Map<string, number>();
+  for (const [key, group] of weekGroups) {
+    let authorized = authCache.get(group.departmentId);
+    if (authorized === undefined) {
+      authorized = await canViewSummary(prisma, viewer.id, viewer.role, group.departmentId);
+      authCache.set(group.departmentId, authorized);
+    }
+    if (!authorized) continue;
+
+    let cfg = cfgCache.get(group.departmentId);
+    if (!cfg) {
+      cfg = await loadValidationConfig(prisma, group.departmentId);
+      cfgCache.set(group.departmentId, cfg);
+    }
+    let baseTarget = baseTargetCache.get(group.departmentId);
+    if (baseTarget === undefined) {
+      const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
+      baseTarget = targets[userId];
+      baseTargetCache.set(group.departmentId, baseTarget);
+    }
+    const year = Number(group.monday.slice(0, 4));
+    let summer = summerCache.get(year);
+    if (summer === undefined) {
+      summer = await loadSummerForYear(prisma, year);
+      summerCache.set(year, summer);
+    }
+    const isSummer = detectSummer(group.monday, summer);
+
+    const entriesLike: EntryLike[] = group.rows.map((r) => ({ userId, date: isoDate(r.date), status: r.status }));
+    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, baseTarget));
+  }
 
   const result: UserEntryView[] = [];
   for (const row of rows) {
@@ -757,12 +827,6 @@ export async function listUserEntries(
       { status: row.status, startTime: row.startTime, endTime: row.endTime, notes: row.notes, userId: row.userId, onGuard: row.onGuard },
       viewer,
     );
-
-    let authorized = authCache.get(row.departmentId);
-    if (authorized === undefined) {
-      authorized = await canViewSummary(prisma, viewer.id, viewer.role, row.departmentId);
-      authCache.set(row.departmentId, authorized);
-    }
 
     const entry: UserEntryView = {
       date: isoDate(row.date),
@@ -776,19 +840,10 @@ export async function listUserEntries(
       healthMasked: masked.healthMasked,
     };
 
-    if (authorized) {
-      let target = targetCache.get(row.departmentId);
-      if (target === undefined) {
-        let cfg = cfgCache.get(row.departmentId);
-        if (!cfg) {
-          cfg = await loadValidationConfig(prisma, row.departmentId);
-          cfgCache.set(row.departmentId, cfg);
-        }
-        const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
-        target = targets[userId];
-        targetCache.set(row.departmentId, target);
-      }
-      entry.weeklyTargetHours = target;
+    const monday = isoDate(mondayOfDate(row.date));
+    const effectiveTarget = effectiveTargetByKey.get(weekKey(row.departmentId, monday));
+    if (effectiveTarget !== undefined) {
+      entry.weeklyTargetHours = effectiveTarget;
     }
 
     result.push(entry);

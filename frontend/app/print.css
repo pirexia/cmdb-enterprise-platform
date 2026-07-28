@@ -1,0 +1,97 @@
+/*
+ * Print stylesheet for Staff Schedule (v3.5.12 F3, spec R7 / decision D3).
+ *
+ * Deliberately a dedicated stylesheet, NOT Tailwind `print:` variants:
+ *   - `@page` is not a Tailwind utility at all — it has to be plain CSS.
+ *   - `.print-block` / `.no-print` / `.print-only` are literal class-name
+ *     CONTRACTS shared with other parallel v3.5.12 worktrees (F1 wraps its
+ *     calendar tables in `.print-block`; F4/F5 do the same for their own
+ *     tables). Those tasks reference these exact names in their own specs,
+ *     so the selectors here must be real classes, not generated utility
+ *     hashes that only exist if Tailwind sees the class in this file's own
+ *     source scan.
+ *   - Neutralizing `overflow-auto` / `max-h-[70vh]` (the exact utility
+ *     classes used by StaffScheduleCalendar.tsx's outer wrapper) means
+ *     overriding Tailwind-generated utility classes by selector — cleaner
+ *     to do in one place here than to hunt for a `print:` recombination of
+ *     an arbitrary-value class in every consuming component.
+ *
+ * NOTE: one existing page (app/decommission/[id]/page.tsx) already uses
+ * ad-hoc `print:hidden` / `print:block` Tailwind variants for its own
+ * print-only block. That precedent is untouched — this file only adds
+ * rules scoped to the Staff Schedule print contract (.no-print /
+ * .print-only / .print-block), so it does not conflict with it.
+ */
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  /* Anything chrome-like (sidebar, topbar, sticky header, filters, action
+     buttons, popovers) that a view marks as .no-print never reaches paper. */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hidden on screen (see the non-@media rule below), shown only when
+     printing — the print-only document header (title / department or
+     worker / date range / "Generado: ..."). */
+  .print-only {
+    display: block !important;
+  }
+
+  /* The no-split-table requirement: a schedule table block is kept whole
+     across a page break whenever it fits on one page. Browsers only split
+     it as a last resort, when the block alone is taller than a full page —
+     which is the only case where there is no alternative. */
+  .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid; /* legacy fallback for wider browser support */
+  }
+
+  /* If a print-block is unavoidably taller than one page, repeat the
+     table header on the continuation page instead of losing column
+     labels. */
+  .print-block table thead {
+    display: table-header-group;
+  }
+
+  /* Status cell backgrounds must survive to paper/PDF — without this,
+     browsers default to not printing background colors at all. Status
+     text itself is still rendered (not color-only), so legibility in a
+     black & white printout does not depend on this rule. */
+  * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* StaffScheduleCalendar.tsx wraps its table in:
+       "bg-white shadow-sm ring-1 ring-slate-200 overflow-auto max-h-[70vh]"
+     On screen that scrolls a tall calendar inside a fixed-height viewport
+     panel. Left alone, printing would clip the table to that same 70vh box
+     instead of letting it flow across pages. Scoped to descendants of
+     .print-block so we only touch the calendar wrapper, not unrelated
+     scroll containers elsewhere in the app that a future print-block does
+     not opt into. */
+  .print-block .overflow-auto {
+    overflow: visible !important;
+  }
+  .print-block .max-h-\[70vh\] {
+    max-height: none !important;
+  }
+
+  /* The calendar header row is `sticky top-0` on screen to stay visible
+     while scrolling; sticky positioning has no meaning in paginated print
+     and can otherwise interact oddly with page breaks. */
+  .print-block .sticky {
+    position: static !important;
+  }
+}
+
+/* Outside of print, .print-only content (the print document header) must
+   not appear in the normal UI at all. */
+.print-only {
+  display: none;
+}

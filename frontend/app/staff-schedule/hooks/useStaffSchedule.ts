@@ -28,6 +28,23 @@ export function addDaysIso(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// TODO: replace with shared weeksOfMonth() from F2 once merged — F2 is adding
+// an identical helper to this same file in parallel; this local copy exists
+// only to avoid blocking F5 on that other task landing first.
+function weeksOfMonthLocal(year: number, month: number): string[] {
+  const firstOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const lastOfMonth = new Date(Date.UTC(year, month, 0));
+  const firstMonday = mondayOf(firstOfMonth);
+  const lastMonday = mondayOf(lastOfMonth);
+  const weeks: string[] = [];
+  let cursor = firstMonday;
+  while (cursor <= lastMonday) {
+    weeks.push(cursor);
+    cursor = addDaysIso(cursor, 7);
+  }
+  return weeks;
+}
+
 /** Departments the user can see, for the department filter. */
 export function useDepartments() {
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -427,4 +444,72 @@ export function useAllDepartmentsSchedules(weekStart: string) {
   }, [load]);
 
   return { entries, loading, error, refetch: load };
+}
+
+/** One week's slot in a department's month view — `view: null` means the week
+ * genuinely has no schedule (D8: shown explicitly, never a silent gap). */
+export interface DepartmentMonthWeek {
+  weekStart: string;
+  view: ScheduleView | null;
+}
+
+const MAX_MONTH_WEEKS = 6; // matches the server-side cap on GET /api/staff-schedule?from=&to=
+
+/**
+ * Read-only view of a single department across every week overlapping a
+ * calendar month (R6). Same N+1 fetch pattern as useAllDepartmentsSchedules:
+ * one list request for the whole range, then one detail request per week
+ * that actually has a schedule. Weeks without a schedule are kept in the
+ * result with `view: null` rather than omitted (D8).
+ */
+export function useDepartmentMonth(departmentId: string | null, year: number, month: number) {
+  const [weeks, setWeeks] = useState<DepartmentMonthWeek[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!departmentId) {
+      setWeeks([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const weekStarts = weeksOfMonthLocal(year, month).slice(0, MAX_MONTH_WEEKS);
+      if (weekStarts.length === 0) {
+        setWeeks([]);
+        return;
+      }
+      const from = weekStarts[0];
+      const to = weekStarts[weekStarts.length - 1];
+      const listRes = await apiFetch(
+        `/api/staff-schedule?departmentId=${departmentId}&from=${from}&to=${to}`,
+      );
+      if (!listRes.ok) throw new Error(`Status ${listRes.status}`);
+      const list: StaffScheduleListItem[] = await listRes.json();
+      const byWeekStart = new Map(list.map((s) => [s.weekStart.slice(0, 10), s]));
+
+      const results = await Promise.all(
+        weekStarts.map(async (ws): Promise<DepartmentMonthWeek> => {
+          const match = byWeekStart.get(ws);
+          if (!match) return { weekStart: ws, view: null };
+          const r = await apiFetch(`/api/staff-schedule/${match.id}`);
+          if (!r.ok) return { weekStart: ws, view: null };
+          const view: ScheduleView = await r.json();
+          return { weekStart: ws, view };
+        }),
+      );
+      setWeeks(results);
+    } catch {
+      setError("error");
+    } finally {
+      setLoading(false);
+    }
+  }, [departmentId, year, month]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { weeks, loading, error, refetch: load };
 }

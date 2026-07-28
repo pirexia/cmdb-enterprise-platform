@@ -29,6 +29,23 @@
     margin: 10mm;
   }
 
+  /* Named page (CSS Paged Media / Chromium's `page` property) for the two
+     views that need A4 PORTRAIT instead of the landscape default used by
+     the single-department week/worker views: "all departments" (several
+     narrower, read-only, no-summary tables stacked — doesn't need
+     landscape's extra width) and the department month report (also
+     narrower per-week tables, and portrait fits more week-blocks per page
+     height, which is what matters for "as few pages as possible" there).
+     Narrower margins than the landscape default, per the printed-report
+     condensing requirement. */
+  @page portrait-narrow {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+  .print-portrait {
+    page: portrait-narrow;
+  }
+
   /* Anything chrome-like (sidebar, topbar, sticky header, filters, action
      buttons, popovers) that a view marks as .no-print never reaches paper. */
   .no-print {
@@ -179,15 +196,38 @@
   /* Compact, single-page-friendly type scale for print — the on-screen
      sizes (comfortable for a mouse/touch UI) are needlessly large on a
      printed A4 page and make it more likely a table spills onto a second
-     sheet. */
+     sheet. PrintHeader.tsx sets its own (already compact) sizes via Tailwind
+     classes directly, so no generic .print-only h1/p override is needed
+     here — an earlier version of this rule fought with those inline sizes. */
   .print-block table {
     font-size: 9pt;
   }
-  .print-only h1 {
-    font-size: 13pt;
+
+  /* "All departments" (print-condensed): minimize the vertical gap between
+     stacked department blocks — the default `space-y-8` (2rem) on-screen
+     spacing exists for mouse-driven scanning comfort, not for a report
+     whose whole point is fitting in as few sheets as possible. */
+  .print-condensed.space-y-8 > * + * {
+    margin-top: 0.5rem !important;
   }
-  .print-only p {
-    font-size: 9pt;
+  .print-condensed .space-y-2 > * + * {
+    margin-top: 0.15rem !important;
+  }
+
+  /* Department month report: the "don't fit at any cost" requirement — keep
+     a legible 10pt floor (never smaller, unlike the 9pt used elsewhere) and
+     let genuinely large departments flow onto a second page via the
+     existing per-week break-inside:avoid, rather than shrinking text
+     further to force everything onto one sheet. Same condensed inter-week
+     spacing as "all departments" above, for the same reason. */
+  .print-month-report .print-block table {
+    font-size: 10pt !important;
+  }
+  .print-month-report.space-y-8 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  .print-month-report .space-y-2 > * + * {
+    margin-top: 0.15rem !important;
   }
 }
 

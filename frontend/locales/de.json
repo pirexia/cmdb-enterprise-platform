@@ -2350,7 +2350,8 @@
     },
     "print": {
       "button": "Drucken",
-      "generatedAt": "Erstellt"
+      "generatedAt": "Erstellt",
+      "weekLabel": "Woche {week} von {year}"
     },
     "worker": {
       "loadError": "Zeitplan des Mitarbeiters konnte nicht geladen werden",

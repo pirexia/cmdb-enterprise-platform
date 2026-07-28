@@ -2469,7 +2469,8 @@
     },
     "print": {
       "button": "Print",
-      "generatedAt": "Generated"
+      "generatedAt": "Generated",
+      "weekLabel": "week {week} of {year}"
     },
     "worker": {
       "loadError": "Could not load worker's schedule",

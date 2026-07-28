@@ -2350,7 +2350,8 @@
     },
     "print": {
       "button": "Imprimer",
-      "generatedAt": "Généré"
+      "generatedAt": "Généré",
+      "weekLabel": "semaine {week} de {year}"
     },
     "worker": {
       "loadError": "Impossible de charger le planning de l'employé",

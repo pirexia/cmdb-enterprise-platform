@@ -2469,7 +2469,8 @@
     },
     "print": {
       "button": "Imprimir",
-      "generatedAt": "Generado"
+      "generatedAt": "Generado",
+      "weekLabel": "semana {week} de {year}"
     },
     "worker": {
       "loadError": "No se pudo cargar el horario del trabajador",

@@ -82,6 +82,20 @@ export function addMonthsIso(year: number, month: number, delta: number): { year
   return { year: newYear, month: newMonth };
 }
 
+/** ISO 8601 week number (and ISO week-year, which can differ from the
+ * calendar year right at year boundaries) of the week containing `dateIso`.
+ * Used for the print header's "semana N de AAAA" label. */
+export function isoWeekNumber(dateIso: string): { week: number; year: number } {
+  const d = new Date(`${dateIso}T00:00:00Z`);
+  const dayNum = (d.getUTCDay() + 6) % 7; // Monday=0 .. Sunday=6
+  d.setUTCDate(d.getUTCDate() - dayNum + 3); // move to this week's Thursday
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const firstThursdayDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstThursdayDayNum + 3);
+  const week = 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 86400000));
+  return { week, year: d.getUTCFullYear() };
+}
+
 /** Departments the user can see, for the department filter. */
 export function useDepartments() {
   const [departments, setDepartments] = useState<Department[]>([]);

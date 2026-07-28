@@ -2350,7 +2350,8 @@
     },
     "print": {
       "button": "Imprimir",
-      "generatedAt": "Gerado"
+      "generatedAt": "Gerado",
+      "weekLabel": "semana {week} de {year}"
     },
     "worker": {
       "loadError": "Não foi possível carregar o horário do trabalhador",

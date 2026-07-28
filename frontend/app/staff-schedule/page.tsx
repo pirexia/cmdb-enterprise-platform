@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown, Users, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf } from "./hooks/useStaffSchedule";
+import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf, addDaysIso, isoWeekNumber } from "./hooks/useStaffSchedule";
 import type { EntryUpdateInput } from "./types";
 import PeriodSelector from "@/components/staff-schedule/PeriodSelector";
 import DepartmentFilter from "@/components/staff-schedule/DepartmentFilter";
@@ -122,12 +122,15 @@ export default function StaffSchedulePage() {
     [departments, departmentId],
   );
 
-  const printRangeLabel =
-    periodMode === "month"
-      ? monthValue
-      : view
-        ? `${view.schedule.weekStart} – ${view.schedule.weekEnd}`
-        : weekStart;
+  const printRangeLabel = periodMode === "month" ? monthValue : `${weekStart} – ${addDaysIso(weekStart, 4)}`;
+
+  // Only a single week has a well-defined week number — the month view
+  // shows several weeks, so it's omitted there.
+  const printWeekLabel =
+    periodMode === "week" ? (() => {
+      const { week, year } = isoWeekNumber(weekStart);
+      return t("staffSchedule.print.weekLabel", { week, year });
+    })() : undefined;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -298,6 +301,7 @@ export default function StaffSchedulePage() {
 
         <PrintHeader
           title={t("staffSchedule.title")}
+          weekLabel={printWeekLabel}
           subtitle={worker ? worker.label : selectedDepartment ? selectedDepartment.name : t("staffSchedule.filter.allDepartments")}
           rangeLabel={printRangeLabel}
         />

@@ -42,17 +42,25 @@ export default function ScheduleCell({ entry, editable, onClick, dayNumber }: Pr
     </span>
   );
 
-  // The status colour lives on the <td>, not on the inner <button>, so it
-  // always fills the ENTIRE cell. With the colour on a fixed-height button,
-  // any row that grew taller (a sibling cell wrapping to two lines, or a
-  // cell with no times needing less room) left uncoloured space inside the
-  // cell and the coloured blocks came out visually different sizes. A table
-  // cell is always stretched to its row's height, so colouring the cell
-  // itself makes every block identical by construction. `h-11` on the cell
-  // sets the baseline row height; the button fills it with `h-full`.
+  // Layout contract for a uniform grid of status blocks:
+  //   <td>  keeps `p-0.5` (the inset that visually separates the coloured
+  //         block from the cell border) and `h-11` (the baseline row height).
+  //   <button> carries the status colour and fills the cell with `h-full`.
+  //
+  // `h-full` — not the previous fixed `h-11` — is what keeps every block the
+  // same size. A table cell is always stretched to its row's height, and a
+  // percentage height on the cell's child resolves against that *used*
+  // height. So when a row grows (a sibling cell wrapping to two lines, or a
+  // longer status name), the block grows with it. With the old fixed height
+  // the button stayed 44px and left uncoloured space inside a taller cell,
+  // which is why the blocks looked like different sizes.
+  //
+  // Corners stay square (`rounded-none`): that is the app-wide convention
+  // (see CLAUDE.md, "Esquinas: rounded-none en toda la app"), not an
+  // oversight.
   if (!entry) {
     return (
-      <td className="border border-slate-100 align-top h-11">
+      <td className="border border-slate-100 p-0.5 align-top h-11">
         <button
           type="button"
           onClick={editable ? onClick : undefined}
@@ -69,13 +77,13 @@ export default function ScheduleCell({ entry, editable, onClick, dayNumber }: Pr
   const meta = STATUS_META[entry.status] ?? STATUS_META.AUSENTE;
 
   return (
-    <td className={`border border-slate-100 align-top h-11 ${meta.bg}`}>
+    <td className="border border-slate-100 p-0.5 align-top h-11">
       <button
         type="button"
         onClick={editable ? onClick : undefined}
         disabled={!editable}
         title={entry.healthMasked ? t("staffSchedule.gdpr.maskedNotice") : undefined}
-        className={`relative w-full h-full overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+        className={`relative w-full h-full overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
       >
         {dayBadge}
         <span className="flex items-center gap-1 font-semibold text-[11px] leading-tight line-clamp-2">

@@ -211,17 +211,16 @@
      fit (the table still overflowed) while costing legibility, so those
      rules were removed rather than kept as dead weight.
 
-     The real vertical cost is the cell height: each cell carries a FIXED
-     `h-11` (2.75rem / 44px), sized on screen to hold two clamped lines of
-     status plus a times line with comfortable click area. That fixed height
-     is what makes a multi-week or multi-department report spill onto extra
-     sheets, and no font rule touches it. For print the height becomes
-     content-driven, so cells that don't need the full box give the space
-     back. Cells within a row are still stretched to the row height by table
-     semantics, so the status colour blocks stay uniform. */
-  .print-block td {
-    height: auto !important;
-  }
+     Cell height is deliberately NOT collapsed to `auto` for print either.
+     It was, briefly, to save vertical space — but the status blocks size
+     themselves with `h-full` against the cell's height (see ScheduleCell.tsx),
+     so an indefinite cell height makes that percentage collapse to the
+     content height and the coloured blocks come out uneven on paper. Keeping
+     the cell's `h-11` is what guarantees every block is the same size in the
+     printed report, which matters more than the few millimetres per row it
+     would have saved. The density this report needs comes from the portrait
+     orientation and the condensed inter-block spacing below, not from
+     squeezing individual cells. */
 
   /* "All departments" (print-condensed): minimize the vertical gap between
      stacked department blocks — the default `space-y-8` (2rem) on-screen

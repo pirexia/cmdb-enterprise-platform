@@ -12,6 +12,7 @@ import {
   UserWeeklyHoursSchema,
   UserTeleworkQuotaSchema,
   UserSearchSchema,
+  UserEntriesRangeSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
 import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers, searchScheduleUsers } from './queries.js';
@@ -27,6 +28,7 @@ import {
   cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
+  listUserEntries,
   ScheduleServiceError,
 } from './service.js';
 import { exportScheduleCsv, exportScheduleXlsx } from './export.js';
@@ -534,6 +536,27 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       }
     } catch (err) {
       console.error('[StaffSchedule] export error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/staff-schedule/user/:userId/entries?from=&to=  — v3.5.12 (R5/D6).
+  // Range capped at 62 days server-side (400 if exceeded). Visibility is
+  // resolved in the WHERE clause exactly like everywhere else in this module:
+  // a worker whose schedule is out of the caller's scope yields an EMPTY
+  // array, never a 403 (no draft-existence leak). Every entry is masked
+  // (GDPR Art. 9) before it leaves listUserEntries.
+  router.get('/user/:userId/entries', requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserEntriesRangeSchema.safeParse({ from: req.query.from, to: req.query.to });
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const entries = await listUserEntries(prisma, req.params.userId as string, parsed.data.from, parsed.data.to, {
+        id: req.user!.id,
+        role: req.user!.role,
+      });
+      res.json(entries);
+    } catch (err) {
+      console.error('[StaffSchedule] user entries error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

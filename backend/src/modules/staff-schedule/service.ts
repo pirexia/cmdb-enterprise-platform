@@ -12,7 +12,7 @@ import {
 } from './validationEngine.js';
 import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
-         loadDepartmentManagerIds, loadTeleworkQuotas } from './queries.js';
+         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -701,4 +701,97 @@ export async function getMonthlySummary(
     summary.healthLeaveDays = count((s) => HEALTH_STATUSES.includes(s));
   }
   return summary;
+}
+
+export interface UserEntryView {
+  date: string;
+  departmentId: string;
+  departmentName: string;
+  status: string;
+  onGuard: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  notes: string | null;
+  healthMasked?: boolean;
+  // R2/D2 — attached only when canViewSummary authorizes the viewer for THIS
+  // entry's department (a worker can span more than one department across
+  // the range). Omitted, not zeroed, for the same reason as ScheduleView.summary.
+  weeklyTargetHours?: number;
+}
+
+// listUserEntries — GET /user/:userId/entries (R5/D6). Two-layer control,
+// same as every other read path in this module:
+//   1. Visibility resolved IN the WHERE clause via
+//      buildScheduleVisibilityFilter (A01). A VIEWER querying a worker whose
+//      schedule is DRAFT gets an empty array, never a 403 — the existence of
+//      the draft must not leak.
+//   2. Every returned entry passes through maskEntryForViewer (GDPR Art. 9) —
+//      no exception, this is a new response shape and must not become a
+//      second, unmasked path to the same underlying data.
+export async function listUserEntries(
+  prisma: Prisma.TransactionClient,
+  userId: string,
+  from: string,
+  to: string,
+  viewer: Viewer,
+): Promise<UserEntryView[]> {
+  const fromDate = parseDateOnly(from);
+  const toDate = parseDateOnly(to);
+
+  const managed = viewer.role === 'ADMIN' ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const visibility = buildScheduleVisibilityFilter(viewer.role, managed);
+
+  const rows = await loadUserEntriesInRange(prisma, userId, fromDate, toDate, visibility);
+  if (rows.length === 0) return [];
+
+  // weeklyTargetHours (R2): a per-user override with a per-department
+  // fallback (DepartmentScheduleConfig.weeklyTargetNetHours) — resolved once
+  // per department touched in the range, not once per entry.
+  const cfgCache = new Map<string, ValidationConfig>();
+  const authCache = new Map<string, boolean>();
+  const targetCache = new Map<string, number>();
+
+  const result: UserEntryView[] = [];
+  for (const row of rows) {
+    const masked = maskEntryForViewer(
+      { status: row.status, startTime: row.startTime, endTime: row.endTime, notes: row.notes, userId: row.userId, onGuard: row.onGuard },
+      viewer,
+    );
+
+    let authorized = authCache.get(row.departmentId);
+    if (authorized === undefined) {
+      authorized = await canViewSummary(prisma, viewer.id, viewer.role, row.departmentId);
+      authCache.set(row.departmentId, authorized);
+    }
+
+    const entry: UserEntryView = {
+      date: isoDate(row.date),
+      departmentId: row.departmentId,
+      departmentName: row.department.name,
+      status: masked.status,
+      onGuard: masked.onGuard,
+      startTime: masked.startTime,
+      endTime: masked.endTime,
+      notes: masked.notes,
+      healthMasked: masked.healthMasked,
+    };
+
+    if (authorized) {
+      let target = targetCache.get(row.departmentId);
+      if (target === undefined) {
+        let cfg = cfgCache.get(row.departmentId);
+        if (!cfg) {
+          cfg = await loadValidationConfig(prisma, row.departmentId);
+          cfgCache.set(row.departmentId, cfg);
+        }
+        const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
+        target = targets[userId];
+        targetCache.set(row.departmentId, target);
+      }
+      entry.weeklyTargetHours = target;
+    }
+
+    result.push(entry);
+  }
+  return result;
 }

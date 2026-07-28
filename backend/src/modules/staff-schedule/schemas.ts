@@ -148,3 +148,23 @@ export const UserTeleworkQuotaSchema = z.object({
 export const UserSearchSchema = z.object({
   q: z.string().min(2, 'q must be at least 2 characters'),
 });
+
+// ─── Worker entries by range (v3.5.12, R5/D6) ──────────────────────────────
+// Bounded to 62 days server-side (covers both the weekly and monthly worker
+// views) — unbounded ranges from an authenticated endpoint are a NIS2
+// availability concern, not just a UX one.
+const isoDateRefine = (v: string) => !Number.isNaN(Date.parse(v));
+
+export const UserEntriesRangeSchema = z
+  .object({
+    from: z.string().refine(isoDateRefine, 'Invalid date'),
+    to: z.string().refine(isoDateRefine, 'Invalid date'),
+  })
+  .refine((data) => Date.parse(data.to) >= Date.parse(data.from), {
+    message: 'to must not be before from',
+    path: ['to'],
+  })
+  .refine((data) => (Date.parse(data.to) - Date.parse(data.from)) / 86400000 <= 62, {
+    message: 'Range cannot exceed 62 days',
+    path: ['to'],
+  });

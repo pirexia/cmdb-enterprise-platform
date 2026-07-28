@@ -28,6 +28,57 @@ export function addDaysIso(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Monday (UTC, ISO yyyy-mm-dd) of the week containing the given ISO date, computed
+ * purely from the ISO string (no local-time getters) so it is timezone-safe. */
+function mondayOfIso(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const day = d.getUTCDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+/** First day (UTC, ISO yyyy-mm-dd) of `month` (1-12) in `year`. */
+export function monthStartIso(year: number, month: number): string {
+  return new Date(Date.UTC(year, month - 1, 1)).toISOString().slice(0, 10);
+}
+
+/** Last day (UTC, ISO yyyy-mm-dd) of `month` (1-12) in `year`. */
+function monthEndIso(year: number, month: number): string {
+  // Day 0 of the following month is the last day of this month (UTC).
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * The Monday (ISO) of every week that overlaps the given calendar month —
+ * i.e. the sequence of `weekStart` values a stacked monthly view needs to
+ * fetch (R6). Typically 4-6 entries depending on where the month starts/ends.
+ * All UTC; matches the rest of this module's date convention.
+ */
+export function weeksOfMonth(year: number, month: number): string[] {
+  const firstMonday = mondayOfIso(monthStartIso(year, month));
+  const lastMonday = mondayOfIso(monthEndIso(year, month));
+  const weeks: string[] = [];
+  let cur = firstMonday;
+  // ISO yyyy-mm-dd strings compare chronologically, so plain string
+  // comparison is safe here.
+  while (cur <= lastMonday) {
+    weeks.push(cur);
+    cur = addDaysIso(cur, 7);
+  }
+  return weeks;
+}
+
+/** Adds `delta` calendar months to (year, month), normalizing month back into 1-12
+ * and rolling the year over as needed. Pure, UTC-conceptual (no Date day-clamping
+ * pitfalls since it operates on year/month integers, not a day-of-month). */
+export function addMonthsIso(year: number, month: number, delta: number): { year: number; month: number } {
+  const total = year * 12 + (month - 1) + delta;
+  const newYear = Math.floor(total / 12);
+  const newMonth = total - newYear * 12 + 1;
+  return { year: newYear, month: newMonth };
+}
+
 /** Departments the user can see, for the department filter. */
 export function useDepartments() {
   const [departments, setDepartments] = useState<Department[]>([]);

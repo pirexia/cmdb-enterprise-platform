@@ -97,9 +97,9 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
     for (const day of weekDays) {
       const item = entryMap.get(day);
       if (!item) continue;
-      if (TELEWORK_LIKE.includes(item.entry.status as ScheduleStatus)) teleworkDays++;
-      if (item.entry.status === "VIAJE") travelDays++;
-      if (item.entry.onGuard) guardDays++;
+      if (TELEWORK_LIKE.includes(item.status as ScheduleStatus)) teleworkDays++;
+      if (item.status === "VIAJE") travelDays++;
+      if (item.onGuard) guardDays++;
       if (item.weeklyTargetHours !== undefined) weeklyTargetHours = item.weeklyTargetHours;
     }
     return { teleworkDays, travelDays, guardDays, weeklyTargetHours };
@@ -147,7 +147,7 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
               <tr>
                 <td className="border border-slate-100 px-3 py-2 text-xs font-medium text-slate-800">{workerLabel}</td>
                 {weekDays.map((d) => (
-                  <ScheduleCell key={d} entry={entryMap.get(d)?.entry} editable={false} onClick={() => {}} />
+                  <ScheduleCell key={d} entry={entryMap.get(d)} editable={false} onClick={() => {}} />
                 ))}
               </tr>
             </tbody>
@@ -186,7 +186,7 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
                       if (!inMonth) {
                         return <td key={day} className="border border-slate-100 bg-slate-50/50 h-11" />;
                       }
-                      return <ScheduleCell key={day} entry={entryMap.get(day)?.entry} editable={false} onClick={() => {}} />;
+                      return <ScheduleCell key={day} entry={entryMap.get(day)} editable={false} onClick={() => {}} />;
                     })}
                   </tr>
                 ))
@@ -197,7 +197,9 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
       )}
 
       {mode === "week" && weekSummary && (
-        <div className="bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3 text-xs text-slate-600 space-y-1">
+        // no-print: same "no summary/hours block on paper" rule as the
+        // department calendar's summary column, regardless of role.
+        <div className="no-print bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3 text-xs text-slate-600 space-y-1">
           {weekSummary.weeklyTargetHours !== undefined && (
             <div>
               {t("staffSchedule.summary.weeklyHours")}: {weekSummary.weeklyTargetHours.toFixed(1)}h
@@ -210,7 +212,7 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
       )}
 
       {mode === "month" && monthlySummary && (
-        <div className="bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3 text-xs text-slate-600 space-y-1">
+        <div className="no-print bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3 text-xs text-slate-600 space-y-1">
           <div>{t("staffSchedule.worker.monthlyNetHours")}: {monthlySummary.netHours.toFixed(1)}h</div>
           <div>{t("staffSchedule.summary.teleworkDaysMonth")}: {monthlySummary.teleworkDays}</div>
           <div>{t("staffSchedule.summary.travelDays")}: {monthlySummary.travelDays}</div>

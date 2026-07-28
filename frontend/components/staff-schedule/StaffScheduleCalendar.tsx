@@ -51,7 +51,9 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
           {view.days.map((d) => (
             <col key={d} style={{ width: hasSummary ? "13.6%" : "16.8%" }} />
           ))}
-          {hasSummary && <col style={{ width: "16%" }} />}
+          {/* no-print: the summary column never appears on paper, regardless
+              of role (print requirement) — see app/print.css. */}
+          {hasSummary && <col className="no-print" style={{ width: "16%" }} />}
         </colgroup>
         <thead className="sticky top-0 z-20 bg-slate-50">
           <tr>
@@ -64,7 +66,7 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
               </th>
             ))}
             {hasSummary && (
-              <th className="border border-slate-100 px-3 py-2 text-center text-xs font-semibold text-slate-600">
+              <th className="no-print border border-slate-100 px-3 py-2 text-center text-xs font-semibold text-slate-600">
                 {t("staffSchedule.summary.weeklyHours")}
               </th>
             )}
@@ -85,7 +87,7 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
                 />
               ))}
               {hasSummary && (
-                <td className="border border-slate-100 px-3 py-2 text-xs text-slate-600">
+                <td className="no-print border border-slate-100 px-3 py-2 text-xs text-slate-600">
                   {row.summary ? (
                     <>
                       <div>{t("staffSchedule.summary.weeklyHours")}: {row.summary.weeklyNetHours.toFixed(1)}h / {row.summary.weeklyTargetHours.toFixed(1)}h</div>

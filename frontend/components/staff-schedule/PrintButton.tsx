@@ -7,12 +7,14 @@ import { apiFetch } from "@/lib/apiFetch";
 
 export type PrintScope = "DEPARTMENT_WEEK" | "DEPARTMENT_MONTH" | "WORKER";
 
-interface Props {
-  scope: PrintScope;
-  targetId: string;
-  from?: string;
-  to?: string;
-}
+type Props =
+  | { scope: PrintScope; targetId: string; targetIds?: undefined; from?: string; to?: string }
+  // "All departments" view (AllDepartmentsView) has no single department to
+  // audit against — it prints every department's week at once. `targetIds`
+  // fires one audit ping per department shown, reusing the existing
+  // DEPARTMENT_WEEK scope/endpoint rather than inventing a new backend
+  // scope for what is really just "several DEPARTMENT_WEEK prints at once".
+  | { scope: "DEPARTMENT_WEEK"; targetId?: undefined; targetIds: string[]; from?: string; to?: string };
 
 /**
  * Print button for the three Staff Schedule print-capable views
@@ -41,28 +43,28 @@ interface Props {
  * capture printing regardless of how it was triggered, per the spec's
  * "se invoca en onbeforeprint" wording.
  */
-export default function PrintButton({ scope, targetId, from, to }: Props) {
+export default function PrintButton(props: Props) {
   const { t } = useLanguage();
+  const { scope, targetId, targetIds, from, to } = props;
 
   // Keep the latest print-request params in a ref so the beforeprint
   // listener (registered once) always reads current props without having
   // to re-subscribe on every prop change.
-  const paramsRef = useRef({ scope, targetId, from, to });
-  paramsRef.current = { scope, targetId, from, to };
+  const paramsRef = useRef({ scope, targetId, targetIds, from, to });
+  paramsRef.current = { scope, targetId, targetIds, from, to };
 
   useEffect(() => {
-    const handleBeforePrint = () => {
-      const { scope, targetId, from, to } = paramsRef.current;
+    const pingOne = (id: string, printScope: PrintScope) => {
       // Fire-and-forget: intentionally not awaited, no UI feedback on
       // failure beyond a console warning (D7).
       apiFetch("/api/staff-schedule/audit/print", {
         method: "POST",
-        body: JSON.stringify({ scope, targetId, from, to }),
+        body: JSON.stringify({ scope: printScope, targetId: id, from: paramsRef.current.from, to: paramsRef.current.to }),
       })
         .then((res) => {
-          // A non-2xx (e.g. 404 if the B4 backend endpoint hasn't been
-          // deployed yet in this environment) resolves rather than
-          // rejects — log it too, but still never block printing on it.
+          // A non-2xx (e.g. 404 for a target the caller isn't authorized to
+          // print) resolves rather than rejects — log it too, but still
+          // never block printing on it.
           if (!res.ok) {
             console.warn(`staff-schedule print audit ping returned ${res.status} (non-blocking)`);
           }
@@ -70,6 +72,15 @@ export default function PrintButton({ scope, targetId, from, to }: Props) {
         .catch((err) => {
           console.warn("staff-schedule print audit ping failed (non-blocking)", err);
         });
+    };
+
+    const handleBeforePrint = () => {
+      const { scope: currentScope, targetId: currentTargetId, targetIds: currentTargetIds } = paramsRef.current;
+      if (currentTargetIds && currentTargetIds.length > 0) {
+        for (const id of currentTargetIds) pingOne(id, currentScope);
+      } else if (currentTargetId) {
+        pingOne(currentTargetId, currentScope);
+      }
     };
 
     window.addEventListener("beforeprint", handleBeforePrint);

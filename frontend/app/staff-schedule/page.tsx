@@ -413,7 +413,7 @@ export default function StaffSchedulePage() {
         )}
 
         {viewMode === "department-week" && view && (
-          <div className={showAlertPanel ? "grid grid-cols-1 xl:grid-cols-[1fr_20rem] gap-6 items-start" : "w-full"}>
+          <div className={showAlertPanel ? "staff-schedule-grid grid grid-cols-1 xl:grid-cols-[1fr_20rem] gap-6 items-start" : "w-full"}>
             <StaffScheduleCalendar
               view={view}
               departmentConfig={departmentConfig}
@@ -421,13 +421,18 @@ export default function StaffSchedulePage() {
               onSaveEntries={saveEntries}
             />
             {showAlertPanel && (
-              <AlertPanel
-                alerts={view.alerts}
-                canEdit={canEdit && status === "DRAFT"}
-                onRevalidate={() => runAction(validate)}
-                revalidating={busy}
-                usernameByUserId={usernameByUserId}
-              />
+              // no-print: alerts never appear on the printed/PDF output,
+              // regardless of role, even though they're shown on screen for
+              // a DRAFT schedule the viewer can edit.
+              <div className="no-print">
+                <AlertPanel
+                  alerts={view.alerts}
+                  canEdit={canEdit && status === "DRAFT"}
+                  onRevalidate={() => runAction(validate)}
+                  revalidating={busy}
+                  usernameByUserId={usernameByUserId}
+                />
+              </div>
             )}
           </div>
         )}

@@ -4,6 +4,8 @@ import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAllDepartmentsSchedules } from "@/app/staff-schedule/hooks/useStaffSchedule";
 import StaffScheduleCalendar from "./StaffScheduleCalendar";
+import PrintButton from "./PrintButton";
+import PrintHeader from "./PrintHeader";
 
 interface Props {
   weekStart: string;
@@ -45,8 +47,21 @@ export default function AllDepartmentsView({ weekStart }: Props) {
 
   return (
     <div className="space-y-8">
+      <div className="flex justify-end no-print">
+        <PrintButton
+          scope="DEPARTMENT_WEEK"
+          targetIds={entries.map((e) => e.department.id)}
+          from={weekStart}
+          to={weekStart}
+        />
+      </div>
+      <PrintHeader
+        title={t("staffSchedule.title")}
+        subtitle={t("staffSchedule.filter.allDepartments")}
+        rangeLabel={weekStart}
+      />
       {entries.map(({ department, view }) => (
-        <div key={department.id} className="space-y-2">
+        <div key={department.id} className="print-block space-y-2">
           <h2 className="text-sm font-bold text-slate-900">{department.name}</h2>
           <StaffScheduleCalendar
             view={view}

@@ -81,12 +81,69 @@
   .print-block .max-h-\[70vh\] {
     max-height: none !important;
   }
+  /* StaffScheduleCalendar.tsx's table also carries `min-w-[60rem]` (960px)
+     so it stays legible with an on-screen horizontal scrollbar. On an A4
+     page that forced minimum can be wider than the printable area, causing
+     the table to overflow the page — printing must let the table shrink to
+     fit, not force a fixed floor. */
+  .print-block .min-w-\[60rem\] {
+    min-width: 0 !important;
+  }
 
   /* The calendar header row is `sticky top-0` on screen to stay visible
      while scrolling; sticky positioning has no meaning in paginated print
      and can otherwise interact oddly with page breaks. */
   .print-block .sticky {
     position: static !important;
+  }
+
+  /* Requirement: the printed calendar shows only the day-by-day grid — the
+     weekly-hours/telework/travel/guard summary (column in the department
+     table, or the aggregate box below a worker's table) and the alerts
+     panel never print, regardless of the viewer's role. This is a stronger
+     rule than the on-screen R2 authorization check: even a viewer who DOES
+     see the summary on screen (ADMIN/department manager) does not get it on
+     paper — the printed page is meant to be just the schedule grid, laid
+     out cleanly for A4. Reuses `.no-print` (already applied to these
+     elements in the components) rather than a new class, since the same
+     "never on paper" semantics apply.
+     `table-layout: auto` lets the remaining visible columns reflow to fill
+     the page once the summary column's cells are hidden — with the fixed
+     percentage colgroup this component uses on screen (R1), simply hiding
+     the summary `<td>`/`<th>` would leave a blank gap instead of the other
+     columns expanding to use that space. */
+  .print-block table {
+    table-layout: auto !important;
+  }
+  .print-block col.no-print {
+    display: none !important;
+  }
+
+  /* When the alert panel is present on screen (DRAFT schedule the viewer can
+     edit), its grid container reserves a fixed 20rem second column even
+     after the panel itself is hidden via .no-print (display:none removes an
+     item from a grid, not the column TRACK the template still defines) —
+     without this override, print would show the calendar in a narrower
+     first column plus a blank strip on the right. Forcing the container to
+     `display: block` for print collapses it back to a single full-width
+     column, matching the layout already used when there is no alert panel
+     at all. */
+  .staff-schedule-grid {
+    display: block !important;
+  }
+
+  /* Compact, single-page-friendly type scale for print — the on-screen
+     sizes (comfortable for a mouse/touch UI) are needlessly large on a
+     printed A4 page and make it more likely a table spills onto a second
+     sheet. */
+  .print-block table {
+    font-size: 9pt;
+  }
+  .print-only h1 {
+    font-size: 13pt;
+  }
+  .print-only p {
+    font-size: 9pt;
   }
 }
 

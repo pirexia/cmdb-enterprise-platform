@@ -134,7 +134,12 @@ export default function StaffSchedulePage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5 no-print">
+      {/* z-40: must outrank the calendar table's own sticky elements — its
+          thead is z-20 and its frozen first column z-30 — or those paint
+          OVER this page header while scrolling (they live outside this
+          header's stacking context, so the z-indexes compete directly).
+          Stays below the module's modals/popovers at z-50. */}
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white px-8 py-5 no-print">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">{t("staffSchedule.title")}</h1>

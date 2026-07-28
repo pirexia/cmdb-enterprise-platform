@@ -168,16 +168,28 @@
      out cleanly for A4. Reuses `.no-print` (already applied to these
      elements in the components) rather than a new class, since the same
      "never on paper" semantics apply.
-     `table-layout: auto` lets the remaining visible columns reflow to fill
-     the page once the summary column's cells are hidden — with the fixed
-     percentage colgroup this component uses on screen (R1), simply hiding
-     the summary `<td>`/`<th>` would leave a blank gap instead of the other
-     columns expanding to use that space. */
+     Column widths MUST stay `table-layout: fixed` (the component's on-screen
+     default) for print. An earlier attempt switched print to
+     `table-layout: auto` so the remaining columns would reflow into the
+     hidden summary column's space — that was the wrong lever and is the
+     reason the table stopped fitting the page: with `auto`, the table sizes
+     itself to its CONTENT, so a long status name (INTENSIVO_TELETRABAJO,
+     BAJA_PATERNIDAD) forces columns wider than the printable area and the
+     table gets clipped. Reducing font-size does not fix that, because under
+     `auto` it is the content's natural width — not the font alone — that
+     drives the table width.
+     With `fixed`, the colgroup percentages divide whatever width is
+     available and content can never widen the table; long names wrap
+     instead (the cells already carry line-clamp-2 + overflow-hidden).
+     Reflow after dropping the summary column needs no extra rule: the
+     generic `.no-print { display: none }` above already removes that
+     column's <col> and its <th>/<td> cells, and under fixed layout the
+     remaining declared widths (16% + 5x13.6% = 84%) are then scaled up
+     proportionally to fill 100% — which is the reflow the `auto` switch was
+     reaching for, without handing width control to the content. */
   .print-block table {
-    table-layout: auto !important;
-  }
-  .print-block col.no-print {
-    display: none !important;
+    table-layout: fixed !important;
+    width: 100% !important;
   }
 
   /* When the alert panel is present on screen (DRAFT schedule the viewer can
@@ -193,14 +205,25 @@
     display: block !important;
   }
 
-  /* Compact, single-page-friendly type scale for print — the on-screen
-     sizes (comfortable for a mouse/touch UI) are needlessly large on a
-     printed A4 page and make it more likely a table spills onto a second
-     sheet. PrintHeader.tsx sets its own (already compact) sizes via Tailwind
-     classes directly, so no generic .print-only h1/p override is needed
-     here — an earlier version of this rule fought with those inline sizes. */
-  .print-block table {
-    font-size: 9pt;
+  /* Font size is deliberately NOT overridden for print. The cells already
+     use small type on screen (11px status / 10px times) and, with
+     `table-layout: fixed` above, the font is no longer what decides whether
+     the table fits the page — the column percentages are. A previous
+     revision shrank the table to 9pt/10pt and it changed nothing about the
+     fit (the table still overflowed) while costing legibility, so those
+     rules were removed rather than kept as dead weight.
+
+     The real vertical cost is the cell height: each cell's button carries a
+     FIXED `h-11` (2.75rem / 44px), sized on screen to hold two clamped
+     lines of status plus a times line with comfortable click area. That
+     fixed height is what makes a multi-week or multi-department report
+     spill onto extra sheets, and no font rule touches it. For print the
+     height becomes content-driven, so cells that don't need the full box
+     (short status, no times) give the space back. Cells within a row still
+     align (table row semantics), so rows stay visually even. */
+  .print-block td button {
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   /* "All departments" (print-condensed): minimize the vertical gap between
@@ -214,15 +237,12 @@
     margin-top: 0.15rem !important;
   }
 
-  /* Department month report: the "don't fit at any cost" requirement — keep
-     a legible 10pt floor (never smaller, unlike the 9pt used elsewhere) and
-     let genuinely large departments flow onto a second page via the
-     existing per-week break-inside:avoid, rather than shrinking text
-     further to force everything onto one sheet. Same condensed inter-week
-     spacing as "all departments" above, for the same reason. */
-  .print-month-report .print-block table {
-    font-size: 10pt !important;
-  }
+  /* Department month report: same condensed inter-week spacing. Font size is
+     left alone here too — the "split across two pages rather than shrink
+     text below legibility" requirement is satisfied structurally, by the
+     per-week `break-inside: avoid` on .print-block: a department with too
+     many workers to fit one portrait page simply flows its later weeks onto
+     the next sheet, with no text shrinking involved at any point. */
   .print-month-report.space-y-8 > * + * {
     margin-top: 0.5rem !important;
   }

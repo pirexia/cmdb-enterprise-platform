@@ -479,3 +479,71 @@ export function useAllDepartmentsSchedules(weekStart: string) {
 
   return { entries, loading, error, refetch: load };
 }
+
+/** One week's slot in a department's month view — `view: null` means the week
+ * genuinely has no schedule (D8: shown explicitly, never a silent gap). */
+export interface DepartmentMonthWeek {
+  weekStart: string;
+  view: ScheduleView | null;
+}
+
+const MAX_MONTH_WEEKS = 6; // matches the server-side cap on GET /api/staff-schedule?from=&to=
+
+/**
+ * Read-only view of a single department across every week overlapping a
+ * calendar month (R6). Same N+1 fetch pattern as useAllDepartmentsSchedules:
+ * one list request for the whole range, then one detail request per week
+ * that actually has a schedule. Weeks without a schedule are kept in the
+ * result with `view: null` rather than omitted (D8).
+ */
+export function useDepartmentMonth(departmentId: string | null, year: number, month: number) {
+  const [weeks, setWeeks] = useState<DepartmentMonthWeek[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!departmentId) {
+      setWeeks([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const weekStarts = weeksOfMonth(year, month).slice(0, MAX_MONTH_WEEKS);
+      if (weekStarts.length === 0) {
+        setWeeks([]);
+        return;
+      }
+      const from = weekStarts[0];
+      const to = weekStarts[weekStarts.length - 1];
+      const listRes = await apiFetch(
+        `/api/staff-schedule?departmentId=${departmentId}&from=${from}&to=${to}`,
+      );
+      if (!listRes.ok) throw new Error(`Status ${listRes.status}`);
+      const list: StaffScheduleListItem[] = await listRes.json();
+      const byWeekStart = new Map(list.map((s) => [s.weekStart.slice(0, 10), s]));
+
+      const results = await Promise.all(
+        weekStarts.map(async (ws): Promise<DepartmentMonthWeek> => {
+          const match = byWeekStart.get(ws);
+          if (!match) return { weekStart: ws, view: null };
+          const r = await apiFetch(`/api/staff-schedule/${match.id}`);
+          if (!r.ok) return { weekStart: ws, view: null };
+          const view: ScheduleView = await r.json();
+          return { weekStart: ws, view };
+        }),
+      );
+      setWeeks(results);
+    } catch {
+      setError("error");
+    } finally {
+      setLoading(false);
+    }
+  }, [departmentId, year, month]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { weeks, loading, error, refetch: load };
+}

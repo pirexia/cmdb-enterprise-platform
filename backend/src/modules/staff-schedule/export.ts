@@ -17,17 +17,25 @@ function escapeCsv(v: string): string {
   return `"${v.replace(/"/g, '""')}"`;
 }
 
+// v3.5.12 (R2) — `summary` is optional on ScheduleView (omitted server-side
+// for a viewer unauthorized under canViewSummary). The export must inherit
+// that control for free: it operates on an already-masked ScheduleView, so
+// when the field is absent it emits empty cells rather than throwing.
+function summaryCell(v: number | undefined): string {
+  return v === undefined ? '' : String(v);
+}
+
 export function exportScheduleCsv(view: ScheduleView): string {
   const header = ['Username', ...view.days, 'WeeklyNetHours', 'TeleworkDaysWeek', 'TeleworkDaysMonth', 'TravelDays', 'GuardDays'];
   const lines = view.rows.map((row) => {
     const cells = [
       row.username,
       ...view.days.map((d) => cellText(row.entries[d])),
-      String(row.summary.weeklyNetHours),
-      String(row.summary.teleworkDaysWeek),
-      String(row.summary.teleworkDaysMonth),
-      String(row.summary.travelDays),
-      String(row.summary.guardDays),
+      summaryCell(row.summary?.weeklyNetHours),
+      summaryCell(row.summary?.teleworkDaysWeek),
+      summaryCell(row.summary?.teleworkDaysMonth),
+      summaryCell(row.summary?.travelDays),
+      summaryCell(row.summary?.guardDays),
     ];
     return cells.map(escapeCsv).join(',');
   });
@@ -52,11 +60,11 @@ export async function exportScheduleXlsx(view: ScheduleView): Promise<Buffer> {
   for (const row of view.rows) {
     const wsRow: Record<string, unknown> = { username: row.username };
     for (const d of view.days) wsRow[d] = cellText(row.entries[d]);
-    wsRow.weeklyNetHours = row.summary.weeklyNetHours;
-    wsRow.teleworkDaysWeek = row.summary.teleworkDaysWeek;
-    wsRow.teleworkDaysMonth = row.summary.teleworkDaysMonth;
-    wsRow.travelDays = row.summary.travelDays;
-    wsRow.guardDays = row.summary.guardDays;
+    wsRow.weeklyNetHours = summaryCell(row.summary?.weeklyNetHours);
+    wsRow.teleworkDaysWeek = summaryCell(row.summary?.teleworkDaysWeek);
+    wsRow.teleworkDaysMonth = summaryCell(row.summary?.teleworkDaysMonth);
+    wsRow.travelDays = summaryCell(row.summary?.travelDays);
+    wsRow.guardDays = summaryCell(row.summary?.guardDays);
     ws.addRow(wsRow);
   }
 

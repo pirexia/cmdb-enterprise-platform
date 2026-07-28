@@ -28,6 +28,23 @@ interface Viewer {
   role: string;
 }
 
+// canViewSummary(prisma, viewerId, role, departmentId) — R2/D1/D2. Deliberately
+// delegates to canUserEditDepartment instead of reimplementing the "ADMIN or
+// manager of this department" rule: canEdit and "can see the weekly-hours
+// summary" must share exactly one source of truth so they can never diverge
+// (this was flagged as a regression risk in the spec — a second copy of the
+// same rule is how it would happen). Exported so the same check can gate the
+// per-department `summary` block in buildScheduleView (B1) and the per-entry
+// `weeklyTargetHours` field in listUserEntries (B3).
+export async function canViewSummary(
+  prisma: Prisma.TransactionClient,
+  viewerId: string,
+  role: string,
+  departmentId: string | null | undefined,
+): Promise<boolean> {
+  return canUserEditDepartment(prisma, viewerId, role, departmentId);
+}
+
 export interface MaskedEntryFields {
   status: string;
   onGuard: boolean;
@@ -449,7 +466,11 @@ export interface ScheduleView {
     username: string;
     displayName: string | null;
     entries: Record<string, MaskedEntryFields>;
-    summary: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
+    // Optional since v3.5.12 (R2/D1): omitted entirely — never sent zeroed —
+    // for a viewer who is neither ADMIN nor manager of this row's department.
+    // Same precedent as MonthlySummary.healthLeaveDays: the mere presence of
+    // the field is informative, so an unauthorized viewer must not see the key.
+    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
   }>;
   alerts: Array<{
     id: string;
@@ -497,6 +518,9 @@ export async function buildScheduleView(
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
   const canEdit = await canUserEditDepartment(prisma, viewer.id, viewer.role, schedule.departmentId);
+  // R2/D1/D2 — a single schedule belongs to a single department, so this is
+  // resolved once for the whole view, not per row.
+  const showSummary = await canViewSummary(prisma, viewer.id, viewer.role, schedule.departmentId);
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
@@ -552,7 +576,11 @@ export async function buildScheduleView(
       username: data.username,
       displayName: data.displayName,
       entries,
-      summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
+      // Omitted entirely (not sent as `undefined`/zeroed) when the viewer is
+      // not authorized — see the `summary?` doc comment on ScheduleView above.
+      ...(showSummary
+        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours } }
+        : {}),
     });
   }
 

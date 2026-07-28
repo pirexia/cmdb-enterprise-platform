@@ -186,7 +186,8 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
                       if (!inMonth) {
                         return <td key={day} className="border border-slate-100 bg-slate-50/50 h-11" />;
                       }
-                      return <ScheduleCell key={day} entry={entryMap.get(day)} editable={false} onClick={() => {}} />;
+                      const dayNumber = Number(day.slice(8, 10));
+                      return <ScheduleCell key={day} entry={entryMap.get(day)} editable={false} onClick={() => {}} dayNumber={dayNumber} />;
                     })}
                   </tr>
                 ))

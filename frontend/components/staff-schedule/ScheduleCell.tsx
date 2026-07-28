@@ -26,10 +26,21 @@ interface Props {
   entry: MaskedEntryFields | undefined;
   editable: boolean;
   onClick: () => void;
+  /** Day-of-month (1-31) shown as a small corner badge — opt-in, for
+   * contexts (month grids) where the column header alone doesn't identify
+   * which calendar day a cell belongs to. Week views omit it: their column
+   * header already shows the full date, so it would be redundant there. */
+  dayNumber?: number;
 }
 
-export default function ScheduleCell({ entry, editable, onClick }: Props) {
+export default function ScheduleCell({ entry, editable, onClick, dayNumber }: Props) {
   const { t } = useLanguage();
+
+  const dayBadge = dayNumber !== undefined && (
+    <span className="absolute top-0.5 right-1 text-[9px] font-semibold opacity-60 leading-none">
+      {dayNumber}
+    </span>
+  );
 
   if (!entry) {
     return (
@@ -38,8 +49,9 @@ export default function ScheduleCell({ entry, editable, onClick }: Props) {
           type="button"
           onClick={editable ? onClick : undefined}
           disabled={!editable}
-          className={`w-full h-11 overflow-hidden text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
+          className={`relative w-full h-11 overflow-hidden text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
         >
+          {dayBadge}
           {editable ? "+" : "—"}
         </button>
       </td>
@@ -55,8 +67,9 @@ export default function ScheduleCell({ entry, editable, onClick }: Props) {
         onClick={editable ? onClick : undefined}
         disabled={!editable}
         title={entry.healthMasked ? t("staffSchedule.gdpr.maskedNotice") : undefined}
-        className={`w-full h-11 overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+        className={`relative w-full h-11 overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
       >
+        {dayBadge}
         <span className="flex items-center gap-1 font-semibold text-[11px] leading-tight line-clamp-2">
           {t(`staffSchedule.status.${entry.status as ScheduleStatus}`)}
           {entry.onGuard && (

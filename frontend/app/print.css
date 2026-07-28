@@ -61,10 +61,54 @@
   /* Status cell backgrounds must survive to paper/PDF — without this,
      browsers default to not printing background colors at all. Status
      text itself is still rendered (not color-only), so legibility in a
-     black & white printout does not depend on this rule. */
-  * {
+     black & white printout does not depend on this rule.
+     DELIBERATELY scoped to .print-block only, NOT the whole page (`*`):
+     an earlier version of this rule applied to every element, which forced
+     the app's own light-gray page backgrounds (bg-slate-50 etc.) to print
+     too, wasting toner on a tint nobody needs — the report should print on
+     a plain white page except for the calendar's own status colors. */
+  .print-block, .print-block * {
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
+  }
+
+  /* Report requirement: printing must produce a clean report of just the
+     calendar(s) for whatever the user is currently viewing — never a
+     screenshot of the app shell. `.no-print` on TopBar/Sidebar
+     (components/AppShell.tsx, components/TopBar.tsx) already removes them
+     from the DOM output, but the app's own layout containers still need
+     neutralizing here:
+       - `.app-shell-root` is the top-level `flex h-screen ... bg-slate-50`
+         wrapper — `h-screen` clips content to one viewport-tall box on
+         screen (irrelevant once paginated) and the gray background would
+         otherwise still print behind the (now-hidden) sidebar's empty space.
+       - `.app-main-scroll` is `<main className="overflow-y-auto">`, the
+         actual scrolling container for every page's content. Left as-is,
+         some browsers render its scrollbar into the print output (the
+         literal bug reported) and its fixed height would clip content
+         instead of letting the printed report flow across pages. */
+  html, body {
+    background: white !important;
+  }
+  .app-shell-root {
+    height: auto !important;
+    background: white !important;
+  }
+  .app-main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    background: white !important;
+  }
+  /* Every top-level page in this app follows the same canonical wrapper
+     pattern (`<div className="min-h-screen bg-slate-50">`, see CLAUDE.md's
+     "patrón canónico de la casa") — neutralizing it here benefits printing
+     from any page, not just Staff Schedule, for the same reasoning as
+     .app-shell-root above. */
+  .min-h-screen {
+    min-height: 0 !important;
+  }
+  .bg-slate-50 {
+    background: white !important;
   }
 
   /* StaffScheduleCalendar.tsx wraps its table in:

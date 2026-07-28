@@ -34,24 +34,40 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
     });
 
   const editingRow = editing ? view.rows.find((r) => r.userId === editing.userId) : undefined;
-  const dailyNetHours = editingRow ? editingRow.summary.weeklyTargetHours / 5 : 8;
+  // R2/B1: `summary` may be absent for viewers not authorized to see it
+  // (backend omits it entirely, not just zeroes it) — fall back to 8h/day.
+  const dailyNetHours = editingRow?.summary ? editingRow.summary.weeklyTargetHours / 5 : 8;
+
+  // R1: the summary column only exists (and only gets a colgroup slice) when
+  // at least one row actually carries `summary`. Rows are per-viewer, not
+  // per-row, so in practice it's all-or-nothing, but we don't assume that.
+  const hasSummary = view.rows.some((r) => r.summary);
 
   return (
-    <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-auto max-h-[70vh]">
-      <table className="w-full border-collapse text-sm">
+    <div className="print-block bg-white shadow-sm ring-1 ring-slate-200 overflow-auto max-h-[70vh]">
+      <table className="w-full min-w-[60rem] table-fixed border-collapse text-sm">
+        <colgroup>
+          <col style={{ width: "16%" }} />
+          {view.days.map((d) => (
+            <col key={d} style={{ width: hasSummary ? "13.6%" : "16.8%" }} />
+          ))}
+          {hasSummary && <col style={{ width: "16%" }} />}
+        </colgroup>
         <thead className="sticky top-0 z-20 bg-slate-50">
           <tr>
-            <th className="sticky left-0 z-30 bg-slate-50 border border-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-600 min-w-[10rem]">
+            <th className="sticky left-0 z-30 bg-slate-50 border border-slate-100 px-3 py-2 text-left text-xs font-semibold text-slate-600">
               {t("staffSchedule.calendar.person")}
             </th>
             {view.days.map((d) => (
-              <th key={d} className="border border-slate-100 px-2 py-2 text-center text-xs font-semibold text-slate-600 min-w-[9rem]">
+              <th key={d} className="border border-slate-100 px-2 py-2 text-center text-xs font-semibold text-slate-600">
                 {formatDay(d)}
               </th>
             ))}
-            <th className="border border-slate-100 px-3 py-2 text-center text-xs font-semibold text-slate-600 min-w-[10rem]">
-              {t("staffSchedule.summary.weeklyHours")}
-            </th>
+            {hasSummary && (
+              <th className="border border-slate-100 px-3 py-2 text-center text-xs font-semibold text-slate-600">
+                {t("staffSchedule.summary.weeklyHours")}
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -68,13 +84,21 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
                   onClick={() => setEditing({ userId: row.userId, username: displayLabel(row), date: d })}
                 />
               ))}
-              <td className="border border-slate-100 px-3 py-2 text-xs text-slate-600">
-                <div>{t("staffSchedule.summary.weeklyHours")}: {row.summary.weeklyNetHours.toFixed(1)}h / {row.summary.weeklyTargetHours.toFixed(1)}h</div>
-                <div>{t("staffSchedule.summary.teleworkDaysWeek")}: {row.summary.teleworkDaysWeek}</div>
-                <div>{t("staffSchedule.summary.teleworkDaysMonth")}: {row.summary.teleworkDaysMonth}</div>
-                <div>{t("staffSchedule.summary.travelDays")}: {row.summary.travelDays}</div>
-                <div>{t("staffSchedule.summary.guardDays")}: {row.summary.guardDays}</div>
-              </td>
+              {hasSummary && (
+                <td className="border border-slate-100 px-3 py-2 text-xs text-slate-600">
+                  {row.summary ? (
+                    <>
+                      <div>{t("staffSchedule.summary.weeklyHours")}: {row.summary.weeklyNetHours.toFixed(1)}h / {row.summary.weeklyTargetHours.toFixed(1)}h</div>
+                      <div>{t("staffSchedule.summary.teleworkDaysWeek")}: {row.summary.teleworkDaysWeek}</div>
+                      <div>{t("staffSchedule.summary.teleworkDaysMonth")}: {row.summary.teleworkDaysMonth}</div>
+                      <div>{t("staffSchedule.summary.travelDays")}: {row.summary.travelDays}</div>
+                      <div>{t("staffSchedule.summary.guardDays")}: {row.summary.guardDays}</div>
+                    </>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

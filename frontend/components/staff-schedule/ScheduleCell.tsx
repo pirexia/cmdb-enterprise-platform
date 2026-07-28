@@ -29,12 +29,12 @@ export default function ScheduleCell({ entry, editable, onClick }: Props) {
 
   if (!entry) {
     return (
-      <td className="border border-slate-100 p-1 align-top">
+      <td className="border border-slate-100 p-0.5 align-top">
         <button
           type="button"
           onClick={editable ? onClick : undefined}
           disabled={!editable}
-          className={`w-full h-full min-h-[3.5rem] text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
+          className={`w-full h-11 overflow-hidden text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
         >
           {editable ? "+" : "—"}
         </button>
@@ -45,25 +45,25 @@ export default function ScheduleCell({ entry, editable, onClick }: Props) {
   const meta = STATUS_META[entry.status] ?? STATUS_META.AUSENTE;
 
   return (
-    <td className="border border-slate-100 p-1 align-top">
+    <td className="border border-slate-100 p-0.5 align-top">
       <button
         type="button"
         onClick={editable ? onClick : undefined}
         disabled={!editable}
         title={entry.healthMasked ? t("staffSchedule.gdpr.maskedNotice") : undefined}
-        className={`w-full min-h-[3.5rem] rounded-none px-2 py-1.5 text-left text-xs ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+        className={`w-full h-11 overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
       >
-        <span className="flex items-center gap-1 font-semibold">
+        <span className="flex items-center gap-1 font-semibold text-[11px] leading-tight line-clamp-2">
           {t(`staffSchedule.status.${entry.status as ScheduleStatus}`)}
           {entry.onGuard && (
-            <span className="rounded-none bg-yellow-500 px-1 text-[10px] font-bold text-white" title={t("staffSchedule.entry.onGuard")}>
+            <span className="rounded-none bg-yellow-500 px-1 text-[10px] font-bold text-white shrink-0" title={t("staffSchedule.entry.onGuard")}>
               G
             </span>
           )}
           {entry.healthMasked && <Lock className="h-3 w-3 shrink-0" />}
         </span>
         {entry.startTime && entry.endTime && (
-          <span className="block mt-0.5 text-[11px] opacity-80">
+          <span className="block mt-0.5 text-[10px] leading-tight opacity-80">
             {entry.startTime}–{entry.endTime}
           </span>
         )}

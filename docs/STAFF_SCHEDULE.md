@@ -315,6 +315,42 @@ Decisión: CSS de impresión (`app/print.css`) + `window.print()`, sin dependenc
 
 **Bug real cazado en verificación en vivo (no en revisión de código)**: para la vista departamento-semana, `targetId` se envió inicialmente como el **id del horario** (`view.schedule.id`), pero `isDepartmentVisibleToViewer` (compartida con `DEPARTMENT_MONTH`) siempre resuelve `targetId` como un **id de departamento**. Toda impresión desde esa vista devolvía 404 silenciosamente en vez de registrar la exportación. Confirmado en producción con la cuenta AUDITOR de pruebas (404 con `targetId` incorrecto, 204 + fila de auditoría correcta tras el fix), corregido a `view.schedule.departmentId`.
 
+#### 17.6.1 Orientación de página — una sola `@page` por trabajo de impresión
+
+> **No reintroducir una segunda `@page` con nombre.** Esta sección documenta un intento fallido para que no se repita.
+
+El primer diseño usaba dos reglas: `@page` por defecto (apaisada) y una `@page portrait-narrow` con nombre, seleccionada por vista con la propiedad `page` sobre una clase `.print-portrait`. **Chromium no re-maqueta el contenido cuando una página con nombre cambia el TAMAÑO a mitad de documento**: el contenido conserva el ancho del contexto de página anterior y se recorta sobre la hoja del nuevo tamaño.
+
+Diagnosticado sobre el PDF real generado por el usuario (analizado con `pypdf`, no a ojo):
+
+| Página | Geometría | Contenido |
+|---|---|---|
+| 1 | 297×210 mm (apaisada) | solo la cabecera del documento |
+| 2-3 | 210×297 mm (vertical) | tablas maquetadas al ancho apaisado → ~398pt fuera del borde derecho |
+
+Las tablas se maquetaron con el ancho útil de la hoja apaisada (~785pt) y se emitieron sobre hojas verticales (561pt útiles): se perdía por la derecha desde el jueves en adelante. La cabecera, al vivir **fuera** del contenedor `.print-portrait`, pertenecía al otro contexto de página y se llevaba una hoja apaisada entera para ella sola. Se comprobó que las reglas CSS estaban correctamente compiladas en el contenedor — el enfoque era el equivocado, no las reglas.
+
+**Diseño actual**: la orientación se elige **una vez por trabajo de impresión**, reescribiendo desde JS una única regla `@page` en un `<style>` dedicado — `usePrintPageOrientation(orientation)` en `hooks/useStaffSchedule.ts`. Con una sola geometría en todo el documento, maquetación y papel siempre coinciden. La regla se mantiene sincronizada con la vista activa (no se escribe en el `onClick`), de modo que el Ctrl+P nativo del navegador también obtiene la orientación correcta, sin depender del momento en que se ejecute nuestro manejador.
+
+| Vista | Orientación | Motivo |
+|---|---|---|
+| Todos los departamentos | Vertical, márgenes 6mm | Apila varias tablas estrechas; prioriza hojas, no ancho |
+| Departamento — mes | Vertical, márgenes 6mm | Ídem, por semanas |
+| Departamento — semana | Apaisada, márgenes 8mm | Rejilla ancha de 7 columnas |
+| Trabajador | Apaisada, márgenes 8mm | Ídem |
+
+#### 17.6.2 Qué NO llega al papel, y por qué el ancho encaja
+
+- **Cromo de aplicación**: `AppShell.tsx`/`TopBar.tsx` marcan barra lateral y barra superior como `.no-print`. No bastaba con marcar la cabecera del propio módulo: esos componentes viven fuera de él y el CSS del módulo no los alcanzaba, así que la impresión salía con la barra lateral.
+- **Fondos**: `print-color-adjust: exact` está acotado a `.print-block` — nunca a `*`. Aplicado globalmente forzaba a imprimir los fondos gris claro de la aplicación (`bg-slate-50`), gastando tóner en un tinte que nadie necesita. El informe sale sobre blanco salvo los colores de estado del calendario.
+- **Barras de desplazamiento**: `<main className="overflow-y-auto">` (`.app-main-scroll`) es el contenedor real de scroll de la aplicación; sin neutralizarlo algunos navegadores dibujaban su barra en el PDF.
+- **Resumen y alertas**: `.no-print` sobre la columna de resumen y el panel de alertas, **con independencia del rol** — regla más fuerte que el control de acceso en pantalla (§17.2): quien sí ve el resumen en pantalla tampoco lo obtiene en papel, porque el informe impreso es solo la rejilla del calendario.
+- **Ancho**: la tabla mantiene `table-layout: fixed` en impresión. Un intento previo lo cambió a `auto` para que las columnas restantes reocuparan el hueco de la columna de resumen oculta; fue el error que rompió el encaje, porque con `auto` **es el contenido quien decide el ancho** y un estado largo (`INTENSIVO_TELETRABAJO`) empujaba la tabla fuera de la página. Reducir el tamaño de fuente no lo arreglaba y por eso la letra menguaba sin que la tabla encogiera. Con `fixed` los porcentajes del `<colgroup>` reparten el ancho disponible y el contenido nunca puede ensancharla; el reflujo tras ocultar la columna de resumen lo da el propio `display:none` del `<col>`, que hace que el 84% declarado restante se escale hasta el 100%.
+
+#### 17.6.3 Cabecera del documento
+
+Dos líneas exactas, por el requisito de condensar: línea 1 el título más el número de semana ISO cuando se imprime una sola semana (`isoWeekNumber()`, p. ej. «… semana 31 de 2026»); línea 2 pliega departamento/trabajador, rango y «Generado: …». Se renderiza **una sola vez**, en `page.tsx`, para las cuatro vistas — `AllDepartmentsView` llegó a renderizar la suya propia y el encabezado salía duplicado.
+
 ### 17.7 Estados `FESTIVO`/`FESTIVO_LOCAL` y objetivo semanal por semana
 
 Ver §3. Además de contar como 0h (igual que `VACACIONES`), estos dos estados —junto con `VACACIONES`— **reducen el objetivo de horas semanales** en vez de contar como un déficit contra un objetivo plano de 40h.
@@ -330,3 +366,33 @@ Aplicado en los tres sitios donde se calcula o valida un objetivo semanal: la al
 Durante el despliegue de esta versión, ejecutar `podman-compose` desde el **worktree** de integración (no desde `/opt/cmdb-enterprise-platform`) hizo que `DOCUMENTS_STORAGE_PATH=./document-storage` (ruta relativa) resolviera contra el directorio equivocado — un `document-storage/` vacío recién creado en el worktree, en vez del real. El backend entró en crash-loop por un `EACCES` al intentar `mkdir` en él, **antes** de escribir nada (ningún dato tocado ni perdido; los certificados TLS usan el volumen nombrado `cmdb-tls-certs`, no una ruta relativa, así que no se vieron afectados). Corregido desplegando siempre desde el checkout principal, donde las rutas relativas del `.env`/`docker-compose.prod.yml` resuelven contra los directorios reales de producción. Añade matiz a la regla ya documentada en memoria ("worktrees no heredan `.env`"): copiar el `.env` no basta si además se ejecuta el despliegue desde el worktree — el propio directorio de trabajo importa para toda ruta relativa del compose, no solo para las variables.
 
 **Verificación en producción** contra el departamento real, día 2026-07-27: 1 presente de 3 disponibles (1 de vacaciones y 1 de baja fuera del denominador) → `33.3%`, contrastado contra las filas de la BD. Bajo la regla anterior el mismo día daba `0/5 = 0.0%`.
+
+### 17.9 Defectos encontrados en la verificación en navegador (no por revisión de código)
+
+El entorno de desarrollo de esta sesión no permitía instalar Chrome (sin `sudo`), así que la verificación automatizada llegó hasta la capa de API. Los siguientes defectos **solo aparecieron cuando el usuario probó la interfaz real**, y conviene registrarlos como clase de fallo, no solo como incidencias sueltas.
+
+#### 17.9.1 Crash de la vista de trabajador — contrato desalineado entre agentes paralelos
+
+Seleccionar un trabajador rompía la página con `Cannot read properties of undefined (reading 'status')`.
+
+`WorkerEntryItem` (frontend) declaraba una forma **anidada** — `{ date, departmentName, entry: MaskedEntryFields }` — mientras que `UserEntryView` (backend, `service.ts`) siempre ha sido **plana**: `status`/`onGuard`/`startTime`… en el primer nivel. Las dos piezas las construyeron agentes distintos en paralelo (B3 backend, F4 frontend) contra un contrato descrito en prosa, y nunca coincidieron.
+
+**Por qué no lo cazó nada antes**: `tsc` no puede detectarlo porque la respuesta del `fetch` se convierte al tipo declarado sin validación en tiempo de ejecución (`await res.json() as WorkerEntryItem[]`) — TypeScript cree lo que se le afirma. Los tests de backend verificaban la forma real del servidor; los del frontend no existen para componentes. La lección aplicable: **cuando dos tareas paralelas comparten un contrato de API, el tipo del cliente debe derivarse del tipo del servidor o validarse en ejecución**, o el desalineamiento sobrevive a todas las comprobaciones estáticas.
+
+#### 17.9.2 Filas fijas del calendario pintando sobre el título de la vista
+
+Al hacer scroll, la fila de cabecera y la primera columna del calendario se superponían al título de la página.
+
+Causa: conflicto de `z-index`. La cabecera de página es `sticky z-10`; el `thead` del calendario es `z-20` y su primera columna congelada `z-30`. El contenedor de la tabla no crea contexto de apilamiento propio (no tiene `position`, `z-index` ni `transform`), así que esos valores compiten **directamente** con el de la cabecera y ganan. Corregido subiendo la cabecera a `z-40`: por encima de la tabla, por debajo de modales y popovers del módulo (`z-50`).
+
+#### 17.9.3 Bloques de color de estado con tamaños distintos
+
+El color del estado vivía en el `<button>` interior, que tenía altura fija `h-11`. Cuando una fila crecía —porque otra celda partía a dos líneas— el botón se quedaba en sus 44px y dejaba espacio sin colorear dentro de la celda, de modo que los bloques parecían de tamaños diferentes.
+
+Corregido con `h-full` en lugar de la altura fija, manteniendo el color en el `<button>` y el `p-0.5` del `<td>` (el margen interior que separa visualmente el bloque del borde de la celda). Una celda de tabla siempre se estira hasta la altura de su fila y un porcentaje de altura en su hijo se resuelve contra esa altura **usada**, así que el bloque crece con la fila. Se probó antes mover el color al `<td>`: garantizaba el relleno completo pero eliminaba el margen interior, así que se descartó.
+
+> Consecuencia en impresión: por esto **no** se colapsa la altura de celda a `auto` en `@media print` aunque ahorraría milímetros por fila — con una altura indefinida el porcentaje del bloque colapsa a la altura del contenido y los bloques vuelven a salir desiguales en papel. La densidad del informe la aportan la orientación y el espaciado condensado, no el encogido de celdas.
+
+#### 17.9.4 Número de día en la rejilla mensual
+
+La rejilla mensual de la vista de trabajador solo mostraba los nombres de los días de la semana (lun-vie) reutilizados en cada fila, sin ninguna indicación de qué día del mes era cada celda. `ScheduleCell` gana una prop opcional `dayNumber` que se pinta como una pequeña marca en la esquina; las vistas semanales la omiten porque su cabecera de columna ya lleva la fecha completa. `DepartmentMonthView` no la necesita: cada semana muestra su rango de fechas en su propia cabecera.

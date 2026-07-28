@@ -1866,7 +1866,11 @@ A **Week / Month** toggle next to the period selector switches between the usual
 
 ### Print / save as PDF
 
-A **Print** button is available in all three views (department-week, department-month, worker). It opens the browser's print dialog, from which you can print to paper or save as PDF — that browser window is the preview. Tables are never split across pages unless a single table is taller than one whole page, in which case it has to be.
+A **Print** button is available in all four views (department-week, all departments, department-month and worker). It opens the browser's print dialog, from which you can print to paper or save as PDF — that browser window is the preview.
+
+What gets printed is a **report of the calendar you are looking at**, not a screenshot of the application: the sidebar, filters, buttons, weekly-hours column and alerts panel are all left out, and the background is white so you don't waste toner. Two-line header: the title with the week number (e.g. "… week 31 of 2026"), then the department or worker, the date range and the generation timestamp.
+
+Orientation is chosen automatically per view: **portrait** for "all departments" and for a department's month (both stack several narrow tables, so they fit in fewer sheets), and **landscape** for a department's week and for the worker view. Tables are never split across pages unless a single table is taller than one whole page; if a department has too many workers for the month to fit on one sheet, the later weeks move to the next sheet rather than the text being shrunk.
 
 ### Two new statuses: Public Holiday and Local Holiday
 

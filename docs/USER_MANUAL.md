@@ -1882,7 +1882,11 @@ Un conmutador **Semana / Mes** junto al selector de periodo cambia entre la vist
 
 ### Imprimir / guardar como PDF
 
-Un botón **Imprimir** está disponible en las tres vistas (departamento-semana, departamento-mes, trabajador). Abre el diálogo de impresión del navegador, desde el que puedes imprimir en papel o guardar como PDF — esa ventana del navegador es la previsualización. Las tablas no se parten entre páginas salvo que una sola tabla sea más grande que una página entera, en cuyo caso se corta por necesidad.
+Un botón **Imprimir** está disponible en las cuatro vistas (departamento-semana, todos los departamentos, departamento-mes y trabajador). Abre el diálogo de impresión del navegador, desde el que puedes imprimir en papel o guardar como PDF — esa ventana del navegador es la previsualización.
+
+Lo que se imprime es un **informe del calendario que estás viendo**, no una captura de la aplicación: no salen la barra lateral, los filtros, los botones, la columna de horas semanales ni el panel de alertas, y el fondo es blanco para no gastar tóner. Encabezado de dos líneas: el título con el número de semana (por ejemplo «… semana 31 de 2026») y, debajo, el departamento o trabajador, el rango de fechas y la fecha de generación.
+
+La orientación se elige sola según la vista: **vertical** para «todos los departamentos» y para el mes de un departamento (apilan varias tablas estrechas, así caben en menos hojas), y **apaisada** para la semana de un departamento y para la vista de trabajador. Las tablas no se parten entre páginas salvo que una sola tabla sea más grande que una página entera; si un departamento tiene demasiados trabajadores para que el mes quepa en una hoja, las semanas siguientes pasan a la hoja siguiente sin encoger la letra.
 
 ### Dos estados nuevos: Festivo y Festivo Local
 

@@ -142,3 +142,9 @@ export const UserTeleworkQuotaSchema = z.object({
   teleworkQuotaDays: z.number().int().min(0).max(31).nullable(),
   teleworkQuotaPct: z.number().int().min(0).max(100).nullable(),
 });
+
+// ─── Worker search selector (v3.5.12, R5/D4) ───────────────────────────────
+
+export const UserSearchSchema = z.object({
+  q: z.string().min(2, 'q must be at least 2 characters'),
+});

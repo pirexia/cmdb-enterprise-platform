@@ -11,9 +11,10 @@ import {
   CloneScheduleSchema,
   UserWeeklyHoursSchema,
   UserTeleworkQuotaSchema,
+  UserSearchSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
-import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers } from './queries.js';
+import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers, searchScheduleUsers } from './queries.js';
 import { auditStaffSchedule } from './audit.js';
 import {
   createSchedule,
@@ -341,6 +342,26 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.json(schedules);
     } catch (err) {
       console.error('[StaffSchedule] schedules list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/staff-schedule/users?q=  — worker search selector (v3.5.12, R5/D4).
+  // Registered BEFORE `/:id` on purpose: Express matches routes in
+  // registration order, and `/:id` would otherwise swallow `/users` as
+  // id="users" (and reject it with 400, since it isn't a UUID). Reachable by
+  // any role with module access — the search itself isn't sensitive (a
+  // VIEWER already sees every name in published schedules across every
+  // department); what IS gated is the schedule data returned afterwards
+  // (GET /user/:userId/entries). No email in the response (GDPR Art. 5.1.c).
+  router.get('/users', async (req: Request, res: Response) => {
+    const parsed = UserSearchSchema.safeParse({ q: req.query.q });
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const users = await searchScheduleUsers(prisma, parsed.data.q);
+      res.json(users);
+    } catch (err) {
+      console.error('[StaffSchedule] user search error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

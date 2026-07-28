@@ -166,6 +166,40 @@ export async function loadDepartmentManagerIds(prisma: Db, departmentId: string)
   return new Set(rows.map((r) => r.userId));
 }
 
+// ── Worker search selector (v3.5.12, R5/D4) ─────────────────────────────────
+// GDPR Art. 5.1.c minimisation: the selector needs a label to show and an id
+// to key off, nothing else — email is deliberately NOT selected. Only users
+// this module can ever schedule are searchable (active + assigned to a
+// department); a Prisma `contains` is already parametrized, so no manual
+// escaping of `%`/`_` is needed here (that rule targets raw SQL LIKE).
+
+export interface ScheduleUserSearchResult {
+  id: string;
+  username: string;
+  displayName: string | null;
+}
+
+export async function searchScheduleUsers(
+  prisma: Db,
+  q: string,
+  limit = 20,
+): Promise<ScheduleUserSearchResult[]> {
+  const take = Math.max(1, Math.min(limit, 20));
+  return prisma.user.findMany({
+    where: {
+      active: true,
+      departmentId: { not: null },
+      OR: [
+        { username: { contains: q, mode: 'insensitive' } },
+        { displayName: { contains: q, mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, username: true, displayName: true },
+    orderBy: { username: 'asc' },
+    take,
+  });
+}
+
 // Resolve each user's effective weekly target: their own override if set,
 // otherwise the department's default (used for both V-WEEKLY_HOURS and the
 // client-side exit-time autofill).

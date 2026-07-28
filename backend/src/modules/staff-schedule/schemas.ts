@@ -168,3 +168,32 @@ export const UserEntriesRangeSchema = z
     message: 'Range cannot exceed 62 days',
     path: ['to'],
   });
+
+// ─── Schedule list range (v3.5.12, R6) ─────────────────────────────────────
+// GET / accepts from/to over weekStart IN ADDITION to the pre-existing exact
+// weekStart param (never replacing it — existing callers must keep working
+// unchanged). Bounded to 6 weeks (42 days) server-side (D6).
+export const ScheduleRangeSchema = z
+  .object({
+    from: z.string().refine(isoDateRefine, 'Invalid date'),
+    to: z.string().refine(isoDateRefine, 'Invalid date'),
+  })
+  .refine((data) => Date.parse(data.to) >= Date.parse(data.from), {
+    message: 'to must not be before from',
+    path: ['to'],
+  })
+  .refine((data) => (Date.parse(data.to) - Date.parse(data.from)) / 86400000 <= 42, {
+    message: 'Range cannot exceed 6 weeks',
+    path: ['to'],
+  });
+
+// ─── Print audit (v3.5.12, R7/D7) ──────────────────────────────────────────
+export const PRINT_SCOPE = ['DEPARTMENT_WEEK', 'DEPARTMENT_MONTH', 'WORKER'] as const;
+export type PrintScope = (typeof PRINT_SCOPE)[number];
+
+export const PrintAuditSchema = z.object({
+  scope: z.enum(PRINT_SCOPE),
+  targetId: z.string().uuid(),
+  from: z.string().refine(isoDateRefine, 'Invalid date').optional(),
+  to: z.string().refine(isoDateRefine, 'Invalid date').optional(),
+});

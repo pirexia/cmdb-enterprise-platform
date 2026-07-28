@@ -166,3 +166,39 @@ export interface DepartmentMemberInfo {
   teleworkQuotaDays: number | null;
   teleworkQuotaPct: number | null;
 }
+
+// v3.5.12 (R5/F4) — GET /api/staff-schedule/users?q=. Deliberately no email
+// (GDPR Art. 5.1.c minimisation — the search box doesn't need it, D4).
+export interface WorkerSearchResult {
+  id: string;
+  username: string;
+  displayName: string | null;
+}
+
+// v3.5.12 (R5/F4) — one day of GET /user/:userId/entries?from=&to=. Already
+// masked server-side (maskEntryForViewer) before it reaches the client —
+// `entry` has the same shape a viewer would get from a ScheduleRow.
+// `weeklyTargetHours` is present only when the viewer is authorized to see
+// the summary for that day's department (mirrors the R2 omission pattern —
+// nothing to hide client-side, the field simply isn't sent).
+export interface WorkerEntryItem {
+  date: string;
+  departmentName: string;
+  entry: MaskedEntryFields;
+  weeklyTargetHours?: number;
+}
+
+// v3.5.12 (R5/F4) — GET /user/:userId/monthly?year=&month= (endpoint already
+// live since before this version). `healthLeaveDays` is omitted, not
+// zeroed, for viewers who are neither ADMIN nor the user themselves (Art. 9).
+export interface WorkerMonthlySummary {
+  userId: string;
+  year: number;
+  month: number;
+  netHours: number;
+  teleworkDays: number;
+  travelDays: number;
+  guardDays: number;
+  vacationDays: number;
+  healthLeaveDays?: number;
+}

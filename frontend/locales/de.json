@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Abteilung",
-      "allDepartments": "Alle Abteilungen"
+      "allDepartments": "Alle Abteilungen",
+      "worker": "Mitarbeiter",
+      "searchWorker": "Mitarbeiter suchen...",
+      "clearWorker": "Mitarbeiterfilter entfernen",
+      "minChars": "Mindestens 2 Zeichen eingeben",
+      "noWorkers": "Keine Ergebnisse"
     },
     "status": {
       "PRESENCIAL": "Vor Ort",
@@ -2329,6 +2334,25 @@
       "pct": "%",
       "hint": "Priorität: vollständige Telearbeit > Tage > Prozentsatz > Abteilungsgrenze. Leer lassen, um die Abteilungsgrenze zu verwenden.",
       "saved": "Telearbeitskontingent gespeichert"
+    },
+    "periodSelector": {
+      "prevMonth": "Vorheriger Monat",
+      "nextMonth": "Nächster Monat",
+      "thisMonth": "Dieser Monat"
+    },
+    "month": {
+      "weekNoSchedule": "Kein Zeitplan für diese Woche"
+    },
+    "print": {
+      "button": "Drucken",
+      "generatedAt": "Erstellt"
+    },
+    "worker": {
+      "loadError": "Zeitplan des Mitarbeiters konnte nicht geladen werden",
+      "noEntries": "Keine Einträge in diesem Zeitraum",
+      "monthlyNetHours": "Monatliche Nettostunden",
+      "vacationDays": "Urlaubstage",
+      "healthLeaveDays": "Krankheitstage"
     }
   }
 }

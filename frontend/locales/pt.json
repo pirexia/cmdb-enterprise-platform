@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Departamento",
-      "allDepartments": "Todos os departamentos"
+      "allDepartments": "Todos os departamentos",
+      "worker": "Trabalhador",
+      "searchWorker": "Pesquisar trabalhador...",
+      "clearWorker": "Limpar filtro de trabalhador",
+      "minChars": "Digite pelo menos 2 caracteres",
+      "noWorkers": "Sem resultados"
     },
     "status": {
       "PRESENCIAL": "Presencial",
@@ -2329,6 +2334,25 @@
       "pct": "%",
       "hint": "Prioridade: teletrabalho total > dias > percentagem > limite do departamento. Deixe vazio para usar o limite do departamento.",
       "saved": "Quota de teletrabalho guardada"
+    },
+    "periodSelector": {
+      "prevMonth": "Mês anterior",
+      "nextMonth": "Mês seguinte",
+      "thisMonth": "Este mês"
+    },
+    "month": {
+      "weekNoSchedule": "Sem horário para esta semana"
+    },
+    "print": {
+      "button": "Imprimir",
+      "generatedAt": "Gerado"
+    },
+    "worker": {
+      "loadError": "Não foi possível carregar o horário do trabalhador",
+      "noEntries": "Sem entradas neste período",
+      "monthlyNetHours": "Horas líquidas do mês",
+      "vacationDays": "Dias de férias",
+      "healthLeaveDays": "Dias de baixa médica"
     }
   }
 }

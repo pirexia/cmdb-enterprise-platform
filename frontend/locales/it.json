@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Reparto",
-      "allDepartments": "Tutti i reparti"
+      "allDepartments": "Tutti i reparti",
+      "worker": "Lavoratore",
+      "searchWorker": "Cerca lavoratore...",
+      "clearWorker": "Rimuovi filtro lavoratore",
+      "minChars": "Digita almeno 2 caratteri",
+      "noWorkers": "Nessun risultato"
     },
     "status": {
       "PRESENCIAL": "In sede",
@@ -2329,6 +2334,25 @@
       "pct": "%",
       "hint": "Priorità: telelavoro totale > giorni > percentuale > limite del dipartimento. Lascia vuoto per usare il limite del dipartimento.",
       "saved": "Quota di telelavoro salvata"
+    },
+    "periodSelector": {
+      "prevMonth": "Mese precedente",
+      "nextMonth": "Mese successivo",
+      "thisMonth": "Questo mese"
+    },
+    "month": {
+      "weekNoSchedule": "Nessun orario per questa settimana"
+    },
+    "print": {
+      "button": "Stampa",
+      "generatedAt": "Generato"
+    },
+    "worker": {
+      "loadError": "Impossibile caricare l'orario del lavoratore",
+      "noEntries": "Nessuna voce in questo periodo",
+      "monthlyNetHours": "Ore nette del mese",
+      "vacationDays": "Giorni di ferie",
+      "healthLeaveDays": "Giorni di malattia"
     }
   }
 }

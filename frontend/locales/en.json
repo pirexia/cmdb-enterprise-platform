@@ -2300,7 +2300,12 @@
     },
     "filter": {
       "department": "Department",
-      "allDepartments": "All departments"
+      "allDepartments": "All departments",
+      "worker": "Worker",
+      "searchWorker": "Search worker...",
+      "clearWorker": "Clear worker filter",
+      "minChars": "Type at least 2 characters",
+      "noWorkers": "No results"
     },
     "status": {
       "PRESENCIAL": "Onsite",
@@ -2448,6 +2453,25 @@
       "pct": "%",
       "hint": "Priority: full telework > days > percentage > department cap. Leave empty to use the department cap.",
       "saved": "Telework quota saved"
+    },
+    "periodSelector": {
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "thisMonth": "This month"
+    },
+    "month": {
+      "weekNoSchedule": "No schedule for this week"
+    },
+    "print": {
+      "button": "Print",
+      "generatedAt": "Generated"
+    },
+    "worker": {
+      "loadError": "Could not load worker's schedule",
+      "noEntries": "No entries in this period",
+      "monthlyNetHours": "Monthly net hours",
+      "vacationDays": "Vacation days",
+      "healthLeaveDays": "Health leave days"
     }
   }
 }

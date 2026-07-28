@@ -1772,7 +1772,7 @@ Las fechas relacionadas se dibujan con marcas **punteadas** para distinguirlas d
 - Los elementos se limitan a 200 por consulta (ajustable con los filtros). Para conjuntos mayores, usa los filtros de tipo o búsqueda para acotar.
 - En pantallas de menos de 1024px la vista muestra un aviso de optimización para escritorio.
 
-## 34. Horarios del Personal (v3.5.0 · actualizado v3.5.9)
+## 34. Horarios del Personal (v3.5.0 · actualizado v3.5.12)
 
 Planificación semanal de horarios por departamento. **No es un sistema de fichajes** — es una herramienta de planificación, no registra la hora real de entrada/salida.
 
@@ -1857,3 +1857,35 @@ Su organización puede restringir el acceso a la aplicación a los miembros de u
 Un administrador puede, en **Configuración → Integraciones → Sincronización de usuarios AD**, pulsar «Sincronizar ahora» para dar de alta en la aplicación a los miembros del grupo que aún no existan y actualizar los datos de los que ya estaban. La sincronización también se ejecuta automáticamente cada noche.
 
 Los usuarios que dejan de pertenecer al grupo se **desactivan**, nunca se borran, para conservar el histórico de auditoría. El perfil asignado manualmente a un usuario nunca se sobrescribe.
+
+## Horarios del Personal — novedades v3.5.12
+
+### Mismo ancho de columna y filas más compactas
+
+Las tablas de departamento (incluida la vista "Todos los departamentos") usan ahora exactamente el mismo reparto de columnas entre sí, para que al compararlas una debajo de otra queden alineadas. Las filas también son más bajas y todas de la misma altura — si el nombre del estado no cabe en una línea, se muestra en dos.
+
+### Horas semanales: solo para quien gestiona el departamento
+
+La columna de resumen (horas semanales, teletrabajo, viajes, guardias) solo aparece si eres Administrador o Gestor **de ese departamento concreto**. Un Gestor de otro departamento, un Auditor o un Visor no la ven — el dato ni siquiera llega al navegador, no es solo una columna oculta.
+
+### Alertas ocultas al publicar
+
+El panel de alertas solo se muestra mientras la planificación está en Borrador. Una vez publicada, desaparece y el calendario ocupa todo el ancho.
+
+### Filtro por trabajador
+
+Junto al selector de departamento hay ahora un buscador de trabajador: escribe un nombre (mínimo 2 letras) y elige a la persona en la lista de resultados. Al seleccionar un trabajador, la vista cambia a su horario individual, con los mismos modos Semana/Mes que la vista de departamento. Para volver a la vista de departamento, pulsa la "×" junto al nombre del trabajador seleccionado.
+
+### Vista mensual
+
+Un conmutador **Semana / Mes** junto al selector de periodo cambia entre la vista semanal habitual y una vista mensual con las semanas del mes apiladas una debajo de otra; los botones anterior/siguiente pasan de semana en semana o de mes en mes según el modo activo. Una semana del mes sin planificación se muestra como tal ("sin horario"), no como un hueco vacío.
+
+### Imprimir / guardar como PDF
+
+Un botón **Imprimir** está disponible en las tres vistas (departamento-semana, departamento-mes, trabajador). Abre el diálogo de impresión del navegador, desde el que puedes imprimir en papel o guardar como PDF — esa ventana del navegador es la previsualización. Las tablas no se parten entre páginas salvo que una sola tabla sea más grande que una página entera, en cuyo caso se corta por necesidad.
+
+### Dos estados nuevos: Festivo y Festivo Local
+
+Además de los estados existentes, ahora puedes marcar un día como **Festivo** (festivo nacional) o **Festivo Local**. Se comportan como Vacaciones: no computan como jornada trabajada y no cuentan en el cálculo de presencialidad mínima.
+
+**Importante**: si una semana tiene días de Vacaciones, Festivo o Festivo Local, el objetivo de horas semanales que se muestra ("X / Y horas") **ya no es siempre 40h** — se reduce automáticamente según los días festivos/vacaciones de esa semana concreta. Por ejemplo, una semana con un lunes festivo pasa a tener un objetivo de 32h en vez de 40h (asumiendo una jornada de 8h ese día). Los días de baja médica, baja de paternidad, ausencia o viaje **no** reducen el objetivo — siguen contando como jornada pendiente de justificar de otra forma.

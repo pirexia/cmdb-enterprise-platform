@@ -1,4 +1,4 @@
-# Módulo Staff Schedule — Documentación Técnica (v3.5.0, actualizado v3.5.11 — ver §16)
+# Módulo Staff Schedule — Documentación Técnica (v3.5.0, actualizado v3.5.12 — ver §17)
 
 > Gestión de horarios del personal. **No es un sistema de fichajes** — solo planificación, visualización y validación de horarios semanales por departamento.
 
@@ -22,9 +22,11 @@ Módulo **core** (patrón DCIM, no Plugin Engine — ver §6 decisiones) que per
 
 Todos los campos de estado/severidad/tipo son **TEXT validados por Zod** (`SCHEDULE_STATUS`, `ALERT_TYPE`, `ALERT_SEVERITY`, `SCHEDULE_STATE` en `backend/src/modules/staff-schedule/schemas.ts`), no enums de PostgreSQL — evita la fricción de migración de enums (lección de v3.4.4).
 
-## 3. Estados de jornada (9) + guardia como complemento
+## 3. Estados de jornada (11) + guardia como complemento
 
-`PRESENCIAL`, `TELETRABAJO`, `VACACIONES`, `BAJA_MEDICA`, `BAJA_PATERNIDAD`, `INTENSIVO`, `INTENSIVO_TELETRABAJO`, `VIAJE`, `AUSENTE`.
+`PRESENCIAL`, `TELETRABAJO`, `VACACIONES`, `FESTIVO`, `FESTIVO_LOCAL`, `BAJA_MEDICA`, `BAJA_PATERNIDAD`, `INTENSIVO`, `INTENSIVO_TELETRABAJO`, `VIAJE`, `AUSENTE`.
+
+**Desde v3.5.12** (§17.7), `FESTIVO` (festivo nacional) y `FESTIVO_LOCAL` (festivo local) se comportan como `VACACIONES` para el cómputo de horas y para `PRESENCE_PCT` (0h, fuera del denominador de disponibles). Al ser `TEXT`+Zod (no un enum de PostgreSQL), añadirlos no requirió migración de BD — solo ampliar `SCHEDULE_STATUS` en `schemas.ts`.
 
 **Desde v3.5.11** (§16.1), `INTENSIVO_TELETRABAJO` (jornada intensiva desde casa) combina las dos semánticas: cuenta como jornada continua para el cómputo de horas y como teletrabajo para la cuota. Ambas se centralizan en dos allowlists de `schemas.ts` — `INTENSIVE_STATUSES` (sin descanso, sin `FLEX_RANGE`) y `TELEWORK_STATUSES` (consumen cuota) — en lugar de comparar contra literales dispersos por el módulo.
 
@@ -47,7 +49,7 @@ Ejecutado por `POST /:id/validate` (`validationEngine.validate()`, puro y síncr
 | Tipo | Severidad | Regla |
 |---|---|---|
 | `DAILY_HOURS` | ERROR | Un día lunes-jueves supera el máximo diario configurado |
-| `WEEKLY_HOURS` | ERROR | Hay viernes `INTENSIVO` pero el total semanal no alcanza el objetivo (40h por defecto, o el override individual del usuario — v3.5.9, §13.5) |
+| `WEEKLY_HOURS` | ERROR | Hay viernes `INTENSIVO` pero el total semanal no alcanza el objetivo **efectivo** (40h por defecto, o el override individual del usuario — v3.5.9, §13.5; reducido por días `VACACIONES`/`FESTIVO`/`FESTIVO_LOCAL` de la semana — v3.5.12, §17.7) |
 | `TELEWORK_QUOTA` | ERROR | Días de teletrabajo del mes superan la cuota mensual **efectiva del trabajador** (v3.5.11, §16.2: override propio si lo tiene, si no el tope del departamento; un trabajador marcado como 100% teletrabajo queda exento) |
 | `GUARDIA_COVERAGE` | ERROR | Un usuario tiene `onGuard: true` y `VIAJE`/`VACACIONES` en la misma semana (antes de v3.5.9: estado `GUARDIA` en vez de `onGuard`) |
 | `GUARDIA_UNIQUE` | ERROR | **Nuevo en v3.5.9** (§13.3) — más de un usuario con `onGuard: true` el mismo día dentro de la misma planificación. Aviso temprano en la UI de validación de un `DRAFT`; la garantía dura entre planificaciones históricas es el índice único parcial `schedule_entries_on_guard_unique`, aplicado en `service.ts` al escribir |
@@ -77,6 +79,8 @@ Una planificación con alertas `ERROR` sin resolver **no puede publicarse** (`PO
 - **Manager de departamento** (`DepartmentManager`): la autorización de escritura sigue siendo row-level y no cambia. Tener rol `MANAGER` no otorga por sí solo edición: hace falta la fila `DepartmentManager` del departamento concreto.
 
 `canUserEditDepartment(prisma, userId, role, departmentId)` (`authz.ts`) es la función compartida entre el middleware (`requireDeptEditAccess`) y el cálculo del campo `canEdit` devuelto al frontend — el cliente nunca decide por sí mismo si puede editar.
+
+**Desde v3.5.12** (§17.2), `canViewSummary()` (`service.ts`) **delega** en `canUserEditDepartment` — no reimplementa el criterio — para decidir si `ScheduleRow.summary` (horas semanales, teletrabajo, guardias, viajes) se incluye en la respuesta: ADMIN o gestor de *ese* departamento concreto, no por rango de rol. El campo se **omite del JSON**, no se envía a cero, para quien no está autorizado — mismo patrón que `healthLeaveDays` en §7.
 
 ## 7. GDPR Art. 9 — masking de datos de salud
 
@@ -267,5 +271,62 @@ Edición: `PUT /api/staff-schedule/users/:userId/telework-quota` (solo ADMIN, mu
 3. **`PRESENCIAL` sin horas cuenta como presente**: es la forma exacta en que `createSchedule` siembra una semana nueva. Sin esta regla, toda semana recién creada reportaría 0% hasta rellenar los horarios uno a uno.
 
 Un día en que nadie está disponible (todo el departamento de vacaciones) no genera alerta: el denominador es 0 y la métrica no está definida.
+
+## 17. Cambios de v3.5.12 — UX de la vista, filtro por trabajador, vista mensual e impresión
+
+Spec: `docs/internal/specs/2026-07-28-v3.5.12-staff-schedule-ux-print.md`. Plan: `docs/internal/plans/2026-07-28-v3.5.12-staff-schedule-ux-print.md`.
+
+### 17.1 Geometría de tabla uniforme y altura de fila mínima
+
+`StaffScheduleCalendar.tsx` pasa de `w-full` + `min-w-*` por columna (ancho dependiente del contenido) a `table-fixed` + `<colgroup>` con porcentajes declarados — así todas las tablas de departamento tienen exactamente el mismo reparto de columnas, sin depender de qué texto contenga cada una. Dos repartos según haya o no columna de resumen visible (§17.2): con resumen, persona 16% / cada día 13.6% / resumen 16%; sin resumen, persona 16% / cada día 16.8%.
+
+`ScheduleCell.tsx` pasa de `min-h-[3.5rem]` (altura variable) a `h-11` fija, padding mínimo, y el nombre del estado en `line-clamp-2` para que un estado largo (`INTENSIVO_TELETRABAJO`, `BAJA_PATERNIDAD`) parta en dos líneas en vez de desbordar o forzar la fila más alta. Con `table-fixed` + altura fija, todas las filas de todas las tablas quedan idénticas por construcción.
+
+### 17.2 Resumen semanal restringido a ADMIN/gestor del departamento
+
+`ScheduleRow.summary` (horas semanales, teletrabajo, viajes, guardias) pasa a **opcional**. `canViewSummary()` (`service.ts`) delega en `canUserEditDepartment` — mismo criterio que `canEdit`, no un criterio nuevo que pudiera divergir con el tiempo. `buildScheduleView` omite la clave `summary` entera (no la envía a `0`) para quien no está autorizado. El export CSV/XLSX hereda el control automáticamente al operar sobre una `ScheduleView` ya así construida.
+
+**Decisión**: autorizado = ADMIN **o** gestor de *ese* departamento concreto — no "MANAGER o superior" por rango de rol. Un `MANAGER` no ve el resumen de departamentos que no gestiona; coherente con cómo `canEdit` y el masking Art. 9 siempre han razonado en este módulo.
+
+### 17.3 Alertas ocultas cuando el horario está publicado
+
+`AlertPanel` solo se renderiza si `status === 'DRAFT'`; al ocultarse, el calendario pasa de `grid xl:grid-cols-[1fr_20rem]` a ancho completo. Las alertas siguen en BD (publicar sigue exigiendo 0 `ERROR` sin resolver, D10 sin cambios) — solo se deja de mostrar el panel de un horario ya cerrado.
+
+### 17.4 Filtro por trabajador (semana / mes)
+
+Dos endpoints nuevos:
+
+- `GET /api/staff-schedule/users?q=` — buscador para el selector. `q` mínimo 2 caracteres (400 si no), resultado máx. 20, `active: true` y `departmentId != null`. Devuelve **solo** `{id, username, displayName}` — sin `email` (minimización GDPR Art. 5.1.c, un selector no necesita el correo).
+- `GET /api/staff-schedule/user/:userId/entries?from=&to=` — entradas de un trabajador en un rango, acotado a **62 días** server-side (400 si se excede). Visibilidad resuelta en el `WHERE` (`buildScheduleVisibilityFilter`, igual que el resto del módulo) — un `VIEWER` consultando un trabajador con horario en `DRAFT` recibe un array vacío, nunca 403 (no se revela que el borrador existe). Cada entrada pasa por `maskEntryForViewer`. `weeklyTargetHours` por entrada se agrupa por `(departmentId, lunes ISO de la semana)` y usa el mismo `computeEffectiveWeeklyTarget` de §17.7 — no un valor plano por departamento — para que la vista de trabajador no diverja de la vista de departamento.
+
+`WorkerFilter.tsx` (combobox con búsqueda, debounce 250ms, mismo patrón que el combobox de sistemas de `/decommission`) + `WorkerScheduleView.tsx` (semana: fila única; mes: rejilla L-V por semanas). Siempre de solo lectura — la edición sigue exclusiva de la vista departamento-semana, donde vive la autorización row-level.
+
+### 17.5 Vista mensual de un departamento
+
+`GET /api/staff-schedule` gana `from`/`to` opcionales sobre `weekStart`, **además** del `weekStart` exacto preexistente (nunca lo sustituye — los llamantes actuales siguen funcionando sin cambios). Acotado a **6 semanas** server-side. `DepartmentMonthView.tsx` apila una `StaffScheduleCalendar` de solo lectura por semana; una semana sin horario se muestra como fila explícita "sin horario" (nunca se omite en silencio — un hueco sería indistinguible de un fallo de carga).
+
+### 17.6 Impresión con previsualización
+
+Decisión: CSS de impresión (`app/print.css`) + `window.print()`, sin dependencias nuevas — el diálogo nativo del navegador **es** la previsualización (imprimir o guardar como PDF). Descartado jsPDF/html2canvas: +1MB de bundle, superficie CVE nueva (A06), texto rasterizado no seleccionable, y control de saltos de página manual frente a `break-inside: avoid`, que es la primitiva exacta para "no partir una tabla salvo que sea más grande que la página entera".
+
+`.print-block` en cada tabla (evita que se parta entre páginas), `.no-print` en cabecera/filtros/botones de acción, `.print-only` para una cabecera de documento autoexplicativa (título, departamento/trabajador, rango, fecha de generación) — imprescindible porque un PDF suelto sale del contexto de la aplicación.
+
+**Auditoría de impresión (ISO 27001 A.8.15)**: imprimir es una exportación de datos personales fuera del sistema, igual que CSV/XLSX. `POST /api/staff-schedule/audit/print` valida que el `targetId` es visible para el visor (404 si no, sin revelar existencia) e inserta `AuditLog` con acción `PRINT_STAFF_SCHEDULE` dentro de una `$transaction`; `user_email` viene **siempre** de la sesión, nunca del cuerpo de la petición (verificado en vivo: un `userEmail` falsificado en el body se ignora). El ping es fire-and-forget desde `PrintButton.tsx` (`beforeprint`, cubre tanto el botón como Ctrl+P nativo) — un fallo de red no bloquea la impresión (D7): el dato ya está en pantalla, impedir imprimir no protegería nada.
+
+**Bug real cazado en verificación en vivo (no en revisión de código)**: para la vista departamento-semana, `targetId` se envió inicialmente como el **id del horario** (`view.schedule.id`), pero `isDepartmentVisibleToViewer` (compartida con `DEPARTMENT_MONTH`) siempre resuelve `targetId` como un **id de departamento**. Toda impresión desde esa vista devolvía 404 silenciosamente en vez de registrar la exportación. Confirmado en producción con la cuenta AUDITOR de pruebas (404 con `targetId` incorrecto, 204 + fila de auditoría correcta tras el fix), corregido a `view.schedule.departmentId`.
+
+### 17.7 Estados `FESTIVO`/`FESTIVO_LOCAL` y objetivo semanal por semana
+
+Ver §3. Además de contar como 0h (igual que `VACACIONES`), estos dos estados —junto con `VACACIONES`— **reducen el objetivo de horas semanales** en vez de contar como un déficit contra un objetivo plano de 40h.
+
+`computeEffectiveWeeklyTarget(entries, cfg, isSummer, baseTarget)` (`validationEngine.ts`) resta, por cada día `VACACIONES`/`FESTIVO`/`FESTIVO_LOCAL` de la semana del usuario, las horas contratadas de ese día concreto (`winterFridayNetHours`/`summerFridayNetHours` si es viernes, `winterDailyNetHours`/`summerDailyNetHours` el resto), con suelo en 0. Deliberadamente **más estrecho** que `NON_WORKING_STATUSES`: `BAJA_MEDICA`, `BAJA_PATERNIDAD`, `AUSENTE` y `VIAJE` siguen contando como déficit contra el objetivo completo — solo vacaciones y festivos lo reducen (decisión de producto).
+
+Aplicado en los tres sitios donde se calcula o valida un objetivo semanal: la alerta `WEEKLY_HOURS` (§5), `ScheduleRow.summary.weeklyTargetHours` en `buildScheduleView` (la vista de departamento), y `UserEntryView.weeklyTargetHours` en `listUserEntries` (la vista de trabajador, §17.4 — agrupado por semana, no un valor plano por departamento, para que las dos vistas no diverjan).
+
+**Verificado en vivo contra producción**: una semana real de 5 días `VACACIONES` (departamento con `weeklyTargetNetHours=40`, `summerDailyNetHours=8`, `summerFridayNetHours=6`) reporta `weeklyTargetHours: 2` — exactamente `40 - (4×8 + 6) = 2`. Una entrada `FESTIVO` de prueba en lunes (semana de invierno, `winterDailyNetHours=8`) redujo el objetivo de 40 a 32, creada y eliminada sobre un horario `DRAFT` desechable, sin tocar datos reales.
+
+### 17.8 Lección operativa — rutas relativas en `.env` y el checkout desde el que se despliega
+
+Durante el despliegue de esta versión, ejecutar `podman-compose` desde el **worktree** de integración (no desde `/opt/cmdb-enterprise-platform`) hizo que `DOCUMENTS_STORAGE_PATH=./document-storage` (ruta relativa) resolviera contra el directorio equivocado — un `document-storage/` vacío recién creado en el worktree, en vez del real. El backend entró en crash-loop por un `EACCES` al intentar `mkdir` en él, **antes** de escribir nada (ningún dato tocado ni perdido; los certificados TLS usan el volumen nombrado `cmdb-tls-certs`, no una ruta relativa, así que no se vieron afectados). Corregido desplegando siempre desde el checkout principal, donde las rutas relativas del `.env`/`docker-compose.prod.yml` resuelven contra los directorios reales de producción. Añade matiz a la regla ya documentada en memoria ("worktrees no heredan `.env`"): copiar el `.env` no basta si además se ejecuta el despliegue desde el worktree — el propio directorio de trabajo importa para toda ruta relativa del compose, no solo para las variables.
 
 **Verificación en producción** contra el departamento real, día 2026-07-27: 1 presente de 3 disponibles (1 de vacaciones y 1 de baja fuera del denominador) → `33.3%`, contrastado contra las filas de la BD. Bajo la regla anterior el mismo día daba `0/5 = 0.0%`.

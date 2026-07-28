@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { HEALTH_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 import {
   computeNetHours,
+  computeEffectiveWeeklyTarget,
   detectSummer,
   validate,
   EntryLike,
@@ -12,7 +13,7 @@ import {
 } from './validationEngine.js';
 import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
-         loadDepartmentManagerIds, loadTeleworkQuotas } from './queries.js';
+         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -26,6 +27,23 @@ export class ScheduleServiceError extends Error {
 interface Viewer {
   id: string;
   role: string;
+}
+
+// canViewSummary(prisma, viewerId, role, departmentId) — R2/D1/D2. Deliberately
+// delegates to canUserEditDepartment instead of reimplementing the "ADMIN or
+// manager of this department" rule: canEdit and "can see the weekly-hours
+// summary" must share exactly one source of truth so they can never diverge
+// (this was flagged as a regression risk in the spec — a second copy of the
+// same rule is how it would happen). Exported so the same check can gate the
+// per-department `summary` block in buildScheduleView (B1) and the per-entry
+// `weeklyTargetHours` field in listUserEntries (B3).
+export async function canViewSummary(
+  prisma: Prisma.TransactionClient,
+  viewerId: string,
+  role: string,
+  departmentId: string | null | undefined,
+): Promise<boolean> {
+  return canUserEditDepartment(prisma, viewerId, role, departmentId);
 }
 
 export interface MaskedEntryFields {
@@ -91,6 +109,17 @@ function addDaysUtc(d: Date, days: number): Date {
 function parseDateOnly(v: string | Date): Date {
   if (v instanceof Date) return new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
   return new Date(`${v.slice(0, 10)}T00:00:00.000Z`);
+}
+
+// Monday (UTC) of the week containing `d` — used by listUserEntries (v3.5.12)
+// to group a worker's entries by week so the effective weekly target
+// (computeEffectiveWeeklyTarget) can be computed per week, not once flat
+// across the whole requested range.
+function mondayOfDate(d: Date): Date {
+  const copy = parseDateOnly(d);
+  const day = copy.getUTCDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  return addDaysUtc(copy, diff);
 }
 
 // Merge Department + DepartmentScheduleConfig into the shape validationEngine
@@ -449,7 +478,11 @@ export interface ScheduleView {
     username: string;
     displayName: string | null;
     entries: Record<string, MaskedEntryFields>;
-    summary: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
+    // Optional since v3.5.12 (R2/D1): omitted entirely — never sent zeroed —
+    // for a viewer who is neither ADMIN nor manager of this row's department.
+    // Same precedent as MonthlySummary.healthLeaveDays: the mere presence of
+    // the field is informative, so an unauthorized viewer must not see the key.
+    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
   }>;
   alerts: Array<{
     id: string;
@@ -497,6 +530,9 @@ export async function buildScheduleView(
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
   const canEdit = await canUserEditDepartment(prisma, viewer.id, viewer.role, schedule.departmentId);
+  // R2/D1/D2 — a single schedule belongs to a single department, so this is
+  // resolved once for the whole view, not per row.
+  const showSummary = await canViewSummary(prisma, viewer.id, viewer.role, schedule.departmentId);
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
@@ -545,14 +581,28 @@ export async function buildScheduleView(
     const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
     const teleworkDaysWeek = data.entriesReal.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
-    const weeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    // v3.5.12 — reduced by any VACACIONES/FESTIVO/FESTIVO_LOCAL day in this
+    // user's week (computeEffectiveWeeklyTarget), so the displayed "X / Y h"
+    // target reflects the week's actual working days instead of a flat
+    // department default.
+    const baseWeeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
+    const weeklyTargetHours = computeEffectiveWeeklyTarget(
+      data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status })),
+      cfg,
+      schedule.isSummerWeek,
+      baseWeeklyTargetHours,
+    );
 
     rows.push({
       userId,
       username: data.username,
       displayName: data.displayName,
       entries,
-      summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours },
+      // Omitted entirely (not sent as `undefined`/zeroed) when the viewer is
+      // not authorized — see the `summary?` doc comment on ScheduleView above.
+      ...(showSummary
+        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours } }
+        : {}),
     });
   }
 
@@ -673,4 +723,130 @@ export async function getMonthlySummary(
     summary.healthLeaveDays = count((s) => HEALTH_STATUSES.includes(s));
   }
   return summary;
+}
+
+export interface UserEntryView {
+  date: string;
+  departmentId: string;
+  departmentName: string;
+  status: string;
+  onGuard: boolean;
+  startTime: string | null;
+  endTime: string | null;
+  notes: string | null;
+  healthMasked?: boolean;
+  // R2/D2 — attached only when canViewSummary authorizes the viewer for THIS
+  // entry's department (a worker can span more than one department across
+  // the range). Omitted, not zeroed, for the same reason as ScheduleView.summary.
+  weeklyTargetHours?: number;
+}
+
+// listUserEntries — GET /user/:userId/entries (R5/D6). Two-layer control,
+// same as every other read path in this module:
+//   1. Visibility resolved IN the WHERE clause via
+//      buildScheduleVisibilityFilter (A01). A VIEWER querying a worker whose
+//      schedule is DRAFT gets an empty array, never a 403 — the existence of
+//      the draft must not leak.
+//   2. Every returned entry passes through maskEntryForViewer (GDPR Art. 9) —
+//      no exception, this is a new response shape and must not become a
+//      second, unmasked path to the same underlying data.
+export async function listUserEntries(
+  prisma: Prisma.TransactionClient,
+  userId: string,
+  from: string,
+  to: string,
+  viewer: Viewer,
+): Promise<UserEntryView[]> {
+  const fromDate = parseDateOnly(from);
+  const toDate = parseDateOnly(to);
+
+  const managed = viewer.role === 'ADMIN' ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+  const visibility = buildScheduleVisibilityFilter(viewer.role, managed);
+
+  const rows = await loadUserEntriesInRange(prisma, userId, fromDate, toDate, visibility);
+  if (rows.length === 0) return [];
+
+  // weeklyTargetHours (R2): a per-user override with a per-department
+  // fallback (DepartmentScheduleConfig.weeklyTargetNetHours) — resolved once
+  // per department touched in the range, not once per entry. v3.5.12: the
+  // value attached is the EFFECTIVE target for that entry's own week (base
+  // target minus VACACIONES/FESTIVO/FESTIVO_LOCAL days in the same week, same
+  // rule as buildScheduleView's row.summary.weeklyTargetHours) — grouped by
+  // (departmentId, weekMonday) so a range spanning several weeks or a
+  // mid-range department change is handled correctly, not just averaged flat.
+  const cfgCache = new Map<string, ValidationConfig>();
+  const authCache = new Map<string, boolean>();
+  const baseTargetCache = new Map<string, number>();
+  const summerCache = new Map<number, SummerPeriodLike | null>();
+
+  const weekKey = (departmentId: string, monday: string) => `${departmentId}|${monday}`;
+  const weekGroups = new Map<string, { departmentId: string; monday: string; rows: typeof rows }>();
+  for (const row of rows) {
+    const monday = isoDate(mondayOfDate(row.date));
+    const key = weekKey(row.departmentId, monday);
+    const group = weekGroups.get(key);
+    if (group) group.rows.push(row);
+    else weekGroups.set(key, { departmentId: row.departmentId, monday, rows: [row] });
+  }
+
+  const effectiveTargetByKey = new Map<string, number>();
+  for (const [key, group] of weekGroups) {
+    let authorized = authCache.get(group.departmentId);
+    if (authorized === undefined) {
+      authorized = await canViewSummary(prisma, viewer.id, viewer.role, group.departmentId);
+      authCache.set(group.departmentId, authorized);
+    }
+    if (!authorized) continue;
+
+    let cfg = cfgCache.get(group.departmentId);
+    if (!cfg) {
+      cfg = await loadValidationConfig(prisma, group.departmentId);
+      cfgCache.set(group.departmentId, cfg);
+    }
+    let baseTarget = baseTargetCache.get(group.departmentId);
+    if (baseTarget === undefined) {
+      const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
+      baseTarget = targets[userId];
+      baseTargetCache.set(group.departmentId, baseTarget);
+    }
+    const year = Number(group.monday.slice(0, 4));
+    let summer = summerCache.get(year);
+    if (summer === undefined) {
+      summer = await loadSummerForYear(prisma, year);
+      summerCache.set(year, summer);
+    }
+    const isSummer = detectSummer(group.monday, summer);
+
+    const entriesLike: EntryLike[] = group.rows.map((r) => ({ userId, date: isoDate(r.date), status: r.status }));
+    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, baseTarget));
+  }
+
+  const result: UserEntryView[] = [];
+  for (const row of rows) {
+    const masked = maskEntryForViewer(
+      { status: row.status, startTime: row.startTime, endTime: row.endTime, notes: row.notes, userId: row.userId, onGuard: row.onGuard },
+      viewer,
+    );
+
+    const entry: UserEntryView = {
+      date: isoDate(row.date),
+      departmentId: row.departmentId,
+      departmentName: row.department.name,
+      status: masked.status,
+      onGuard: masked.onGuard,
+      startTime: masked.startTime,
+      endTime: masked.endTime,
+      notes: masked.notes,
+      healthMasked: masked.healthMasked,
+    };
+
+    const monday = isoDate(mondayOfDate(row.date));
+    const effectiveTarget = effectiveTargetByKey.get(weekKey(row.departmentId, monday));
+    if (effectiveTarget !== undefined) {
+      entry.weeklyTargetHours = effectiveTarget;
+    }
+
+    result.push(entry);
+  }
+  return result;
 }

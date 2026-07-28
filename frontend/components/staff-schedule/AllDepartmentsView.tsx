@@ -4,6 +4,7 @@ import { RefreshCw, AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAllDepartmentsSchedules } from "@/app/staff-schedule/hooks/useStaffSchedule";
 import StaffScheduleCalendar from "./StaffScheduleCalendar";
+import PrintButton from "./PrintButton";
 
 interface Props {
   weekStart: string;
@@ -44,9 +45,23 @@ export default function AllDepartmentsView({ weekStart }: Props) {
   }
 
   return (
-    <div className="space-y-8">
+    // print-condensed tightens inter-department spacing so more departments
+    // fit per page — page.tsx's single PrintHeader covers this view too
+    // (rendering a second one here would duplicate the document header).
+    // Page orientation (portrait for this view) is NOT set here: it is a
+    // whole-document property driven by usePrintPageOrientation() in
+    // page.tsx, because two different @page sizes in one job break layout.
+    <div className="print-condensed space-y-8">
+      <div className="flex justify-end no-print">
+        <PrintButton
+          scope="DEPARTMENT_WEEK"
+          targetIds={entries.map((e) => e.department.id)}
+          from={weekStart}
+          to={weekStart}
+        />
+      </div>
       {entries.map(({ department, view }) => (
-        <div key={department.id} className="space-y-2">
+        <div key={department.id} className="print-block space-y-2">
           <h2 className="text-sm font-bold text-slate-900">{department.name}</h2>
           <StaffScheduleCalendar
             view={view}

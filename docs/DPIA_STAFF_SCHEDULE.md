@@ -132,3 +132,31 @@ Se añade el rol de usuario `WORKER`, que se comporta como `VIEWER` en el resto 
 El enmascaramiento de datos de salud (art. 9) **no se ve afectado**: nunca dependió de que `VIEWER` estuviera bloqueado del módulo, sino de si el visor es `ADMIN` o el propio interesado. Un `VIEWER` recién admitido recibe exactamente el mismo tratamiento que ya recibía un `AUDITOR`: los estados `BAJA_MEDICA` y `BAJA_PATERNIDAD` se le sirven como `AUSENTE`, sin horas ni notas, y con `onGuard` forzado a `false` para que la guardia no permita correlacionar.
 
 Se añade una salvaguarda que antes no existía: los **borradores** dejan de ser visibles para `VIEWER` y `AUDITOR`. Antes, `AUDITOR` veía cualquier horario en cualquier estado; ahora solo los publicados. El cambio **reduce** la exposición para ese rol.
+
+## Adenda v3.5.12 (2026-07-28) — impresión, buscador de trabajadores, dos estados nuevos
+
+Ver `docs/STAFF_SCHEDULE.md` §17 para el detalle técnico. Esta versión introduce un **canal de salida de datos nuevo** (impresión/PDF) y un **endpoint de búsqueda** que no existían en versiones anteriores; no amplía las categorías de datos del §1.4 ni introduce datos de salud adicionales.
+
+### A. Nuevo canal de salida: impresión a papel/PDF
+
+**Naturaleza del tratamiento nuevo**: hasta esta versión, los únicos canales por los que los datos de este módulo salían del sistema controlado eran el export CSV/XLSX (§9 del cuerpo principal, ya auditado). La impresión (`window.print()`, sin intermediario servidor) es un canal equivalente en cuanto a riesgo — el mismo contenido ya visible en pantalla puede terminar en papel o en un PDF fuera del control del CMDB — pero antes no dejaba ningún rastro.
+
+**Medida — auditoría del hecho de imprimir**: `POST /api/staff-schedule/audit/print` registra `action=PRINT_STAFF_SCHEDULE`, `entity`/`entity_id` del objetivo impreso y `user_email` de la sesión (nunca del cliente, verificado en vivo que un valor falsificado en el cuerpo se ignora) — mismo principio de trazabilidad ya aplicado a `EXPORT_STAFF_SCHEDULE` (ISO 27001 A.8.15). El servidor **no ve ni recibe** el contenido impreso (no hay renderizado server-side) — solo registra que la operación de impresión se disparó sobre un objetivo que el visor tenía derecho a ver (revalidado server-side, 404 si no).
+
+**Decisión de diseño — el registro de auditoría no bloquea la impresión** (D7): si el ping de auditoría falla (red, servidor no disponible), la impresión procede igualmente. Es una decisión consciente: el dato ya está en pantalla en el momento de imprimir, así que negar la impresión por un fallo de logging no protege ningún dato adicional, solo degrada el servicio. El coste es que un fallo de red puntual puede dejar una impresión sin registrar — riesgo residual aceptado, coherente con el resto del módulo (p. ej. §3.5, las lecturas tampoco generan audit log individual).
+
+**Riesgo no cubierto por este control, y fuera del alcance técnico del CMDB**: una vez impreso o guardado como PDF, el documento sale del control de acceso del sistema — quien lo imprime puede compartirlo, extraviarlo o almacenarlo sin las protecciones del CMDB (masking de salud incluido, aunque el masking ya se aplicó antes de llegar a la pantalla, así que un viewer no autorizado nunca puede imprimir una baja médica ajena sin enmascarar — el control de acceso de §3.1 sigue siendo la barrera real). Recomendación operativa para la organización desplegante: política de manejo de documentos impresos que contengan datos de personal, fuera del alcance de este DPIA técnico.
+
+### B. Buscador de trabajadores — minimización de datos
+
+`GET /api/staff-schedule/users?q=` devuelve **únicamente** `{id, username, displayName}` de personal activo con departamento asignado — explícitamente **sin** `email` (Art. 5.1.c, minimización): un selector de búsqueda no necesita el correo para cumplir su función. Comparar con `DepartmentMemberInfo` (usado en el panel de configuración ADMIN), que sí incluye `email` porque ese contexto lo requiere — la elección de campos por endpoint, no un tipo compartido, es deliberada.
+
+Esta búsqueda no expone nada que un `VIEWER` no viera ya: los nombres de todo el personal ya son visibles en los horarios publicados de todos los departamentos (Adenda v3.5.10). Lo que sí queda controlado, exactamente igual que en el resto del módulo, es el **horario** que se puede consultar después de encontrar a la persona (`GET /user/:userId/entries`, mismo masking Art. 9 y misma resolución de visibilidad en el `WHERE` que el resto de endpoints de lectura — nunca 403 para no revelar la existencia de un borrador ajeno).
+
+### C. Estados `FESTIVO` / `FESTIVO_LOCAL`
+
+Dos estados de jornada nuevos (festivo nacional / festivo local). **Dato personal ordinario**, no categoría especial — misma naturaleza que `VACACIONES`, ya cubierta en §1.4. No se solicita información adicional (no hay subtipo, motivo ni texto libre asociado más allá del `notes` ya existente). No amplía el §1.4 ni requiere una base jurídica distinta de la ya documentada en §2.1 para datos ordinarios de horario/paradero.
+
+### Conclusión de la adenda
+
+El riesgo residual del módulo se mantiene **bajo**. La impresión introduce un canal de salida nuevo, pero mitigado con el mismo principio de auditoría ya validado para el export, y sin ampliar quién puede ver qué — el masking Art. 9 se aplica *antes* de que el dato llegue a la vista imprimible, no como un paso posterior que la impresión pudiera saltarse. No se requiere consulta previa a la autoridad de control.

@@ -1756,7 +1756,7 @@ Related dates are drawn with **dashed** marks to distinguish them from the CI's 
 - Results are capped at 200 items per query — use the type and search filters to narrow down larger datasets.
 - On screens narrower than 1024px, a desktop-optimized notice is shown instead of the Gantt.
 
-## 34. Staff Schedule (v3.5.0 · updated v3.5.9)
+## 34. Staff Schedule (v3.5.0 · updated v3.5.12)
 
 Weekly, per-department shift planning. **This is not a clock-in/time-tracking system** — it's a planning tool; it does not record actual clock-in/clock-out times.
 
@@ -1841,3 +1841,39 @@ Your organisation may restrict application access to the members of a specific d
 An administrator can go to **Settings → Integrations → AD user synchronisation** and click "Sync now" to create the group members that do not yet exist in the application and refresh the details of those that do. The synchronisation also runs automatically every night.
 
 Users who leave the group are **deactivated**, never deleted, so the audit history is preserved. A profile assigned manually to a user is never overwritten.
+
+## Staff Schedule — what's new in v3.5.12
+
+### Consistent column widths and shorter rows
+
+Department tables (including the "All departments" view) now share exactly the same column layout, so stacking them lines everything up. Rows are also shorter and all the same height — if a status name doesn't fit on one line, it wraps to two.
+
+### Weekly hours: only for whoever manages that department
+
+The summary column (weekly hours, telework, travel, on-call days) now only appears if you are an Administrator or the Manager **of that specific department**. A Manager of a different department, an Auditor, or a Viewer won't see it — the data itself is never sent to the browser, not just hidden in a column.
+
+### Alerts hidden once published
+
+The alert panel only shows while a schedule is in Draft. Once published, it disappears and the calendar takes the full width.
+
+### Filter by worker
+
+Next to the department filter there's now a worker search box: type a name (2 letters minimum) and pick the person from the results. Selecting a worker switches the view to their individual schedule, with the same Week/Month modes as the department view. To go back to the department view, click the "×" next to the selected worker's name.
+
+### Monthly view
+
+A **Week / Month** toggle next to the period selector switches between the usual weekly view and a monthly one, with that month's weeks stacked one below another; the previous/next buttons step by week or by month depending on the active mode. A month week with no schedule is shown as such ("no schedule"), not as a blank gap.
+
+### Print / save as PDF
+
+A **Print** button is available in all four views (department-week, all departments, department-month and worker). It opens the browser's print dialog, from which you can print to paper or save as PDF — that browser window is the preview.
+
+What gets printed is a **report of the calendar you are looking at**, not a screenshot of the application: the sidebar, filters, buttons, weekly-hours column and alerts panel are all left out, and the background is white so you don't waste toner. Two-line header: the title with the week number (e.g. "… week 31 of 2026"), then the department or worker, the date range and the generation timestamp.
+
+Orientation is chosen automatically per view: **portrait** for "all departments" and for a department's month (both stack several narrow tables, so they fit in fewer sheets), and **landscape** for a department's week and for the worker view. Tables are never split across pages unless a single table is taller than one whole page; if a department has too many workers for the month to fit on one sheet, the later weeks move to the next sheet rather than the text being shrunk.
+
+### Two new statuses: Public Holiday and Local Holiday
+
+Besides the existing statuses, you can now mark a day as **Public Holiday** (national) or **Local Holiday**. They behave like Vacation: they don't count as worked hours and they're excluded from the minimum onsite-presence calculation.
+
+**Important**: if a week contains Vacation, Public Holiday or Local Holiday days, the weekly-hours target shown ("X / Y hours") is **no longer always 40h** — it's automatically reduced based on that week's holiday/vacation days. For example, a week with a public holiday on Monday shows a 32h target instead of 40h (assuming an 8h working day). Sick leave, parental leave, absence and business travel do **not** reduce the target — they still count as hours owed some other way.

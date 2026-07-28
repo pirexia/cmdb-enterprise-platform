@@ -42,29 +42,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 md:flex-row">
-      {/* Mobile topbar */}
+    <div className="app-shell-root flex h-screen flex-col bg-slate-50 md:flex-row">
+      {/* Mobile topbar — no-print: app chrome must never reach a printed
+          page, only the content a page itself opts into printing. */}
       <TopBar onMenuClick={() => setSidebarOpen(true)} />
 
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden no-print"
           onClick={() => setSidebarOpen(false)}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar — fixed overlay on mobile, static on desktop */}
+      {/* Sidebar — fixed overlay on mobile, static on desktop. no-print for
+          the same reason as the topbar above. */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
+        className={`no-print fixed inset-y-0 left-0 z-40 transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <Sidebar onClose={() => setSidebarOpen(false)} />
       </div>
 
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="flex-1 overflow-y-auto app-main-scroll">{children}</main>
     </div>
   );
 }

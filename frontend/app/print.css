@@ -1,0 +1,254 @@
+/*
+ * Print stylesheet for Staff Schedule (v3.5.12 F3, spec R7 / decision D3).
+ *
+ * Deliberately a dedicated stylesheet, NOT Tailwind `print:` variants:
+ *   - `@page` is not a Tailwind utility at all — it has to be plain CSS.
+ *   - `.print-block` / `.no-print` / `.print-only` are literal class-name
+ *     CONTRACTS shared with other parallel v3.5.12 worktrees (F1 wraps its
+ *     calendar tables in `.print-block`; F4/F5 do the same for their own
+ *     tables). Those tasks reference these exact names in their own specs,
+ *     so the selectors here must be real classes, not generated utility
+ *     hashes that only exist if Tailwind sees the class in this file's own
+ *     source scan.
+ *   - Neutralizing `overflow-auto` / `max-h-[70vh]` (the exact utility
+ *     classes used by StaffScheduleCalendar.tsx's outer wrapper) means
+ *     overriding Tailwind-generated utility classes by selector — cleaner
+ *     to do in one place here than to hunt for a `print:` recombination of
+ *     an arbitrary-value class in every consuming component.
+ *
+ * NOTE: one existing page (app/decommission/[id]/page.tsx) already uses
+ * ad-hoc `print:hidden` / `print:block` Tailwind variants for its own
+ * print-only block. That precedent is untouched — this file only adds
+ * rules scoped to the Staff Schedule print contract (.no-print /
+ * .print-only / .print-block), so it does not conflict with it.
+ */
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  /* NOTE — do NOT reintroduce a second `@page` here (e.g. a named
+     `@page portrait-narrow` selected per view via the `page` property).
+     That was tried and is broken in Chromium: when a named page changes the
+     SIZE mid-document, the engine does not re-layout the content for the new
+     page width. Verified empirically against a generated PDF — the tables
+     were laid out at the landscape printable width (~785pt) but emitted onto
+     portrait sheets (561pt usable), so ~224pt of every table fell off the
+     right edge, and the document header (which sat outside the named-page
+     container) was pushed onto its own stray landscape first page.
+     Orientation is therefore chosen ONCE PER PRINT JOB, by rewriting this
+     single `@page` rule from JS before printing — see
+     usePrintPageOrientation() in app/staff-schedule/hooks/useStaffSchedule.ts.
+     The rule below is only the default/fallback for when that hook is not
+     mounted. */
+
+  /* Anything chrome-like (sidebar, topbar, sticky header, filters, action
+     buttons, popovers) that a view marks as .no-print never reaches paper. */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Hidden on screen (see the non-@media rule below), shown only when
+     printing — the print-only document header (title / department or
+     worker / date range / "Generado: ..."). */
+  .print-only {
+    display: block !important;
+  }
+
+  /* The no-split-table requirement: a schedule table block is kept whole
+     across a page break whenever it fits on one page. Browsers only split
+     it as a last resort, when the block alone is taller than a full page —
+     which is the only case where there is no alternative. */
+  .print-block {
+    break-inside: avoid;
+    page-break-inside: avoid; /* legacy fallback for wider browser support */
+  }
+
+  /* If a print-block is unavoidably taller than one page, repeat the
+     table header on the continuation page instead of losing column
+     labels. */
+  .print-block table thead {
+    display: table-header-group;
+  }
+
+  /* Status cell backgrounds must survive to paper/PDF — without this,
+     browsers default to not printing background colors at all. Status
+     text itself is still rendered (not color-only), so legibility in a
+     black & white printout does not depend on this rule.
+     DELIBERATELY scoped to .print-block only, NOT the whole page (`*`):
+     an earlier version of this rule applied to every element, which forced
+     the app's own light-gray page backgrounds (bg-slate-50 etc.) to print
+     too, wasting toner on a tint nobody needs — the report should print on
+     a plain white page except for the calendar's own status colors. */
+  .print-block, .print-block * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Report requirement: printing must produce a clean report of just the
+     calendar(s) for whatever the user is currently viewing — never a
+     screenshot of the app shell. `.no-print` on TopBar/Sidebar
+     (components/AppShell.tsx, components/TopBar.tsx) already removes them
+     from the DOM output, but the app's own layout containers still need
+     neutralizing here:
+       - `.app-shell-root` is the top-level `flex h-screen ... bg-slate-50`
+         wrapper — `h-screen` clips content to one viewport-tall box on
+         screen (irrelevant once paginated) and the gray background would
+         otherwise still print behind the (now-hidden) sidebar's empty space.
+       - `.app-main-scroll` is `<main className="overflow-y-auto">`, the
+         actual scrolling container for every page's content. Left as-is,
+         some browsers render its scrollbar into the print output (the
+         literal bug reported) and its fixed height would clip content
+         instead of letting the printed report flow across pages. */
+  html, body {
+    background: white !important;
+  }
+  .app-shell-root {
+    height: auto !important;
+    background: white !important;
+  }
+  .app-main-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    background: white !important;
+  }
+  /* Every top-level page in this app follows the same canonical wrapper
+     pattern (`<div className="min-h-screen bg-slate-50">`, see CLAUDE.md's
+     "patrón canónico de la casa") — neutralizing it here benefits printing
+     from any page, not just Staff Schedule, for the same reasoning as
+     .app-shell-root above. */
+  .min-h-screen {
+    min-height: 0 !important;
+  }
+  .bg-slate-50 {
+    background: white !important;
+  }
+
+  /* StaffScheduleCalendar.tsx wraps its table in:
+       "bg-white shadow-sm ring-1 ring-slate-200 overflow-auto max-h-[70vh]"
+     On screen that scrolls a tall calendar inside a fixed-height viewport
+     panel. Left alone, printing would clip the table to that same 70vh box
+     instead of letting it flow across pages. Scoped to descendants of
+     .print-block so we only touch the calendar wrapper, not unrelated
+     scroll containers elsewhere in the app that a future print-block does
+     not opt into. */
+  .print-block .overflow-auto {
+    overflow: visible !important;
+  }
+  .print-block .max-h-\[70vh\] {
+    max-height: none !important;
+  }
+  /* StaffScheduleCalendar.tsx's table also carries `min-w-[60rem]` (960px)
+     so it stays legible with an on-screen horizontal scrollbar. On an A4
+     page that forced minimum can be wider than the printable area, causing
+     the table to overflow the page — printing must let the table shrink to
+     fit, not force a fixed floor. */
+  .print-block .min-w-\[60rem\] {
+    min-width: 0 !important;
+  }
+
+  /* The calendar header row is `sticky top-0` on screen to stay visible
+     while scrolling; sticky positioning has no meaning in paginated print
+     and can otherwise interact oddly with page breaks. */
+  .print-block .sticky {
+    position: static !important;
+  }
+
+  /* Requirement: the printed calendar shows only the day-by-day grid — the
+     weekly-hours/telework/travel/guard summary (column in the department
+     table, or the aggregate box below a worker's table) and the alerts
+     panel never print, regardless of the viewer's role. This is a stronger
+     rule than the on-screen R2 authorization check: even a viewer who DOES
+     see the summary on screen (ADMIN/department manager) does not get it on
+     paper — the printed page is meant to be just the schedule grid, laid
+     out cleanly for A4. Reuses `.no-print` (already applied to these
+     elements in the components) rather than a new class, since the same
+     "never on paper" semantics apply.
+     Column widths MUST stay `table-layout: fixed` (the component's on-screen
+     default) for print. An earlier attempt switched print to
+     `table-layout: auto` so the remaining columns would reflow into the
+     hidden summary column's space — that was the wrong lever and is the
+     reason the table stopped fitting the page: with `auto`, the table sizes
+     itself to its CONTENT, so a long status name (INTENSIVO_TELETRABAJO,
+     BAJA_PATERNIDAD) forces columns wider than the printable area and the
+     table gets clipped. Reducing font-size does not fix that, because under
+     `auto` it is the content's natural width — not the font alone — that
+     drives the table width.
+     With `fixed`, the colgroup percentages divide whatever width is
+     available and content can never widen the table; long names wrap
+     instead (the cells already carry line-clamp-2 + overflow-hidden).
+     Reflow after dropping the summary column needs no extra rule: the
+     generic `.no-print { display: none }` above already removes that
+     column's <col> and its <th>/<td> cells, and under fixed layout the
+     remaining declared widths (16% + 5x13.6% = 84%) are then scaled up
+     proportionally to fill 100% — which is the reflow the `auto` switch was
+     reaching for, without handing width control to the content. */
+  .print-block table {
+    table-layout: fixed !important;
+    width: 100% !important;
+  }
+
+  /* When the alert panel is present on screen (DRAFT schedule the viewer can
+     edit), its grid container reserves a fixed 20rem second column even
+     after the panel itself is hidden via .no-print (display:none removes an
+     item from a grid, not the column TRACK the template still defines) —
+     without this override, print would show the calendar in a narrower
+     first column plus a blank strip on the right. Forcing the container to
+     `display: block` for print collapses it back to a single full-width
+     column, matching the layout already used when there is no alert panel
+     at all. */
+  .staff-schedule-grid {
+    display: block !important;
+  }
+
+  /* Font size is deliberately NOT overridden for print. The cells already
+     use small type on screen (11px status / 10px times) and, with
+     `table-layout: fixed` above, the font is no longer what decides whether
+     the table fits the page — the column percentages are. A previous
+     revision shrank the table to 9pt/10pt and it changed nothing about the
+     fit (the table still overflowed) while costing legibility, so those
+     rules were removed rather than kept as dead weight.
+
+     Cell height is deliberately NOT collapsed to `auto` for print either.
+     It was, briefly, to save vertical space — but the status blocks size
+     themselves with `h-full` against the cell's height (see ScheduleCell.tsx),
+     so an indefinite cell height makes that percentage collapse to the
+     content height and the coloured blocks come out uneven on paper. Keeping
+     the cell's `h-11` is what guarantees every block is the same size in the
+     printed report, which matters more than the few millimetres per row it
+     would have saved. The density this report needs comes from the portrait
+     orientation and the condensed inter-block spacing below, not from
+     squeezing individual cells. */
+
+  /* "All departments" (print-condensed): minimize the vertical gap between
+     stacked department blocks — the default `space-y-8` (2rem) on-screen
+     spacing exists for mouse-driven scanning comfort, not for a report
+     whose whole point is fitting in as few sheets as possible. */
+  .print-condensed.space-y-8 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  .print-condensed .space-y-2 > * + * {
+    margin-top: 0.15rem !important;
+  }
+
+  /* Department month report: same condensed inter-week spacing. Font size is
+     left alone here too — the "split across two pages rather than shrink
+     text below legibility" requirement is satisfied structurally, by the
+     per-week `break-inside: avoid` on .print-block: a department with too
+     many workers to fit one portrait page simply flows its later weeks onto
+     the next sheet, with no text shrinking involved at any point. */
+  .print-month-report.space-y-8 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  .print-month-report .space-y-2 > * + * {
+    margin-top: 0.15rem !important;
+  }
+}
+
+/* Outside of print, .print-only content (the print document header) must
+   not appear in the normal UI at all. */
+.print-only {
+  display: none;
+}

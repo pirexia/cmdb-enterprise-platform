@@ -2300,7 +2300,12 @@
     },
     "filter": {
       "department": "Department",
-      "allDepartments": "All departments"
+      "allDepartments": "All departments",
+      "worker": "Worker",
+      "searchWorker": "Search worker...",
+      "clearWorker": "Clear worker filter",
+      "minChars": "Type at least 2 characters",
+      "noWorkers": "No results"
     },
     "status": {
       "PRESENCIAL": "Onsite",
@@ -2314,7 +2319,9 @@
       "AUSENTE": "Absent",
       "masked": "Absent",
       "DRAFT": "Draft",
-      "PUBLISHED": "Published"
+      "PUBLISHED": "Published",
+      "FESTIVO": "Public Holiday",
+      "FESTIVO_LOCAL": "Local Holiday"
     },
     "alert": {
       "title": "Alerts",
@@ -2448,6 +2455,29 @@
       "pct": "%",
       "hint": "Priority: full telework > days > percentage > department cap. Leave empty to use the department cap.",
       "saved": "Telework quota saved"
+    },
+    "periodSelector": {
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "thisMonth": "This month",
+      "weekMode": "Week",
+      "monthMode": "Month"
+    },
+    "month": {
+      "weekNoSchedule": "No schedule for this week",
+      "selectDepartment": "Select a department to see its monthly view"
+    },
+    "print": {
+      "button": "Print",
+      "generatedAt": "Generated",
+      "weekLabel": "week {week} of {year}"
+    },
+    "worker": {
+      "loadError": "Could not load worker's schedule",
+      "noEntries": "No entries in this period",
+      "monthlyNetHours": "Monthly net hours",
+      "vacationDays": "Vacation days",
+      "healthLeaveDays": "Health leave days"
     }
   }
 }

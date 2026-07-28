@@ -42,14 +42,22 @@ export default function ScheduleCell({ entry, editable, onClick, dayNumber }: Pr
     </span>
   );
 
+  // The status colour lives on the <td>, not on the inner <button>, so it
+  // always fills the ENTIRE cell. With the colour on a fixed-height button,
+  // any row that grew taller (a sibling cell wrapping to two lines, or a
+  // cell with no times needing less room) left uncoloured space inside the
+  // cell and the coloured blocks came out visually different sizes. A table
+  // cell is always stretched to its row's height, so colouring the cell
+  // itself makes every block identical by construction. `h-11` on the cell
+  // sets the baseline row height; the button fills it with `h-full`.
   if (!entry) {
     return (
-      <td className="border border-slate-100 p-0.5 align-top">
+      <td className="border border-slate-100 align-top h-11">
         <button
           type="button"
           onClick={editable ? onClick : undefined}
           disabled={!editable}
-          className={`relative w-full h-11 overflow-hidden text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
+          className={`relative w-full h-full overflow-hidden text-xs text-slate-300 ${editable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
         >
           {dayBadge}
           {editable ? "+" : "—"}
@@ -61,13 +69,13 @@ export default function ScheduleCell({ entry, editable, onClick, dayNumber }: Pr
   const meta = STATUS_META[entry.status] ?? STATUS_META.AUSENTE;
 
   return (
-    <td className="border border-slate-100 p-0.5 align-top">
+    <td className={`border border-slate-100 align-top h-11 ${meta.bg}`}>
       <button
         type="button"
         onClick={editable ? onClick : undefined}
         disabled={!editable}
         title={entry.healthMasked ? t("staffSchedule.gdpr.maskedNotice") : undefined}
-        className={`relative w-full h-11 overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.bg} ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
+        className={`relative w-full h-full overflow-hidden rounded-none px-1.5 py-0.5 text-left leading-tight ${meta.text} ${editable ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
       >
         {dayBadge}
         <span className="flex items-center gap-1 font-semibold text-[11px] leading-tight line-clamp-2">

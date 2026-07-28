@@ -45,13 +45,13 @@ export default function AllDepartmentsView({ weekStart }: Props) {
   }
 
   return (
-    // print-portrait: this view stacks several narrower (no-summary,
-    // read-only) tables rather than one wide one, so A4 portrait fits it
-    // better than the landscape default used by the single-department view.
     // print-condensed tightens inter-department spacing so more departments
     // fit per page — page.tsx's single PrintHeader covers this view too
     // (rendering a second one here would duplicate the document header).
-    <div className="print-portrait print-condensed space-y-8">
+    // Page orientation (portrait for this view) is NOT set here: it is a
+    // whole-document property driven by usePrintPageOrientation() in
+    // page.tsx, because two different @page sizes in one job break layout.
+    <div className="print-condensed space-y-8">
       <div className="flex justify-end no-print">
         <PrintButton
           scope="DEPARTMENT_WEEK"

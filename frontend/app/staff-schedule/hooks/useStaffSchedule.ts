@@ -96,6 +96,46 @@ export function isoWeekNumber(dateIso: string): { week: number; year: number } {
   return { week, year: d.getUTCFullYear() };
 }
 
+/**
+ * Sets the print orientation for the WHOLE document, by rewriting a single
+ * `@page` rule in a dedicated <style> in <head>.
+ *
+ * Why this instead of a CSS named page (`@page foo { size: ... }` +
+ * `.something { page: foo }`)? Because Chromium does not re-layout content
+ * when a named page changes the page SIZE partway through a document: the
+ * content keeps the width of the previous page context and is then clipped
+ * onto the differently-sized sheet. That was verified against a real
+ * generated PDF — portrait sheets carrying tables still laid out at the
+ * landscape width, losing ~224pt off the right edge, plus a stray landscape
+ * page holding only the document header.
+ *
+ * Keeping exactly ONE `@page` rule per print job sidesteps that entirely:
+ * every sheet has the same geometry, so layout and paper agree. The rule is
+ * kept in sync with the active view (rather than being written at click
+ * time) so the browser's native Ctrl+P gets the correct orientation too,
+ * with no timing dependency on our own click handler.
+ */
+export function usePrintPageOrientation(orientation: "portrait" | "landscape") {
+  useEffect(() => {
+    const STYLE_ID = "staff-schedule-print-page";
+    let el = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+    if (!el) {
+      el = document.createElement("style");
+      el.id = STYLE_ID;
+      document.head.appendChild(el);
+    }
+    // Narrower margins in portrait: those reports (all-departments, month)
+    // are the ones that need to fit in as few sheets as possible.
+    el.textContent =
+      orientation === "portrait"
+        ? "@media print { @page { size: A4 portrait; margin: 6mm; } }"
+        : "@media print { @page { size: A4 landscape; margin: 8mm; } }";
+    return () => {
+      el?.remove();
+    };
+  }, [orientation]);
+}
+
 /** Departments the user can see, for the department filter. */
 export function useDepartments() {
   const [departments, setDepartments] = useState<Department[]>([]);

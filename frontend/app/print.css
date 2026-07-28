@@ -29,22 +29,20 @@
     margin: 10mm;
   }
 
-  /* Named page (CSS Paged Media / Chromium's `page` property) for the two
-     views that need A4 PORTRAIT instead of the landscape default used by
-     the single-department week/worker views: "all departments" (several
-     narrower, read-only, no-summary tables stacked — doesn't need
-     landscape's extra width) and the department month report (also
-     narrower per-week tables, and portrait fits more week-blocks per page
-     height, which is what matters for "as few pages as possible" there).
-     Narrower margins than the landscape default, per the printed-report
-     condensing requirement. */
-  @page portrait-narrow {
-    size: A4 portrait;
-    margin: 6mm;
-  }
-  .print-portrait {
-    page: portrait-narrow;
-  }
+  /* NOTE — do NOT reintroduce a second `@page` here (e.g. a named
+     `@page portrait-narrow` selected per view via the `page` property).
+     That was tried and is broken in Chromium: when a named page changes the
+     SIZE mid-document, the engine does not re-layout the content for the new
+     page width. Verified empirically against a generated PDF — the tables
+     were laid out at the landscape printable width (~785pt) but emitted onto
+     portrait sheets (561pt usable), so ~224pt of every table fell off the
+     right edge, and the document header (which sat outside the named-page
+     container) was pushed onto its own stray landscape first page.
+     Orientation is therefore chosen ONCE PER PRINT JOB, by rewriting this
+     single `@page` rule from JS before printing — see
+     usePrintPageOrientation() in app/staff-schedule/hooks/useStaffSchedule.ts.
+     The rule below is only the default/fallback for when that hook is not
+     mounted. */
 
   /* Anything chrome-like (sidebar, topbar, sticky header, filters, action
      buttons, popovers) that a view marks as .no-print never reaches paper. */
@@ -213,17 +211,16 @@
      fit (the table still overflowed) while costing legibility, so those
      rules were removed rather than kept as dead weight.
 
-     The real vertical cost is the cell height: each cell's button carries a
-     FIXED `h-11` (2.75rem / 44px), sized on screen to hold two clamped
-     lines of status plus a times line with comfortable click area. That
-     fixed height is what makes a multi-week or multi-department report
-     spill onto extra sheets, and no font rule touches it. For print the
-     height becomes content-driven, so cells that don't need the full box
-     (short status, no times) give the space back. Cells within a row still
-     align (table row semantics), so rows stay visually even. */
-  .print-block td button {
+     The real vertical cost is the cell height: each cell carries a FIXED
+     `h-11` (2.75rem / 44px), sized on screen to hold two clamped lines of
+     status plus a times line with comfortable click area. That fixed height
+     is what makes a multi-week or multi-department report spill onto extra
+     sheets, and no font rule touches it. For print the height becomes
+     content-driven, so cells that don't need the full box give the space
+     back. Cells within a row are still stretched to the row height by table
+     semantics, so the status colour blocks stay uniform. */
+  .print-block td {
     height: auto !important;
-    min-height: 0 !important;
   }
 
   /* "All departments" (print-condensed): minimize the vertical gap between

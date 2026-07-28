@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown, Users, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf, addDaysIso, isoWeekNumber } from "./hooks/useStaffSchedule";
+import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf, addDaysIso, isoWeekNumber, usePrintPageOrientation } from "./hooks/useStaffSchedule";
 import type { EntryUpdateInput } from "./types";
 import PeriodSelector from "@/components/staff-schedule/PeriodSelector";
 import DepartmentFilter from "@/components/staff-schedule/DepartmentFilter";
@@ -121,6 +121,17 @@ export default function StaffSchedulePage() {
     () => departments.find((d) => d.id === departmentId) ?? null,
     [departments, departmentId],
   );
+
+  // One orientation for the whole print job (see usePrintPageOrientation for
+  // why mixing two @page sizes is not an option). Portrait for the two
+  // reports that stack several narrow tables and want the fewest sheets —
+  // "all departments" and the department month view; landscape for the wide
+  // single-department week grid and the worker view.
+  const printOrientation: "portrait" | "landscape" =
+    viewMode === "department-month" || (viewMode === "department-week" && !departmentId)
+      ? "portrait"
+      : "landscape";
+  usePrintPageOrientation(printOrientation);
 
   const printRangeLabel = periodMode === "month" ? monthValue : `${weekStart} – ${addDaysIso(weekStart, 4)}`;
 

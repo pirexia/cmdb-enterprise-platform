@@ -62,14 +62,14 @@ export default function DepartmentMonthView({ departmentId, year, month }: Props
   }
 
   return (
-    // print-portrait: A4 portrait per the month-report requirement.
-    // print-month-report: keeps the print font at a legible >=10pt floor
-    // (app/print.css) instead of the more aggressive condensing used
-    // elsewhere — if that means the month doesn't fit on one page (a
-    // department with many workers), the existing per-week break-inside:
-    // avoid on .print-block lets it flow onto a second page naturally,
-    // rather than shrinking text further to force a single page.
-    <div className="print-portrait print-month-report space-y-8">
+    // print-month-report: condensed inter-week spacing for print. Text is
+    // never shrunk to force a fit — a department with too many workers
+    // simply flows its later weeks onto the next sheet via the per-week
+    // `break-inside: avoid` on .print-block.
+    // Page orientation (portrait for this view) is NOT set here: it is a
+    // whole-document property driven by usePrintPageOrientation() in
+    // page.tsx, because two different @page sizes in one job break layout.
+    <div className="print-month-report space-y-8">
       {weeks.map(({ weekStart, view }) => (
         <div key={weekStart} className="print-block space-y-2">
           <h2 className="text-sm font-bold text-slate-900">{formatRange(weekStart)}</h2>

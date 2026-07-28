@@ -11,6 +11,9 @@ import type {
   ScheduleView,
   StaffScheduleListItem,
   SummerSchedule,
+  WorkerEntryItem,
+  WorkerMonthlySummary,
+  WorkerSearchResult,
 } from "../types";
 
 /** Monday (UTC, ISO yyyy-mm-dd) of the week containing `d`. */
@@ -546,4 +549,111 @@ export function useDepartmentMonth(departmentId: string | null, year: number, mo
   }, [load]);
 
   return { weeks, loading, error, refetch: load };
+}
+
+// v3.5.12 (R5/F4) — Debounced (250ms) search for the worker combobox.
+// GET /api/staff-schedule/users?q=; server 400s under 2 chars, so this
+// never fires the request below that length (also saves a round trip).
+export function useWorkerSearch(q: string) {
+  const [results, setResults] = useState<WorkerSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) {
+      setResults([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    const handle = setTimeout(() => {
+      apiFetch(`/api/staff-schedule/users?q=${encodeURIComponent(term)}`, { signal: controller.signal })
+        .then((res) => {
+          if (!res.ok) throw new Error(`Status ${res.status}`);
+          return res.json();
+        })
+        .then((data: WorkerSearchResult[]) => setResults(data))
+        .catch((err) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          setError("error");
+        })
+        .finally(() => setLoading(false));
+    }, 250);
+    return () => {
+      clearTimeout(handle);
+      controller.abort();
+    };
+  }, [q]);
+
+  return { results, loading, error };
+}
+
+// v3.5.12 (R5/F4) — a worker's masked entries in a date range (week or
+// month mode). Server caps the range at 62 days (D6) — this hook just
+// forwards whatever `from`/`to` its caller computed, it doesn't validate
+// the span itself.
+export function useWorkerEntries(userId: string | null, from: string, to: string) {
+  const [entries, setEntries] = useState<WorkerEntryItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!userId) {
+      setEntries([]);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/user/${userId}/entries?from=${from}&to=${to}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      setEntries(await res.json());
+    } catch {
+      setError("error");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, from, to]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { entries, loading, error, refetch: load };
+}
+
+// v3.5.12 (R5/F4) — thin wrapper over the existing GET /user/:userId/monthly
+// endpoint, reused as-is for the worker view's month-mode aggregate figures.
+export function useWorkerMonthlySummary(userId: string | null, year: number, month: number) {
+  const [summary, setSummary] = useState<WorkerMonthlySummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (!userId) {
+      setSummary(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/user/${userId}/monthly?year=${year}&month=${month}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      setSummary(await res.json());
+    } catch {
+      setError("error");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, year, month]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { summary, loading, error, refetch: load };
 }

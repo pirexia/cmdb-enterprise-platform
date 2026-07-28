@@ -224,7 +224,12 @@ export default function StaffSchedulePage() {
                 target/scope/range fed to the audit-print endpoint changes
                 with viewMode. */}
             {viewMode === "department-week" && view && (
-              <PrintButton scope="DEPARTMENT_WEEK" targetId={view.schedule.id} from={weekStart} to={weekStart} />
+              <PrintButton
+                scope="DEPARTMENT_WEEK"
+                targetId={view.schedule.departmentId}
+                from={view.schedule.weekStart}
+                to={view.schedule.weekEnd}
+              />
             )}
             {viewMode === "department-month" && departmentId && (
               <PrintButton scope="DEPARTMENT_MONTH" targetId={departmentId} from={`${monthValue}-01`} to={monthValue} />

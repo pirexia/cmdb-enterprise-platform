@@ -12,7 +12,7 @@ export default function TopBar({ onMenuClick }: TopBarProps) {
 
   return (
     <header
-      className="flex h-13 flex-shrink-0 items-center gap-3 px-4 md:hidden"
+      className="no-print flex h-13 flex-shrink-0 items-center gap-3 px-4 md:hidden"
       style={{ backgroundColor: "var(--sidebar-bg)" }}
     >
       <button

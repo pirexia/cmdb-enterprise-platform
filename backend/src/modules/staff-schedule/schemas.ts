@@ -6,6 +6,8 @@ export const SCHEDULE_STATUS = [
   'PRESENCIAL',
   'TELETRABAJO',
   'VACACIONES',
+  'FESTIVO',
+  'FESTIVO_LOCAL',
   'BAJA_MEDICA',
   'BAJA_PATERNIDAD',
   'INTENSIVO',
@@ -26,6 +28,15 @@ export const TELEWORK_STATUSES: readonly string[] = ['TELETRABAJO', 'INTENSIVO_T
 // Continuous-shift statuses: no break is deducted and the flexible entry/exit
 // window does not apply (they have their own fixed schedule).
 export const INTENSIVE_STATUSES: readonly string[] = ['INTENSIVO', 'INTENSIVO_TELETRABAJO'];
+
+// Statuses that shrink the weekly hour target instead of counting as a
+// shortfall against it (v3.5.12): a vacation or holiday day is not "missing"
+// work, so a week containing one should be judged against fewer contracted
+// hours, not against a flat weeklyTargetNetHours. See
+// validationEngine.computeEffectiveWeeklyTarget. Deliberately narrower than
+// NON_WORKING_STATUSES (validationEngine.ts) — BAJA_*/AUSENTE/VIAJE still
+// count as a shortfall against the full target, per product decision.
+export const TARGET_REDUCING_STATUSES: readonly string[] = ['VACACIONES', 'FESTIVO', 'FESTIVO_LOCAL'];
 
 export const ALERT_TYPE = [
   'TELEWORK_QUOTA',
@@ -141,4 +152,59 @@ export const UserTeleworkQuotaSchema = z.object({
   teleworkFull: z.boolean(),
   teleworkQuotaDays: z.number().int().min(0).max(31).nullable(),
   teleworkQuotaPct: z.number().int().min(0).max(100).nullable(),
+});
+
+// ─── Worker search selector (v3.5.12, R5/D4) ───────────────────────────────
+
+export const UserSearchSchema = z.object({
+  q: z.string().min(2, 'q must be at least 2 characters'),
+});
+
+// ─── Worker entries by range (v3.5.12, R5/D6) ──────────────────────────────
+// Bounded to 62 days server-side (covers both the weekly and monthly worker
+// views) — unbounded ranges from an authenticated endpoint are a NIS2
+// availability concern, not just a UX one.
+const isoDateRefine = (v: string) => !Number.isNaN(Date.parse(v));
+
+export const UserEntriesRangeSchema = z
+  .object({
+    from: z.string().refine(isoDateRefine, 'Invalid date'),
+    to: z.string().refine(isoDateRefine, 'Invalid date'),
+  })
+  .refine((data) => Date.parse(data.to) >= Date.parse(data.from), {
+    message: 'to must not be before from',
+    path: ['to'],
+  })
+  .refine((data) => (Date.parse(data.to) - Date.parse(data.from)) / 86400000 <= 62, {
+    message: 'Range cannot exceed 62 days',
+    path: ['to'],
+  });
+
+// ─── Schedule list range (v3.5.12, R6) ─────────────────────────────────────
+// GET / accepts from/to over weekStart IN ADDITION to the pre-existing exact
+// weekStart param (never replacing it — existing callers must keep working
+// unchanged). Bounded to 6 weeks (42 days) server-side (D6).
+export const ScheduleRangeSchema = z
+  .object({
+    from: z.string().refine(isoDateRefine, 'Invalid date'),
+    to: z.string().refine(isoDateRefine, 'Invalid date'),
+  })
+  .refine((data) => Date.parse(data.to) >= Date.parse(data.from), {
+    message: 'to must not be before from',
+    path: ['to'],
+  })
+  .refine((data) => (Date.parse(data.to) - Date.parse(data.from)) / 86400000 <= 42, {
+    message: 'Range cannot exceed 6 weeks',
+    path: ['to'],
+  });
+
+// ─── Print audit (v3.5.12, R7/D7) ──────────────────────────────────────────
+export const PRINT_SCOPE = ['DEPARTMENT_WEEK', 'DEPARTMENT_MONTH', 'WORKER'] as const;
+export type PrintScope = (typeof PRINT_SCOPE)[number];
+
+export const PrintAuditSchema = z.object({
+  scope: z.enum(PRINT_SCOPE),
+  targetId: z.string().uuid(),
+  from: z.string().refine(isoDateRefine, 'Invalid date').optional(),
+  to: z.string().refine(isoDateRefine, 'Invalid date').optional(),
 });

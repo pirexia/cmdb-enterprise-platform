@@ -4,7 +4,18 @@ export type StaffScheduleEntity =
   | 'DEPARTMENT'
   | 'STAFF_SCHEDULE'
   | 'SCHEDULE_ENTRY'
-  | 'DEPARTMENT_MANAGER';
+  | 'DEPARTMENT_MANAGER'
+  // v3.5.12 (R7/D7) — the entity a PRINT_STAFF_SCHEDULE record refers to
+  // depends on the print scope: a department id for DEPARTMENT_WEEK/MONTH, a
+  // user id for WORKER. Neither DEPARTMENT nor STAFF_SCHEDULE fits both, so
+  // this is a dedicated tag rather than overloading an existing one.
+  | 'PRINT_TARGET';
+
+// v3.5.12 (R7/D7) — action emitted by POST /audit/print. `action` itself
+// stays a free string (matching every other action in this module — see the
+// literals in router.ts), this constant just documents the one this file
+// adds so it isn't only discoverable by grepping router.ts.
+export const PRINT_STAFF_SCHEDULE_ACTION = 'PRINT_STAFF_SCHEDULE';
 
 // Emit a Staff Schedule audit log record (insert-only — ISO 27001 A.8.15).
 //

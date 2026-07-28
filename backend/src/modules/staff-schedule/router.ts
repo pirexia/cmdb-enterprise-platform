@@ -11,10 +11,14 @@ import {
   CloneScheduleSchema,
   UserWeeklyHoursSchema,
   UserTeleworkQuotaSchema,
+  UserSearchSchema,
+  UserEntriesRangeSchema,
+  ScheduleRangeSchema,
+  PrintAuditSchema,
 } from './schemas.js';
 import { requireUuidParam, requireAdmin, requireDeptEditAccess } from './middleware.js';
-import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers } from './queries.js';
-import { auditStaffSchedule } from './audit.js';
+import { buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentManagers, loadDepartmentMembers, searchScheduleUsers } from './queries.js';
+import { auditStaffSchedule, PRINT_STAFF_SCHEDULE_ACTION } from './audit.js';
 import {
   createSchedule,
   updateEntries,
@@ -26,6 +30,7 @@ import {
   cloneToWeek,
   buildScheduleView,
   getMonthlySummary,
+  listUserEntries,
   ScheduleServiceError,
 } from './service.js';
 import { exportScheduleCsv, exportScheduleXlsx } from './export.js';
@@ -314,15 +319,30 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
 
   // ─── Schedules ───────────────────────────────────────────────────────────
 
-  // GET /api/staff-schedule?departmentId=&weekStart=
+  // GET /api/staff-schedule?departmentId=&weekStart=&from=&to=
+  // v3.5.12 (R6) — from/to filter on weekStart as a RANGE, in ADDITION to the
+  // pre-existing exact weekStart param (kept working unchanged for existing
+  // callers). Range capped at 6 weeks server-side (D6); the same visibility
+  // filter applies regardless of which of weekStart/from-to was used.
   router.get('/', async (req: Request, res: Response) => {
     const departmentId = req.query.departmentId as string | undefined;
     const weekStart = req.query.weekStart as string | undefined;
+    const from = req.query.from as string | undefined;
+    const to = req.query.to as string | undefined;
     if (departmentId && !isUuid(departmentId)) { res.status(400).json({ error: 'Invalid departmentId' }); return; }
+
+    let rangeWhere: { gte: Date; lte: Date } | undefined;
+    if (from || to) {
+      const parsedRange = ScheduleRangeSchema.safeParse({ from, to });
+      if (!parsedRange.success) { res.status(400).json({ error: parsedRange.error.flatten() }); return; }
+      rangeWhere = { gte: new Date(parsedRange.data.from), lte: new Date(parsedRange.data.to) };
+    }
+
     try {
       const where: any = {};
       if (departmentId) where.departmentId = departmentId;
       if (weekStart && !Number.isNaN(Date.parse(weekStart))) where.weekStart = new Date(weekStart);
+      else if (rangeWhere) where.weekStart = rangeWhere;
 
       // v3.5.10 — Visibilidad por rol aplicada en la propia cláusula WHERE
       // (A01: los controles de acceso a filas son filtros de BD, nunca
@@ -341,6 +361,26 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.json(schedules);
     } catch (err) {
       console.error('[StaffSchedule] schedules list error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // GET /api/staff-schedule/users?q=  — worker search selector (v3.5.12, R5/D4).
+  // Registered BEFORE `/:id` on purpose: Express matches routes in
+  // registration order, and `/:id` would otherwise swallow `/users` as
+  // id="users" (and reject it with 400, since it isn't a UUID). Reachable by
+  // any role with module access — the search itself isn't sensitive (a
+  // VIEWER already sees every name in published schedules across every
+  // department); what IS gated is the schedule data returned afterwards
+  // (GET /user/:userId/entries). No email in the response (GDPR Art. 5.1.c).
+  router.get('/users', async (req: Request, res: Response) => {
+    const parsed = UserSearchSchema.safeParse({ q: req.query.q });
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const users = await searchScheduleUsers(prisma, parsed.data.q);
+      res.json(users);
+    } catch (err) {
+      console.error('[StaffSchedule] user search error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -517,6 +557,27 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // GET /api/staff-schedule/user/:userId/entries?from=&to=  — v3.5.12 (R5/D6).
+  // Range capped at 62 days server-side (400 if exceeded). Visibility is
+  // resolved in the WHERE clause exactly like everywhere else in this module:
+  // a worker whose schedule is out of the caller's scope yields an EMPTY
+  // array, never a 403 (no draft-existence leak). Every entry is masked
+  // (GDPR Art. 9) before it leaves listUserEntries.
+  router.get('/user/:userId/entries', requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserEntriesRangeSchema.safeParse({ from: req.query.from, to: req.query.to });
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const entries = await listUserEntries(prisma, req.params.userId as string, parsed.data.from, parsed.data.to, {
+        id: req.user!.id,
+        role: req.user!.role,
+      });
+      res.json(entries);
+    } catch (err) {
+      console.error('[StaffSchedule] user entries error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // GET /api/staff-schedule/user/:userId/monthly?year=&month=
   // AUDITOR/manager see a masked summary (no healthLeaveDays field); the
   // user themselves and ADMIN see the full summary.
@@ -535,6 +596,69 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       res.json(summary);
     } catch (err) {
       console.error('[StaffSchedule] monthly summary error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Resolve whether `departmentId` is visible to `viewer` under the same
+  // rule the rest of this router uses everywhere else (buildScheduleVisibilityFilter,
+  // A01). Used only by POST /audit/print (DEPARTMENT_WEEK/DEPARTMENT_MONTH
+  // scopes) to confirm the caller isn't fabricating a print-audit record for
+  // a department whose schedules they can't actually see.
+  async function isDepartmentVisibleToViewer(
+    departmentId: string,
+    viewer: { id: string; role: string },
+    from?: string,
+    to?: string,
+  ): Promise<boolean> {
+    const managed = viewer.role === 'ADMIN' ? [] : await loadManagedDepartmentIds(prisma, viewer.id);
+    const visibility = buildScheduleVisibilityFilter(viewer.role, managed);
+    const where: any = { departmentId, AND: [visibility] };
+    if (from && to && !Number.isNaN(Date.parse(from)) && !Number.isNaN(Date.parse(to))) {
+      where.weekStart = { gte: new Date(from), lte: new Date(to) };
+    }
+    const count = await prisma.staffSchedule.count({ where });
+    return count > 0;
+  }
+
+  // POST /api/staff-schedule/audit/print — v3.5.12 (R7/D7). Printing is an
+  // export of personal data to a medium outside the system (ISO 27001
+  // A.8.15) — same principle as EXPORT_STAFF_SCHEDULE for CSV/XLSX, but
+  // print happens client-side (window.print()), so the server only records
+  // that it happened; it never renders anything itself. The client cannot
+  // fabricate a record about data it cannot see: for DEPARTMENT_WEEK/
+  // DEPARTMENT_MONTH the target department's visibility is re-verified
+  // server-side (404, not 403 — don't reveal existence); for WORKER, printing
+  // a worker's view is gated the same as viewing it (listUserEntries already
+  // returns an empty view rather than erroring for out-of-scope data), so no
+  // extra check beyond the module-level access gate applies here. user_email
+  // always comes from the session, NEVER from the request body, even if the
+  // body happens to carry a field that looks like one — defends against a
+  // forged log entry. D7: a failure here does not block printing (the data is
+  // already on screen); the caller decides how to surface a non-2xx.
+  router.post('/audit/print', async (req: Request, res: Response) => {
+    const parsed = PrintAuditSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    const { scope, targetId, from, to } = parsed.data;
+    const viewer = { id: req.user!.id, role: req.user!.role };
+    try {
+      let visible = true;
+      if (scope === 'DEPARTMENT_WEEK' || scope === 'DEPARTMENT_MONTH') {
+        visible = await isDepartmentVisibleToViewer(targetId, viewer, from, to);
+      }
+      if (!visible) { res.status(404).json({ error: 'Not found' }); return; }
+
+      await prisma.$transaction(async (tx) => {
+        await auditStaffSchedule(tx, {
+          action: PRINT_STAFF_SCHEDULE_ACTION,
+          entity: scope === 'WORKER' ? 'PRINT_TARGET' : 'DEPARTMENT',
+          entityId: targetId,
+          userEmail: req.user!.email,
+        });
+      });
+      res.status(204).end();
+    } catch (err) {
+      console.error('[StaffSchedule] print audit error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

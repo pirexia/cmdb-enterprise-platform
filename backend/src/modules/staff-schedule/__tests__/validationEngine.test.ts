@@ -1,6 +1,6 @@
 import {
   validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours,
-  resolveTeleworkCap, workingDaysInMonth,
+  resolveTeleworkCap, workingDaysInMonth, computeEffectiveWeeklyTarget,
 } from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
@@ -310,6 +310,107 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u2', date: '2026-07-06', status: 'VACACIONES' },
     ];
     expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+  });
+});
+
+// ─── v3.5.12 — FESTIVO/FESTIVO_LOCAL + effective weekly target ─────────────
+
+describe('FESTIVO/FESTIVO_LOCAL (v3.5.12)', () => {
+  it('no cuentan como horas trabajadas, igual que VACACIONES', () => {
+    const festivo: EntryLike = { userId: 'u1', date: '2026-07-06', status: 'FESTIVO' };
+    const festivoLocal: EntryLike = { userId: 'u1', date: '2026-07-07', status: 'FESTIVO_LOCAL' };
+    expect(computeNetHours(festivo, cfg, false)).toBe(0);
+    expect(computeNetHours(festivoLocal, cfg, false)).toBe(0);
+  });
+
+  it('un día entero de FESTIVO no genera PRESENCE_PCT (fuera del denominador)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'FESTIVO' },
+      { userId: 'u2', date: '2026-07-06', status: 'FESTIVO_LOCAL' },
+    ];
+    expect(alertsOfType(validate(schedule, entries, cfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+  });
+});
+
+describe('computeEffectiveWeeklyTarget (v3.5.12)', () => {
+  it('sin días de VACACIONES/FESTIVO/FESTIVO_LOCAL -> el objetivo no cambia', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
+    ];
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBe(40);
+  });
+
+  it('un lunes de VACACIONES resta las horas de un día normal (invierno)', () => {
+    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-06', status: 'VACACIONES' }]; // Monday
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBeCloseTo(40 - cfg.winterDailyNetHours, 5);
+  });
+
+  it('un viernes FESTIVO resta las horas del viernes, no las de un día normal', () => {
+    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-10', status: 'FESTIVO' }]; // Friday
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBeCloseTo(40 - cfg.winterFridayNetHours, 5);
+  });
+
+  it('varios días reductores se acumulan (VACACIONES + FESTIVO_LOCAL)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' }, // Mon
+      { userId: 'u1', date: '2026-07-07', status: 'FESTIVO_LOCAL' }, // Tue
+    ];
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40))
+      .toBeCloseTo(40 - 2 * cfg.winterDailyNetHours, 5);
+  });
+
+  it('la reducción nunca deja el objetivo por debajo de 0', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' },
+      { userId: 'u1', date: '2026-07-07', status: 'VACACIONES' },
+      { userId: 'u1', date: '2026-07-08', status: 'VACACIONES' },
+      { userId: 'u1', date: '2026-07-09', status: 'VACACIONES' },
+      { userId: 'u1', date: '2026-07-10', status: 'VACACIONES' },
+    ];
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 5)).toBe(0);
+  });
+
+  it('BAJA_MEDICA/AUSENTE/VIAJE NO reducen el objetivo (solo VACACIONES/FESTIVO/FESTIVO_LOCAL)', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'BAJA_MEDICA' },
+      { userId: 'u1', date: '2026-07-07', status: 'AUSENTE' },
+      { userId: 'u1', date: '2026-07-08', status: 'VIAJE' },
+    ];
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBe(40);
+  });
+
+  it('usa las horas de verano cuando isSummer=true', () => {
+    const summerCfg: ValidationConfig = { ...cfg, summerDailyNetHours: 7.5 };
+    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-06', status: 'FESTIVO' }]; // Monday
+    expect(computeEffectiveWeeklyTarget(entries, summerCfg, true, 40)).toBeCloseTo(40 - 7.5, 5);
+  });
+
+  it('un FESTIVO en lunes evita el WEEKLY_HOURS que antes disparaba con el objetivo plano (regresión)', () => {
+    // Semana con lunes festivo + viernes intensivo: antes de v3.5.12 el
+    // objetivo era siempre 40h planas, así que esta semana (32h trabajadas)
+    // disparaba WEEKLY_HOURS por debajo del objetivo aunque el festivo la
+    // justifique por completo. Con el objetivo efectivo (40 - 8 = 32), no.
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'FESTIVO' }, // Mon, 0h
+      { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' }, // Tue 9h
+      { userId: 'u1', date: '2026-07-08', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' }, // Wed 9h
+      { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' }, // Thu 8h
+      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },  // Fri 6h
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(0);
+  });
+
+  it('el mismo caso con BAJA_MEDICA en vez de FESTIVO sigue disparando WEEKLY_HOURS', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-06', status: 'BAJA_MEDICA' }, // no reduce el objetivo
+      { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' },
+      { userId: 'u1', date: '2026-07-08', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' },
+      { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
+      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },
+    ];
+    const alerts = validate(schedule, entries, cfg, null, {});
+    expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(1);
   });
 });
 

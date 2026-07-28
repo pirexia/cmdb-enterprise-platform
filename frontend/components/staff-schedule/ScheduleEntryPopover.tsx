@@ -17,7 +17,7 @@ interface Props {
   onApplyWeek: (partial: Omit<EntryUpdateInput, "date">) => Promise<void>;
 }
 
-const NON_WORKING_STATUSES = new Set(["VACACIONES", "BAJA_MEDICA", "BAJA_PATERNIDAD", "AUSENTE", "VIAJE"]);
+const NON_WORKING_STATUSES = new Set(["VACACIONES", "FESTIVO", "FESTIVO_LOCAL", "BAJA_MEDICA", "BAJA_PATERNIDAD", "AUSENTE", "VIAJE"]);
 
 export default function ScheduleEntryPopover({
   userId, username, date, entry, breakMinutes, dailyNetHours, onClose, onSave, onApplyWeek,

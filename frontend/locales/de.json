@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Abteilung",
-      "allDepartments": "Alle Abteilungen"
+      "allDepartments": "Alle Abteilungen",
+      "worker": "Mitarbeiter",
+      "searchWorker": "Mitarbeiter suchen...",
+      "clearWorker": "Mitarbeiterfilter entfernen",
+      "minChars": "Mindestens 2 Zeichen eingeben",
+      "noWorkers": "Keine Ergebnisse"
     },
     "status": {
       "PRESENCIAL": "Vor Ort",
@@ -2195,7 +2200,9 @@
       "AUSENTE": "Abwesend",
       "masked": "Abwesend",
       "DRAFT": "Entwurf",
-      "PUBLISHED": "Veröffentlicht"
+      "PUBLISHED": "Veröffentlicht",
+      "FESTIVO": "Feiertag",
+      "FESTIVO_LOCAL": "Lokaler Feiertag"
     },
     "alert": {
       "title": "Warnungen",
@@ -2329,6 +2336,29 @@
       "pct": "%",
       "hint": "Priorität: vollständige Telearbeit > Tage > Prozentsatz > Abteilungsgrenze. Leer lassen, um die Abteilungsgrenze zu verwenden.",
       "saved": "Telearbeitskontingent gespeichert"
+    },
+    "periodSelector": {
+      "prevMonth": "Vorheriger Monat",
+      "nextMonth": "Nächster Monat",
+      "thisMonth": "Dieser Monat",
+      "weekMode": "Woche",
+      "monthMode": "Monat"
+    },
+    "month": {
+      "weekNoSchedule": "Kein Zeitplan für diese Woche",
+      "selectDepartment": "Wählen Sie eine Abteilung, um die Monatsansicht zu sehen"
+    },
+    "print": {
+      "button": "Drucken",
+      "generatedAt": "Erstellt",
+      "weekLabel": "Woche {week} von {year}"
+    },
+    "worker": {
+      "loadError": "Zeitplan des Mitarbeiters konnte nicht geladen werden",
+      "noEntries": "Keine Einträge in diesem Zeitraum",
+      "monthlyNetHours": "Monatliche Nettostunden",
+      "vacationDays": "Urlaubstage",
+      "healthLeaveDays": "Krankheitstage"
     }
   }
 }

@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Service",
-      "allDepartments": "Tous les services"
+      "allDepartments": "Tous les services",
+      "worker": "Employé",
+      "searchWorker": "Rechercher un employé...",
+      "clearWorker": "Effacer le filtre employé",
+      "minChars": "Saisissez au moins 2 caractères",
+      "noWorkers": "Aucun résultat"
     },
     "status": {
       "PRESENCIAL": "Sur site",
@@ -2195,7 +2200,9 @@
       "AUSENTE": "Absent",
       "masked": "Absent",
       "DRAFT": "Brouillon",
-      "PUBLISHED": "Publié"
+      "PUBLISHED": "Publié",
+      "FESTIVO": "Jour férié",
+      "FESTIVO_LOCAL": "Jour férié local"
     },
     "alert": {
       "title": "Alertes",
@@ -2329,6 +2336,29 @@
       "pct": "%",
       "hint": "Priorité : télétravail intégral > jours > pourcentage > plafond du département. Laissez vide pour utiliser le plafond du département.",
       "saved": "Quota de télétravail enregistré"
+    },
+    "periodSelector": {
+      "prevMonth": "Mois précédent",
+      "nextMonth": "Mois suivant",
+      "thisMonth": "Ce mois-ci",
+      "weekMode": "Semaine",
+      "monthMode": "Mois"
+    },
+    "month": {
+      "weekNoSchedule": "Aucun planning pour cette semaine",
+      "selectDepartment": "Sélectionnez un service pour voir sa vue mensuelle"
+    },
+    "print": {
+      "button": "Imprimer",
+      "generatedAt": "Généré",
+      "weekLabel": "semaine {week} de {year}"
+    },
+    "worker": {
+      "loadError": "Impossible de charger le planning de l'employé",
+      "noEntries": "Aucune entrée pour cette période",
+      "monthlyNetHours": "Heures nettes du mois",
+      "vacationDays": "Jours de congés",
+      "healthLeaveDays": "Jours de congé maladie"
     }
   }
 }

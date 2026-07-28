@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Departamento",
-      "allDepartments": "Todos os departamentos"
+      "allDepartments": "Todos os departamentos",
+      "worker": "Trabalhador",
+      "searchWorker": "Pesquisar trabalhador...",
+      "clearWorker": "Limpar filtro de trabalhador",
+      "minChars": "Digite pelo menos 2 caracteres",
+      "noWorkers": "Sem resultados"
     },
     "status": {
       "PRESENCIAL": "Presencial",
@@ -2195,7 +2200,9 @@
       "AUSENTE": "Ausente",
       "masked": "Ausente",
       "DRAFT": "Rascunho",
-      "PUBLISHED": "Publicado"
+      "PUBLISHED": "Publicado",
+      "FESTIVO": "Feriado",
+      "FESTIVO_LOCAL": "Feriado Local"
     },
     "alert": {
       "title": "Alertas",
@@ -2329,6 +2336,29 @@
       "pct": "%",
       "hint": "Prioridade: teletrabalho total > dias > percentagem > limite do departamento. Deixe vazio para usar o limite do departamento.",
       "saved": "Quota de teletrabalho guardada"
+    },
+    "periodSelector": {
+      "prevMonth": "Mês anterior",
+      "nextMonth": "Mês seguinte",
+      "thisMonth": "Este mês",
+      "weekMode": "Semana",
+      "monthMode": "Mês"
+    },
+    "month": {
+      "weekNoSchedule": "Sem horário para esta semana",
+      "selectDepartment": "Selecione um departamento para ver a sua vista mensal"
+    },
+    "print": {
+      "button": "Imprimir",
+      "generatedAt": "Gerado",
+      "weekLabel": "semana {week} de {year}"
+    },
+    "worker": {
+      "loadError": "Não foi possível carregar o horário do trabalhador",
+      "noEntries": "Sem entradas neste período",
+      "monthlyNetHours": "Horas líquidas do mês",
+      "vacationDays": "Dias de férias",
+      "healthLeaveDays": "Dias de baixa médica"
     }
   }
 }

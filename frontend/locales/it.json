@@ -2181,7 +2181,12 @@
     },
     "filter": {
       "department": "Reparto",
-      "allDepartments": "Tutti i reparti"
+      "allDepartments": "Tutti i reparti",
+      "worker": "Lavoratore",
+      "searchWorker": "Cerca lavoratore...",
+      "clearWorker": "Rimuovi filtro lavoratore",
+      "minChars": "Digita almeno 2 caratteri",
+      "noWorkers": "Nessun risultato"
     },
     "status": {
       "PRESENCIAL": "In sede",
@@ -2195,7 +2200,9 @@
       "AUSENTE": "Assente",
       "masked": "Assente",
       "DRAFT": "Bozza",
-      "PUBLISHED": "Pubblicato"
+      "PUBLISHED": "Pubblicato",
+      "FESTIVO": "Festivo nazionale",
+      "FESTIVO_LOCAL": "Festivo locale"
     },
     "alert": {
       "title": "Avvisi",
@@ -2329,6 +2336,29 @@
       "pct": "%",
       "hint": "Priorità: telelavoro totale > giorni > percentuale > limite del dipartimento. Lascia vuoto per usare il limite del dipartimento.",
       "saved": "Quota di telelavoro salvata"
+    },
+    "periodSelector": {
+      "prevMonth": "Mese precedente",
+      "nextMonth": "Mese successivo",
+      "thisMonth": "Questo mese",
+      "weekMode": "Settimana",
+      "monthMode": "Mese"
+    },
+    "month": {
+      "weekNoSchedule": "Nessun orario per questa settimana",
+      "selectDepartment": "Seleziona un reparto per vedere la vista mensile"
+    },
+    "print": {
+      "button": "Stampa",
+      "generatedAt": "Generato",
+      "weekLabel": "settimana {week} del {year}"
+    },
+    "worker": {
+      "loadError": "Impossibile caricare l'orario del lavoratore",
+      "noEntries": "Nessuna voce in questo periodo",
+      "monthlyNetHours": "Ore nette del mese",
+      "vacationDays": "Giorni di ferie",
+      "healthLeaveDays": "Giorni di malattia"
     }
   }
 }

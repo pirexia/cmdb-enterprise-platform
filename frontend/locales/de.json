@@ -2338,10 +2338,13 @@
     "periodSelector": {
       "prevMonth": "Vorheriger Monat",
       "nextMonth": "Nächster Monat",
-      "thisMonth": "Dieser Monat"
+      "thisMonth": "Dieser Monat",
+      "weekMode": "Woche",
+      "monthMode": "Monat"
     },
     "month": {
-      "weekNoSchedule": "Kein Zeitplan für diese Woche"
+      "weekNoSchedule": "Kein Zeitplan für diese Woche",
+      "selectDepartment": "Wählen Sie eine Abteilung, um die Monatsansicht zu sehen"
     },
     "print": {
       "button": "Drucken",

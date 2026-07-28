@@ -2338,10 +2338,13 @@
     "periodSelector": {
       "prevMonth": "Mês anterior",
       "nextMonth": "Mês seguinte",
-      "thisMonth": "Este mês"
+      "thisMonth": "Este mês",
+      "weekMode": "Semana",
+      "monthMode": "Mês"
     },
     "month": {
-      "weekNoSchedule": "Sem horário para esta semana"
+      "weekNoSchedule": "Sem horário para esta semana",
+      "selectDepartment": "Selecione um departamento para ver a sua vista mensal"
     },
     "print": {
       "button": "Imprimir",

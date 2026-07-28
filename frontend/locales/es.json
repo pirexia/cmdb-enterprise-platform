@@ -2457,10 +2457,13 @@
     "periodSelector": {
       "prevMonth": "Mes anterior",
       "nextMonth": "Mes siguiente",
-      "thisMonth": "Este mes"
+      "thisMonth": "Este mes",
+      "weekMode": "Semana",
+      "monthMode": "Mes"
     },
     "month": {
-      "weekNoSchedule": "Sin horario para esta semana"
+      "weekNoSchedule": "Sin horario para esta semana",
+      "selectDepartment": "Selecciona un departamento para ver su vista mensual"
     },
     "print": {
       "button": "Imprimir",

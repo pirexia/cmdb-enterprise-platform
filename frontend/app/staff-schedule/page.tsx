@@ -1,19 +1,26 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { RefreshCw, AlertTriangle, Settings, Copy, Download, CheckCircle2, Lock, Unlock, FileDown, Users, Trash2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useDepartments, useSchedule, useScheduleExport, useDepartmentConfig, mondayOf } from "./hooks/useStaffSchedule";
 import type { EntryUpdateInput } from "./types";
-import WeekSelector from "@/components/staff-schedule/WeekSelector";
+import PeriodSelector from "@/components/staff-schedule/PeriodSelector";
 import DepartmentFilter from "@/components/staff-schedule/DepartmentFilter";
+import WorkerFilter from "@/components/staff-schedule/WorkerFilter";
 import StaffScheduleCalendar from "@/components/staff-schedule/StaffScheduleCalendar";
 import AlertPanel from "@/components/staff-schedule/AlertPanel";
 import ScheduleConfigPanel from "@/components/staff-schedule/ScheduleConfigPanel";
 import WeekTargetPicker from "@/components/staff-schedule/WeekTargetPicker";
 import AllDepartmentsView from "@/components/staff-schedule/AllDepartmentsView";
+import DepartmentMonthView from "@/components/staff-schedule/DepartmentMonthView";
+import WorkerScheduleView from "@/components/staff-schedule/WorkerScheduleView";
+import PrintButton from "@/components/staff-schedule/PrintButton";
+import PrintHeader from "@/components/staff-schedule/PrintHeader";
 import { displayLabel } from "@/lib/displayLabel";
+
+type PeriodMode = "week" | "month";
 
 export default function StaffSchedulePage() {
   const { t } = useLanguage();
@@ -21,6 +28,10 @@ export default function StaffSchedulePage() {
 
   const [departmentId, setDepartmentId] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("week");
+  const [monthYear, setMonthYear] = useState(() => new Date().getUTCFullYear());
+  const [monthNum, setMonthNum] = useState(() => new Date().getUTCMonth() + 1);
+  const [worker, setWorker] = useState<{ userId: string; label: string } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [showClonePicker, setShowClonePicker] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,6 +57,17 @@ export default function StaffSchedulePage() {
   const { exportSchedule } = useScheduleExport();
 
   const usernameByUserId = Object.fromEntries((view?.rows ?? []).map((r) => [r.userId, displayLabel(r)]));
+
+  // v3.5.12 (R5/R6, decision D5) — exactly one view is active at a time.
+  // Selecting a worker always wins over the department view, regardless of
+  // periodMode; department state (departmentId/periodMode/weekStart) is kept
+  // around rather than cleared, so clearing the worker filter returns the
+  // user to whatever department context they had before.
+  const viewMode: "worker" | "department-month" | "department-week" = worker
+    ? "worker"
+    : periodMode === "month"
+      ? "department-month"
+      : "department-week";
 
   const runAction = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -88,9 +110,28 @@ export default function StaffSchedulePage() {
   const canEdit = !!view?.canEdit;
   const status = view?.schedule.status;
 
+  // v3.5.12 (R3) — the alert panel is only useful while the schedule can
+  // still change; once PUBLISHED, any remaining WARNINGs are informational
+  // about a closed schedule, so the panel is hidden and the calendar takes
+  // the full width (the xl:grid-cols split only applies while it's shown).
+  const showAlertPanel = !!view && status === "DRAFT";
+
+  const monthValue = `${monthYear}-${String(monthNum).padStart(2, "0")}`;
+  const selectedDepartment = useMemo(
+    () => departments.find((d) => d.id === departmentId) ?? null,
+    [departments, departmentId],
+  );
+
+  const printRangeLabel =
+    periodMode === "month"
+      ? monthValue
+      : view
+        ? `${view.schedule.weekStart} – ${view.schedule.weekEnd}`
+        : weekStart;
+
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-5 no-print">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900">{t("staffSchedule.title")}</h1>
@@ -98,7 +139,7 @@ export default function StaffSchedulePage() {
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {view && (
+            {viewMode === "department-week" && view && (
               <>
                 {canEdit && status === "DRAFT" && (
                   <>
@@ -179,6 +220,23 @@ export default function StaffSchedulePage() {
                 </div>
               </>
             )}
+            {/* v3.5.12 (R7) — printing is available in all three views; the
+                target/scope/range fed to the audit-print endpoint changes
+                with viewMode. */}
+            {viewMode === "department-week" && view && (
+              <PrintButton scope="DEPARTMENT_WEEK" targetId={view.schedule.id} from={weekStart} to={weekStart} />
+            )}
+            {viewMode === "department-month" && departmentId && (
+              <PrintButton scope="DEPARTMENT_MONTH" targetId={departmentId} from={`${monthValue}-01`} to={monthValue} />
+            )}
+            {viewMode === "worker" && worker && (
+              <PrintButton
+                scope="WORKER"
+                targetId={worker.userId}
+                from={periodMode === "month" ? `${monthValue}-01` : weekStart}
+                to={periodMode === "month" ? monthValue : weekStart}
+              />
+            )}
             {isAdmin && (
               <button
                 onClick={() => setShowConfig(true)}
@@ -192,26 +250,68 @@ export default function StaffSchedulePage() {
       </header>
 
       <div className="px-8 py-8 space-y-8 w-full">
-        <div className="flex items-center justify-between flex-wrap gap-4 bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3">
-          <DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} />
-          <WeekSelector weekStart={weekStart} onChange={setWeekStart} />
+        <div className="flex items-center justify-between flex-wrap gap-4 bg-white shadow-sm ring-1 ring-slate-200 px-4 py-3 no-print">
+          <div className="flex items-center gap-4 flex-wrap">
+            <DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} />
+            <WorkerFilter
+              selectedLabel={worker?.label ?? null}
+              onSelect={(userId, label) => setWorker({ userId, label })}
+              onClear={() => setWorker(null)}
+            />
+            <div className="flex items-center gap-1 rounded-none border border-slate-300 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPeriodMode("week")}
+                className={`px-3 py-2 text-xs font-medium ${periodMode === "week" ? "bg-[var(--accent)] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              >
+                {t("staffSchedule.periodSelector.weekMode")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPeriodMode("month")}
+                className={`px-3 py-2 text-xs font-medium ${periodMode === "month" ? "bg-[var(--accent)] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+              >
+                {t("staffSchedule.periodSelector.monthMode")}
+              </button>
+            </div>
+          </div>
+
+          {periodMode === "week" ? (
+            <PeriodSelector mode="week" weekStart={weekStart} onWeekChange={setWeekStart} />
+          ) : (
+            <PeriodSelector
+              mode="month"
+              year={monthYear}
+              month={monthNum}
+              onMonthChange={(y, m) => {
+                setMonthYear(y);
+                setMonthNum(m);
+              }}
+            />
+          )}
         </div>
 
-        {status === "DRAFT" && !canEdit && (
-          <p className="text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2">
+        <PrintHeader
+          title={t("staffSchedule.title")}
+          subtitle={worker ? worker.label : selectedDepartment ? selectedDepartment.name : t("staffSchedule.filter.allDepartments")}
+          rangeLabel={printRangeLabel}
+        />
+
+        {viewMode === "department-week" && status === "DRAFT" && !canEdit && (
+          <p className="text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2 no-print">
             {t("staffSchedule.canEdit.readonly")}
           </p>
         )}
 
         {actionError && (
-          <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 no-print">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {actionError.toLowerCase().includes("cannot publish") ? t("staffSchedule.publish.blockedByErrors") : actionError}
           </div>
         )}
 
         {syncResult && (
-          <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700">
+          <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700 no-print">
             <Users className="h-4 w-4 shrink-0" />
             {t("staffSchedule.syncMembers.added", { n: syncResult.added })}
           </div>
@@ -220,8 +320,8 @@ export default function StaffSchedulePage() {
         {/* v3.5.10 refinamiento — un horario existe (StaffSchedule creado o
             clonado) pero sin entradas: callejón sin salida antes de esto,
             porque el resto de la UI asume que hay filas. */}
-        {view && view.rows.length === 0 && canEdit && status === "DRAFT" && (
-          <div className="flex items-center justify-between gap-3 bg-amber-50 border-l-4 border-amber-400 px-4 py-3 text-sm text-amber-800">
+        {viewMode === "department-week" && view && view.rows.length === 0 && canEdit && status === "DRAFT" && (
+          <div className="flex items-center justify-between gap-3 bg-amber-50 border-l-4 border-amber-400 px-4 py-3 text-sm text-amber-800 no-print">
             <span>{t("staffSchedule.empty.hasNoMembers")}</span>
             <div className="flex items-center gap-2 shrink-0">
               <button
@@ -242,26 +342,51 @@ export default function StaffSchedulePage() {
           </div>
         )}
 
-        {!departmentId && (
+        {/* Worker view (R5) — replaces every department-scoped view while a
+            worker is selected (D5: exactly one view active at a time). */}
+        {viewMode === "worker" && worker && (
+          <WorkerScheduleView
+            userId={worker.userId}
+            workerLabel={worker.label}
+            mode={periodMode}
+            weekStart={weekStart}
+            year={monthYear}
+            month={monthNum}
+          />
+        )}
+
+        {/* Department month view (R6). */}
+        {viewMode === "department-month" && (
+          departmentId
+            ? <DepartmentMonthView departmentId={departmentId} year={monthYear} month={monthNum} />
+            : (
+              <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 text-center text-sm text-slate-500">
+                {t("staffSchedule.month.selectDepartment")}
+              </div>
+            )
+        )}
+
+        {/* Department week view (existing behavior, unchanged). */}
+        {viewMode === "department-week" && !departmentId && (
           <AllDepartmentsView weekStart={weekStart} />
         )}
 
-        {departmentId && (loading || deptLoading) && (
-          <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 flex items-center gap-3 text-slate-500 text-sm">
+        {viewMode === "department-week" && departmentId && (loading || deptLoading) && (
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 flex items-center gap-3 text-slate-500 text-sm no-print">
             <RefreshCw className="h-4 w-4 animate-spin" />
             {t("common.loading")}
           </div>
         )}
 
-        {departmentId && error && (
+        {viewMode === "department-week" && departmentId && error && (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             <AlertTriangle className="h-4 w-4 shrink-0" />
             {t("common.unknown_error")}
           </div>
         )}
 
-        {departmentId && !loading && notFound && (
-          <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 text-center space-y-3">
+        {viewMode === "department-week" && departmentId && !loading && notFound && (
+          <div className="bg-white shadow-sm ring-1 ring-slate-200 p-8 text-center space-y-3 no-print">
             <p className="text-sm text-slate-500">{t("staffSchedule.empty.noSchedule")}</p>
             <div className="flex items-center justify-center gap-2">
               <button
@@ -282,21 +407,23 @@ export default function StaffSchedulePage() {
           </div>
         )}
 
-        {view && (
-          <div className="grid grid-cols-1 xl:grid-cols-[1fr_20rem] gap-6 items-start">
+        {viewMode === "department-week" && view && (
+          <div className={showAlertPanel ? "grid grid-cols-1 xl:grid-cols-[1fr_20rem] gap-6 items-start" : "w-full"}>
             <StaffScheduleCalendar
               view={view}
               departmentConfig={departmentConfig}
               onSaveEntry={handleSaveEntry}
               onSaveEntries={saveEntries}
             />
-            <AlertPanel
-              alerts={view.alerts}
-              canEdit={canEdit && status === "DRAFT"}
-              onRevalidate={() => runAction(validate)}
-              revalidating={busy}
-              usernameByUserId={usernameByUserId}
-            />
+            {showAlertPanel && (
+              <AlertPanel
+                alerts={view.alerts}
+                canEdit={canEdit && status === "DRAFT"}
+                onRevalidate={() => runAction(validate)}
+                revalidating={busy}
+                usernameByUserId={usernameByUserId}
+              />
+            )}
           </div>
         )}
       </div>

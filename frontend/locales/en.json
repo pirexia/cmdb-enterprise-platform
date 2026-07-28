@@ -2457,10 +2457,13 @@
     "periodSelector": {
       "prevMonth": "Previous month",
       "nextMonth": "Next month",
-      "thisMonth": "This month"
+      "thisMonth": "This month",
+      "weekMode": "Week",
+      "monthMode": "Month"
     },
     "month": {
-      "weekNoSchedule": "No schedule for this week"
+      "weekNoSchedule": "No schedule for this week",
+      "selectDepartment": "Select a department to see its monthly view"
     },
     "print": {
       "button": "Print",

@@ -13,10 +13,22 @@ import request from 'supertest';
 // PrismaClient + unconditional `app.listen()`). This test exercises a route
 // handler built from the EXACT identity-resolution logic now present in
 // `PATCH /api/vulnerabilities` (index.ts lines ~2117-2158): same
-// `targetKey = key ?? cve`, same `(v.key ?? v.cve) === targetKey` lookup/map,
-// same `entityId`/`vulnUuid` identity string. Any future edit reverting the
-// lookup back to a bare `v.cve === cve` comparison would have to also
-// diverge from this handler to escape detection.
+// `targetKey = key ?? cve`, same `(v.key ?? v.cve) === targetKey` lookup/map.
+// Any future edit reverting the lookup back to a bare `v.cve === cve`
+// comparison would have to also diverge from this handler to escape
+// detection.
+//
+// Audit `entity_id` (v3.6.0 live-verification fix): the `audit_logs.entity_id`
+// column is `varchar(36)` — sized for a bare CI UUID — so it must never hold
+// a composite `${ciId}:${targetKey}` string; a real vulnKey (an OID@port
+// identity) overflows 36 chars and Postgres rejects the INSERT with error
+// 22001 ("value too long"). Caught live against production with the real
+// Greenbone fixture (a `${ciId}:${targetKey}` audit_logs.entity_id shipped
+// in the same v3.6.0 change and was never exercised against real Postgres
+// until then — this suite mocks `$executeRaw`, so the length constraint was
+// invisible here). Fixed: `entity_id` is the bare `ciId`; `targetKey` moves
+// to `details.vulnKey` (jsonb, unbounded). This test's `_test_entityId` /
+// `_test_details` fields mirror that split.
 
 interface Vulnerability {
   cve: string;
@@ -53,8 +65,14 @@ function buildApp(storedVulns: Vulnerability[]) {
       (v.key ?? v.cve) === targetKey ? { ...v, status } : v
     );
 
-    const entityId = `${ciId}:${targetKey}`;
-    res.json({ ciId, cve, status, message: `Status updated to ${status}`, _test_updated: updated, _test_entityId: entityId });
+    // entity_id is varchar(36) — sized for a bare UUID — so it holds only
+    // ciId; the vulnerability identity goes in details (jsonb, unbounded).
+    res.json({
+      ciId, cve, status, message: `Status updated to ${status}`,
+      _test_updated: updated,
+      _test_entityId: ciId,
+      _test_details: { vulnKey: targetKey },
+    });
   });
 
   return app;
@@ -77,7 +95,9 @@ describe('PATCH /api/vulnerabilities — identity resolution (key ?? cve)', () =
 
     expect(res.status).toBe(200);
     expect(res.body._test_updated[0]).toMatchObject({ status: 'ASIGNADO' });
-    expect(res.body._test_entityId).toBe(`${CI_ID}:1.3.6.1.4.1.25623.1.0.117274@3389/tcp`);
+    expect(res.body._test_entityId).toBe(CI_ID);
+    expect(res.body._test_entityId.length).toBeLessThanOrEqual(36);
+    expect(res.body._test_details).toEqual({ vulnKey: '1.3.6.1.4.1.25623.1.0.117274@3389/tcp' });
   });
 
   it('falls back to matching by `cve` alone for a legacy entry that predates the `key` migration', async () => {
@@ -95,7 +115,8 @@ describe('PATCH /api/vulnerabilities — identity resolution (key ?? cve)', () =
 
     expect(res.status).toBe(200);
     expect(res.body._test_updated[0]).toMatchObject({ status: 'EN_CURSO' });
-    expect(res.body._test_entityId).toBe(`${CI_ID}:CVE-2024-0001`);
+    expect(res.body._test_entityId).toBe(CI_ID);
+    expect(res.body._test_details).toEqual({ vulnKey: 'CVE-2024-0001' });
   });
 
   it('404s when neither `key` nor `cve` resolves to a stored entry', async () => {

@@ -2163,8 +2163,13 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
 
     // Issue #172: wrap the vulnerabilities-column update + audit insert in one
     // transaction so the audit is never missing when the status change persists.
-    const entityId = `${ciId}:${targetKey}`;
-    const action   = `UPDATE_VULN_STATUS:${status}`;
+    //
+    // entity_id is `varchar(36)` — sized for a bare UUID — so it must hold
+    // just the CI id, never a composite `${ciId}:${targetKey}` string: a
+    // real vulnKey (e.g. an OID@port identity) overflows 36 chars and the
+    // raw INSERT fails with Postgres error 22001. The vulnerability's own
+    // identity goes in `details` instead, which already exists for this.
+    const action = `UPDATE_VULN_STATUS:${status}`;
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "configuration_items"
@@ -2174,8 +2179,8 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
 
       // Audit log (raw — Prisma client types regenerate after migrate)
       await tx.$executeRaw`
-        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${ciId}, ${req.user!.email}, ${JSON.stringify({ vulnKey: targetKey })}::jsonb, now())
       `;
     });
 

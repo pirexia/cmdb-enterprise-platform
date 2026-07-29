@@ -333,7 +333,8 @@ export async function publish(prisma: Prisma.TransactionClient, scheduleId: stri
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'PUBLISHED' } });
 }
 
-// unpublish — PUBLISHED -> DRAFT. Router must have already enforced ADMIN (D10).
+// unpublish — PUBLISHED -> DRAFT. Router must have already enforced deptEdit
+// access (requireDeptEditAccess — v3.5.13, D2), same gate as publish.
 export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: string) {
   const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { id: true } });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');

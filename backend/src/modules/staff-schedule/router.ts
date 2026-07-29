@@ -463,8 +463,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // POST /api/staff-schedule/:id/unpublish  (ADMIN only, D10)
-  router.post('/:id/unpublish', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+  // POST /api/staff-schedule/:id/unpublish  (deptEdit — D2 de v3.5.13)
+  //
+  // Era ADMIN-only, lo que dejaba al responsable de un departamento sin salida:
+  // podía publicar pero no revertir, y PUT /:id solo acepta DRAFT. Pasa al mismo
+  // control de fila que ya usa /publish, así que un MANAGER opera el ciclo
+  // completo sobre SUS departamentos y sobre ningún otro. La invariante D10 de
+  // v3.5.10 (lo publicado es inmutable mientras lo esté) no se toca: para editar
+  // se sigue exigiendo pasar por DRAFT.
+  router.post('/:id/unpublish', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const schedule = await prisma.$transaction(async (tx) => {
         const s = await unpublish(tx, req.params.id as string);

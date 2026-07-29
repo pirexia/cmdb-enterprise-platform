@@ -2427,6 +2427,24 @@
       "bulkInclude": "Includi selezionati",
       "bulkExclude": "Escludi selezionati",
       "backToList": "Torna all'elenco"
+    },
+    "list": {
+      "invalidJson": "Il file non contiene JSON valido",
+      "uploadSuccess": "Report caricato: {count} risultati",
+      "discardConfirm": "Scartare questo lotto? Questa azione non può essere annullata.",
+      "discardSuccess": "Lotto scartato",
+      "filterAll": "Tutti",
+      "noBatches": "Nessuna scansione importata finora",
+      "colFilename": "File",
+      "colScanDate": "Data scansione",
+      "colStatus": "Stato",
+      "colEntries": "Risultati",
+      "colClassification": "Classificazione",
+      "colUploadedBy": "Caricato da",
+      "colUploadedAt": "Caricato il",
+      "pageInfo": "Pagina {page} di {totalPages} ({total} lotti)",
+      "prevPage": "Precedente",
+      "nextPage": "Successivo"
     }
   }
 }

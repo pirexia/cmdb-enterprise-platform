@@ -2546,6 +2546,24 @@
       "bulkInclude": "Include selected",
       "bulkExclude": "Exclude selected",
       "backToList": "Back to list"
+    },
+    "list": {
+      "invalidJson": "The file does not contain valid JSON",
+      "uploadSuccess": "Report uploaded: {count} findings",
+      "discardConfirm": "Discard this batch? This action cannot be undone.",
+      "discardSuccess": "Batch discarded",
+      "filterAll": "All",
+      "noBatches": "No scans imported yet",
+      "colFilename": "File",
+      "colScanDate": "Scan date",
+      "colStatus": "Status",
+      "colEntries": "Findings",
+      "colClassification": "Classification",
+      "colUploadedBy": "Uploaded by",
+      "colUploadedAt": "Uploaded at",
+      "pageInfo": "Page {page} of {totalPages} ({total} batches)",
+      "prevPage": "Previous",
+      "nextPage": "Next"
     }
   }
 }

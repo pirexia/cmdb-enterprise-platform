@@ -2427,6 +2427,24 @@
       "bulkInclude": "Auswahl einschließen",
       "bulkExclude": "Auswahl ausschließen",
       "backToList": "Zurück zur Liste"
+    },
+    "list": {
+      "invalidJson": "Die Datei enthält kein gültiges JSON",
+      "uploadSuccess": "Bericht hochgeladen: {count} Funde",
+      "discardConfirm": "Diesen Stapel verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "discardSuccess": "Stapel verworfen",
+      "filterAll": "Alle",
+      "noBatches": "Noch keine Scans importiert",
+      "colFilename": "Datei",
+      "colScanDate": "Scandatum",
+      "colStatus": "Status",
+      "colEntries": "Funde",
+      "colClassification": "Klassifizierung",
+      "colUploadedBy": "Hochgeladen von",
+      "colUploadedAt": "Hochgeladen am",
+      "pageInfo": "Seite {page} von {totalPages} ({total} Stapel)",
+      "prevPage": "Zurück",
+      "nextPage": "Weiter"
     }
   }
 }

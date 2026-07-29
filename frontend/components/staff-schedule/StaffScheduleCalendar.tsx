@@ -36,7 +36,11 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
   const editingRow = editing ? view.rows.find((r) => r.userId === editing.userId) : undefined;
   // R2/B1: `summary` may be absent for viewers not authorized to see it
   // (backend omits it entirely, not just zeroes it) — fall back to 8h/day.
-  const dailyNetHours = editingRow?.summary ? editingRow.summary.weeklyTargetHours / 5 : 8;
+  // v3.5.13 — el objetivo semanal ya no son "5 días iguales": es la suma de
+  // los días efectivamente planificados, así que dividir entre 5 daba
+  // jornadas absurdas en semanas con vacaciones. El servidor manda ya la
+  // jornada diaria calculada.
+  const dailyNetHours = editingRow?.summary ? editingRow.summary.dailyTargetHours : 8;
 
   // R1: the summary column only exists (and only gets a colgroup slice) when
   // at least one row actually carries `summary`. Rows are per-viewer, not

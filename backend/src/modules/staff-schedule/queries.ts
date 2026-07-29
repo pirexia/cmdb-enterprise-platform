@@ -240,20 +240,22 @@ export async function searchScheduleUsers(
   });
 }
 
-// Resolve each user's effective weekly target: their own override if set,
-// otherwise the department's default (used for both V-WEEKLY_HOURS and the
-// client-side exit-time autofill).
-export async function loadWeeklyTargetHours(
+// Override EXPLÍCITO de horas semanales por trabajador (v3.5.13). Devuelve
+// null para quien no lo tenga fijado. Sustituye a la loadWeeklyTargetHours
+// anterior (override-o-defecto): esa resolución ya no vale, porque no permite
+// distinguir "35h pactadas" de "el valor por defecto del departamento resulta
+// ser 35" — distinción necesaria desde que computeEffectiveWeeklyTarget suma
+// los días planificados en vez de restar sobre un valor plano.
+export async function loadWeeklyTargetOverrides(
   prisma: Db,
   userIds: string[],
-  departmentDefault: number,
-): Promise<Record<string, number>> {
+): Promise<Record<string, number | null>> {
   if (userIds.length === 0) return {};
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: { id: true, weeklyTargetHours: true },
   });
-  const map: Record<string, number> = {};
-  for (const u of users) map[u.id] = u.weeklyTargetHours ?? departmentDefault;
+  const map: Record<string, number | null> = {};
+  for (const u of users) map[u.id] = u.weeklyTargetHours ?? null;
   return map;
 }

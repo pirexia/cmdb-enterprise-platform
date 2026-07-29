@@ -171,7 +171,7 @@ describe('export tolera summary ausente', () => {
             '2026-08-03': { status: 'PRESENCIAL', onGuard: false, startTime: null, endTime: null, notes: null },
           },
           ...(withSummary
-            ? { summary: { weeklyNetHours: 40, teleworkDaysWeek: 0, teleworkDaysMonth: 0, travelDays: 0, guardDays: 0, weeklyTargetHours: 40 } }
+            ? { summary: { weeklyNetHours: 40, teleworkDaysWeek: 0, teleworkDaysMonth: 0, travelDays: 0, guardDays: 0, weeklyTargetHours: 40, dailyTargetHours: 8 } }
             : {}),
         },
       ],

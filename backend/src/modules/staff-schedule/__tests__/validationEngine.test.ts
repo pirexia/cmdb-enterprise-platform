@@ -1,6 +1,7 @@
 import {
   validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours,
   resolveTeleworkCap, workingDaysInMonth, computeEffectiveWeeklyTarget,
+  computeDailyTargetHours,
 } from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
@@ -44,12 +45,15 @@ describe('validationEngine.validate', () => {
     expect(alertsOfType(alerts, 'DAILY_HOURS')).toHaveLength(0);
   });
 
-  it('(b) intensive Friday but week total 38h -> WEEKLY_HOURS ERROR', () => {
+  it('(b) intensive Friday but week total 37h, below the 38h target of 4x8+6 -> WEEKLY_HOURS ERROR', () => {
+    // v3.5.13 — el objetivo ya no es un 40h plano: es la suma de los días
+    // realmente planificados (4x8 + viernes 6 = 38h). Este caso deja el total
+    // en 37h, un punto por debajo, para seguir disparando la alerta.
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' }, // Mon 9h
       { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '18:00' }, // Tue 9h
       { userId: 'u1', date: '2026-07-08', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' }, // Wed 8h
-      { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '07:00', endTime: '14:00' }, // Thu net 6h
+      { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '07:00', endTime: '13:00' }, // Thu net 5h
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },  // Fri 6h
     ];
     const alerts = validate(schedule, entries, cfg, null, {});
@@ -211,11 +215,21 @@ describe('INTENSIVO_TELETRABAJO (v3.5.11)', () => {
   });
 
   it('cuenta como viernes intensivo para WEEKLY_HOURS', () => {
+    // v3.5.13 — con el objetivo calculado como suma de días planificados, una
+    // semana que solo tiene el viernes planificado vale su propio objetivo (6h)
+    // y no dispara nada por sí sola; se añaden Lun-Jue por debajo de su jornada
+    // contratada para que la semana sí quede corta y demostrar que
+    // INTENSIVO_TELETRABAJO cuenta como "viernes intensivo" (sin lo cual la
+    // alerta WEEKLY_HOURS ni siquiera se evalúa).
     const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO_TELETRABAJO', startTime: '08:00', endTime: '14:00' },
+      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '14:00' }, // Mon net 5h
+      { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '14:00' }, // Tue net 5h
+      { userId: 'u1', date: '2026-07-08', status: 'PRESENCIAL', startTime: '08:00', endTime: '14:00' }, // Wed net 5h
+      { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '14:00' }, // Thu net 5h
+      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO_TELETRABAJO', startTime: '08:00', endTime: '14:00' }, // Fri 6h
     ];
     const weekly = alertsOfType(validate(schedule, entries, cfg, null, {}), 'WEEKLY_HOURS');
-    expect(weekly).toHaveLength(1); // 6h < 40h de objetivo
+    expect(weekly).toHaveLength(1); // 26h < 38h de objetivo (4x8+6)
   });
 });
 
@@ -332,59 +346,80 @@ describe('FESTIVO/FESTIVO_LOCAL (v3.5.12)', () => {
   });
 });
 
-describe('computeEffectiveWeeklyTarget (v3.5.12)', () => {
-  it('sin días de VACACIONES/FESTIVO/FESTIVO_LOCAL -> el objetivo no cambia', () => {
-    const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
-    ];
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBe(40);
+describe('computeEffectiveWeeklyTarget (v3.5.13 — suma de días planificados)', () => {
+  // Configuración real del departamento Security en producción: 8h L-J, 6h
+  // viernes, objetivo semanal declarado 40h. La suma de días contratados es 38,
+  // y ese descuadre de 2h es exactamente el defecto que esto corrige: una
+  // semana entera de vacaciones mostraba "0.0h / 2.0h" en vez de "0.0h / 0.0h".
+  const week = (statuses: string[]) =>
+    statuses.map((status, i) => ({
+      userId: 'u1',
+      date: `2026-08-${String(24 + i).padStart(2, '0')}`, // lunes 24 → viernes 28 de agosto de 2026
+      status,
+    }));
+
+  it('semana entera de vacaciones da exactamente 0, no el residuo de 2h', () => {
+    const entries = week(['VACACIONES', 'VACACIONES', 'VACACIONES', 'VACACIONES', 'VACACIONES']);
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, null)).toBe(0);
   });
 
-  it('un lunes de VACACIONES resta las horas de un día normal (invierno)', () => {
-    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-06', status: 'VACACIONES' }]; // Monday
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBeCloseTo(40 - cfg.winterDailyNetHours, 5);
+  it('semana normal completa vale la suma de días contratados (38), no el objetivo plano (40)', () => {
+    const entries = week(['PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL']);
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, null)).toBe(38);
   });
 
-  it('un viernes FESTIVO resta las horas del viernes, no las de un día normal', () => {
-    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-10', status: 'FESTIVO' }]; // Friday
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBeCloseTo(40 - cfg.winterFridayNetHours, 5);
+  it('un viernes FESTIVO descuenta las horas del viernes, no las de un día cualquiera', () => {
+    const entries = week(['PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'FESTIVO']);
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, null)).toBe(32);
   });
 
-  it('varios días reductores se acumulan (VACACIONES + FESTIVO_LOCAL)', () => {
-    const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' }, // Mon
-      { userId: 'u1', date: '2026-07-07', status: 'FESTIVO_LOCAL' }, // Tue
-    ];
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40))
-      .toBeCloseTo(40 - 2 * cfg.winterDailyNetHours, 5);
+  it('un lunes de VACACIONES descuenta un día normal de invierno', () => {
+    const entries = week(['VACACIONES', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL']);
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, null)).toBe(30); // 38 - 8
   });
 
-  it('la reducción nunca deja el objetivo por debajo de 0', () => {
-    const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' },
-      { userId: 'u1', date: '2026-07-07', status: 'VACACIONES' },
-      { userId: 'u1', date: '2026-07-08', status: 'VACACIONES' },
-      { userId: 'u1', date: '2026-07-09', status: 'VACACIONES' },
-      { userId: 'u1', date: '2026-07-10', status: 'VACACIONES' },
-    ];
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 5)).toBe(0);
+  it('BAJA_MEDICA sigue contando como déficit contra el objetivo (no lo reduce)', () => {
+    const entries = week(['BAJA_MEDICA', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL']);
+    expect(computeEffectiveWeeklyTarget(entries, cfg, false, null)).toBe(38);
   });
 
-  it('BAJA_MEDICA/AUSENTE/VIAJE NO reducen el objetivo (solo VACACIONES/FESTIVO/FESTIVO_LOCAL)', () => {
-    const entries: EntryLike[] = [
-      { userId: 'u1', date: '2026-07-06', status: 'BAJA_MEDICA' },
-      { userId: 'u1', date: '2026-07-07', status: 'AUSENTE' },
-      { userId: 'u1', date: '2026-07-08', status: 'VIAJE' },
-    ];
-    expect(computeEffectiveWeeklyTarget(entries, cfg, false, 40)).toBe(40);
+  it('un override por trabajador se escala en proporción a los días planificados', () => {
+    // Media jornada pactada: 19h semanales sobre una semana nominal de 38h.
+    const full = week(['PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL']);
+    expect(computeEffectiveWeeklyTarget(full, cfg, false, 19)).toBe(19);
+    const fridayOff = week(['PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'VACACIONES']);
+    // 19 * (32/38) = 16
+    expect(computeEffectiveWeeklyTarget(fridayOff, cfg, false, 19)).toBe(16);
+  });
+
+  it('una semana sin ninguna entrada planificada vale 0 (no hay override)', () => {
+    expect(computeEffectiveWeeklyTarget([], cfg, false, null)).toBe(0);
   });
 
   it('usa las horas de verano cuando isSummer=true', () => {
     const summerCfg: ValidationConfig = { ...cfg, summerDailyNetHours: 7.5 };
-    const entries: EntryLike[] = [{ userId: 'u1', date: '2026-07-06', status: 'FESTIVO' }]; // Monday
-    expect(computeEffectiveWeeklyTarget(entries, summerCfg, true, 40)).toBeCloseTo(40 - 7.5, 5);
+    const entries = week(['PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'PRESENCIAL', 'FESTIVO']);
+    expect(computeEffectiveWeeklyTarget(entries, summerCfg, true, null)).toBeCloseTo(4 * 7.5, 5);
+  });
+});
+
+describe('computeDailyTargetHours (v3.5.13)', () => {
+  const week = (statuses: string[]) =>
+    statuses.map((status, i) => ({ userId: 'u1', date: `2026-08-${String(24 + i).padStart(2, '0')}`, status }));
+
+  it('reparte el objetivo entre los días efectivamente planificados, no siempre entre 5', () => {
+    // 4 días de vacaciones + 1 presencial: el único día que se trabaja son 8h,
+    // no 8/5 = 1.6h (que es lo que hacía el autorrelleno anterior).
+    const entries = week(['VACACIONES', 'VACACIONES', 'VACACIONES', 'VACACIONES', 'PRESENCIAL']);
+    expect(computeDailyTargetHours(entries, cfg, false, null)).toBe(6); // viernes
   });
 
+  it('sin días planificados cae a la jornada diaria de invierno', () => {
+    expect(computeDailyTargetHours([], cfg, false, null)).toBe(8);
+  });
+});
+
+describe('WEEKLY_HOURS con el objetivo de v3.5.13 (regresión)', () => {
   it('un FESTIVO en lunes evita el WEEKLY_HOURS que antes disparaba con el objetivo plano (regresión)', () => {
     // Semana con lunes festivo + viernes intensivo: antes de v3.5.12 el
     // objetivo era siempre 40h planas, así que esta semana (32h trabajadas)

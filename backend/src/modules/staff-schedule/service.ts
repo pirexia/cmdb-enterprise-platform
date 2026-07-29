@@ -3,6 +3,7 @@ import { HEALTH_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 import {
   computeNetHours,
   computeEffectiveWeeklyTarget,
+  computeDailyTargetHours,
   detectSummer,
   validate,
   EntryLike,
@@ -11,7 +12,7 @@ import {
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
-import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
+import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetOverrides,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
          loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
@@ -294,7 +295,7 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   for (const uid of userIds) {
     teleworkCountsByUser[uid] = await countTeleworkThisMonth(prisma, uid, schedule.year, month);
   }
-  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, userIds, cfg.weeklyTargetNetHours);
+  const weeklyTargetsByUser = await loadWeeklyTargetOverrides(prisma, userIds);
   const teleworkQuotasByUser = await loadTeleworkQuotas(prisma, userIds);
 
   const scheduleLike: ScheduleLike = { id: schedule.id, weekStart: isoDate(schedule.weekStart), year: schedule.year };
@@ -482,7 +483,7 @@ export interface ScheduleView {
     // for a viewer who is neither ADMIN nor manager of this row's department.
     // Same precedent as MonthlySummary.healthLeaveDays: the mere presence of
     // the field is informative, so an unauthorized viewer must not see the key.
-    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
+    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number; dailyTargetHours: number };
   }>;
   alerts: Array<{
     id: string;
@@ -545,7 +546,7 @@ export async function buildScheduleView(
   }
 
   const month = schedule.weekStart.getUTCMonth() + 1;
-  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, Array.from(byUser.keys()), cfg.weeklyTargetNetHours);
+  const weeklyOverridesByUser = await loadWeeklyTargetOverrides(prisma, Array.from(byUser.keys()));
   const rows: ScheduleView['rows'] = [];
   for (const [userId, data] of byUser) {
     const entries: Record<string, MaskedEntryFields> = {};
@@ -581,17 +582,13 @@ export async function buildScheduleView(
     const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
     const teleworkDaysWeek = data.entriesReal.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
-    // v3.5.12 — reduced by any VACACIONES/FESTIVO/FESTIVO_LOCAL day in this
-    // user's week (computeEffectiveWeeklyTarget), so the displayed "X / Y h"
-    // target reflects the week's actual working days instead of a flat
-    // department default.
-    const baseWeeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
-    const weeklyTargetHours = computeEffectiveWeeklyTarget(
-      data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status })),
-      cfg,
-      schedule.isSummerWeek,
-      baseWeeklyTargetHours,
-    );
+    // v3.5.13 (D1) — el objetivo es la suma de los días laborables planificados
+    // de esta semana concreta; dailyTargetHours acompaña al objetivo para que
+    // el autorrelleno del frontend no tenga que dividir entre 5 a ciegas.
+    const targetEntries = data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status }));
+    const override = weeklyOverridesByUser[userId] ?? null;
+    const weeklyTargetHours = computeEffectiveWeeklyTarget(targetEntries, cfg, schedule.isSummerWeek, override);
+    const dailyTargetHours = computeDailyTargetHours(targetEntries, cfg, schedule.isSummerWeek, override);
 
     rows.push({
       userId,
@@ -601,7 +598,7 @@ export async function buildScheduleView(
       // Omitted entirely (not sent as `undefined`/zeroed) when the viewer is
       // not authorized — see the `summary?` doc comment on ScheduleView above.
       ...(showSummary
-        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours } }
+        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours, dailyTargetHours } }
         : {}),
     });
   }
@@ -766,17 +763,18 @@ export async function listUserEntries(
   const rows = await loadUserEntriesInRange(prisma, userId, fromDate, toDate, visibility);
   if (rows.length === 0) return [];
 
-  // weeklyTargetHours (R2): a per-user override with a per-department
-  // fallback (DepartmentScheduleConfig.weeklyTargetNetHours) — resolved once
-  // per department touched in the range, not once per entry. v3.5.12: the
-  // value attached is the EFFECTIVE target for that entry's own week (base
-  // target minus VACACIONES/FESTIVO/FESTIVO_LOCAL days in the same week, same
-  // rule as buildScheduleView's row.summary.weeklyTargetHours) — grouped by
+  // weeklyTargetHours (R2): resolved once per department touched in the range,
+  // not once per entry. v3.5.13: the value attached is the SUM of the days
+  // actually planned in that entry's own week (computeEffectiveWeeklyTarget),
+  // scaled by the user's own explicit override when they have one — same rule
+  // as buildScheduleView's row.summary.weeklyTargetHours — grouped by
   // (departmentId, weekMonday) so a range spanning several weeks or a
   // mid-range department change is handled correctly, not just averaged flat.
   const cfgCache = new Map<string, ValidationConfig>();
   const authCache = new Map<string, boolean>();
-  const baseTargetCache = new Map<string, number>();
+  // El override es del USUARIO, no del departamento, así que basta con
+  // resolverlo una vez para toda la función en vez de por cada grupo.
+  const overridePromise = loadWeeklyTargetOverrides(prisma, [userId]);
   const summerCache = new Map<number, SummerPeriodLike | null>();
 
   const weekKey = (departmentId: string, monday: string) => `${departmentId}|${monday}`;
@@ -803,12 +801,7 @@ export async function listUserEntries(
       cfg = await loadValidationConfig(prisma, group.departmentId);
       cfgCache.set(group.departmentId, cfg);
     }
-    let baseTarget = baseTargetCache.get(group.departmentId);
-    if (baseTarget === undefined) {
-      const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
-      baseTarget = targets[userId];
-      baseTargetCache.set(group.departmentId, baseTarget);
-    }
+    const override = (await overridePromise)[userId] ?? null;
     const year = Number(group.monday.slice(0, 4));
     let summer = summerCache.get(year);
     if (summer === undefined) {
@@ -818,7 +811,7 @@ export async function listUserEntries(
     const isSummer = detectSummer(group.monday, summer);
 
     const entriesLike: EntryLike[] = group.rows.map((r) => ({ userId, date: isoDate(r.date), status: r.status }));
-    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, baseTarget));
+    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, override));
   }
 
   const result: UserEntryView[] = [];

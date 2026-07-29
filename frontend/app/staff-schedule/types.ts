@@ -98,6 +98,11 @@ export interface ScheduleRow {
   summary: {
     weeklyNetHours: number;
     weeklyTargetHours: number;
+    // v3.5.13 — jornada contratada de UN día laborable planificado de esta
+    // semana, usada para el autorrelleno de la hora de salida (ya no se puede
+    // asumir weeklyTargetHours/5: una semana con vacaciones da jornadas
+    // distintas por día).
+    dailyTargetHours: number;
     teleworkDaysWeek: number;
     teleworkDaysMonth: number;
     travelDays: number;

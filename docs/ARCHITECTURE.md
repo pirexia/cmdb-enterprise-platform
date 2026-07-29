@@ -650,6 +650,21 @@ Sincronización unidireccional vCenter → CMDB de máquinas virtuales, orquesta
 
 Dos rutas delgadas invocan el mismo servicio: `POST /api/integrations/vcenter/sync` (JWT ADMIN, botón "Sincronizar ahora" en Configuración → Integraciones) y `POST /api/internal/vcenter/sync` (M2M `X-CMDB-Service-Token`, disparada por el workflow n8n). El conector está deshabilitado por defecto (`VCENTER_SYNC_ENABLED=false`) y nunca sobrescribe el campo `status` gobernado por el operador tras la creación (D2). La propiedad de un CI sobre el conector se resuelve mediante la tabla maestra **`Hypervisor`** (nueva, análoga a `CIType`): un CI es de vCenter si y solo si `CI.hypervisorId` es exactamente igual al id de la fila `VMWARE` sembrada — un simple "no nulo" dejaría de ser seguro en cuanto exista un segundo conector (p. ej. OLVM); `CI.powerState` (columna escalar) guarda el estado de encendido, refrescado en cada sync. Ver `docs/INTEGRATIONS.md` para la arquitectura completa, la referencia de variables de entorno, las 5 decisiones de diseño (D1–D5) y la guía de prueba manual contra un vCenter real.
 
+### Importación de vulnerabilidades Greenbone (v3.6.0, en `develop`)
+
+> Rama `feature/v3.6.0-greenbone-real-format`, sin tag ni merge a `main` en el momento de escribir esto.
+
+Módulo propio `backend/src/modules/vuln-import/`, montado en `/api/vuln-import` — sustituye al importador Greenbone original, construido contra un formato inventado que no compartía ningún campo con una exportación real de OpenVAS. Sigue la misma separación **función pura / capa de orquestación** que ya usa el conector vCenter (`connectors/vcenter/` → mapper puro + cliente HTTP, vs. `vcenterService.ts` → orquestación):
+
+- **`parser.ts`** — pura, sin I/O. Valida el formato real de Greenbone (`GreenboneReportSchema`, Zod) y normaliza cada hallazgo a un `ParsedVulnEntry`; rechaza explícitamente el formato antiguo (`results[]`) con un error tipado en vez de "tener éxito" con 0 entradas.
+- **`matcher.ts`** — pura salvo la única consulta `$queryRaw` que ejecuta. Cascada de 5 niveles (IP exacta → nombre exacto → hostname exacto → DNS exacto → nombre parcial) para emparejar el host de un hallazgo con un CI existente; nunca elige automáticamente entre 2+ candidatos del mismo nivel (`AMBIGUOUS`).
+- **`classifier.ts`** — pura, sin I/O ni Prisma. Compara cada hallazgo entrante contra lo ya almacenado en el CI emparejado y decide `NUEVA` / `EXISTENTE_PENDIENTE` / `REAPARECIDA` con su decisión de inclusión por defecto.
+- **`service.ts` / `queries.ts` / `audit.ts` / `router.ts`** — capa de orquestación y persistencia: crean/leen `VulnImportBatch`/`VulnImportEntry`, aplican el batch aceptado a los CIs afectados dentro de una única `prisma.$transaction` junto con el registro `VULN_IMPORT_ACCEPT` en `audit_logs`, y exponen los 7 endpoints REST bajo `/api/vuln-import`.
+
+La identidad de una vulnerabilidad Greenbone es `key = "${oid}@${port}"`, no `cve` — en la exportación real, solo un ~4% de los hallazgos llevan CVE asociado. Ninguna subida escribe directamente sobre un CI: crea un lote en estado `PENDING` que un operador revisa y decide, hallazgo por hallazgo, antes de "Aceptar" (transaccional) o "Descartar" (no toca nada).
+
+Dos rutas frontend nuevas: `frontend/app/vulnerabilities/imports/` (listado de lotes, con el botón de subida) y `frontend/app/vulnerabilities/imports/[id]/` (pantalla de revisión, con las cuatro pestañas Accionables/Informativas/Requieren atención/Reaparecidas). El endpoint legacy `POST /api/integrations/greenbone` se conserva como shim de compatibilidad que delega en la misma lógica de staging. Ver `docs/INTEGRATIONS.md` § 9 para la arquitectura completa, la cascada de emparejamiento, y el bug real de auditoría (`entity_id` `varchar(36)` desbordado) encontrado y corregido durante la verificación en vivo de este release.
+
 ---
 
 ## 9. Seguridad

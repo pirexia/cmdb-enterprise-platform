@@ -1,4 +1,5 @@
 {
+  "_WARNING": "LEGACY/INVENTADO — este fichero NO representa el formato real de exportación de Greenbone OpenVAS (comparte cero campos con allHostSubreportEntries[], el formato real). No usar como referencia para trabajo futuro en el conector vuln-import. Ver docs/mocks/greenbone_SRV-MYGESTR01D.json para un ejemplo real, y docs/INTEGRATIONS.md §9 para el detalle.",
   "scanner": "Greenbone Security Manager 22.4",
   "scan_date": "2026-03-13T18:00:00Z",
   "scan_duration_minutes": 45,

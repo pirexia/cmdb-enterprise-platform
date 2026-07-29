@@ -2645,3 +2645,39 @@ podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c \
 ### Variables obsoletas
 
 `LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN` ya no se usan: alimentaban el workflow anterior, que consultaba el directorio desde n8n. Pueden eliminarse del `.env`.
+
+---
+
+## Importación de vulnerabilidades Greenbone — staging y revisión (v3.6.0)
+
+> **Estado en el momento de escribir esta sección: rama `develop`, sin tag ni merge a `main`.** No la trate como release en producción hasta que la entrada correspondiente de "Plan Activo" en `CLAUDE.md` diga lo contrario.
+
+Ver `docs/INTEGRATIONS.md` § 9 para la arquitectura completa (modelo de identidad, cascada de emparejamiento de CI, flujo de staging). Esta sección cubre solo lo operativo/sysadmin.
+
+### Tablas nuevas y backups
+
+El módulo añade dos tablas a la base de datos: `vuln_import_batches` y `vuln_import_entries`. **No requieren ningún procedimiento de backup nuevo** — quedan cubiertas por el volcado `pg_dump` habitual descrito en la [§6](#6-backups-y-restauración-de-la-base-de-datos), igual que cualquier otra tabla de `cmdb_db`. No es necesario ajustar `db-backup.sh` ni ningún script de retención.
+
+### Backfill de `key` en vulnerabilidades preexistentes
+
+Toda entrada de vulnerabilidad almacenada **antes** de este release solo tiene `cve` (nunca `key`, un campo que no existía todavía). `PATCH /api/vulnerabilities` ya resuelve identidad como `key ?? cve`, así que el sistema funciona sin backfill — pero para que las entradas antiguas tengan `key` poblado de forma consistente con las nuevas, existe `backend/scripts/backfill-vuln-keys.js`: rellena `key = cve` en cualquier entrada que aún no tenga `key`. Es **idempotente** (ejecutarlo dos veces no duplica ni corrompe nada) y soporta `--dry-run` para ver qué tocaría sin escribir.
+
+Sigue el mismo patrón ya documentado en este manual para ejecutar un script Node.js dentro del contenedor backend (necesita Prisma en scope):
+
+```bash
+# Modo de prueba — solo informa, no escribe
+podman cp backend/scripts/backfill-vuln-keys.js cmdb-backend-prod:/app/backfill-vuln-keys.js \
+  && podman exec -w /app cmdb-backend-prod node backfill-vuln-keys.js --dry-run \
+  && podman exec cmdb-backend-prod rm /app/backfill-vuln-keys.js
+
+# Aplicar de verdad
+podman cp backend/scripts/backfill-vuln-keys.js cmdb-backend-prod:/app/backfill-vuln-keys.js \
+  && podman exec -w /app cmdb-backend-prod node backfill-vuln-keys.js \
+  && podman exec cmdb-backend-prod rm /app/backfill-vuln-keys.js
+```
+
+No es necesario ejecutarlo antes de habilitar el módulo — es una limpieza de consistencia, no un requisito funcional. Ejecútelo una vez tras desplegar esta versión si quiere que las vulnerabilidades antiguas tengan `key` poblado explícitamente en vez de depender del fallback `?? cve` en cada lectura.
+
+### Carencia conocida: batches `PENDING` sin purgar
+
+Un lote de importación (`VulnImportBatch`) que se sube y **nunca se acepta ni se descarta** queda indefinidamente en estado `PENDING`. La especificación de este release proponía incorporar la purga de batches `PENDING` abandonados al cron de mantenimiento ya existente (el mismo que limpia dispositivos de confianza expirados y el almacén de estado SSO), pero **no se implementó en esta versión** — no dé por hecho que existe. Un batch `PENDING` antiguo no supone un riesgo de datos (no ha tocado ningún CI), solo acumula filas en `vuln_import_batches`/`vuln_import_entries` y aparece en el listado `/vulnerabilities/imports` hasta que alguien lo acepte o lo descarte manualmente.

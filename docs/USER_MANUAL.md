@@ -547,6 +547,7 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 | **En Curso** | El técnico está trabajando en la resolución |
 | **Parado** | Bloqueado por dependencias externas |
 | **Resuelto** | Vulnerabilidad resuelta o mitigada |
+| **Reabierta** | Se había marcado como resuelta y ha vuelto a detectarse en un reescaneo posterior (ver "El estado 'Reabierta'" más abajo) |
 
 ### Cambiar el estado de una vulnerabilidad (solo ADMIN)
 
@@ -564,6 +565,55 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 3. Pega el JSON en el editor o sube el fichero.
 4. Haz clic en **"Importar"**.
 5. El sistema cruza los nombres de host del informe con los activos existentes y añade las vulnerabilidades nuevas con estado "Nuevo".
+
+### Importar y revisar vulnerabilidades desde Greenbone OpenVAS (formato real, staging)
+
+> Esta es la vía recomendada para Greenbone desde la v3.6.0. A diferencia de la importación directa de la sección anterior, un informe Greenbone real **nunca se aplica automáticamente** a tus activos: primero pasa por una pantalla de revisión donde decides, hallazgo por hallazgo o en bloque, qué se incorpora.
+
+**1. Subir el informe**
+
+1. Exporta el informe desde Greenbone/OpenVAS en formato JSON (el formato real de exportación, no una plantilla manual).
+2. Ve a **Vulnerabilidades → Importaciones** (`/vulnerabilities/imports`).
+3. Haz clic en **"Subir informe"** y selecciona el fichero JSON. Solo ADMIN puede subir.
+4. Si el fichero tiene el formato correcto, se te redirige automáticamente a la pantalla de revisión del lote recién creado. Si el fichero no tiene el formato real esperado (por ejemplo, si es una plantilla antigua o de otra herramienta), la subida se rechaza con un mensaje de error explícito — no se crea ningún lote.
+
+**2. La pantalla de revisión**
+
+Cada lote (**batch**) agrupa todas las vulnerabilidades de un informe, cada una en su propia fila (**entrada**). La pantalla organiza las entradas en cuatro pestañas — son vistas filtradas independientes sobre la misma lista, no compartimentos exclusivos: una misma entrada puede aparecer en más de una pestaña a la vez.
+
+| Pestaña | Qué muestra |
+|---|---|
+| **Accionables** | Hallazgos de severidad MEDIA o superior |
+| **Informativas** | Hallazgos de severidad BAJA o INFO |
+| **Requieren atención** | Hallazgos cuyo cruce con un activo existente no es fiable: sin coincidencia, con varios activos candidatos, o solo coincidencia aproximada por nombre |
+| **Reaparecidas** | Hallazgos que ya se habían marcado como resueltos en el pasado y han vuelto a aparecer en este escaneo |
+
+Cada entrada muestra una pastilla de color con su clasificación (Nueva / Ya existente pendiente / Reaparecida) y otra con la confianza del cruce de activo. Haciendo clic en **"Ver detalles"** de una entrada se despliega un panel con la descripción completa y la remediación recomendada por Greenbone — útil para decidir si algo informativo merece incluirse igualmente.
+
+**3. Reasignar el activo o corregir un cruce equivocado**
+
+El sistema intenta emparejar cada host del informe con un activo (CI) existente por IP, nombre, hostname o DNS. Cuando el cruce es dudoso (pestaña "Requieren atención") o directamente incorrecto, usa el selector de activo de esa fila para asignar manualmente el CI correcto. Una entrada sin activo asignado **no puede aceptarse** — bloqueará el lote entero hasta que la resuelvas o la excluyas.
+
+**4. Incluir o excluir hallazgos**
+
+Cada entrada tiene una casilla de decisión (incluir / excluir), premarcada según reglas sensatas por defecto:
+
+- Un hallazgo **nuevo** de severidad media o superior viene premarcado para incluir; uno de severidad baja/informativa viene desmarcado (puedes marcarlo igualmente si quieres registrarlo).
+- Un hallazgo que **ya está pendiente de resolución** en el activo (alguien ya lo está trabajando) viene siempre desmarcado — no se vuelve a importar encima de un trabajo en curso.
+- Un hallazgo **reaparecido** (se había dado por resuelto y ha vuelto a salir) viene siempre marcado para incluir, sin importar su severidad — es la señal más importante de un reescaneo.
+
+Puedes cambiar cualquier marca individualmente, o usar los controles de selección en bloque de cada pestaña para incluir/excluir todas las entradas visibles en esa vista de una vez.
+
+**5. Aceptar o descartar el lote**
+
+- **"Aceptar lote"** aplica de una sola vez todas las decisiones "incluir" a sus activos correspondientes y deja un registro en el Historial de Auditoría. **Esta acción es irreversible** para las entradas que se aplican: una vez incorporada al activo, una vulnerabilidad se gestiona desde la ficha normal del activo, igual que cualquier otra. Si queda alguna entrada marcada para incluir sin activo asignado, el sistema rechaza la aceptación y te indica exactamente qué entradas la están bloqueando.
+- **"Descartar"** cierra el lote sin tocar ningún activo. Útil si has subido el fichero equivocado o si decides no incorporar nada de este escaneo.
+
+Un lote aceptado o descartado queda fijado en ese estado — no se puede volver a editar, aceptar de nuevo ni reabrir.
+
+### El estado "Reabierta"
+
+Cuando una vulnerabilidad que se había marcado como **Resuelto** vuelve a aparecer en un escaneo posterior y aceptas su entrada "Reaparecida", su estado en la lista principal de Vulnerabilidades pasa a **"Reabierta"**. Conserva la fecha en que se resolvió por primera vez y añade la fecha en que se detectó de nuevo, de modo que el historial completo queda visible. A todos los efectos prácticos (filtros, contadores, alertas por email de vulnerabilidades críticas/altas sin resolver) una vulnerabilidad "Reabierta" cuenta como abierta, igual que "Nuevo" o "En Curso".
 
 ### Importar desde CrowdStrike Falcon
 

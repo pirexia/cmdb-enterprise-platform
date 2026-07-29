@@ -306,7 +306,8 @@
       "ASIGNADO": "Zugewiesen",
       "EN_CURSO": "In Bearbeitung",
       "PARADO": "Angehalten",
-      "RESUELTO": "Behoben"
+      "RESUELTO": "Behoben",
+      "REABIERTA": "Wiedereröffnet"
     },
     "search_ci_placeholder": "Nach CI-Name suchen…",
     "cve_placeholder": "CVE suchen…",
@@ -323,7 +324,14 @@
     "download_csv": "CSV",
     "footer_showing": "Zeige {filtered} von {total} Schwachstellen",
     "active_filter": "{count} aktiver Filter",
-    "active_filter_plural": "{count} aktive Filter"
+    "active_filter_plural": "{count} aktive Filter",
+    "severity": {
+      "CRITICAL": "Kritisch",
+      "HIGH": "Hoch",
+      "MEDIUM": "Mittel",
+      "LOW": "Niedrig",
+      "INFO": "Informativ"
+    }
   },
   "contracts": {
     "title": "Verträge & Zusätze",
@@ -2375,6 +2383,50 @@
       "monthlyNetHours": "Monatliche Nettostunden",
       "vacationDays": "Urlaubstage",
       "healthLeaveDays": "Krankheitstage"
+    }
+  },
+  "vulnImport": {
+    "title": "Schwachstellen-Import",
+    "subtitle": "Greenbone-Scans vor der Übernahme ins Inventar prüfen und validieren",
+    "batch": {
+      "status": {
+        "PENDING": "Ausstehend",
+        "ACCEPTED": "Akzeptiert",
+        "DISCARDED": "Verworfen"
+      },
+      "singular": "Charge",
+      "plural": "Chargen"
+    },
+    "classification": {
+      "NUEVA": "Neu",
+      "EXISTENTE_PENDIENTE": "Vorhanden, ausstehend",
+      "REAPARECIDA": "Wieder aufgetreten"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "Exakte IP",
+      "EXACT_NAME": "Exakter Name",
+      "EXACT_HOSTNAME": "Exakter Hostname",
+      "EXACT_DNS": "Exakter DNS",
+      "FUZZY": "Unscharfe Übereinstimmung",
+      "AMBIGUOUS": "Mehrdeutig",
+      "UNMATCHED": "Keine Übereinstimmung",
+      "MANUAL": "Manuell zugewiesen"
+    },
+    "decision": {
+      "INCLUDE": "Einschließen",
+      "EXCLUDE": "Ausschließen"
+    },
+    "actions": {
+      "upload": "Bericht hochladen",
+      "accept": "Charge akzeptieren",
+      "discard": "Charge verwerfen",
+      "review": "Prüfen",
+      "reassignCi": "CI neu zuweisen",
+      "confirmAccept": "Annahme bestätigen",
+      "confirmDiscard": "Verwerfen bestätigen",
+      "bulkInclude": "Auswahl einschließen",
+      "bulkExclude": "Auswahl ausschließen",
+      "backToList": "Zurück zur Liste"
     }
   }
 }

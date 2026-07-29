@@ -306,7 +306,8 @@
       "ASIGNADO": "Asignado",
       "EN_CURSO": "En curso",
       "PARADO": "Parado",
-      "RESUELTO": "Resuelto"
+      "RESUELTO": "Resuelto",
+      "REABIERTA": "Reabierta"
     },
     "search_ci_placeholder": "Buscar por nombre de CI…",
     "cve_placeholder": "Buscar CVE…",
@@ -331,7 +332,14 @@
     "col_ci_affected": "CI Afectado",
     "col_imported": "Importado",
     "notifications_region": "Notificaciones",
-    "close_notification": "Cerrar notificación"
+    "close_notification": "Cerrar notificación",
+    "severity": {
+      "CRITICAL": "Crítica",
+      "HIGH": "Alta",
+      "MEDIUM": "Media",
+      "LOW": "Baja",
+      "INFO": "Informativa"
+    }
   },
   "contracts": {
     "title": "Contratos y Adendas",
@@ -2494,6 +2502,50 @@
       "monthlyNetHours": "Horas netas del mes",
       "vacationDays": "Días de vacaciones",
       "healthLeaveDays": "Días de baja médica"
+    }
+  },
+  "vulnImport": {
+    "title": "Importación de Vulnerabilidades",
+    "subtitle": "Revisión y validación de escaneos Greenbone antes de aplicarlos al inventario",
+    "batch": {
+      "status": {
+        "PENDING": "Pendiente",
+        "ACCEPTED": "Aceptado",
+        "DISCARDED": "Descartado"
+      },
+      "singular": "lote",
+      "plural": "lotes"
+    },
+    "classification": {
+      "NUEVA": "Nueva",
+      "EXISTENTE_PENDIENTE": "Existente pendiente",
+      "REAPARECIDA": "Reaparecida"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "IP exacta",
+      "EXACT_NAME": "Nombre exacto",
+      "EXACT_HOSTNAME": "Hostname exacto",
+      "EXACT_DNS": "DNS exacto",
+      "FUZZY": "Coincidencia aproximada",
+      "AMBIGUOUS": "Ambiguo",
+      "UNMATCHED": "Sin coincidencia",
+      "MANUAL": "Asignado manualmente"
+    },
+    "decision": {
+      "INCLUDE": "Incluir",
+      "EXCLUDE": "Excluir"
+    },
+    "actions": {
+      "upload": "Subir informe",
+      "accept": "Aceptar lote",
+      "discard": "Descartar lote",
+      "review": "Revisar",
+      "reassignCi": "Reasignar CI",
+      "confirmAccept": "Confirmar aceptación",
+      "confirmDiscard": "Confirmar descarte",
+      "bulkInclude": "Incluir seleccionados",
+      "bulkExclude": "Excluir seleccionados",
+      "backToList": "Volver al listado"
     }
   }
 }

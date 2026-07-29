@@ -306,7 +306,8 @@
       "ASIGNADO": "Assigned",
       "EN_CURSO": "In progress",
       "PARADO": "On hold",
-      "RESUELTO": "Resolved"
+      "RESUELTO": "Resolved",
+      "REABIERTA": "Reopened"
     },
     "search_ci_placeholder": "Search by CI name…",
     "cve_placeholder": "Search CVE…",
@@ -331,7 +332,14 @@
     "col_ci_affected": "Affected CI",
     "col_imported": "Imported",
     "notifications_region": "Notifications",
-    "close_notification": "Close notification"
+    "close_notification": "Close notification",
+    "severity": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "INFO": "Informational"
+    }
   },
   "contracts": {
     "title": "Contracts & Addendums",
@@ -2494,6 +2502,50 @@
       "monthlyNetHours": "Monthly net hours",
       "vacationDays": "Vacation days",
       "healthLeaveDays": "Health leave days"
+    }
+  },
+  "vulnImport": {
+    "title": "Vulnerability Import",
+    "subtitle": "Review and validate Greenbone scans before applying them to the inventory",
+    "batch": {
+      "status": {
+        "PENDING": "Pending",
+        "ACCEPTED": "Accepted",
+        "DISCARDED": "Discarded"
+      },
+      "singular": "batch",
+      "plural": "batches"
+    },
+    "classification": {
+      "NUEVA": "New",
+      "EXISTENTE_PENDIENTE": "Existing, pending",
+      "REAPARECIDA": "Reoccurred"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "Exact IP",
+      "EXACT_NAME": "Exact name",
+      "EXACT_HOSTNAME": "Exact hostname",
+      "EXACT_DNS": "Exact DNS",
+      "FUZZY": "Fuzzy match",
+      "AMBIGUOUS": "Ambiguous",
+      "UNMATCHED": "Unmatched",
+      "MANUAL": "Manually assigned"
+    },
+    "decision": {
+      "INCLUDE": "Include",
+      "EXCLUDE": "Exclude"
+    },
+    "actions": {
+      "upload": "Upload report",
+      "accept": "Accept batch",
+      "discard": "Discard batch",
+      "review": "Review",
+      "reassignCi": "Reassign CI",
+      "confirmAccept": "Confirm acceptance",
+      "confirmDiscard": "Confirm discard",
+      "bulkInclude": "Include selected",
+      "bulkExclude": "Exclude selected",
+      "backToList": "Back to list"
     }
   }
 }

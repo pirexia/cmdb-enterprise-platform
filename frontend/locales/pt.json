@@ -306,7 +306,8 @@
       "ASIGNADO": "Atribuído",
       "EN_CURSO": "Em curso",
       "PARADO": "Parado",
-      "RESUELTO": "Resolvido"
+      "RESUELTO": "Resolvido",
+      "REABIERTA": "Reaberta"
     },
     "search_ci_placeholder": "Pesquisar por nome de CI…",
     "cve_placeholder": "Pesquisar CVE…",
@@ -323,7 +324,14 @@
     "download_csv": "CSV",
     "footer_showing": "A mostrar {filtered} de {total} vulnerabilidades",
     "active_filter": "{count} filtro ativo",
-    "active_filter_plural": "{count} filtros ativos"
+    "active_filter_plural": "{count} filtros ativos",
+    "severity": {
+      "CRITICAL": "Crítica",
+      "HIGH": "Alta",
+      "MEDIUM": "Média",
+      "LOW": "Baixa",
+      "INFO": "Informativa"
+    }
   },
   "contracts": {
     "title": "Contratos e Adendos",
@@ -2375,6 +2383,50 @@
       "monthlyNetHours": "Horas líquidas do mês",
       "vacationDays": "Dias de férias",
       "healthLeaveDays": "Dias de baixa médica"
+    }
+  },
+  "vulnImport": {
+    "title": "Importação de Vulnerabilidades",
+    "subtitle": "Revisão e validação de scans Greenbone antes de aplicá-los ao inventário",
+    "batch": {
+      "status": {
+        "PENDING": "Pendente",
+        "ACCEPTED": "Aceito",
+        "DISCARDED": "Descartado"
+      },
+      "singular": "lote",
+      "plural": "lotes"
+    },
+    "classification": {
+      "NUEVA": "Nova",
+      "EXISTENTE_PENDIENTE": "Existente pendente",
+      "REAPARECIDA": "Reaparecida"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "IP exato",
+      "EXACT_NAME": "Nome exato",
+      "EXACT_HOSTNAME": "Hostname exato",
+      "EXACT_DNS": "DNS exato",
+      "FUZZY": "Correspondência aproximada",
+      "AMBIGUOUS": "Ambíguo",
+      "UNMATCHED": "Sem correspondência",
+      "MANUAL": "Atribuído manualmente"
+    },
+    "decision": {
+      "INCLUDE": "Incluir",
+      "EXCLUDE": "Excluir"
+    },
+    "actions": {
+      "upload": "Enviar relatório",
+      "accept": "Aceitar lote",
+      "discard": "Descartar lote",
+      "review": "Revisar",
+      "reassignCi": "Reatribuir CI",
+      "confirmAccept": "Confirmar aceitação",
+      "confirmDiscard": "Confirmar descarte",
+      "bulkInclude": "Incluir selecionados",
+      "bulkExclude": "Excluir selecionados",
+      "backToList": "Voltar à lista"
     }
   }
 }

@@ -306,7 +306,8 @@
       "ASIGNADO": "Assigné",
       "EN_CURSO": "En cours",
       "PARADO": "Arrêté",
-      "RESUELTO": "Résolu"
+      "RESUELTO": "Résolu",
+      "REABIERTA": "Rouverte"
     },
     "search_ci_placeholder": "Rechercher par nom de CI…",
     "cve_placeholder": "Rechercher CVE…",
@@ -323,7 +324,14 @@
     "download_csv": "CSV",
     "footer_showing": "Affichage de {filtered} sur {total} vulnérabilités",
     "active_filter": "{count} filtre actif",
-    "active_filter_plural": "{count} filtres actifs"
+    "active_filter_plural": "{count} filtres actifs",
+    "severity": {
+      "CRITICAL": "Critique",
+      "HIGH": "Élevée",
+      "MEDIUM": "Moyenne",
+      "LOW": "Faible",
+      "INFO": "Informative"
+    }
   },
   "contracts": {
     "title": "Contrats et avenants",
@@ -2375,6 +2383,50 @@
       "monthlyNetHours": "Heures nettes du mois",
       "vacationDays": "Jours de congés",
       "healthLeaveDays": "Jours de congé maladie"
+    }
+  },
+  "vulnImport": {
+    "title": "Importation des vulnérabilités",
+    "subtitle": "Vérification et validation des scans Greenbone avant application à l'inventaire",
+    "batch": {
+      "status": {
+        "PENDING": "En attente",
+        "ACCEPTED": "Accepté",
+        "DISCARDED": "Rejeté"
+      },
+      "singular": "lot",
+      "plural": "lots"
+    },
+    "classification": {
+      "NUEVA": "Nouvelle",
+      "EXISTENTE_PENDIENTE": "Existante, en attente",
+      "REAPARECIDA": "Réapparue"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "IP exacte",
+      "EXACT_NAME": "Nom exact",
+      "EXACT_HOSTNAME": "Hostname exact",
+      "EXACT_DNS": "DNS exact",
+      "FUZZY": "Correspondance approximative",
+      "AMBIGUOUS": "Ambigu",
+      "UNMATCHED": "Aucune correspondance",
+      "MANUAL": "Assigné manuellement"
+    },
+    "decision": {
+      "INCLUDE": "Inclure",
+      "EXCLUDE": "Exclure"
+    },
+    "actions": {
+      "upload": "Téléverser le rapport",
+      "accept": "Accepter le lot",
+      "discard": "Rejeter le lot",
+      "review": "Examiner",
+      "reassignCi": "Réassigner le CI",
+      "confirmAccept": "Confirmer l'acceptation",
+      "confirmDiscard": "Confirmer le rejet",
+      "bulkInclude": "Inclure la sélection",
+      "bulkExclude": "Exclure la sélection",
+      "backToList": "Retour à la liste"
     }
   }
 }

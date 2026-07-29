@@ -2566,6 +2566,85 @@
       "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
       "prevPage": "Anterior",
       "nextPage": "Siguiente"
+    },
+    "severity": {
+      "CRITICAL": "Crítica",
+      "HIGH": "Alta",
+      "MEDIUM": "Media",
+      "LOW": "Baja",
+      "INFO": "Informativa"
+    },
+    "tabs": {
+      "all": "Todas",
+      "actionable": "Accionables",
+      "informational": "Informativas",
+      "attention": "Requieren atención",
+      "reappeared": "Reaparecidas"
+    },
+    "detail": {
+      "title": "Revisión del lote",
+      "subtitle": "Revise, corrija y decida antes de aplicar al inventario",
+      "notFound": "Lote no encontrado",
+      "notFoundHint": "El lote solicitado no existe o fue eliminado.",
+      "metadata": "Datos del lote",
+      "summary": "Resumen",
+      "taskName": "Tarea Greenbone",
+      "scanRange": "Periodo de escaneo",
+      "uploadedBy": "Subido por",
+      "createdAt": "Fecha de subida",
+      "resolvedBy": "Resuelto por",
+      "entryCount": "Entradas totales",
+      "readOnlyNotice": "Este lote ya fue resuelto (aceptado o descartado) — solo lectura.",
+      "readOnlyNoAdmin": "Solo un administrador puede revisar y decidir sobre este lote.",
+      "notificationsRegion": "Notificaciones",
+      "closeNotification": "Cerrar notificación"
+    },
+    "entry": {
+      "port": "Puerto",
+      "noCves": "Sin CVE asociados",
+      "noCi": "Sin CI emparejado",
+      "candidates": "Candidatos sugeridos",
+      "edited": "Editado",
+      "reassignSuccess": "CI reasignado correctamente",
+      "showDetails": "Mostrar detalles",
+      "hideDetails": "Ocultar detalles",
+      "summaryLabel": "Descripción",
+      "solutionLabel": "Solución",
+      "familyLabel": "Familia",
+      "qodLabel": "QoD",
+      "noDetails": "Sin descripción disponible"
+    },
+    "bulk": {
+      "includeVisible": "Incluir visibles",
+      "excludeVisible": "Excluir visibles",
+      "doneToast": "Decisión aplicada a las entradas visibles",
+      "progress": "{done}/{total} aplicado"
+    },
+    "accept": {
+      "button": "Aceptar lote",
+      "confirmTitle": "Confirmar aceptación del lote",
+      "confirmBody": "Se aplicarán al inventario todas las entradas marcadas como \"Incluir\". Esta acción no se puede deshacer.",
+      "previewCi": "CIs afectados",
+      "previewNew": "Nuevas",
+      "previewReopened": "Reabiertas",
+      "previewIncluded": "Total incluidas",
+      "previewRefreshed": "Metadatos actualizados",
+      "successTitle": "Lote aceptado correctamente",
+      "blockingTitle": "Hay entradas sin resolver que bloquean la aceptación",
+      "blockingBody": "Las siguientes entradas incluidas no tienen un CI resuelto de forma inequívoca. Reasígneles un CI o excluyalas antes de aceptar el lote.",
+      "unresolvedWarning": "{count} entrada(s) incluida(s) aún no tienen un CI resuelto — bloquearán la aceptación."
+    },
+    "discard": {
+      "button": "Descartar lote",
+      "confirmTitle": "Confirmar descarte del lote",
+      "confirmBody": "El lote se marcará como descartado. No se escribirá nada en ningún CI. Esta acción no se puede deshacer.",
+      "successToast": "Lote descartado correctamente"
+    },
+    "errors": {
+      "patchFailed": "No se pudo guardar el cambio:",
+      "bulkFailed": "No se pudo aplicar la acción masiva:",
+      "acceptFailed": "No se pudo aceptar el lote:",
+      "discardFailed": "No se pudo descartar el lote:"
     }
   }
 }

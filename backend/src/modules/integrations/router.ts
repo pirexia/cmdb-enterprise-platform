@@ -3,9 +3,11 @@ import { PrismaClient } from '@prisma/client';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
 import { requireAdmin }            from '../../shared/middleware/requireAdmin.js';
 import { requireAudit }            from '../../shared/middleware/requireAudit.js';
-import { vulnUuid }                from '../../services/entitySerializer.js';
 import { smtpConfigured }          from '../alerts/smtp-transport.js';
-import { Vulnerability, VulnSeverity, VulnStatus } from './types.js';
+import { uploadReport }            from '../vuln-import/service.js';
+import { UploadRequestSchema }     from '../vuln-import/schemas.js';
+import { UnsupportedGreenboneFormatError } from '../vuln-import/parser.js';
+import { ZodError }                from 'zod';
 import { loadVCenterConfig, isConfigured, toPublicConfig } from './vcenterConfig.js';
 import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
 import { runVCenterSync, buildVCenterConnector, SyncLockedError } from './vcenterService.js';
@@ -34,99 +36,66 @@ export function createIntegrationsRouter(
 
   /**
    * POST /api/integrations/greenbone
-   * Ingests a Greenbone OpenVAS JSON report. ADMIN only.
+   *
+   * LEGACY compatibility shim (spec §D9, v3.6.0 B6). This used to be a
+   * standalone direct-merge importer that read `req.body.results` — a field
+   * that does not exist in a real Greenbone export, so it silently matched
+   * nothing and returned 200 with `totalMatched: 0` every time. It is kept
+   * (not deleted, per D9 — some external automation may already call it)
+   * but now delegates entirely to the new staging module
+   * (`modules/vuln-import/service.ts`): parsing, CI matching, severity
+   * classification and batch persistence are the SAME code path as
+   * `POST /api/vuln-import/upload`. No CI is mutated directly here — a
+   * PENDING batch is created and must still be reviewed/accepted via the
+   * `/api/vuln-import` endpoints, same as any other upload (A04 — staging +
+   * explicit human acceptance is the design mitigation, not bypassed here).
+   *
+   * Request body: accepts the same envelope as `/api/vuln-import/upload`
+   * (`{filename?, report}`). For backward compatibility with callers that
+   * still POST the raw Greenbone report object directly at the top level
+   * (the pre-v3.6.0 shape for this specific route), the whole body is
+   * wrapped as `{filename: <synthesized>, report: req.body}` whenever it
+   * doesn't already look like the upload envelope (i.e. has no `report`
+   * key). A body still shaped like the old invented `{results: [...]}`
+   * mock is neither the envelope nor a real Greenbone report, so it fails
+   * parsing and is rejected with 400 — it must NOT silently succeed as it
+   * did before this fix.
    */
   router.post('/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-    console.log('[POST /api/integrations/greenbone] Processing report…');
+    console.log('[POST /api/integrations/greenbone] Delegating to vuln-import staging…');
     try {
-      type GBVuln   = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
-      type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
-      const { results = [] } = req.body as { results: GBResult[] };
+      const rawBody = (req.body ?? {}) as Record<string, unknown>;
+      const looksLikeUploadEnvelope = typeof rawBody === 'object' && rawBody !== null && 'report' in rawBody;
+      const envelope = looksLikeUploadEnvelope
+        ? rawBody
+        : { filename: `legacy-integration-upload-${new Date().toISOString()}.json`, report: rawBody };
 
-      const processed: { ci: string; matched: boolean; vulnCount: number }[] = [];
+      const body = UploadRequestSchema.parse(envelope);
+      const result = await uploadReport(prisma, body, req.user!.email);
 
-      for (const result of results) {
-        const hostname = result.host?.hostname ?? '';
-        if (!hostname) continue;
-
-        // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
-        const escaped = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-        type CIRow = { id: string; name: string };
-        const rows = await prisma.$queryRaw<CIRow[]>`
-          SELECT id, name FROM "configuration_items"
-          WHERE LOWER(name) LIKE LOWER(${'%' + escaped + '%'}) ESCAPE '\\'
-          ORDER BY LENGTH(name) ASC
-          LIMIT 1
-        `;
-
-        if (rows.length === 0) {
-          processed.push({ ci: hostname, matched: false, vulnCount: 0 });
-          continue;
-        }
-
-        const ci = rows[0];
-
-        // Read existing vulnerabilities to MERGE — preserves analyst-set lifecycle
-        // status (RESUELTO, EN_CURSO, etc.) and retains vulns from other sources
-        type ExistingVulnRow = { vulnerabilities: unknown };
-        const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
-          SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
-        `;
-        const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
-        const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
-
-        const importedAt = new Date().toISOString();
-        const incoming = (result.vulnerabilities ?? []).map((v) => ({
-          cve:         v.cve,
-          severity:    v.severity?.toUpperCase() as VulnSeverity,
-          description: v.description ?? v.name ?? '',
-          source:      'greenbone' as const,
-          cvss_score:  v.cvss_score ?? null,
-          status:      'NUEVO' as VulnStatus,
-          importedAt,
-        }));
-
-        const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
-        const merged: Vulnerability[] = [
-          // Existing: refresh fields if re-reported; preserve status set by analyst
-          ...existingVulns.map((existing) => {
-            const fresh = incomingByCve.get(existing.cve);
-            if (!fresh) return existing;
-            return { ...fresh, status: existing.status };
-          }),
-          // New vulns not previously known
-          ...incoming.filter((v) => !existingByCve.has(v.cve)),
-        ];
-
-        await prisma.$executeRaw`
-          UPDATE "configuration_items"
-          SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
-          WHERE "id" = ${ci.id}::uuid
-        `;
-
-        const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
-        processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
-        console.log(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
-
-        for (const v of merged) {
-          void queueForIndexing('vulnerability', vulnUuid(ci.id, v.cve));
-        }
-        void queueForIndexing('ci', ci.id);
-      }
-
-      const totalMatched = processed.filter((p) => p.matched).length;
-      await prisma.$executeRaw`
-        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-        VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
       res.json({
-        message: 'Greenbone report processed',
-        processed,
-        totalMatched,
-        totalUnmatched: processed.filter((p) => !p.matched).length,
+        message: 'Greenbone report processed via staging',
+        batchId: result.batchId,
+        summary: result.summary,
       });
-    } catch (error) {
-      console.error('[POST /api/integrations/greenbone] Error:', error);
+    } catch (err) {
+      if (err instanceof UnsupportedGreenboneFormatError) {
+        res.status(400).json({
+          error: `${err.message} This endpoint now expects the real Greenbone export format ` +
+            '(top-level "allHostSubreportEntries"), not the legacy "results" mock shape. ' +
+            'No staging batch was created.',
+        });
+        return;
+      }
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: 'Invalid Greenbone report — this endpoint now expects the real Greenbone export ' +
+            'format. No staging batch was created.',
+          details: err.issues,
+        });
+        return;
+      }
+      console.error('[POST /api/integrations/greenbone] Error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

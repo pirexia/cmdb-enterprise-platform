@@ -649,6 +649,10 @@ type VulnStatus   = 'NUEVO' | 'ASIGNADO' | 'EN_CURSO' | 'PARADO' | 'RESUELTO';
 
 interface Vulnerability {
   cve:         string;
+  // Identity per spec D1 (v3.6.0 B6): `${oid}@${port}` for entries from the
+  // new Greenbone staging module; absent on entries stored before this
+  // migration, which fall back to `cve` as their identity (D1b).
+  key?:        string;
   severity:    VulnSeverity;
   description: string;
   source?:     string;
@@ -2103,19 +2107,29 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id
  * PATCH /api/vulnerabilities
  * Updates the status of a single vulnerability within a CI's JSON array.
  *
- * Body: { ciId: string, cve: string, status: VulnStatus }
+ * Body: { ciId: string, key?: string, cve: string, status: VulnStatus }
+ *
+ * Identity (spec D1/D1b, v3.6.0 B6): a vulnerability's real identity is
+ * `key` (`${oid}@${port}`), not `cve` — 96% of real Greenbone findings carry
+ * no CVE. `key` is optional here and preferred when present; `cve` is kept
+ * as the deprecated fallback so an unmigrated client (or a stored entry that
+ * predates this migration and never got a `key`) still resolves correctly.
  */
 app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: Response) => {
-  const { ciId, cve, status } = req.body as {
+  const { ciId, key, cve, status } = req.body as {
     ciId:   string;
+    key?:   string;
     cve:    string;
     status: VulnStatus;
   };
 
-  if (!ciId || !cve || !status) {
+  if (!ciId || !(key || cve) || !status) {
     res.status(400).json({ error: 'Missing required fields: ciId, cve, status' });
     return;
   }
+
+  // The identity to match against: prefer the caller's `key`, fall back to `cve`.
+  const targetKey = key ?? cve;
 
   const validStatuses: VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'RESUELTO'];
   if (!validStatuses.includes(status)) {
@@ -2136,20 +2150,20 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
     }
 
     const currentVulns = (rows[0].vulnerabilities ?? []) as Vulnerability[];
-    const vuln = currentVulns.find((v) => v.cve === cve);
+    const vuln = currentVulns.find((v) => (v.key ?? v.cve) === targetKey);
 
     if (!vuln) {
-      res.status(404).json({ error: `Vulnerability ${cve} not found in CI ${ciId}` });
+      res.status(404).json({ error: `Vulnerability ${targetKey} not found in CI ${ciId}` });
       return;
     }
 
     const updated = currentVulns.map((v) =>
-      v.cve === cve ? { ...v, status, updatedAt: new Date().toISOString() } : v
+      (v.key ?? v.cve) === targetKey ? { ...v, status, updatedAt: new Date().toISOString() } : v
     );
 
     // Issue #172: wrap the vulnerabilities-column update + audit insert in one
     // transaction so the audit is never missing when the status change persists.
-    const entityId = `${ciId}:${cve}`;
+    const entityId = `${ciId}:${targetKey}`;
     const action   = `UPDATE_VULN_STATUS:${status}`;
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
@@ -2166,7 +2180,7 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
     });
 
     // Re-index the vulnerability + its parent CI (whose summary line changed)
-    void queueEntityForIndexing('vulnerability', vulnUuid(ciId, cve));
+    void queueEntityForIndexing('vulnerability', vulnUuid(ciId, targetKey));
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ ciId, cve, status, message: `Status updated to ${status}` });

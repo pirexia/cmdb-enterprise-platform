@@ -145,21 +145,25 @@ export function createRagQueue(prisma: PrismaClient) {
     type EntityRow = { id: string; entity_type: RagEntityType; entity_id: string };
 
     // Lookup helper for vulnerability re-index:
-    // 1) Fast path — read (ciId, cve) from the most recent existing chunk metadata.
+    // 1) Fast path — read (ciId, key) from the most recent existing chunk metadata.
     // 2) Slow path — scan configuration_items.vulnerabilities JSON arrays and match
-    //    vulnUuid(ciId, cve) against the given entityId. Only triggers on first index.
+    //    vulnUuid(ciId, key ?? cve) against the given entityId. Only triggers on first index.
+    // Identity is `key` (spec D1: `${oid}@${port}`), NOT `cve` — 96% of real
+    // Greenbone findings carry no CVE at all (v3.6.0 B6). `key` falls back to
+    // `cve` for entries stored before this migration (D1b).
     const resolveVulnTuple = async (
       entityId: string,
-    ): Promise<{ ciId: string; cve: string } | null> => {
+    ): Promise<{ ciId: string; key: string } | null> => {
       try {
-        const chunkRows = await prisma.$queryRaw<{ ci_id: string | null; cve: string | null }[]>`
-          SELECT metadata->>'ciId' AS ci_id, metadata->>'cve' AS cve
+        const chunkRows = await prisma.$queryRaw<{ ci_id: string | null; key: string | null; cve: string | null }[]>`
+          SELECT metadata->>'ciId' AS ci_id, metadata->>'key' AS key, metadata->>'cve' AS cve
           FROM "rag_chunks"
           WHERE entity_type = 'vulnerability' AND entity_id = ${entityId}::uuid
           ORDER BY created_at DESC
           LIMIT 1`;
-        if (chunkRows.length > 0 && chunkRows[0].ci_id && chunkRows[0].cve) {
-          return { ciId: chunkRows[0].ci_id, cve: chunkRows[0].cve };
+        const fastKey = chunkRows[0]?.key || chunkRows[0]?.cve;
+        if (chunkRows.length > 0 && chunkRows[0].ci_id && fastKey) {
+          return { ciId: chunkRows[0].ci_id, key: fastKey };
         }
       } catch (e) {
         console.error('[RAG] resolveVulnTuple chunk lookup error:', e);
@@ -176,10 +180,13 @@ export function createRagQueue(prisma: PrismaClient) {
           const arr = Array.isArray(ciRow.vulnerabilities) ? ciRow.vulnerabilities : [];
           for (const v of arr) {
             if (!v || typeof v !== 'object') continue;
-            const cve = (v as { cve?: unknown }).cve;
-            if (typeof cve !== 'string' || cve.length === 0) continue;
-            if (vulnUuid(ciRow.id, cve) === entityId) {
-              return { ciId: ciRow.id, cve };
+            const { key: rawKey, cve } = v as { key?: unknown; cve?: unknown };
+            const identity = typeof rawKey === 'string' && rawKey.length > 0
+              ? rawKey
+              : (typeof cve === 'string' && cve.length > 0 ? cve : null);
+            if (!identity) continue;
+            if (vulnUuid(ciRow.id, identity) === entityId) {
+              return { ciId: ciRow.id, key: identity };
             }
           }
         }
@@ -229,7 +236,7 @@ export function createRagQueue(prisma: PrismaClient) {
 
         // Resolve the entity → EntityParseResult via the appropriate serializer.
         let parseResult: EntityParseResult | null = null;
-        let vulnTuple: { ciId: string; cve: string } | null = null;
+        let vulnTuple: { ciId: string; key: string } | null = null;
 
         try {
           if (row.entity_type === 'ci') {
@@ -241,7 +248,7 @@ export function createRagQueue(prisma: PrismaClient) {
           } else if (row.entity_type === 'vulnerability') {
             vulnTuple = await resolveVulnTuple(row.entity_id);
             if (vulnTuple) {
-              parseResult = await serializeVulnerability(vulnTuple.ciId, vulnTuple.cve);
+              parseResult = await serializeVulnerability(vulnTuple.ciId, vulnTuple.key);
             }
           } else if (row.entity_type === 'decommission') {
             parseResult = await serializeDecommissionPlan(row.entity_id);
@@ -278,8 +285,10 @@ export function createRagQueue(prisma: PrismaClient) {
         const texts = chunks.map((c) => c.content);
         const embeddings = texts.length > 0 ? await getEmbeddingsBatch(texts) : [];
 
-        // Build metadata: title + entityType/entityId; vulns also carry (ciId, cve)
-        // so the next re-index resolves without scanning JSON arrays.
+        // Build metadata: title + entityType/entityId; vulns also carry (ciId, key)
+        // so the next re-index resolves without scanning JSON arrays. `key` is
+        // the identity (spec D1: `${oid}@${port}`, or the bare cve for
+        // pre-migration entries per D1b) — NOT necessarily a CVE.
         const baseMeta: Record<string, unknown> = {
           title: parseResult.title,
           entityType: row.entity_type,
@@ -287,7 +296,7 @@ export function createRagQueue(prisma: PrismaClient) {
         };
         if (row.entity_type === 'vulnerability' && vulnTuple) {
           baseMeta.ciId = vulnTuple.ciId;
-          baseMeta.cve = vulnTuple.cve;
+          baseMeta.key = vulnTuple.key;
         }
         const metaStr = JSON.stringify(baseMeta);
 

@@ -158,6 +158,7 @@ function severityBand(severity: string | null | undefined): string {
 
 interface RawVuln {
   cve?: string;
+  key?: string;
   severity?: string;
   status?: string;
   importedAt?: string;
@@ -634,7 +635,13 @@ interface VulnCIRow {
   vulnerabilities: unknown;
 }
 
-export async function serializeVulnerability(ciId: string, cve: string): Promise<EntityParseResult> {
+// `key` is the vulnerability identity per spec D1 (`${oid}@${port}`, or the
+// bare CVE for entries migrated under D1b that never got an `oid`/`port`).
+// Callers must resolve `entry.key ?? entry.cve` before calling this function
+// — see v3.6.0 B6 (identity is no longer `cve`; `cve` is kept only as an
+// optional display value, "" for the 96% of real Greenbone findings that
+// carry no CVE at all).
+export async function serializeVulnerability(ciId: string, key: string): Promise<EntityParseResult> {
   try {
     const rows = await prisma.$queryRaw<VulnCIRow[]>`
       SELECT
@@ -649,16 +656,20 @@ export async function serializeVulnerability(ciId: string, cve: string): Promise
     }
     const ci = rows[0];
     const vulns = asVulnArray(ci.vulnerabilities);
-    const v = vulns.find((x) => x.cve === cve);
+    const v = vulns.find((x) => (x.key ?? x.cve) === key);
     if (!v) {
-      throw new Error(`Vulnerability ${cve} not present in CI ${ciId}`);
+      throw new Error(`Vulnerability ${key} not present in CI ${ciId}`);
     }
 
+    // Display label: the first CVE if this entry has one, otherwise fall
+    // back to the identity key (oid@port) so the RAG document title/body is
+    // never an empty string (spec D1b — `cve` is "" for the majority).
+    const cve = v.cve && v.cve.length > 0 ? v.cve : key;
     const severity = String(v.severity ?? 'UNKNOWN').toUpperCase();
     const band = severityBand(severity);
     const status = String(v.status ?? 'UNKNOWN');
     const imported = v.importedAt ? String(v.importedAt).slice(0, 10) : '—';
-    const uuid = vulnUuid(ciId, cve);
+    const uuid = vulnUuid(ciId, key);
 
     const lines: string[] = [];
     lines.push(`<ENTITY_DATA type="vulnerability" id="${uuid}">`);
@@ -680,12 +691,13 @@ export async function serializeVulnerability(ciId: string, cve: string): Promise
         entityType: 'vulnerability',
         entityId: uuid,
         ciId,
+        key,
         cve,
       },
       sections: [{ sectionPath: `Vulnerabilidad: ${cve}`, text: body }],
     };
   } catch (err) {
-    console.error('[RAG entitySerializer] serializeVulnerability failed', { ciId, cve, message: err instanceof Error ? err.message : String(err) });
+    console.error('[RAG entitySerializer] serializeVulnerability failed', { ciId, key, message: err instanceof Error ? err.message : String(err) });
     throw err;
   }
 }

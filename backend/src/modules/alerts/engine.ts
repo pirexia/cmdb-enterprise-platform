@@ -158,7 +158,7 @@ export async function scanAlerts(
     `;
     for (const row of rows) {
       const vulns = (row.vulnerabilities ?? []) as { severity: string; status: string }[];
-      const open  = ['NUEVO', 'ASIGNADO', 'EN_CURSO'];
+      const open  = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'REABIERTA'];
       const crit  = vulns.filter((v) => v.severity === 'CRITICAL' && open.includes(v.status)).length;
       const high  = vulns.filter((v) => v.severity === 'HIGH'     && open.includes(v.status)).length;
       if (crit > 0 || high > 0) {

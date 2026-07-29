@@ -27,6 +27,8 @@ interface LdapLogRow {
   entityId: string | null;
   userEmail: string;
   createdAt: string;
+  /** sAMAccountName de la cuenta afectada; null si su fila ya no existe. */
+  samAccountName: string | null;
 }
 
 /** Códigos de error que el backend devuelve con significado propio. */
@@ -191,6 +193,7 @@ export default function LdapSyncCard() {
                 <thead>
                   <tr className="text-left text-slate-500 border-b border-slate-200">
                     <th className="py-1.5 pr-3 font-medium">{t("settings.integrations.ldapSync.colAction")}</th>
+                    <th className="py-1.5 pr-3 font-medium">{t("settings.integrations.ldapSync.colSam")}</th>
                     <th className="py-1.5 pr-3 font-medium">{t("settings.integrations.ldapSync.colDate")}</th>
                     <th className="py-1.5 font-medium">{t("settings.integrations.ldapSync.colActor")}</th>
                   </tr>
@@ -199,6 +202,9 @@ export default function LdapSyncCard() {
                   {log.slice(0, 20).map((row, i) => (
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="py-1.5 pr-3 font-mono text-slate-700">{row.action}</td>
+                      <td className="py-1.5 pr-3 font-mono text-slate-700 break-all">
+                        {row.samAccountName ?? "—"}
+                      </td>
                       <td className="py-1.5 pr-3 text-slate-500">
                         {new Date(row.createdAt).toLocaleString()}
                       </td>

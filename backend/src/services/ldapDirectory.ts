@@ -44,11 +44,29 @@ export interface AdGroupMember {
   userAccountControl?: number;
 }
 
+/**
+ * Base de búsqueda efectiva, con respaldo a LDAP_BASE_DN.
+ *
+ * `||` y no `??`, deliberadamente: una variable **declarada pero vacía** debe
+ * caer al respaldo. Es un caso real, no teórico — `docker-compose.prod.yml`
+ * declara `LDAP_GROUP_SEARCH_BASE: ${LDAP_GROUP_SEARCH_BASE:-}`, de modo que el
+ * contenedor la recibe como cadena vacía; el día que se añada `LDAP_SEARCH_BASE`
+ * con ese mismo patrón, `??` la propagaría tal cual y toda búsqueda se lanzaría
+ * contra un base DN vacío: la puerta de grupo denegaría TODOS los logins LDAP
+ * con `not_in_required_group` y la sincronización desactivaría a la plantilla
+ * entera. Mismo criterio que `groupBase()`.
+ *
+ * Función pura y exportada para poder cubrir ese caso sin directorio.
+ */
+export function resolveSearchBase(searchBase?: string, baseDn?: string): string {
+  return searchBase || baseDn || '';
+}
+
 const env = {
   url:            () => process.env.LDAP_URL ?? 'ldap://localhost:389',
   bindDn:         () => process.env.LDAP_BIND_DN ?? '',
   bindPassword:   () => process.env.LDAP_BIND_PASSWORD ?? '',
-  searchBase:     () => process.env.LDAP_SEARCH_BASE ?? process.env.LDAP_BASE_DN ?? '',
+  searchBase:     () => resolveSearchBase(process.env.LDAP_SEARCH_BASE, process.env.LDAP_BASE_DN),
   groupBase:      () => process.env.LDAP_GROUP_SEARCH_BASE || process.env.LDAP_SEARCH_BASE || process.env.LDAP_BASE_DN || '',
   requiredGroup:  () => (process.env.LDAP_REQUIRED_GROUP ?? '').trim(),
   nested:         () => process.env.LDAP_GROUP_NESTED !== 'false',

@@ -876,6 +876,7 @@
         "historyTitle": "Recent history",
         "historyEmpty": "No synchronisations recorded yet.",
         "colAction": "Action",
+        "colSam": "AD account",
         "colDate": "Date",
         "colActor": "Source"
       }

@@ -831,6 +831,7 @@
         "historyTitle": "Letzte Vorgänge",
         "historyEmpty": "Noch keine Synchronisierungen erfasst.",
         "colAction": "Aktion",
+        "colSam": "AD-Konto",
         "colDate": "Datum",
         "colActor": "Quelle"
       }

@@ -831,6 +831,7 @@
         "historyTitle": "Histórico recente",
         "historyEmpty": "Ainda não há sincronizações registadas.",
         "colAction": "Ação",
+        "colSam": "Conta AD",
         "colDate": "Data",
         "colActor": "Origem"
       }

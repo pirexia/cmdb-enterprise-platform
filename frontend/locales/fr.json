@@ -2427,6 +2427,24 @@
       "bulkInclude": "Inclure la sélection",
       "bulkExclude": "Exclure la sélection",
       "backToList": "Retour à la liste"
+    },
+    "list": {
+      "invalidJson": "Le fichier ne contient pas de JSON valide",
+      "uploadSuccess": "Rapport téléversé : {count} résultats",
+      "discardConfirm": "Rejeter ce lot ? Cette action est irréversible.",
+      "discardSuccess": "Lot rejeté",
+      "filterAll": "Tous",
+      "noBatches": "Aucun scan importé pour le moment",
+      "colFilename": "Fichier",
+      "colScanDate": "Date du scan",
+      "colStatus": "Statut",
+      "colEntries": "Résultats",
+      "colClassification": "Classification",
+      "colUploadedBy": "Téléversé par",
+      "colUploadedAt": "Téléversé le",
+      "pageInfo": "Page {page} sur {totalPages} ({total} lots)",
+      "prevPage": "Précédent",
+      "nextPage": "Suivant"
     }
   }
 }

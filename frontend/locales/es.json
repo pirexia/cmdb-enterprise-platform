@@ -2546,6 +2546,24 @@
       "bulkInclude": "Incluir seleccionados",
       "bulkExclude": "Excluir seleccionados",
       "backToList": "Volver al listado"
+    },
+    "list": {
+      "invalidJson": "El archivo no contiene JSON válido",
+      "uploadSuccess": "Informe cargado: {count} hallazgos",
+      "discardConfirm": "¿Descartar este lote? Esta acción no se puede deshacer.",
+      "discardSuccess": "Lote descartado",
+      "filterAll": "Todos",
+      "noBatches": "Todavía no hay escaneos importados",
+      "colFilename": "Archivo",
+      "colScanDate": "Fecha de escaneo",
+      "colStatus": "Estado",
+      "colEntries": "Hallazgos",
+      "colClassification": "Clasificación",
+      "colUploadedBy": "Subido por",
+      "colUploadedAt": "Fecha de subida",
+      "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
+      "prevPage": "Anterior",
+      "nextPage": "Siguiente"
     }
   }
 }

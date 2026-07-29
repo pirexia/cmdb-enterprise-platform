@@ -2427,6 +2427,24 @@
       "bulkInclude": "Incluir selecionados",
       "bulkExclude": "Excluir selecionados",
       "backToList": "Voltar à lista"
+    },
+    "list": {
+      "invalidJson": "O arquivo não contém JSON válido",
+      "uploadSuccess": "Relatório enviado: {count} achados",
+      "discardConfirm": "Descartar este lote? Esta ação não pode ser desfeita.",
+      "discardSuccess": "Lote descartado",
+      "filterAll": "Todos",
+      "noBatches": "Ainda não há varreduras importadas",
+      "colFilename": "Arquivo",
+      "colScanDate": "Data da varredura",
+      "colStatus": "Status",
+      "colEntries": "Achados",
+      "colClassification": "Classificação",
+      "colUploadedBy": "Enviado por",
+      "colUploadedAt": "Enviado em",
+      "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
+      "prevPage": "Anterior",
+      "nextPage": "Próxima"
     }
   }
 }

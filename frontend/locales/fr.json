@@ -2326,7 +2326,10 @@
       "none": "Aucun membre assigné.",
       "remove": "Retirer",
       "removeConfirm": "Retirer {name} du département ? Les plannings déjà publiés ne changeront pas ; les brouillons seront mis à jour en cliquant sur « Synchroniser les membres ».",
-      "removeError": "Impossible de retirer le travailleur du département"
+      "removeError": "Impossible de retirer le travailleur du département",
+      "external": "Travailleur externe (protection des données)",
+      "externalShort": "Externe",
+      "externalError": "Impossible de mettre à jour le marquage externe"
     },
     "confirm": {
       "deleteSchedule": "Supprimer cette planification ? Toutes ses entrées seront perdues. Cette action est irréversible."

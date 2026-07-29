@@ -2326,7 +2326,10 @@
       "none": "Sem membros atribuídos.",
       "remove": "Remover",
       "removeConfirm": "Remover {name} do departamento? Os horários já publicados não mudarão; os rascunhos serão atualizados ao clicar em \"Sincronizar membros\".",
-      "removeError": "Não foi possível remover o trabalhador do departamento"
+      "removeError": "Não foi possível remover o trabalhador do departamento",
+      "external": "Trabalhador externo (proteção de dados)",
+      "externalShort": "Externo",
+      "externalError": "Não foi possível atualizar a marca de externo"
     },
     "confirm": {
       "deleteSchedule": "Eliminar esta planificação? Todas as suas entradas serão perdidas. Esta ação não pode ser revertida."

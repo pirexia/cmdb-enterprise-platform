@@ -76,6 +76,48 @@ export function maskEntryForViewer(
   return { status: entry.status, startTime: entry.startTime, endTime: entry.endTime, notes: entry.notes, onGuard: entry.onGuard, healthMasked: false };
 }
 
+// externalInitials — iniciales del nombre para mostrar de un trabajador
+// externo. Maximo tres, en mayuscula. Sin displayName se usa la inicial del
+// username: devolver cadena vacia dejaria la etiqueta como "Externo ()", y
+// volcar el username entero derrotaria el proposito del enmascarado.
+export function externalInitials(displayName: string | null, username: string): string {
+  const source = (displayName ?? '').trim();
+  if (source.length > 0) {
+    return source
+      .split(/\s+/)
+      .slice(0, 3)
+      .map((w) => w.charAt(0).toUpperCase())
+      .join('');
+  }
+  return username.charAt(0).toUpperCase();
+}
+
+// maskIdentityForViewer (v3.5.13, D3) — unico punto donde se decide si la
+// identidad de un trabajador externo llega o no al cliente. Igual que
+// maskEntryForViewer para los datos de salud: el enmascarado ocurre EN
+// SERVIDOR, no al pintar, de modo que el nombre real ni siquiera viaja en el
+// JSON hacia quien no debe verlo (si solo se ocultara en el frontend, seguiria
+// siendo visible en las herramientas de desarrollo — no seria una proteccion).
+//
+// Autorizados a ver el nombre real: ADMIN, MANAGER (planifica el departamento
+// y necesita saber a quien asigna) y el propio interesado. Cualquier otro rol,
+// incluido uno desconocido, recibe la version enmascarada (fail-closed).
+//
+// `username` se enmascara tambien, no solo `displayName`: el sAMAccountName de
+// un externo es tan identificativo como su nombre, y displayLabel() cae al
+// username cuando no hay displayName.
+export function maskIdentityForViewer(
+  user: { username: string; displayName: string | null; isExternal: boolean },
+  viewer: Viewer,
+  userId?: string,
+): { username: string; displayName: string | null; isExternal: boolean } {
+  if (!user.isExternal) return user;
+  const authorized = viewer.role === 'ADMIN' || viewer.role === 'MANAGER' || (userId != null && viewer.id === userId);
+  if (authorized) return user;
+  const label = `Externo (${externalInitials(user.displayName, user.username)})`;
+  return { username: label, displayName: label, isExternal: true };
+}
+
 interface AlertLike {
   id: string;
   type: string;
@@ -493,6 +535,13 @@ export interface ScheduleView {
     userId: string;
     username: string;
     displayName: string | null;
+    isExternal: boolean;
+    // v3.5.13 (D3) — SIEMPRE presente cuando isExternal, para CUALQUIER viewer
+    // (nunca es información nueva: es exactamente lo que ya ve un viewer no
+    // autorizado en displayName). El cliente lo usa tal cual al imprimir, sin
+    // recalcular nada — recalcular a partir de displayName rompería para un
+    // viewer que ya lo recibe enmascarado.
+    printLabel: string | null;
     entries: Record<string, MaskedEntryFields>;
     // Optional since v3.5.12 (R2/D1): omitted entirely — never sent zeroed —
     // for a viewer who is neither ADMIN nor manager of this row's department.
@@ -552,10 +601,15 @@ export async function buildScheduleView(
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
-  const byUser = new Map<string, { username: string; displayName: string | null; entriesReal: typeof schedule.entries }>();
+  const byUser = new Map<string, { username: string; displayName: string | null; isExternal: boolean; entriesReal: typeof schedule.entries }>();
   for (const e of schedule.entries) {
     if (!byUser.has(e.userId)) {
-      byUser.set(e.userId, { username: e.user.username, displayName: e.user.displayName ?? null, entriesReal: [] });
+      byUser.set(e.userId, {
+        username: e.user.username,
+        displayName: e.user.displayName ?? null,
+        isExternal: e.user.isExternal,
+        entriesReal: [],
+      });
     }
     byUser.get(e.userId)!.entriesReal.push(e);
   }
@@ -605,10 +659,30 @@ export async function buildScheduleView(
     const weeklyTargetHours = computeEffectiveWeeklyTarget(targetEntries, cfg, schedule.isSummerWeek, override);
     const dailyTargetHours = computeDailyTargetHours(targetEntries, cfg, schedule.isSummerWeek, override);
 
+    // v3.5.13 (D3) — enmascarado de identidad de trabajadores externos, mismo
+    // principio que maskEntryForViewer para datos de salud: se resuelve aquí,
+    // en servidor, para que el nombre real no llegue al JSON de un viewer no
+    // autorizado.
+    const identity = maskIdentityForViewer(
+      { username: data.username, displayName: data.displayName, isExternal: data.isExternal },
+      viewer,
+      userId,
+    );
+    // printLabel se calcula SIEMPRE a partir del nombre real (data.*, no
+    // identity.*) y es el mismo valor que ya recibe un viewer no autorizado en
+    // displayName — por eso no añade ninguna fuga nueva para ADMIN/MANAGER,
+    // que ya conocen el nombre real. Sin este campo fijo, el cliente tendría
+    // que recalcular las iniciales sobre lo que le haya llegado en displayName,
+    // y para un viewer no autorizado eso ya es "Externo (JEM)" — recalcular
+    // initiales encima de esa cadena da resultados absurdos (p.ej. "E(").
+    const printLabel = data.isExternal ? `Externo (${externalInitials(data.displayName, data.username)})` : null;
+
     rows.push({
       userId,
-      username: data.username,
-      displayName: data.displayName,
+      username: identity.username,
+      displayName: identity.displayName,
+      isExternal: identity.isExternal,
+      printLabel,
       entries,
       // Omitted entirely (not sent as `undefined`/zeroed) when the viewer is
       // not authorized — see the `summary?` doc comment on ScheduleView above.

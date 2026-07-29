@@ -22,7 +22,7 @@ export async function loadScheduleWithEntries(
     where: { AND: [{ id: scheduleId }, visibility] },
     include: {
       entries: {
-        include: { user: { select: { id: true, username: true, displayName: true } } },
+        include: { user: { select: { id: true, username: true, displayName: true, isExternal: true } } },
         orderBy: [{ userId: 'asc' }, { date: 'asc' }],
       },
       alerts: { orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }] },
@@ -57,7 +57,7 @@ export async function countTeleworkThisMonth(
 export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
   return prisma.user.findMany({
     where: { departmentId, active: true },
-    select: { id: true, username: true, displayName: true },
+    select: { id: true, username: true, displayName: true, isExternal: true },
     orderBy: { username: 'asc' },
   });
 }
@@ -122,6 +122,7 @@ export interface DepartmentMemberInfo {
   teleworkQuotaDays: number | null;
   teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
+  isExternal: boolean;
 }
 
 export async function loadDepartmentMembers(prisma: Db, departmentId: string): Promise<DepartmentMemberInfo[]> {
@@ -130,6 +131,7 @@ export async function loadDepartmentMembers(prisma: Db, departmentId: string): P
     select: {
       id: true, username: true, displayName: true, email: true, weeklyTargetHours: true,
       teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true,
+      isExternal: true,
     },
     orderBy: { username: 'asc' },
   });
@@ -219,6 +221,7 @@ export interface ScheduleUserSearchResult {
   id: string;
   username: string;
   displayName: string | null;
+  isExternal: boolean;
 }
 
 export async function searchScheduleUsers(
@@ -236,7 +239,7 @@ export async function searchScheduleUsers(
         { displayName: { contains: q, mode: 'insensitive' } },
       ],
     },
-    select: { id: true, username: true, displayName: true },
+    select: { id: true, username: true, displayName: true, isExternal: true },
     orderBy: { username: 'asc' },
     take,
   });

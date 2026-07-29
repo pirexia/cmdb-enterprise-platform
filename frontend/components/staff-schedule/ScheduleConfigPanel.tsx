@@ -280,6 +280,23 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     }
   };
 
+  // v3.5.13 (D3) — marca/desmarca a un trabajador como externo. El
+  // enmascarado real ocurre en servidor (maskIdentityForViewer); este toggle
+  // solo cambia el dato de partida.
+  const handleToggleExternal = async (userId: string, isExternal: boolean) => {
+    setManagersError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${userId}/external`, {
+        method: "PUT",
+        body: JSON.stringify({ isExternal }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await refetchMembers();
+    } catch {
+      setManagersError(t("staffSchedule.members.externalError"));
+    }
+  };
+
   // v3.5.10 refinamiento — antes dependía de assignUserId (el selector de la
   // sección "asignar departamento" de arriba): sin elegir un trabajador ahí,
   // el botón de esta sección nunca se habilitaba. Ahora tiene su propio
@@ -612,6 +629,15 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                                   ? ` · ${m.teleworkQuotaPct}%`
                                   : ""}
                         </span>
+                        <label className="flex items-center gap-1 text-xs text-slate-500" title={t("staffSchedule.members.external")}>
+                          <input
+                            type="checkbox"
+                            checked={m.isExternal}
+                            onChange={(e) => handleToggleExternal(m.id, e.target.checked)}
+                            className="h-3.5 w-3.5 rounded-none border-slate-300"
+                          />
+                          {t("staffSchedule.members.externalShort")}
+                        </label>
                         <button
                           type="button"
                           onClick={() => handleRemoveMember(m.id, displayLabel(m))}

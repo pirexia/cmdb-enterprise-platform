@@ -31,7 +31,7 @@ export default function StaffSchedulePage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("week");
   const [monthYear, setMonthYear] = useState(() => new Date().getUTCFullYear());
   const [monthNum, setMonthNum] = useState(() => new Date().getUTCMonth() + 1);
-  const [worker, setWorker] = useState<{ userId: string; label: string } | null>(null);
+  const [worker, setWorker] = useState<{ userId: string; label: string; isExternal: boolean; printLabel: string | null } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [showClonePicker, setShowClonePicker] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -280,7 +280,7 @@ export default function StaffSchedulePage() {
             <DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} />
             <WorkerFilter
               selectedLabel={worker?.label ?? null}
-              onSelect={(userId, label) => setWorker({ userId, label })}
+              onSelect={(userId, label, isExternal, printLabel) => setWorker({ userId, label, isExternal, printLabel })}
               onClear={() => setWorker(null)}
             />
             <div className="flex items-center gap-1 rounded-none border border-slate-300 overflow-hidden">
@@ -319,7 +319,15 @@ export default function StaffSchedulePage() {
         <PrintHeader
           title={t("staffSchedule.title")}
           weekLabel={printWeekLabel}
-          subtitle={worker ? worker.label : selectedDepartment ? selectedDepartment.name : t("staffSchedule.filter.allDepartments")}
+          subtitle={
+            worker
+              ? worker.isExternal
+                ? (worker.printLabel ?? worker.label)
+                : worker.label
+              : selectedDepartment
+                ? selectedDepartment.name
+                : t("staffSchedule.filter.allDepartments")
+          }
           rangeLabel={printRangeLabel}
         />
 
@@ -374,6 +382,8 @@ export default function StaffSchedulePage() {
           <WorkerScheduleView
             userId={worker.userId}
             workerLabel={worker.label}
+            isExternal={worker.isExternal}
+            printLabel={worker.printLabel}
             mode={periodMode}
             weekStart={weekStart}
             year={monthYear}

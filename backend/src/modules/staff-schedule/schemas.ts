@@ -168,6 +168,11 @@ export const UserTeleworkQuotaSchema = z
     { message: 'Solo se puede fijar uno de los cuatro metodos de cuota de teletrabajo' },
   );
 
+// ─── Marca de trabajador externo (v3.5.13, D3) ─────────────────────────────
+export const UserExternalSchema = z.object({
+  isExternal: z.boolean(),
+});
+
 // ─── Worker search selector (v3.5.12, R5/D4) ───────────────────────────────
 
 export const UserSearchSchema = z.object({

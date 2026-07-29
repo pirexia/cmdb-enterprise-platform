@@ -94,6 +94,13 @@ export interface ScheduleRow {
   userId: string;
   username: string;
   displayName: string | null;
+  // v3.5.13 (D3) — displayName/username ya vienen enmascarados por el servidor
+  // cuando el visor no está autorizado. printLabel es la etiqueta fija para
+  // imprimir ("Externo (INI)"), calculada siempre del nombre real en
+  // servidor — nunca recalcular en cliente sobre displayName, porque para un
+  // visor no autorizado ya llega enmascarado.
+  isExternal: boolean;
+  printLabel: string | null;
   entries: Record<string, MaskedEntryFields>;
   summary: {
     weeklyNetHours: number;
@@ -174,6 +181,7 @@ export interface DepartmentMemberInfo {
   teleworkQuotaDays: number | null;
   teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
+  isExternal: boolean;
 }
 
 // v3.5.12 (R5/F4) — GET /api/staff-schedule/users?q=. Deliberately no email
@@ -182,6 +190,10 @@ export interface WorkerSearchResult {
   id: string;
   username: string;
   displayName: string | null;
+  isExternal: boolean;
+  // v3.5.13 (D3) — etiqueta fija para imprimir, calculada en servidor a partir
+  // del nombre real; se propaga hasta la vista de trabajador individual.
+  printLabel: string | null;
 }
 
 // v3.5.12 (R5/F4) — one day of GET /user/:userId/entries?from=&to=. Already

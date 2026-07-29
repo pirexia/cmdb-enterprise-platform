@@ -2445,7 +2445,10 @@
       "none": "No members assigned.",
       "remove": "Remove",
       "removeConfirm": "Remove {name} from the department? Already-published schedules won't change; drafts will be updated when you click \"Sync members\".",
-      "removeError": "Could not remove the worker from the department"
+      "removeError": "Could not remove the worker from the department",
+      "external": "External worker (data protection)",
+      "externalShort": "External",
+      "externalError": "Could not update the external flag"
     },
     "confirm": {
       "deleteSchedule": "Delete this schedule? All its entries will be lost. This action cannot be undone."

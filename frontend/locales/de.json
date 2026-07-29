@@ -2326,7 +2326,10 @@
       "none": "Keine Mitglieder zugewiesen.",
       "remove": "Entfernen",
       "removeConfirm": "{name} aus der Abteilung entfernen? Bereits veröffentlichte Pläne ändern sich nicht; Entwürfe werden aktualisiert, sobald Sie auf \"Mitglieder synchronisieren\" klicken.",
-      "removeError": "Der Mitarbeiter konnte nicht aus der Abteilung entfernt werden"
+      "removeError": "Der Mitarbeiter konnte nicht aus der Abteilung entfernt werden",
+      "external": "Externer Mitarbeiter (Datenschutz)",
+      "externalShort": "Extern",
+      "externalError": "Die Markierung als extern konnte nicht aktualisiert werden"
     },
     "confirm": {
       "deleteSchedule": "Diese Planung löschen? Alle Einträge gehen verloren. Diese Aktion kann nicht rückgängig gemacht werden."

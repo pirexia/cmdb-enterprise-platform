@@ -2445,7 +2445,10 @@
       "none": "Sin miembros asignados.",
       "remove": "Quitar",
       "removeConfirm": "¿Quitar a {name} del departamento? Los horarios ya publicados no cambiarán; los borradores se actualizarán al pulsar «Sincronizar miembros».",
-      "removeError": "No se pudo quitar al trabajador del departamento"
+      "removeError": "No se pudo quitar al trabajador del departamento",
+      "external": "Trabajador externo (protección de datos)",
+      "externalShort": "Externo",
+      "externalError": "No se pudo actualizar la marca de externo"
     },
     "confirm": {
       "deleteSchedule": "¿Eliminar esta planificación? Se perderán todas sus entradas. Esta acción no se puede deshacer."

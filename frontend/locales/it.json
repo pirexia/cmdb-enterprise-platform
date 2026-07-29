@@ -2326,7 +2326,10 @@
       "none": "Nessun membro assegnato.",
       "remove": "Rimuovi",
       "removeConfirm": "Rimuovere {name} dal reparto? Gli orari già pubblicati non cambieranno; le bozze verranno aggiornate cliccando su \"Sincronizza membri\".",
-      "removeError": "Impossibile rimuovere il lavoratore dal reparto"
+      "removeError": "Impossibile rimuovere il lavoratore dal reparto",
+      "external": "Lavoratore esterno (protezione dei dati)",
+      "externalShort": "Esterno",
+      "externalError": "Impossibile aggiornare il contrassegno di esterno"
     },
     "confirm": {
       "deleteSchedule": "Eliminare questa pianificazione? Tutte le voci andranno perse. Questa azione non può essere annullata."

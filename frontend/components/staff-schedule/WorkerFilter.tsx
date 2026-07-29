@@ -9,7 +9,7 @@ import { useWorkerSearch } from "@/app/staff-schedule/hooks/useStaffSchedule";
 interface Props {
   /** Label of the currently selected worker, or null if none is selected. */
   selectedLabel: string | null;
-  onSelect: (userId: string, label: string) => void;
+  onSelect: (userId: string, label: string, isExternal: boolean, printLabel: string | null) => void;
   onClear: () => void;
 }
 
@@ -91,7 +91,7 @@ export default function WorkerFilter({ selectedLabel, onSelect, onClear }: Props
                   type="button"
                   onClick={() => {
                     const label = displayLabel(u);
-                    onSelect(u.id, label);
+                    onSelect(u.id, label, u.isExternal, u.printLabel);
                     setQuery(label);
                     setOpen(false);
                   }}

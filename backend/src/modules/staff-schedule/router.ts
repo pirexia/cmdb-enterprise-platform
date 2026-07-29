@@ -11,6 +11,7 @@ import {
   CloneScheduleSchema,
   UserWeeklyHoursSchema,
   UserTeleworkQuotaSchema,
+  UserExternalSchema,
   UserSearchSchema,
   UserEntriesRangeSchema,
   ScheduleRangeSchema,
@@ -32,6 +33,8 @@ import {
   getMonthlySummary,
   listUserEntries,
   ScheduleServiceError,
+  maskIdentityForViewer,
+  externalInitials,
 } from './service.js';
 import { exportScheduleCsv, exportScheduleXlsx } from './export.js';
 
@@ -281,6 +284,33 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
+  // PUT /api/staff-schedule/users/:userId/external  (ADMIN)  { isExternal }
+  router.put('/users/:userId/external', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserExternalSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: req.params.userId as string },
+          data: { isExternal: parsed.data.isExternal },
+          select: { id: true, username: true, isExternal: true },
+        });
+        await auditStaffSchedule(tx, {
+          action: 'SET_USER_EXTERNAL',
+          entity: 'DEPARTMENT',
+          entityId: req.params.userId as string,
+          userEmail: req.user!.email,
+        });
+        return u;
+      });
+      res.json(user);
+    } catch (err: any) {
+      if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
+      console.error('[StaffSchedule] user external update error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // ─── Summer schedule (global period, D7) ────────────────────────────────
 
   // GET /api/staff-schedule/summer?year=
@@ -379,7 +409,17 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
       const users = await searchScheduleUsers(prisma, parsed.data.q);
-      res.json(users);
+      // v3.5.13 (D3) — el buscador de trabajadores es alcanzable por VIEWER
+      // (comentario de arriba); un externo debe salir ya enmascarado aquí, no
+      // solo en la vista del horario. printLabel se calcula del nombre real
+      // ANTES de enmascarar (mismo motivo que en buildScheduleView: recalcular
+      // sobre un displayName ya enmascarado da resultados absurdos).
+      const viewer = { id: req.user!.id, role: req.user!.role };
+      const masked = users.map((u) => ({
+        ...maskIdentityForViewer(u, viewer, u.id),
+        printLabel: u.isExternal ? `Externo (${externalInitials(u.displayName, u.username)})` : null,
+      }));
+      res.json(masked);
     } catch (err) {
       console.error('[StaffSchedule] user search error:', err);
       res.status(500).json({ error: 'Internal server error' });

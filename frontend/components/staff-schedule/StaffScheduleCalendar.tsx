@@ -80,7 +80,19 @@ export default function StaffScheduleCalendar({ view, departmentConfig, onSaveEn
           {view.rows.map((row) => (
             <tr key={row.userId}>
               <td className="sticky left-0 z-10 bg-white border border-slate-100 px-3 py-2 text-xs font-medium text-slate-800">
-                {displayLabel(row)}
+                {row.isExternal ? (
+                  <>
+                    {/* v3.5.13 (D3) — printLabel viene ya calculado del servidor
+                        a partir del nombre real: recalcularlo aquí sobre
+                        displayLabel(row) rompería para un viewer que ya lo
+                        recibe enmascarado (sus iniciales saldrían del propio
+                        "Externo (...)"). */}
+                    <span className="no-print">{displayLabel(row)}</span>
+                    <span className="print-only">{row.printLabel}</span>
+                  </>
+                ) : (
+                  displayLabel(row)
+                )}
               </td>
               {view.days.map((d) => (
                 <ScheduleCell

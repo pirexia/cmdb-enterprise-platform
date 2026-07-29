@@ -2442,13 +2442,16 @@
     },
     "members": {
       "title": "Department members",
-      "none": "No members assigned."
+      "none": "No members assigned.",
+      "remove": "Remove",
+      "removeConfirm": "Remove {name} from the department? Already-published schedules won't change; drafts will be updated when you click \"Sync members\".",
+      "removeError": "Could not remove the worker from the department"
     },
     "confirm": {
       "deleteSchedule": "Delete this schedule? All its entries will be lost. This action cannot be undone."
     },
     "syncMembers": {
-      "added": "{n} worker(s) added to the schedule."
+      "result": "Sync: {added} added, {removed} removed"
     },
     "telework": {
       "title": "Per-worker telework quota",

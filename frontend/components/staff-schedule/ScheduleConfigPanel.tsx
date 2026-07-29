@@ -256,6 +256,30 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     }
   };
 
+  // v3.5.13 — retirada de un trabajador del departamento. Reutiliza el endpoint
+  // de asignacion con departmentId=null (ADMIN, transaccional, auditado como
+  // ASSIGN_USER_DEPARTMENT); no hace falta ruta nueva.
+  //
+  // Se avisa explicitamente del alcance (D5): los horarios ya publicados NO
+  // cambian, y los borradores solo se actualizan al pulsar "Sincronizar
+  // miembros". Sin ese aviso, el operador esperaria que el calendario se
+  // limpiara solo y lo tomaria por un fallo.
+  const handleRemoveMember = async (userId: string, label: string) => {
+    if (!confirm(t("staffSchedule.members.removeConfirm", { name: label }))) return;
+    setManagersError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${userId}/department`, {
+        method: "PUT",
+        body: JSON.stringify({ departmentId: null }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await refetchMembers();
+      onDepartmentsChanged();
+    } catch {
+      setManagersError(t("staffSchedule.members.removeError"));
+    }
+  };
+
   // v3.5.10 refinamiento — antes dependía de assignUserId (el selector de la
   // sección "asignar departamento" de arriba): sin elegir un trabajador ahí,
   // el botón de esta sección nunca se habilitaba. Ahora tiene su propio
@@ -573,19 +597,28 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
               {currentMembers.length > 0 ? (
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {currentMembers.map((m) => (
-                    <li key={m.id} className="flex items-center justify-between bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
-                      <span className="text-slate-700">{displayLabel(m)}</span>
-                      <span className="text-slate-400">
-                        {m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}
-                        {m.teleworkFull
-                          ? ` · ${t("staffSchedule.telework.fullShort")}`
-                          : m.teleworkQuotaDays != null
-                            ? ` · ${m.teleworkQuotaDays}d/mes`
-                            : m.teleworkQuotaDaysPerWeek != null
-                              ? ` · ${m.teleworkQuotaDaysPerWeek}d/sem`
-                              : m.teleworkQuotaPct != null
-                                ? ` · ${m.teleworkQuotaPct}%`
-                                : ""}
+                    <li key={m.id} className="flex items-center justify-between gap-2 bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
+                      <span className="text-slate-700 truncate">{displayLabel(m)}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-slate-400">
+                          {m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}
+                          {m.teleworkFull
+                            ? ` · ${t("staffSchedule.telework.fullShort")}`
+                            : m.teleworkQuotaDays != null
+                              ? ` · ${m.teleworkQuotaDays}d/mes`
+                              : m.teleworkQuotaDaysPerWeek != null
+                                ? ` · ${m.teleworkQuotaDaysPerWeek}d/sem`
+                                : m.teleworkQuotaPct != null
+                                  ? ` · ${m.teleworkQuotaPct}%`
+                                  : ""}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m.id, displayLabel(m))}
+                          className="rounded-none border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          {t("staffSchedule.members.remove")}
+                        </button>
                       </span>
                     </li>
                   ))}

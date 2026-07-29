@@ -93,10 +93,11 @@ export default function StaffSchedulePage() {
 
   const handleImportPreviousWeek = () => runAction(importPreviousWeek);
 
-  // v3.5.10 refinamiento — cubre tanto un horario vacío (creado/clonado antes
-  // de que el departamento tuviera su membresía final) como un trabajador
-  // nuevo que se incorpora a un departamento con horarios ya planificados.
-  const [syncResult, setSyncResult] = useState<{ added: number } | null>(null);
+  // v3.5.10 refinamiento, ampliado en v3.5.13 (D5) — cubre un horario vacío
+  // (creado/clonado antes de que el departamento tuviera su membresía final),
+  // un trabajador nuevo que se incorpora, y un trabajador retirado del
+  // departamento (sus entradas se borran de este DRAFT).
+  const [syncResult, setSyncResult] = useState<{ added: number; removed: number } | null>(null);
   const handleSyncMembers = () => runAction(async () => {
     const result = await syncMembers();
     setSyncResult(result);
@@ -338,7 +339,7 @@ export default function StaffSchedulePage() {
         {syncResult && (
           <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700 no-print">
             <Users className="h-4 w-4 shrink-0" />
-            {t("staffSchedule.syncMembers.added", { n: syncResult.added })}
+            {t("staffSchedule.syncMembers.result", { added: syncResult.added, removed: syncResult.removed })}
           </div>
         )}
 

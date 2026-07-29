@@ -2442,13 +2442,16 @@
     },
     "members": {
       "title": "Miembros del departamento",
-      "none": "Sin miembros asignados."
+      "none": "Sin miembros asignados.",
+      "remove": "Quitar",
+      "removeConfirm": "¿Quitar a {name} del departamento? Los horarios ya publicados no cambiarán; los borradores se actualizarán al pulsar «Sincronizar miembros».",
+      "removeError": "No se pudo quitar al trabajador del departamento"
     },
     "confirm": {
       "deleteSchedule": "¿Eliminar esta planificación? Se perderán todas sus entradas. Esta acción no se puede deshacer."
     },
     "syncMembers": {
-      "added": "{n} trabajador(es) añadido(s) a la planificación."
+      "result": "Sincronización: {added} añadidos, {removed} retirados"
     },
     "telework": {
       "title": "Cuota de teletrabajo por trabajador",

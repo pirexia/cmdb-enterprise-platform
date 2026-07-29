@@ -501,11 +501,13 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // POST /api/staff-schedule/:id/sync-members  (deptEdit, DRAFT only) — v3.5.10
-  // refinamiento: añade entradas base para miembros del departamento que
-  // todavía no tengan ninguna en este horario. No destructivo — nunca toca
-  // entradas existentes. Cubre tanto un horario vacío (creado/clonado antes de
-  // que el departamento tuviera su membresía final) como un trabajador nuevo
-  // que se incorpora a un departamento con horarios ya planificados.
+  // refinamiento, ampliado en v3.5.13 (D5) a las dos direcciones: añade
+  // entradas base a miembros del departamento que todavía no tengan ninguna
+  // en este horario, Y retira las entradas de quien ya no pertenece al
+  // departamento. Nunca toca entradas de quien sigue siendo miembro. Cubre un
+  // horario vacío/incompleto, un trabajador nuevo incorporado y un trabajador
+  // retirado del departamento — los tres casos, sobre horarios PUBLISHED,
+  // requieren despublicar primero (409).
   router.post('/:id/sync-members', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const result = await prisma.$transaction(async (tx) => {

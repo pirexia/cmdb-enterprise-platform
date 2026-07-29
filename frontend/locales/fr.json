@@ -2323,13 +2323,16 @@
     },
     "members": {
       "title": "Membres du département",
-      "none": "Aucun membre assigné."
+      "none": "Aucun membre assigné.",
+      "remove": "Retirer",
+      "removeConfirm": "Retirer {name} du département ? Les plannings déjà publiés ne changeront pas ; les brouillons seront mis à jour en cliquant sur « Synchroniser les membres ».",
+      "removeError": "Impossible de retirer le travailleur du département"
     },
     "confirm": {
       "deleteSchedule": "Supprimer cette planification ? Toutes ses entrées seront perdues. Cette action est irréversible."
     },
     "syncMembers": {
-      "added": "{n} travailleur(s) ajouté(s) à la planification."
+      "result": "Synchronisation : {added} ajouté(s), {removed} retiré(s)"
     },
     "telework": {
       "title": "Quota de télétravail par collaborateur",

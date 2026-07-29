@@ -2323,13 +2323,16 @@
     },
     "members": {
       "title": "Abteilungsmitglieder",
-      "none": "Keine Mitglieder zugewiesen."
+      "none": "Keine Mitglieder zugewiesen.",
+      "remove": "Entfernen",
+      "removeConfirm": "{name} aus der Abteilung entfernen? Bereits veröffentlichte Pläne ändern sich nicht; Entwürfe werden aktualisiert, sobald Sie auf \"Mitglieder synchronisieren\" klicken.",
+      "removeError": "Der Mitarbeiter konnte nicht aus der Abteilung entfernt werden"
     },
     "confirm": {
       "deleteSchedule": "Diese Planung löschen? Alle Einträge gehen verloren. Diese Aktion kann nicht rückgängig gemacht werden."
     },
     "syncMembers": {
-      "added": "{n} Mitarbeiter zur Planung hinzugefügt."
+      "result": "Synchronisierung: {added} hinzugefügt, {removed} entfernt"
     },
     "telework": {
       "title": "Telearbeitskontingent pro Mitarbeiter",

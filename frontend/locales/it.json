@@ -2323,13 +2323,16 @@
     },
     "members": {
       "title": "Membri del dipartimento",
-      "none": "Nessun membro assegnato."
+      "none": "Nessun membro assegnato.",
+      "remove": "Rimuovi",
+      "removeConfirm": "Rimuovere {name} dal reparto? Gli orari già pubblicati non cambieranno; le bozze verranno aggiornate cliccando su \"Sincronizza membri\".",
+      "removeError": "Impossibile rimuovere il lavoratore dal reparto"
     },
     "confirm": {
       "deleteSchedule": "Eliminare questa pianificazione? Tutte le voci andranno perse. Questa azione non può essere annullata."
     },
     "syncMembers": {
-      "added": "{n} lavoratore/i aggiunto/i alla pianificazione."
+      "result": "Sincronizzazione: {added} aggiunti, {removed} rimossi"
     },
     "telework": {
       "title": "Quota di telelavoro per lavoratore",

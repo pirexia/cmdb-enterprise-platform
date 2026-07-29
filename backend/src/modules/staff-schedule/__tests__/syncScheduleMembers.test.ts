@@ -14,6 +14,7 @@ function mockTx(opts: {
   presentUserIds: string[];
 }) {
   const created: { userId: string; date: Date }[] = [];
+  let deletedWhere: { scheduleId: string; userId: { in: string[] } } | null = null;
   const tx = {
     staffSchedule: {
       findUnique: async () => (opts.schedule ? { ...opts.schedule, weekStart: WEEK_START } : null),
@@ -27,9 +28,13 @@ function mockTx(opts: {
         created.push(...data.map((d) => ({ userId: d.userId, date: d.date })));
         return { count: data.length };
       },
+      deleteMany: async ({ where }: { where: { scheduleId: string; userId: { in: string[] } } }) => {
+        deletedWhere = where;
+        return { count: where.userId.in.length };
+      },
     },
   } as unknown as Parameters<typeof syncScheduleMembers>[0];
-  return { tx, created };
+  return { tx, created, getDeletedWhere: () => deletedWhere };
 }
 
 describe('syncScheduleMembers', () => {
@@ -40,7 +45,7 @@ describe('syncScheduleMembers', () => {
       presentUserIds: [],
     });
     const result = await syncScheduleMembers(tx, 'sched-1');
-    expect(result).toEqual({ added: 2 });
+    expect(result).toEqual({ added: 2, removed: 0 });
     expect(created).toHaveLength(10); // 2 miembros x 5 días
   });
 
@@ -51,7 +56,7 @@ describe('syncScheduleMembers', () => {
       presentUserIds: ['u1', 'u2'],
     });
     const result = await syncScheduleMembers(tx, 'sched-1');
-    expect(result).toEqual({ added: 1 });
+    expect(result).toEqual({ added: 1, removed: 0 });
     expect(created.every((c) => c.userId === 'u3')).toBe(true);
     expect(created).toHaveLength(5);
   });
@@ -63,7 +68,7 @@ describe('syncScheduleMembers', () => {
       presentUserIds: ['u1'],
     });
     const result = await syncScheduleMembers(tx, 'sched-1');
-    expect(result).toEqual({ added: 0 });
+    expect(result).toEqual({ added: 0, removed: 0 });
     expect(created).toHaveLength(0);
   });
 
@@ -83,5 +88,52 @@ describe('syncScheduleMembers', () => {
     await expect(syncScheduleMembers(tx, 'no-existe')).rejects.toMatchObject(
       new ScheduleServiceError(404, 'Schedule not found'),
     );
+  });
+});
+
+describe('syncScheduleMembers — retirada de miembros (v3.5.13, D5)', () => {
+  it('borra las entradas de quien ya no pertenece al departamento', async () => {
+    // Solo u1 sigue en el departamento; u2 fue retirado.
+    const { tx, getDeletedWhere } = mockTx({
+      schedule: { status: 'DRAFT', departmentId: 'dept-1' },
+      members: [{ id: 'u1' }],
+      presentUserIds: ['u1', 'u2'],
+    });
+    const result = await syncScheduleMembers(tx, 'sched-1');
+    expect(result).toEqual({ added: 0, removed: 1 });
+    expect(getDeletedWhere()).toEqual({ scheduleId: 'sched-1', userId: { in: ['u2'] } });
+  });
+
+  it('no borra nada cuando todos los presentes siguen siendo miembros', async () => {
+    const { tx, getDeletedWhere } = mockTx({
+      schedule: { status: 'DRAFT', departmentId: 'dept-1' },
+      members: [{ id: 'u1' }],
+      presentUserIds: ['u1'],
+    });
+    const result = await syncScheduleMembers(tx, 'sched-1');
+    expect(result).toEqual({ added: 0, removed: 0 });
+    expect(getDeletedWhere()).toBeNull();
+  });
+
+  it('añade y retira a la vez cuando el horario tiene de ambos', async () => {
+    const { tx, created, getDeletedWhere } = mockTx({
+      schedule: { status: 'DRAFT', departmentId: 'dept-1' },
+      members: [{ id: 'u1' }, { id: 'u3' }],
+      presentUserIds: ['u1', 'u2'],
+    });
+    const result = await syncScheduleMembers(tx, 'sched-1');
+    expect(result).toEqual({ added: 1, removed: 1 });
+    expect(created.every((c) => c.userId === 'u3')).toBe(true);
+    expect(getDeletedWhere()).toEqual({ scheduleId: 'sched-1', userId: { in: ['u2'] } });
+  });
+
+  it('sigue rechazando un horario publicado (los PUBLISHED no se tocan nunca)', async () => {
+    const { tx, getDeletedWhere } = mockTx({
+      schedule: { status: 'PUBLISHED', departmentId: 'dept-1' },
+      members: [{ id: 'u1' }],
+      presentUserIds: ['u1', 'u2'],
+    });
+    await expect(syncScheduleMembers(tx, 'sched-1')).rejects.toMatchObject({ statusCode: 409 });
+    expect(getDeletedWhere()).toBeNull();
   });
 });

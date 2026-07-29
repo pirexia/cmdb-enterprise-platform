@@ -341,17 +341,25 @@ export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: st
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
-// syncScheduleMembers — DRAFT only. Adds base PRESENCIAL entries (Mon-Fri) for
-// active department members who do not yet have ANY entry in this schedule.
-// Never touches existing entries — idempotent and non-destructive, unlike
-// deleteSchedule. Added in the v3.5.10 refinement round to cover two related
-// gaps: a schedule created/cloned before the department had its final
-// membership (entries missing for members added later), and a new hire
-// joining a department that already has schedules planned months ahead.
+// syncScheduleMembers — solo DRAFT. Reconcilia las entradas del horario contra
+// la membresia ACTUAL del departamento, en las dos direcciones:
+//   - añade entradas base PRESENCIAL (L-V) a los miembros que no tienen ninguna
+//   - borra todas las entradas de quien ya no es miembro del departamento
+//
+// v3.5.13 (D5): la retirada es nueva. Antes la funcion era estrictamente
+// aditiva, asi que un trabajador sacado de un departamento se quedaba
+// indefinidamente en los horarios ya creados y no habia forma auditada de
+// sacarlo salvo borrar el horario entero.
+//
+// Alcance deliberadamente acotado, confirmado con el usuario: los horarios
+// PUBLISHED NO se tocan (siguen devolviendo 409) — quedan como testimonio de lo
+// que se publico en su dia. Solo se reconcilian los DRAFT, y solo cuando el
+// operador pulsa explicitamente el boton; no hay reconciliacion automatica al
+// cambiar la membresia.
 export async function syncScheduleMembers(
   prisma: Prisma.TransactionClient,
   scheduleId: string,
-): Promise<{ added: number }> {
+): Promise<{ added: number; removed: number }> {
   const schedule = await prisma.staffSchedule.findUnique({
     where: { id: scheduleId },
     select: { status: true, departmentId: true, weekStart: true },
@@ -365,8 +373,11 @@ export async function syncScheduleMembers(
     loadDepartmentMembers(prisma, schedule.departmentId),
     prisma.scheduleEntry.findMany({ where: { scheduleId }, distinct: ['userId'], select: { userId: true } }),
   ]);
+  const memberIds = new Set(members.map((m) => m.id));
   const presentIds = new Set(present.map((p) => p.userId));
+
   const missing = members.filter((m) => !presentIds.has(m.id));
+  const stale = present.map((p) => p.userId).filter((id) => !memberIds.has(id));
 
   const entriesData = missing.flatMap((m) =>
     Array.from({ length: 5 }, (_, i) => ({
@@ -380,7 +391,10 @@ export async function syncScheduleMembers(
   if (entriesData.length > 0) {
     await prisma.scheduleEntry.createMany({ data: entriesData });
   }
-  return { added: missing.length };
+  if (stale.length > 0) {
+    await prisma.scheduleEntry.deleteMany({ where: { scheduleId, userId: { in: stale } } });
+  }
+  return { added: missing.length, removed: stale.length };
 }
 
 // deleteSchedule — DRAFT only (D10: PUBLISHED is immutable; unpublish first).

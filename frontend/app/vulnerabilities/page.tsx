@@ -2,15 +2,18 @@
 
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle } from "lucide-react";
+import Link from "next/link";
+import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle, Upload } from "lucide-react";
 import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
 import { useLanguage } from "@/contexts/LanguageContext";
+import type { VulnSeverity, VulnStatus } from "@/lib/types/vulnImport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type VulnSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-type VulnStatus   = "NUEVO" | "ASIGNADO" | "EN_CURSO" | "PARADO" | "RESUELTO";
+//
+// VulnSeverity/VulnStatus are imported from frontend/lib/types/vulnImport.ts
+// (single source of truth, mirrors backend/src/modules/integrations/types.ts)
+// rather than hand-maintained locally — do not redeclare them here.
 
 interface Vulnerability {
   cve:         string;
@@ -21,6 +24,19 @@ interface Vulnerability {
   status:      VulnStatus;
   importedAt?: string;
   updatedAt?:  string;
+  // Greenbone real-format fields (v3.6.0) — optional so legacy manually-
+  // entered vulnerabilities (no `key`/`oid`/etc.) remain valid.
+  key?:        string;
+  oid?:        string;
+  port?:       string;
+  cves?:       string[];
+  lastSeenAt?: string;
+  resolvedAt?: string;
+  reopenedAt?: string;
+  qod?:        number;
+  family?:     string;
+  solution?:   string;
+  epssScore?:  number;
 }
 
 interface CI {
@@ -43,22 +59,38 @@ const SEVERITY_STYLES: Record<VulnSeverity, string> = {
   HIGH:     "bg-orange-100 text-orange-700 ring-orange-200",
   MEDIUM:   "bg-yellow-100 text-yellow-700 ring-yellow-200",
   LOW:      "bg-slate-100 text-slate-600 ring-slate-200",
+  INFO:     "bg-slate-50 text-slate-400 ring-slate-100",
 };
 
 const STATUS_PILL: Record<VulnStatus, string> = {
-  NUEVO:    "bg-blue-100 text-blue-700",
-  ASIGNADO: "bg-purple-100 text-purple-700",
-  EN_CURSO: "bg-yellow-100 text-yellow-700",
-  PARADO:   "bg-orange-100 text-orange-700",
-  RESUELTO: "bg-emerald-100 text-emerald-700",
+  NUEVO:     "bg-blue-100 text-blue-700",
+  ASIGNADO:  "bg-purple-100 text-purple-700",
+  EN_CURSO:  "bg-yellow-100 text-yellow-700",
+  PARADO:    "bg-orange-100 text-orange-700",
+  RESUELTO:  "bg-emerald-100 text-emerald-700",
+  // Distinct amber treatment (spec D6): a RESUELTO vulnerability that
+  // reappeared in a later scan — must read as visually different from a
+  // fresh NUEVO so an operator immediately notices "this came back".
+  REABIERTA: "bg-amber-100 text-amber-800",
 };
 
-const ALL_STATUSES: VulnStatus[] = ["NUEVO", "ASIGNADO", "EN_CURSO", "PARADO", "RESUELTO"];
+// Used for the filter dropdown and the status pill lookup — includes every
+// status a row can hold, including the system-computed REABIERTA.
+const ALL_STATUSES: VulnStatus[] = ["NUEVO", "ASIGNADO", "EN_CURSO", "PARADO", "RESUELTO", "REABIERTA"];
+
+// Used for the per-row manual status-change <select>. REABIERTA is excluded
+// on purpose: it is only ever set by the batch-accept workflow when a
+// resolved vulnerability reappears (backend/src/index.ts PATCH
+// /api/vulnerabilities `validStatuses` also rejects it as a manual target) —
+// offering it here would let an operator pick a value the API 400s on.
+const EDITABLE_STATUSES: VulnStatus[] = ALL_STATUSES.filter((s) => s !== "REABIERTA");
 
 // ─── Summary count bar ────────────────────────────────────────────────────────
 
 function SeverityDot({ severity }: { severity: VulnSeverity }) {
-  const colors = { CRITICAL: "bg-red-500", HIGH: "bg-orange-400", MEDIUM: "bg-yellow-400", LOW: "bg-slate-300" };
+  const colors: Record<VulnSeverity, string> = {
+    CRITICAL: "bg-red-500", HIGH: "bg-orange-400", MEDIUM: "bg-yellow-400", LOW: "bg-slate-300", INFO: "bg-slate-200",
+  };
   return <span className={`inline-block h-2.5 w-2.5 rounded-full flex-shrink-0 ${colors[severity]}`} />;
 }
 
@@ -128,24 +160,36 @@ export default function VulnerabilitiesPage() {
     router.replace("/vulnerabilities", { scroll: false });
   }, [searchParams, allRows, router]);
 
-  const handleStatusChange = async (ciId: string, cve: string, newStatus: VulnStatus) => {
-    const key = `${ciId}:${cve}`;
+  // A row's real identity is `key ?? cve` (spec D1/D1b, v3.6.0): ~96% of real
+  // Greenbone findings carry no CVE, so keying by `cve` alone would silently
+  // collapse many distinct rows sharing `cve === ""` into one. Mirrors the
+  // backend's own resolution in PATCH /api/vulnerabilities (index.ts:
+  // `const targetKey = key ?? cve`).
+  const vulnIdentity = (v: { key?: string; cve: string }) => v.key ?? v.cve;
+
+  const handleStatusChange = async (row: VulnRow, newStatus: VulnStatus) => {
+    const identity   = vulnIdentity(row);
+    const updateKey  = `${row.ciId}:${identity}`;
 
     // Capture previous status for rollback
-    const previousStatus = allRows.find((r) => r.ciId === ciId && r.cve === cve)?.status;
+    const previousStatus = allRows.find(
+      (r) => r.ciId === row.ciId && vulnIdentity(r) === identity
+    )?.status;
 
     // Apply optimistic update immediately
     setAllRows((prev) =>
       prev.map((r) =>
-        r.ciId === ciId && r.cve === cve ? { ...r, status: newStatus } : r
+        r.ciId === row.ciId && vulnIdentity(r) === identity ? { ...r, status: newStatus } : r
       )
     );
-    setUpdating((prev) => new Set(prev).add(key));
+    setUpdating((prev) => new Set(prev).add(updateKey));
 
     try {
       const res = await apiFetch("/api/vulnerabilities", {
         method: "PATCH",
-        body:   JSON.stringify({ ciId, cve, status: newStatus }),
+        // Send both fields — backend prefers `key`, falls back to `cve` for
+        // legacy rows that never got a `key` (index.ts: `key ?? cve`).
+        body:   JSON.stringify({ ciId: row.ciId, key: row.key, cve: row.cve, status: newStatus }),
       });
 
       if (!res.ok) {
@@ -164,7 +208,7 @@ export default function VulnerabilitiesPage() {
       if (previousStatus !== undefined) {
         setAllRows((prev) =>
           prev.map((r) =>
-            r.ciId === ciId && r.cve === cve ? { ...r, status: previousStatus } : r
+            r.ciId === row.ciId && vulnIdentity(r) === identity ? { ...r, status: previousStatus } : r
           )
         );
       }
@@ -172,7 +216,7 @@ export default function VulnerabilitiesPage() {
       const errMsg = err instanceof Error ? err.message : t("common.unknown_error");
       addToast("error", `${t("vulnerabilities.update_failed")} ${errMsg}`);
     } finally {
-      setUpdating((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      setUpdating((prev) => { const n = new Set(prev); n.delete(updateKey); return n; });
     }
   };
 
@@ -200,25 +244,33 @@ export default function VulnerabilitiesPage() {
         t("vulnerabilities.columns.description"),
         t("vulnerabilities.columns.source"),
         t("vulnerabilities.columns.status"),
+        t("vulnerabilities.columns.port"),
+        t("vulnerabilities.columns.family"),
         t("vulnerabilities.col_imported"),
       ],
       filtered.map((row) => [
-        row.ciName, row.ciSlug, row.cve, row.severity,
+        row.ciName, row.ciSlug, row.cve || "—", row.severity,
         row.cvss_score ?? "",
         row.description,
         row.source ?? "manual",
         t(`vulnerabilities.status.${row.status}`),
+        row.port ?? "",
+        row.family ?? "",
         row.importedAt ? new Date(row.importedAt).toLocaleDateString("es-ES") : "",
       ])
     );
   };
 
   // ── Summary stats ──────────────────────────────────────────────────────────
+  // counts.open already treats "anything not RESUELTO" as open, so REABIERTA
+  // (which is never RESUELTO) is counted correctly here without a code
+  // change — verified by reading this filter, not assumed.
   const counts = useMemo(() => ({
     critical: allRows.filter((r) => r.severity === "CRITICAL").length,
     high:     allRows.filter((r) => r.severity === "HIGH").length,
     medium:   allRows.filter((r) => r.severity === "MEDIUM").length,
     low:      allRows.filter((r) => r.severity === "LOW").length,
+    info:     allRows.filter((r) => r.severity === "INFO").length,
     resuelto: allRows.filter((r) => r.status === "RESUELTO").length,
     open:     allRows.filter((r) => r.status !== "RESUELTO").length,
   }), [allRows]);
@@ -269,21 +321,30 @@ export default function VulnerabilitiesPage() {
               </p>
             </div>
           </div>
-          <button onClick={fetchAll} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" />{t("actions.refresh")}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/vulnerabilities/imports"
+              className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              <Upload className="h-3.5 w-3.5" />{t("vulnImport.title")}
+            </Link>
+            <button onClick={fetchAll} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+              <RefreshCw className="h-3.5 w-3.5" />{t("actions.refresh")}
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="px-8 py-8 w-full space-y-6">
         {/* Summary cards */}
         {!loading && !error && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {[
               { label: "CRITICAL", value: counts.critical, color: "bg-red-50 text-red-700 ring-red-200" },
               { label: "HIGH",     value: counts.high,     color: "bg-orange-50 text-orange-700 ring-orange-200" },
               { label: "MEDIUM",   value: counts.medium,   color: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
               { label: "LOW",      value: counts.low,      color: "bg-slate-50 text-slate-600 ring-slate-200" },
+              { label: "INFO",     value: counts.info,     color: "bg-slate-50 text-slate-400 ring-slate-100" },
               { label: t("vulnerabilities.open_label"),     value: counts.open,     color: "bg-[var(--accent)]/5 text-[var(--accent)] ring-[var(--accent)]/20" },
               { label: t("vulnerabilities.resolved_label"), value: counts.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
             ].map(({ label, value, color }) => (
@@ -401,6 +462,7 @@ export default function VulnerabilitiesPage() {
                         <option value="HIGH">HIGH</option>
                         <option value="MEDIUM">MEDIUM</option>
                         <option value="LOW">LOW</option>
+                        <option value="INFO">INFO</option>
                       </select>
                     </td>
                     {/* Description — no filter */}
@@ -453,12 +515,16 @@ export default function VulnerabilitiesPage() {
                     </tr>
                   ) : (
                     filtered.map((row, i) => {
-                      const key = `${row.ciId}:${row.cve}`;
+                      const identity = vulnIdentity(row);
+                      const key = `${row.ciId}:${identity}`;
                       const isUpdating = updating.has(key);
                       const pillClass = STATUS_PILL[row.status] ?? STATUS_PILL["NUEVO"];
+                      const portFamily = [row.port && `${t("vulnerabilities.columns.port")} ${row.port}`, row.family]
+                        .filter(Boolean)
+                        .join(" · ");
 
                       return (
-                        <tr key={`${row.ciId}-${row.cve}-${i}`} className="hover:bg-[var(--accent)]/5 transition-colors">
+                        <tr key={`${row.ciId}-${identity}-${i}`} className="hover:bg-[var(--accent)]/5 transition-colors">
                           {/* CI */}
                           <td className="px-6 py-3">
                             <p className="font-medium text-slate-800">{row.ciName}</p>
@@ -468,10 +534,13 @@ export default function VulnerabilitiesPage() {
                           {/* CVE */}
                           <td className="px-6 py-3">
                             <code className="text-xs font-mono text-[var(--accent)] bg-[var(--accent)]/5 px-1.5 py-0.5">
-                              {row.cve}
+                              {row.cve || "—"}
                             </code>
                             {row.cvss_score != null && (
                               <p className="text-[11px] text-slate-400 mt-0.5">CVSS {row.cvss_score}</p>
+                            )}
+                            {portFamily && (
+                              <p className="text-[11px] text-slate-400 mt-0.5">{portFamily}</p>
                             )}
                           </td>
 
@@ -503,10 +572,13 @@ export default function VulnerabilitiesPage() {
                                 <select
                                   value={row.status}
                                   disabled={isUpdating}
-                                  onChange={(e) => handleStatusChange(row.ciId, row.cve, e.target.value as VulnStatus)}
+                                  onChange={(e) => handleStatusChange(row, e.target.value as VulnStatus)}
                                   className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
                                 >
-                                  {ALL_STATUSES.map((s) => (
+                                  {/* REABIERTA excluded — system-computed only, see EDITABLE_STATUSES comment above.
+                                      If the row is currently REABIERTA (not in this list), the <select> still shows
+                                      it correctly via `value={row.status}` even though it's not a selectable option. */}
+                                  {EDITABLE_STATUSES.map((s) => (
                                     <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
                                   ))}
                                 </select>

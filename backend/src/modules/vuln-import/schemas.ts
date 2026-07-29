@@ -69,3 +69,45 @@ export const GreenboneReportSchema = z.object({
 export type GreenboneVulnerability = z.infer<typeof GreenboneVulnerabilitySchema>;
 export type GreenboneHostSubreportEntry = z.infer<typeof GreenboneHostSubreportEntrySchema>;
 export type GreenboneReport = z.infer<typeof GreenboneReportSchema>;
+
+// ─── B5 — request-body schemas for the staging review API ─────────────────
+// Zod validation on every write endpoint's body (house convention). `.strict()`
+// so an unexpected extra field is rejected rather than silently ignored — an
+// operator-facing correction endpoint must not accept fields it doesn't
+// document (A04/A08).
+
+/** Wrapper for POST /upload — the raw Greenbone report plus an optional
+ *  display filename. `report` itself is validated by `GreenboneReportSchema`
+ *  (via the parser), not here — we only shape the envelope. */
+export const UploadRequestSchema = z.object({
+  filename: z.string().min(1).max(500).optional(),
+  report: z.unknown(),
+}).strict();
+export type UploadRequestBody = z.infer<typeof UploadRequestSchema>;
+
+const SeverityEnum = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO']);
+const DecisionEnum = z.enum(['INCLUDE', 'EXCLUDE']);
+const ClassificationEnum = z.enum(['NUEVA', 'EXISTENTE_PENDIENTE', 'REAPARECIDA']);
+const UuidSchema = z.string().uuid();
+
+/** PATCH /batches/:id/entries/:entryId — operator correction of one entry.
+ *  Every field optional (partial patch), but at least one must be present. */
+export const PatchEntrySchema = z.object({
+  ciId: UuidSchema.optional(),
+  severity: SeverityEnum.optional(),
+  decision: DecisionEnum.optional(),
+}).strict().refine((body) => body.ciId !== undefined || body.severity !== undefined || body.decision !== undefined, {
+  message: 'At least one of ciId, severity, decision must be provided.',
+});
+export type PatchEntryBody = z.infer<typeof PatchEntrySchema>;
+
+/** POST /batches/:id/entries/bulk-decision — include/exclude in bulk over a filter. */
+export const BulkDecisionSchema = z.object({
+  filter: z.object({
+    classification: ClassificationEnum.optional(),
+    severity: SeverityEnum.optional(),
+    decision: DecisionEnum.optional(),
+  }).strict().default({}),
+  decision: DecisionEnum,
+}).strict();
+export type BulkDecisionBody = z.infer<typeof BulkDecisionSchema>;

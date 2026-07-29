@@ -61,6 +61,7 @@ import { emitHook, initializePluginEngine } from './modules/plugins/index';
 import { createSettingsRouter } from './modules/settings/router';
 import { createVendorsRouter }        from './modules/vendors/router';
 import { createIntegrationsRouter }   from './modules/integrations/router';
+import { createVulnImportRouter }     from './modules/vuln-import/router';
 import { createLicensesRouter }       from './modules/licenses/router';
 import { createContractsRouter }      from './modules/contracts/router';
 import { createMastersRouter }        from './modules/masters/router';
@@ -274,6 +275,14 @@ app.use('/api/integrations', createIntegrationsRouter(
   prisma,
   (t, id) => queueEntityForIndexing(t as RagEntityType, id),
 ));
+
+// Vuln-import module (v3.6.0) — Greenbone real-format staging/review workflow;
+// its own module per spec D9, not grown onto the legacy /api/integrations/greenbone
+// endpoint (left untouched). Writes require ADMIN, reads require ADMIN/AUDITOR
+// (enforced per-route in the router).
+app.use('/api/vuln-import', createVulnImportRouter(prisma, {
+  queueEntity: (t, id) => queueEntityForIndexing(t as RagEntityType, id),
+}));
 
 // Contracts module — CRUD, doc/CI associations; writes require ADMIN (enforced in router)
 app.use('/api/contracts', createContractsRouter(

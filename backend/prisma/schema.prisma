@@ -1079,6 +1079,63 @@ model BulkImportItem {
   @@map("bulk_import_item")
 }
 
+// ─── Vulnerability Import Staging (Greenbone) ──────────────────────────────────
+
+model VulnImportBatch {
+  id               String             @id @default(uuid()) @db.Uuid
+  source           String             @db.VarChar(50)
+  filename         String             @db.VarChar(500)
+  taskName         String?            @map("task_name") @db.VarChar(255)
+  greenboneTaskId  String?            @map("greenbone_task_id") @db.VarChar(255)
+  scanStart        DateTime?          @map("scan_start")
+  scanEnd          DateTime?          @map("scan_end")
+  status           String             @default("PENDING") @db.VarChar(30)
+  uploadedBy       String             @map("uploaded_by") @db.VarChar(255)
+  createdAt        DateTime           @default(now()) @map("created_at")
+  resolvedAt       DateTime?          @map("resolved_at")
+  resolvedBy       String?            @map("resolved_by") @db.VarChar(255)
+  rawMeta          Json?              @map("raw_meta")
+
+  entries          VulnImportEntry[]
+
+  @@index([status, createdAt(sort: Desc)])
+  @@map("vuln_import_batches")
+}
+
+model VulnImportEntry {
+  id               String          @id @default(uuid()) @db.Uuid
+  batchId          String          @db.Uuid @map("batch_id")
+  hostAddress      String          @map("host_address") @db.VarChar(255)
+  ciId             String?         @db.Uuid @map("ci_id")
+  matchConfidence  String?         @map("match_confidence") @db.VarChar(30)
+  matchCandidates  Json?           @map("match_candidates")
+  vulnKey          String          @map("vuln_key") @db.VarChar(500)
+  oid              String          @db.VarChar(255)
+  port             String?         @db.VarChar(50)
+  cves             String[]        @default([])
+  severityScore    Float           @map("severity_score")
+  severity         String          @db.VarChar(20)
+  name             String          @db.VarChar(500)
+  summary          String?
+  solution         String?
+  family           String?         @db.VarChar(255)
+  thread           String?         @db.VarChar(20)
+  qod              Int?
+  epssScore        Float?          @map("epss_score")
+  raw              Json
+  existingStatus   String?         @map("existing_status") @db.VarChar(30)
+  classification   String          @db.VarChar(30)
+  decision         String          @default("EXCLUDE") @db.VarChar(20)
+  edited           Boolean         @default(false)
+
+  batch            VulnImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([batchId])
+  @@index([batchId, classification])
+  @@index([ciId])
+  @@map("vuln_import_entries")
+}
+
 // ─── DCIM — Data Center Infrastructure Management ─────────────────────────────
 
 model DcimBuilding {

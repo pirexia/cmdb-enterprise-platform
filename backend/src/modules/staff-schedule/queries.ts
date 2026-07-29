@@ -22,7 +22,7 @@ export async function loadScheduleWithEntries(
     where: { AND: [{ id: scheduleId }, visibility] },
     include: {
       entries: {
-        include: { user: { select: { id: true, username: true, displayName: true } } },
+        include: { user: { select: { id: true, username: true, displayName: true, isExternal: true } } },
         orderBy: [{ userId: 'asc' }, { date: 'asc' }],
       },
       alerts: { orderBy: [{ severity: 'asc' }, { createdAt: 'asc' }] },
@@ -57,7 +57,7 @@ export async function countTeleworkThisMonth(
 export async function loadDepartmentUsers(prisma: Db, departmentId: string) {
   return prisma.user.findMany({
     where: { departmentId, active: true },
-    select: { id: true, username: true, displayName: true },
+    select: { id: true, username: true, displayName: true, isExternal: true },
     orderBy: { username: 'asc' },
   });
 }
@@ -120,7 +120,9 @@ export interface DepartmentMemberInfo {
   weeklyTargetHours: number | null;
   teleworkFull: boolean;
   teleworkQuotaDays: number | null;
+  teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
+  isExternal: boolean;
 }
 
 export async function loadDepartmentMembers(prisma: Db, departmentId: string): Promise<DepartmentMemberInfo[]> {
@@ -128,7 +130,8 @@ export async function loadDepartmentMembers(prisma: Db, departmentId: string): P
     where: { departmentId, active: true },
     select: {
       id: true, username: true, displayName: true, email: true, weeklyTargetHours: true,
-      teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true,
+      teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true,
+      isExternal: true,
     },
     orderBy: { username: 'asc' },
   });
@@ -143,13 +146,14 @@ export async function loadTeleworkQuotas(
   if (userIds.length === 0) return {};
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+    select: { id: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true },
   });
   const map: Record<string, TeleworkQuota> = {};
   for (const u of users) {
     map[u.id] = {
       teleworkFull: u.teleworkFull,
       teleworkQuotaDays: u.teleworkQuotaDays,
+      teleworkQuotaDaysPerWeek: u.teleworkQuotaDaysPerWeek,
       teleworkQuotaPct: u.teleworkQuotaPct,
     };
   }
@@ -186,6 +190,10 @@ export interface UserEntryRangeRow {
   userId: string;
   departmentId: string;
   department: { id: string; name: string };
+  // v3.5.13 — verano ya resuelto y almacenado en el horario al que pertenece
+  // esta entrada; evita recalcularlo con el periodo global en el llamador
+  // (ver el comentario de cabecera de validate() sobre la doble fuente).
+  schedule: { isSummerWeek: boolean };
 }
 
 export async function loadUserEntriesInRange(
@@ -201,7 +209,10 @@ export async function loadUserEntriesInRange(
       date: { gte: from, lte: to },
       schedule: visibility,
     },
-    include: { department: { select: { id: true, name: true } } },
+    include: {
+      department: { select: { id: true, name: true } },
+      schedule: { select: { isSummerWeek: true } },
+    },
     orderBy: { date: 'asc' },
   });
 }
@@ -217,6 +228,7 @@ export interface ScheduleUserSearchResult {
   id: string;
   username: string;
   displayName: string | null;
+  isExternal: boolean;
 }
 
 export async function searchScheduleUsers(
@@ -234,26 +246,60 @@ export async function searchScheduleUsers(
         { displayName: { contains: q, mode: 'insensitive' } },
       ],
     },
-    select: { id: true, username: true, displayName: true },
+    select: { id: true, username: true, displayName: true, isExternal: true },
     orderBy: { username: 'asc' },
     take,
   });
 }
 
-// Resolve each user's effective weekly target: their own override if set,
-// otherwise the department's default (used for both V-WEEKLY_HOURS and the
-// client-side exit-time autofill).
-export async function loadWeeklyTargetHours(
+// Override EXPLÍCITO de horas semanales por trabajador (v3.5.13). Devuelve
+// null para quien no lo tenga fijado. Sustituye a la loadWeeklyTargetHours
+// anterior (override-o-defecto): esa resolución ya no vale, porque no permite
+// distinguir "35h pactadas" de "el valor por defecto del departamento resulta
+// ser 35" — distinción necesaria desde que computeEffectiveWeeklyTarget suma
+// los días planificados en vez de restar sobre un valor plano.
+export async function loadWeeklyTargetOverrides(
   prisma: Db,
   userIds: string[],
-  departmentDefault: number,
-): Promise<Record<string, number>> {
+): Promise<Record<string, number | null>> {
   if (userIds.length === 0) return {};
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
     select: { id: true, weeklyTargetHours: true },
   });
-  const map: Record<string, number> = {};
-  for (const u of users) map[u.id] = u.weeklyTargetHours ?? departmentDefault;
+  const map: Record<string, number | null> = {};
+  for (const u of users) map[u.id] = u.weeklyTargetHours ?? null;
   return map;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+// resolveSummerForDepartment (v3.5.13) — periodo de verano APLICABLE a un
+// departamento concreto. Tres ramas, en este orden:
+//
+//   summerEnabled = false            -> null (ese departamento no tiene verano)
+//   fechas propias fijadas           -> las suyas
+//   activado sin fechas / sin config -> el periodo global del año
+//
+// La rama por defecto (activado, sin fechas) reproduce exactamente el
+// comportamiento anterior a v3.5.13, que es lo que tienen todas las filas ya
+// existentes en produccion.
+export async function resolveSummerForDepartment(
+  prisma: Db,
+  departmentId: string,
+  year: number,
+): Promise<{ year: number; startDate: string; endDate: string } | null> {
+  const cfg = await prisma.departmentScheduleConfig.findUnique({
+    where: { departmentId },
+    select: { summerEnabled: true, summerStartDate: true, summerEndDate: true },
+  });
+  if (cfg && !cfg.summerEnabled) return null;
+  if (cfg?.summerStartDate && cfg.summerEndDate) {
+    return { year, startDate: isoDate(cfg.summerStartDate), endDate: isoDate(cfg.summerEndDate) };
+  }
+  const global = await prisma.summerSchedule.findUnique({ where: { year } });
+  if (!global) return null;
+  return { year: global.year, startDate: isoDate(global.startDate), endDate: isoDate(global.endDate) };
 }

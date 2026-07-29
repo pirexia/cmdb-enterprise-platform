@@ -86,7 +86,7 @@ describe('GET /:id — summary omitido según autorización', () => {
               {
                 id: 'e1', userId: WORKER_ID, date: new Date('2026-08-03T00:00:00.000Z'),
                 status: 'PRESENCIAL', onGuard: false, startTime: null, endTime: null, notes: null,
-                user: { id: WORKER_ID, username: 'worker1', displayName: 'Worker One' },
+                user: { id: WORKER_ID, username: 'worker1', displayName: 'Worker One', isExternal: false },
               },
             ],
             alerts: [],
@@ -167,11 +167,13 @@ describe('export tolera summary ausente', () => {
           userId: WORKER_ID,
           username: 'worker1',
           displayName: 'Worker One',
+          isExternal: false,
+          printLabel: null,
           entries: {
             '2026-08-03': { status: 'PRESENCIAL', onGuard: false, startTime: null, endTime: null, notes: null },
           },
           ...(withSummary
-            ? { summary: { weeklyNetHours: 40, teleworkDaysWeek: 0, teleworkDaysMonth: 0, travelDays: 0, guardDays: 0, weeklyTargetHours: 40 } }
+            ? { summary: { weeklyNetHours: 40, teleworkDaysWeek: 0, teleworkDaysMonth: 0, travelDays: 0, guardDays: 0, weeklyTargetHours: 40, dailyTargetHours: 8 } }
             : {}),
         },
       ],

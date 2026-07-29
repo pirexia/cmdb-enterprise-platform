@@ -277,10 +277,11 @@ export function useSchedule(departmentId: string | null, weekStart: string) {
     }
   }, [scheduleId]);
 
-  // v3.5.10 refinamiento — añade entradas base para los miembros del
-  // departamento que aún no tengan ninguna en este horario. No destructivo.
-  const syncMembers = useCallback(async (): Promise<{ added: number }> => {
-    if (!scheduleId) return { added: 0 };
+  // v3.5.10 refinamiento, ampliado en v3.5.13 (D5) — añade entradas base para
+  // los miembros del departamento que aún no tengan ninguna en este horario, Y
+  // retira las de quien ya no pertenece al departamento.
+  const syncMembers = useCallback(async (): Promise<{ added: number; removed: number }> => {
+    if (!scheduleId) return { added: 0, removed: 0 };
     const res = await apiFetch(`/api/staff-schedule/${scheduleId}/sync-members`, { method: "POST" });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));

@@ -4,6 +4,7 @@ import {
   buildClientOptions,
   isGroupGateEnabled,
   decideGroupGate,
+  resolveSearchBase,
   LdapDirectoryError,
 } from '../ldapDirectory';
 
@@ -71,6 +72,30 @@ describe('isGroupGateEnabled', () => {
   it('cierto cuando hay un grupo configurado', () => {
     process.env.LDAP_REQUIRED_GROUP = 'GS-CMDB-Iberia-Access';
     expect(isGroupGateEnabled()).toBe(true);
+  });
+});
+
+describe('resolveSearchBase', () => {
+  it('usa LDAP_SEARCH_BASE cuando trae valor', () => {
+    expect(resolveSearchBase('OU=Users,DC=corp,DC=local', 'DC=corp,DC=local')).toBe(
+      'OU=Users,DC=corp,DC=local',
+    );
+  });
+
+  it('cae a LDAP_BASE_DN cuando no está definida', () => {
+    expect(resolveSearchBase(undefined, 'DC=corp,DC=local')).toBe('DC=corp,DC=local');
+  });
+
+  // Regresión: con `??` en lugar de `||`, una variable declarada y vacía en el
+  // compose se propagaba como base de búsqueda vacía. Efecto: la puerta de
+  // grupo deniega TODOS los logins LDAP y la sincronización desactiva a la
+  // plantilla entera.
+  it('cae a LDAP_BASE_DN cuando está declarada pero vacía', () => {
+    expect(resolveSearchBase('', 'DC=corp,DC=local')).toBe('DC=corp,DC=local');
+  });
+
+  it('nunca devuelve undefined si no hay ninguna de las dos', () => {
+    expect(resolveSearchBase(undefined, undefined)).toBe('');
   });
 });
 

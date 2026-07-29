@@ -369,14 +369,23 @@ export function createIntegrationsRouter(
    */
   router.get('/ldap/sync-log', authenticateToken, requireAudit, async (_req: Request, res: Response) => {
     try {
+      // El sAMAccountName de la cuenta afectada vive en users.sso_external_id;
+      // audit_logs solo guarda su id. LEFT JOIN (no INNER) a propósito: el
+      // registro de auditoría es inmutable y debe seguir apareciendo aunque la
+      // fila del usuario se haya borrado después (erasure GDPR) — en ese caso
+      // la columna queda a null y la UI muestra un guion.
+      // `entity_id` es varchar(36), de ahí el cast de users.id a text.
       const rows = await prisma.$queryRaw`
-        SELECT action,
-               entity_id::text AS "entityId",
-               user_email      AS "userEmail",
-               created_at      AS "createdAt"
-        FROM "audit_logs"
-        WHERE action LIKE 'LDAP_SYNC_%' OR action = 'LDAP_GROUP_DENIED'
-        ORDER BY created_at DESC
+        SELECT a.action,
+               a.entity_id::text  AS "entityId",
+               a.user_email       AS "userEmail",
+               a.created_at       AS "createdAt",
+               u.sso_external_id  AS "samAccountName"
+        FROM "audit_logs" a
+        LEFT JOIN "users" u
+          ON u.id::text = a.entity_id AND u.sso_provider = 'ldap'
+        WHERE a.action LIKE 'LDAP_SYNC_%' OR a.action = 'LDAP_GROUP_DENIED'
+        ORDER BY a.created_at DESC
         LIMIT 100
       `;
       res.json(rows);

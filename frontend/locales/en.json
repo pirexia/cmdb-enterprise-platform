@@ -876,6 +876,7 @@
         "historyTitle": "Recent history",
         "historyEmpty": "No synchronisations recorded yet.",
         "colAction": "Action",
+        "colSam": "AD account",
         "colDate": "Date",
         "colActor": "Source"
       }
@@ -2326,6 +2327,7 @@
     "alert": {
       "title": "Alerts",
       "TELEWORK_QUOTA": "Telework quota exceeded",
+      "TELEWORK_QUOTA_WEEK": "Weekly telework quota exceeded",
       "WEEKLY_HOURS": "Weekly hours not met",
       "DAILY_HOURS": "Daily hours exceeded",
       "PRESENCE_PCT": "Insufficient onsite presence",
@@ -2364,8 +2366,14 @@
       "flexExitFrom": "Flexible exit: from",
       "flexExitTo": "Flexible exit: to",
       "summerSchedule": "Summer schedule",
+      "summerGlobalHint": "Default period. Each department can disable summer hours or set its own period in its configuration.",
       "summerStart": "Summer start",
       "summerEnd": "Summer end",
+      "summerEnabled": "Applies summer hours",
+      "deptSummerStart": "Summer start (optional)",
+      "deptSummerEnd": "Summer end (optional)",
+      "summerFallbackHint": "Empty = uses the year's general period",
+      "summerDisabledHint": "This department does not apply summer hours",
       "minPresencePct": "Minimum onsite presence %",
       "winterHours": "Winter working hours",
       "summerHours": "Summer working hours",
@@ -2378,7 +2386,8 @@
       "weeklyHoursOverride": "Weekly hours (worker)",
       "weeklyHoursDefault": "Department default",
       "weeklyHoursWorker": "Weekly hours (worker)",
-      "weeklyHoursSaved": "Weekly hours saved."
+      "weeklyHoursSaved": "Weekly hours saved.",
+      "teleworkExclusive": "Only one of the four methods can be configured"
     },
     "summary": {
       "weeklyHours": "Weekly hours",
@@ -2439,21 +2448,28 @@
     },
     "members": {
       "title": "Department members",
-      "none": "No members assigned."
+      "none": "No members assigned.",
+      "remove": "Remove",
+      "removeConfirm": "Remove {name} from the department? Already-published schedules won't change; drafts will be updated when you click \"Sync members\".",
+      "removeError": "Could not remove the worker from the department",
+      "external": "External worker (data protection)",
+      "externalShort": "External",
+      "externalError": "Could not update the external flag"
     },
     "confirm": {
       "deleteSchedule": "Delete this schedule? All its entries will be lost. This action cannot be undone."
     },
     "syncMembers": {
-      "added": "{n} worker(s) added to the schedule."
+      "result": "Sync: {added} added, {removed} removed"
     },
     "telework": {
       "title": "Per-worker telework quota",
       "full": "Full telework",
       "fullShort": "Full TW",
       "days": "Days",
+      "daysPerWeek": "Days/week",
       "pct": "%",
-      "hint": "Priority: full telework > days > percentage > department cap. Leave empty to use the department cap.",
+      "hint": "Only one of the four methods can be set: full, days/month, days/week or percentage/month. Leave it empty to use the department cap.",
       "saved": "Telework quota saved"
     },
     "periodSelector": {

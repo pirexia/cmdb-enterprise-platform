@@ -40,6 +40,7 @@ export const TARGET_REDUCING_STATUSES: readonly string[] = ['VACACIONES', 'FESTI
 
 export const ALERT_TYPE = [
   'TELEWORK_QUOTA',
+  'TELEWORK_QUOTA_WEEK',
   'WEEKLY_HOURS',
   'DAILY_HOURS',
   'PRESENCE_PCT',
@@ -75,22 +76,30 @@ export const DepartmentUpdateSchema = DepartmentSchema.partial();
 
 // ─── Department schedule config ────────────────────────────────────────────
 
-export const DeptConfigSchema = z.object({
-  winterDailyNetHours: z.number().min(0).max(24).optional(),
-  winterMaxDailyNetHours: z.number().min(0).max(24).optional(),
-  winterBreakMinutes: z.number().int().min(0).max(600).optional(),
-  winterFridayNetHours: z.number().min(0).max(24).optional(),
-  summerDailyNetHours: z.number().min(0).max(24).optional(),
-  summerMaxDailyNetHours: z.number().min(0).max(24).optional(),
-  summerBreakMinutes: z.number().int().min(0).max(600).optional(),
-  summerFridayNetHours: z.number().min(0).max(24).optional(),
-  weeklyTargetNetHours: z.number().min(0).max(168).optional(),
-  monthlyTeleworkCap: z.number().int().min(0).max(31).optional(),
-  flexEntryStart: timeSchema.optional(),
-  flexEntryEnd: timeSchema.optional(),
-  flexExitStart: timeSchema.optional(),
-  flexExitEnd: timeSchema.optional(),
-});
+export const DeptConfigSchema = z
+  .object({
+    winterDailyNetHours: z.number().min(0).max(24).optional(),
+    winterMaxDailyNetHours: z.number().min(0).max(24).optional(),
+    winterBreakMinutes: z.number().int().min(0).max(600).optional(),
+    winterFridayNetHours: z.number().min(0).max(24).optional(),
+    summerDailyNetHours: z.number().min(0).max(24).optional(),
+    summerMaxDailyNetHours: z.number().min(0).max(24).optional(),
+    summerBreakMinutes: z.number().int().min(0).max(600).optional(),
+    summerFridayNetHours: z.number().min(0).max(24).optional(),
+    weeklyTargetNetHours: z.number().min(0).max(168).optional(),
+    monthlyTeleworkCap: z.number().int().min(0).max(31).optional(),
+    flexEntryStart: timeSchema.optional(),
+    flexEntryEnd: timeSchema.optional(),
+    flexExitStart: timeSchema.optional(),
+    flexExitEnd: timeSchema.optional(),
+    // ─── Verano por departamento (v3.5.13) ───────────────────────────────
+    summerEnabled: z.boolean().optional(),
+    summerStartDate: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date').nullable().optional(),
+    summerEndDate: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date').nullable().optional(),
+  })
+  .refine((d) => (d.summerStartDate == null) === (d.summerEndDate == null), {
+    message: 'Se deben indicar ambas fechas del periodo de verano, o ninguna',
+  });
 
 // ─── Summer schedule (global period, D7) ───────────────────────────────────
 
@@ -143,15 +152,33 @@ export const UserWeeklyHoursSchema = z.object({
   weeklyTargetHours: z.number().min(0).max(80).nullable(),
 });
 
-// ─── Per-user telework quota override (v3.5.11) ────────────────────────────
+// ─── Cuota de teletrabajo por trabajador (v3.5.11, ampliada en v3.5.13) ────
 //
-// Three independent knobs, resolved by priority full > days > pct > department
-// default (see resolveTeleworkCap in validationEngine.ts). All optional: a user
-// with none of them set keeps the department-wide monthly cap.
-export const UserTeleworkQuotaSchema = z.object({
-  teleworkFull: z.boolean(),
-  teleworkQuotaDays: z.number().int().min(0).max(31).nullable(),
-  teleworkQuotaPct: z.number().int().min(0).max(100).nullable(),
+// CUATRO metodos, MUTUAMENTE EXCLUYENTES (D4): total, dias/mes, dias/semana y
+// porcentaje/mes. Antes eran una cadena de prioridad (full > dias > pct), lo
+// que permitia guardar dos a la vez y dejaba al operador sin forma de saber
+// cual se estaba aplicando. Ninguno fijado = se usa el tope del departamento.
+// El mismo invariante esta forzado en la BD (users_telework_quota_single_method).
+export const UserTeleworkQuotaSchema = z
+  .object({
+    teleworkFull: z.boolean(),
+    teleworkQuotaDays: z.number().int().min(0).max(31).nullable(),
+    teleworkQuotaDaysPerWeek: z.number().int().min(0).max(7).nullable(),
+    teleworkQuotaPct: z.number().int().min(0).max(100).nullable(),
+  })
+  .refine(
+    (d) =>
+      (d.teleworkFull ? 1 : 0) +
+        (d.teleworkQuotaDays != null ? 1 : 0) +
+        (d.teleworkQuotaDaysPerWeek != null ? 1 : 0) +
+        (d.teleworkQuotaPct != null ? 1 : 0) <=
+      1,
+    { message: 'Solo se puede fijar uno de los cuatro metodos de cuota de teletrabajo' },
+  );
+
+// ─── Marca de trabajador externo (v3.5.13, D3) ─────────────────────────────
+export const UserExternalSchema = z.object({
+  isExternal: z.boolean(),
 });
 
 // ─── Worker search selector (v3.5.12, R5/D4) ───────────────────────────────

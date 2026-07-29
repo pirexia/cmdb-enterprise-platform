@@ -40,7 +40,12 @@ const env = {
   url:                  () => process.env.LDAP_URL                      ?? 'ldap://localhost:389',
   bindDn:               () => process.env.LDAP_BIND_DN                  ?? '',
   bindPassword:         () => process.env.LDAP_BIND_PASSWORD            ?? '',
-  searchBase:           () => process.env.LDAP_SEARCH_BASE ?? process.env.LDAP_BASE_DN ?? 'dc=example,dc=com',
+  // `||`, no `??`: una variable declarada y vacía debe caer al respaldo. El
+  // compose declara las opcionales como `${VAR:-}`, de modo que el contenedor
+  // las recibe como cadena vacía, nunca como undefined — con `??` la cadena
+  // vacía se propagaría y el bind buscaría contra un base DN vacío, rompiendo
+  // todo login LDAP. Ver `resolveSearchBase` en `ldapDirectory.ts`.
+  searchBase:           () => process.env.LDAP_SEARCH_BASE || process.env.LDAP_BASE_DN || 'dc=example,dc=com',
   rejectUnauthorized:   ()  => process.env.LDAP_TLS_REJECT_UNAUTHORIZED !== '0',
 };
 

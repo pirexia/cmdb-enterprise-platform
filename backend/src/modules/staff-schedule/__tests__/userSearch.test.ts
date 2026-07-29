@@ -52,7 +52,7 @@ describe('GET /api/staff-schedule/users', () => {
   it('acepta q de 2 caracteres y devuelve resultados sin email', async () => {
     const res = await request(buildApp(USERS)).get('/api/staff-schedule/users?q=andres');
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ id: 'u1', username: 'andres.matias', displayName: 'Andrés Matías López' }]);
+    expect(res.body).toEqual([{ id: 'u1', username: 'andres.matias', displayName: 'Andrés Matías López', printLabel: null }]);
     expect(res.body[0]).not.toHaveProperty('email');
   });
 

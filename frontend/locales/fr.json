@@ -831,6 +831,7 @@
         "historyTitle": "Historique récent",
         "historyEmpty": "Aucune synchronisation enregistrée pour l'instant.",
         "colAction": "Action",
+        "colSam": "Compte AD",
         "colDate": "Date",
         "colActor": "Origine"
       }
@@ -2207,6 +2208,7 @@
     "alert": {
       "title": "Alertes",
       "TELEWORK_QUOTA": "Quota de télétravail dépassé",
+      "TELEWORK_QUOTA_WEEK": "Quota hebdomadaire de télétravail dépassé",
       "WEEKLY_HOURS": "Heures hebdomadaires non atteintes",
       "DAILY_HOURS": "Heures quotidiennes dépassées",
       "PRESENCE_PCT": "Présence sur site insuffisante",
@@ -2245,8 +2247,14 @@
       "flexExitFrom": "Départ flexible : de",
       "flexExitTo": "Départ flexible : à",
       "summerSchedule": "Horaire d'été",
+      "summerGlobalHint": "Période par défaut. Chaque département peut désactiver l'horaire d'été ou définir sa propre période dans sa configuration.",
       "summerStart": "Début de l'été",
       "summerEnd": "Fin de l'été",
+      "summerEnabled": "Applique l'horaire d'été",
+      "deptSummerStart": "Début de l'été (optionnel)",
+      "deptSummerEnd": "Fin de l'été (optionnel)",
+      "summerFallbackHint": "Vide = utilise la période générale de l'année",
+      "summerDisabledHint": "Ce département n'applique pas l'horaire d'été",
       "minPresencePct": "% minimum de présence sur site",
       "winterHours": "Horaire d'hiver",
       "summerHours": "Horaire d'été",
@@ -2259,7 +2267,8 @@
       "weeklyHoursOverride": "Heures hebdomadaires (employé)",
       "weeklyHoursDefault": "Valeur par défaut du département",
       "weeklyHoursWorker": "Heures hebdomadaires (travailleur)",
-      "weeklyHoursSaved": "Heures hebdomadaires enregistrées."
+      "weeklyHoursSaved": "Heures hebdomadaires enregistrées.",
+      "teleworkExclusive": "Une seule des quatre méthodes peut être configurée"
     },
     "summary": {
       "weeklyHours": "Heures hebdomadaires",
@@ -2320,21 +2329,28 @@
     },
     "members": {
       "title": "Membres du département",
-      "none": "Aucun membre assigné."
+      "none": "Aucun membre assigné.",
+      "remove": "Retirer",
+      "removeConfirm": "Retirer {name} du département ? Les plannings déjà publiés ne changeront pas ; les brouillons seront mis à jour en cliquant sur « Synchroniser les membres ».",
+      "removeError": "Impossible de retirer le travailleur du département",
+      "external": "Travailleur externe (protection des données)",
+      "externalShort": "Externe",
+      "externalError": "Impossible de mettre à jour le marquage externe"
     },
     "confirm": {
       "deleteSchedule": "Supprimer cette planification ? Toutes ses entrées seront perdues. Cette action est irréversible."
     },
     "syncMembers": {
-      "added": "{n} travailleur(s) ajouté(s) à la planification."
+      "result": "Synchronisation : {added} ajouté(s), {removed} retiré(s)"
     },
     "telework": {
       "title": "Quota de télétravail par collaborateur",
       "full": "Télétravail intégral",
       "fullShort": "TT intégral",
       "days": "Jours",
+      "daysPerWeek": "Jours/semaine",
       "pct": "%",
-      "hint": "Priorité : télétravail intégral > jours > pourcentage > plafond du département. Laissez vide pour utiliser le plafond du département.",
+      "hint": "Une seule des quatre méthodes peut être définie : intégral, jours/mois, jours/semaine ou pourcentage/mois. Laissez vide pour utiliser le plafond du département.",
       "saved": "Quota de télétravail enregistré"
     },
     "periodSelector": {

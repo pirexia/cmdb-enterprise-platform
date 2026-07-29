@@ -11,6 +11,7 @@ import {
   CloneScheduleSchema,
   UserWeeklyHoursSchema,
   UserTeleworkQuotaSchema,
+  UserExternalSchema,
   UserSearchSchema,
   UserEntriesRangeSchema,
   ScheduleRangeSchema,
@@ -32,6 +33,8 @@ import {
   getMonthlySummary,
   listUserEntries,
   ScheduleServiceError,
+  maskIdentityForViewer,
+  externalInitials,
 } from './service.js';
 import { exportScheduleCsv, exportScheduleXlsx } from './export.js';
 
@@ -120,11 +123,20 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = DeptConfigSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
+      // v3.5.13 — summerStartDate/summerEndDate llegan como cadena ISO (Zod
+      // solo valida el formato); Prisma espera Date para una columna @db.Date,
+      // mismo patrón que POST /summer.
+      const { summerStartDate, summerEndDate, ...rest } = parsed.data;
+      const data = {
+        ...rest,
+        ...(summerStartDate !== undefined ? { summerStartDate: summerStartDate ? new Date(summerStartDate) : null } : {}),
+        ...(summerEndDate !== undefined ? { summerEndDate: summerEndDate ? new Date(summerEndDate) : null } : {}),
+      };
       const config = await prisma.$transaction(async (tx) => {
         const c = await tx.departmentScheduleConfig.upsert({
           where: { departmentId: req.params.id as string },
-          create: { departmentId: req.params.id as string, ...parsed.data },
-          update: parsed.data,
+          create: { departmentId: req.params.id as string, ...data },
+          update: data,
         });
         await auditStaffSchedule(tx, { action: 'UPDATE_DEPARTMENT_CONFIG', entity: 'DEPARTMENT', entityId: req.params.id as string, userEmail: req.user!.email });
         return c;
@@ -254,7 +266,7 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // PUT /api/staff-schedule/users/:userId/telework-quota  (ADMIN)
-  // { teleworkFull, teleworkQuotaDays, teleworkQuotaPct }
+  // { teleworkFull, teleworkQuotaDays, teleworkQuotaDaysPerWeek, teleworkQuotaPct }
   router.put('/users/:userId/telework-quota', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
     const parsed = UserTeleworkQuotaSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
@@ -265,9 +277,10 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
           data: {
             teleworkFull: parsed.data.teleworkFull,
             teleworkQuotaDays: parsed.data.teleworkQuotaDays,
+            teleworkQuotaDaysPerWeek: parsed.data.teleworkQuotaDaysPerWeek,
             teleworkQuotaPct: parsed.data.teleworkQuotaPct,
           },
-          select: { id: true, username: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+          select: { id: true, username: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true },
         });
         await auditStaffSchedule(tx, { action: 'SET_USER_TELEWORK_QUOTA', entity: 'DEPARTMENT', entityId: req.params.userId as string, userEmail: req.user!.email });
         return u;
@@ -276,6 +289,33 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     } catch (err: any) {
       if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
       console.error('[StaffSchedule] user telework-quota update error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // PUT /api/staff-schedule/users/:userId/external  (ADMIN)  { isExternal }
+  router.put('/users/:userId/external', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
+    const parsed = UserExternalSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+    try {
+      const user = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.update({
+          where: { id: req.params.userId as string },
+          data: { isExternal: parsed.data.isExternal },
+          select: { id: true, username: true, isExternal: true },
+        });
+        await auditStaffSchedule(tx, {
+          action: 'SET_USER_EXTERNAL',
+          entity: 'DEPARTMENT',
+          entityId: req.params.userId as string,
+          userEmail: req.user!.email,
+        });
+        return u;
+      });
+      res.json(user);
+    } catch (err: any) {
+      if (err?.code === 'P2025') { res.status(404).json({ error: 'User not found' }); return; }
+      console.error('[StaffSchedule] user external update error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -378,7 +418,23 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
       const users = await searchScheduleUsers(prisma, parsed.data.q);
-      res.json(users);
+      // v3.5.13 (D3) — el buscador de trabajadores es alcanzable por VIEWER
+      // (comentario de arriba); un externo debe salir ya enmascarado aquí, no
+      // solo en la vista del horario. printLabel se calcula del nombre real
+      // ANTES de enmascarar (mismo motivo que en buildScheduleView: recalcular
+      // sobre un displayName ya enmascarado da resultados absurdos).
+      const viewer = { id: req.user!.id, role: req.user!.role };
+      // v3.5.13 — maskIdentityForViewer devuelve un objeto NUEVO {username,
+      // displayName, isExternal} cuando enmascara: `id` se pierde si no se
+      // reinyecta explícitamente. Sin esto, un VIEWER no podía seleccionar en
+      // absoluto a un trabajador externo en el buscador (onSelect recibía
+      // undefined como userId) — bug real cazado en verificación en vivo.
+      const masked = users.map((u) => ({
+        id: u.id,
+        ...maskIdentityForViewer(u, viewer, u.id),
+        printLabel: u.isExternal ? `Externo (${externalInitials(u.displayName, u.username)})` : null,
+      }));
+      res.json(masked);
     } catch (err) {
       console.error('[StaffSchedule] user search error:', err);
       res.status(500).json({ error: 'Internal server error' });
@@ -463,8 +519,15 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     }
   });
 
-  // POST /api/staff-schedule/:id/unpublish  (ADMIN only, D10)
-  router.post('/:id/unpublish', requireAdmin, requireUuidParam('id'), async (req: Request, res: Response) => {
+  // POST /api/staff-schedule/:id/unpublish  (deptEdit — D2 de v3.5.13)
+  //
+  // Era ADMIN-only, lo que dejaba al responsable de un departamento sin salida:
+  // podía publicar pero no revertir, y PUT /:id solo acepta DRAFT. Pasa al mismo
+  // control de fila que ya usa /publish, así que un MANAGER opera el ciclo
+  // completo sobre SUS departamentos y sobre ningún otro. La invariante D10 de
+  // v3.5.10 (lo publicado es inmutable mientras lo esté) no se toca: para editar
+  // se sigue exigiendo pasar por DRAFT.
+  router.post('/:id/unpublish', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const schedule = await prisma.$transaction(async (tx) => {
         const s = await unpublish(tx, req.params.id as string);
@@ -493,11 +556,13 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // POST /api/staff-schedule/:id/sync-members  (deptEdit, DRAFT only) — v3.5.10
-  // refinamiento: añade entradas base para miembros del departamento que
-  // todavía no tengan ninguna en este horario. No destructivo — nunca toca
-  // entradas existentes. Cubre tanto un horario vacío (creado/clonado antes de
-  // que el departamento tuviera su membresía final) como un trabajador nuevo
-  // que se incorpora a un departamento con horarios ya planificados.
+  // refinamiento, ampliado en v3.5.13 (D5) a las dos direcciones: añade
+  // entradas base a miembros del departamento que todavía no tengan ninguna
+  // en este horario, Y retira las entradas de quien ya no pertenece al
+  // departamento. Nunca toca entradas de quien sigue siendo miembro. Cubre un
+  // horario vacío/incompleto, un trabajador nuevo incorporado y un trabajador
+  // retirado del departamento — los tres casos, sobre horarios PUBLISHED,
+  // requieren despublicar primero (409).
   router.post('/:id/sync-members', requireUuidParam('id'), requireDeptEditAccess(prisma), async (req: Request, res: Response) => {
     try {
       const result = await prisma.$transaction(async (tx) => {

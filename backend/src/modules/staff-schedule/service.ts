@@ -3,17 +3,17 @@ import { HEALTH_STATUSES, TELEWORK_STATUSES } from './schemas.js';
 import {
   computeNetHours,
   computeEffectiveWeeklyTarget,
+  computeDailyTargetHours,
   detectSummer,
   validate,
   EntryLike,
   ValidationConfig,
-  SummerPeriodLike,
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
-import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetHours,
+import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetOverrides,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
-         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange } from './queries.js';
+         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange, resolveSummerForDepartment } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -73,6 +73,48 @@ export function maskEntryForViewer(
     return { status: 'AUSENTE', startTime: null, endTime: null, notes: null, onGuard: false, healthMasked: true };
   }
   return { status: entry.status, startTime: entry.startTime, endTime: entry.endTime, notes: entry.notes, onGuard: entry.onGuard, healthMasked: false };
+}
+
+// externalInitials — iniciales del nombre para mostrar de un trabajador
+// externo. Maximo tres, en mayuscula. Sin displayName se usa la inicial del
+// username: devolver cadena vacia dejaria la etiqueta como "Externo ()", y
+// volcar el username entero derrotaria el proposito del enmascarado.
+export function externalInitials(displayName: string | null, username: string): string {
+  const source = (displayName ?? '').trim();
+  if (source.length > 0) {
+    return source
+      .split(/\s+/)
+      .slice(0, 3)
+      .map((w) => w.charAt(0).toUpperCase())
+      .join('');
+  }
+  return username.charAt(0).toUpperCase();
+}
+
+// maskIdentityForViewer (v3.5.13, D3) — unico punto donde se decide si la
+// identidad de un trabajador externo llega o no al cliente. Igual que
+// maskEntryForViewer para los datos de salud: el enmascarado ocurre EN
+// SERVIDOR, no al pintar, de modo que el nombre real ni siquiera viaja en el
+// JSON hacia quien no debe verlo (si solo se ocultara en el frontend, seguiria
+// siendo visible en las herramientas de desarrollo — no seria una proteccion).
+//
+// Autorizados a ver el nombre real: ADMIN, MANAGER (planifica el departamento
+// y necesita saber a quien asigna) y el propio interesado. Cualquier otro rol,
+// incluido uno desconocido, recibe la version enmascarada (fail-closed).
+//
+// `username` se enmascara tambien, no solo `displayName`: el sAMAccountName de
+// un externo es tan identificativo como su nombre, y displayLabel() cae al
+// username cuando no hay displayName.
+export function maskIdentityForViewer(
+  user: { username: string; displayName: string | null; isExternal: boolean },
+  viewer: Viewer,
+  userId?: string,
+): { username: string; displayName: string | null; isExternal: boolean } {
+  if (!user.isExternal) return user;
+  const authorized = viewer.role === 'ADMIN' || viewer.role === 'MANAGER' || (userId != null && viewer.id === userId);
+  if (authorized) return user;
+  const label = `Externo (${externalInitials(user.displayName, user.username)})`;
+  return { username: label, displayName: label, isExternal: true };
 }
 
 interface AlertLike {
@@ -152,12 +194,6 @@ async function loadValidationConfig(prisma: Prisma.TransactionClient, department
   };
 }
 
-async function loadSummerForYear(prisma: Prisma.TransactionClient, year: number): Promise<SummerPeriodLike | null> {
-  const summer = await prisma.summerSchedule.findUnique({ where: { year } });
-  if (!summer) return null;
-  return { year: summer.year, startDate: isoDate(summer.startDate), endDate: isoDate(summer.endDate) };
-}
-
 // createSchedule — auto-creates base PRESENCIAL entries (Mon-Fri) for every
 // active user in the department.
 export async function createSchedule(
@@ -167,7 +203,9 @@ export async function createSchedule(
   const weekStartDate = parseDateOnly(params.weekStart);
   const weekEndDate = addDaysUtc(weekStartDate, 4);
   const year = weekStartDate.getUTCFullYear();
-  const summer = await loadSummerForYear(prisma, year);
+  // v3.5.13 — el periodo de verano se resuelve por departamento (D-summer),
+  // no globalmente; ver resolveSummerForDepartment.
+  const summer = await resolveSummerForDepartment(prisma, params.departmentId, year);
   const isSummerWeek = detectSummer(isoDate(weekStartDate), summer);
 
   const schedule = await prisma.staffSchedule.create({
@@ -277,7 +315,6 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
-  const summer = await loadSummerForYear(prisma, schedule.year);
 
   const entriesLike: EntryLike[] = schedule.entries.map((e) => ({
     userId: e.userId,
@@ -294,12 +331,15 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   for (const uid of userIds) {
     teleworkCountsByUser[uid] = await countTeleworkThisMonth(prisma, uid, schedule.year, month);
   }
-  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, userIds, cfg.weeklyTargetNetHours);
+  const weeklyTargetsByUser = await loadWeeklyTargetOverrides(prisma, userIds);
   const teleworkQuotasByUser = await loadTeleworkQuotas(prisma, userIds);
 
   const scheduleLike: ScheduleLike = { id: schedule.id, weekStart: isoDate(schedule.weekStart), year: schedule.year };
+  // v3.5.13 — isSummerWeek se lee de la columna almacenada (fijada al crear o
+  // clonar el horario), nunca se recalcula aquí. Ver el comentario de
+  // cabecera de validate() en validationEngine.ts.
   const alerts = validate(
-    scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser, weeklyTargetsByUser, teleworkQuotasByUser,
+    scheduleLike, entriesLike, cfg, schedule.isSummerWeek, teleworkCountsByUser, weeklyTargetsByUser, teleworkQuotasByUser,
   );
 
   await prisma.scheduleAlert.deleteMany({ where: { scheduleId } });
@@ -332,24 +372,33 @@ export async function publish(prisma: Prisma.TransactionClient, scheduleId: stri
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'PUBLISHED' } });
 }
 
-// unpublish — PUBLISHED -> DRAFT. Router must have already enforced ADMIN (D10).
+// unpublish — PUBLISHED -> DRAFT. Router must have already enforced deptEdit
+// access (requireDeptEditAccess — v3.5.13, D2), same gate as publish.
 export async function unpublish(prisma: Prisma.TransactionClient, scheduleId: string) {
   const schedule = await prisma.staffSchedule.findUnique({ where: { id: scheduleId }, select: { id: true } });
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
   return prisma.staffSchedule.update({ where: { id: scheduleId }, data: { status: 'DRAFT' } });
 }
 
-// syncScheduleMembers — DRAFT only. Adds base PRESENCIAL entries (Mon-Fri) for
-// active department members who do not yet have ANY entry in this schedule.
-// Never touches existing entries — idempotent and non-destructive, unlike
-// deleteSchedule. Added in the v3.5.10 refinement round to cover two related
-// gaps: a schedule created/cloned before the department had its final
-// membership (entries missing for members added later), and a new hire
-// joining a department that already has schedules planned months ahead.
+// syncScheduleMembers — solo DRAFT. Reconcilia las entradas del horario contra
+// la membresia ACTUAL del departamento, en las dos direcciones:
+//   - añade entradas base PRESENCIAL (L-V) a los miembros que no tienen ninguna
+//   - borra todas las entradas de quien ya no es miembro del departamento
+//
+// v3.5.13 (D5): la retirada es nueva. Antes la funcion era estrictamente
+// aditiva, asi que un trabajador sacado de un departamento se quedaba
+// indefinidamente en los horarios ya creados y no habia forma auditada de
+// sacarlo salvo borrar el horario entero.
+//
+// Alcance deliberadamente acotado, confirmado con el usuario: los horarios
+// PUBLISHED NO se tocan (siguen devolviendo 409) — quedan como testimonio de lo
+// que se publico en su dia. Solo se reconcilian los DRAFT, y solo cuando el
+// operador pulsa explicitamente el boton; no hay reconciliacion automatica al
+// cambiar la membresia.
 export async function syncScheduleMembers(
   prisma: Prisma.TransactionClient,
   scheduleId: string,
-): Promise<{ added: number }> {
+): Promise<{ added: number; removed: number }> {
   const schedule = await prisma.staffSchedule.findUnique({
     where: { id: scheduleId },
     select: { status: true, departmentId: true, weekStart: true },
@@ -363,8 +412,11 @@ export async function syncScheduleMembers(
     loadDepartmentMembers(prisma, schedule.departmentId),
     prisma.scheduleEntry.findMany({ where: { scheduleId }, distinct: ['userId'], select: { userId: true } }),
   ]);
+  const memberIds = new Set(members.map((m) => m.id));
   const presentIds = new Set(present.map((p) => p.userId));
+
   const missing = members.filter((m) => !presentIds.has(m.id));
+  const stale = present.map((p) => p.userId).filter((id) => !memberIds.has(id));
 
   const entriesData = missing.flatMap((m) =>
     Array.from({ length: 5 }, (_, i) => ({
@@ -378,7 +430,10 @@ export async function syncScheduleMembers(
   if (entriesData.length > 0) {
     await prisma.scheduleEntry.createMany({ data: entriesData });
   }
-  return { added: missing.length };
+  if (stale.length > 0) {
+    await prisma.scheduleEntry.deleteMany({ where: { scheduleId, userId: { in: stale } } });
+  }
+  return { added: missing.length, removed: stale.length };
 }
 
 // deleteSchedule — DRAFT only (D10: PUBLISHED is immutable; unpublish first).
@@ -428,7 +483,7 @@ export async function cloneToWeek(
 
   const newWeekEnd = addDaysUtc(newWeekStart, 4);
   const year = newWeekStart.getUTCFullYear();
-  const summer = await loadSummerForYear(prisma, year);
+  const summer = await resolveSummerForDepartment(prisma, origin.departmentId, year);
   const isSummerWeek = detectSummer(isoDate(newWeekStart), summer);
 
   const created = await prisma.staffSchedule.create({
@@ -477,12 +532,19 @@ export interface ScheduleView {
     userId: string;
     username: string;
     displayName: string | null;
+    isExternal: boolean;
+    // v3.5.13 (D3) — SIEMPRE presente cuando isExternal, para CUALQUIER viewer
+    // (nunca es información nueva: es exactamente lo que ya ve un viewer no
+    // autorizado en displayName). El cliente lo usa tal cual al imprimir, sin
+    // recalcular nada — recalcular a partir de displayName rompería para un
+    // viewer que ya lo recibe enmascarado.
+    printLabel: string | null;
     entries: Record<string, MaskedEntryFields>;
     // Optional since v3.5.12 (R2/D1): omitted entirely — never sent zeroed —
     // for a viewer who is neither ADMIN nor manager of this row's department.
     // Same precedent as MonthlySummary.healthLeaveDays: the mere presence of
     // the field is informative, so an unauthorized viewer must not see the key.
-    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number };
+    summary?: { weeklyNetHours: number; teleworkDaysWeek: number; teleworkDaysMonth: number; travelDays: number; guardDays: number; weeklyTargetHours: number; dailyTargetHours: number };
   }>;
   alerts: Array<{
     id: string;
@@ -536,16 +598,21 @@ export async function buildScheduleView(
 
   const days: string[] = Array.from({ length: 5 }, (_, i) => isoDate(addDaysUtc(schedule.weekStart, i)));
 
-  const byUser = new Map<string, { username: string; displayName: string | null; entriesReal: typeof schedule.entries }>();
+  const byUser = new Map<string, { username: string; displayName: string | null; isExternal: boolean; entriesReal: typeof schedule.entries }>();
   for (const e of schedule.entries) {
     if (!byUser.has(e.userId)) {
-      byUser.set(e.userId, { username: e.user.username, displayName: e.user.displayName ?? null, entriesReal: [] });
+      byUser.set(e.userId, {
+        username: e.user.username,
+        displayName: e.user.displayName ?? null,
+        isExternal: e.user.isExternal,
+        entriesReal: [],
+      });
     }
     byUser.get(e.userId)!.entriesReal.push(e);
   }
 
   const month = schedule.weekStart.getUTCMonth() + 1;
-  const weeklyTargetsByUser = await loadWeeklyTargetHours(prisma, Array.from(byUser.keys()), cfg.weeklyTargetNetHours);
+  const weeklyOverridesByUser = await loadWeeklyTargetOverrides(prisma, Array.from(byUser.keys()));
   const rows: ScheduleView['rows'] = [];
   for (const [userId, data] of byUser) {
     const entries: Record<string, MaskedEntryFields> = {};
@@ -581,27 +648,43 @@ export async function buildScheduleView(
     const guardDays = data.entriesReal.filter((e) => e.onGuard && !HEALTH_STATUSES.includes(e.status)).length;
     const teleworkDaysWeek = data.entriesReal.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
     const teleworkDaysMonth = await countTeleworkThisMonth(prisma, userId, schedule.year, month);
-    // v3.5.12 — reduced by any VACACIONES/FESTIVO/FESTIVO_LOCAL day in this
-    // user's week (computeEffectiveWeeklyTarget), so the displayed "X / Y h"
-    // target reflects the week's actual working days instead of a flat
-    // department default.
-    const baseWeeklyTargetHours = weeklyTargetsByUser[userId] ?? cfg.weeklyTargetNetHours;
-    const weeklyTargetHours = computeEffectiveWeeklyTarget(
-      data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status })),
-      cfg,
-      schedule.isSummerWeek,
-      baseWeeklyTargetHours,
+    // v3.5.13 (D1) — el objetivo es la suma de los días laborables planificados
+    // de esta semana concreta; dailyTargetHours acompaña al objetivo para que
+    // el autorrelleno del frontend no tenga que dividir entre 5 a ciegas.
+    const targetEntries = data.entriesReal.map((e) => ({ userId: e.userId, date: isoDate(e.date), status: e.status }));
+    const override = weeklyOverridesByUser[userId] ?? null;
+    const weeklyTargetHours = computeEffectiveWeeklyTarget(targetEntries, cfg, schedule.isSummerWeek, override);
+    const dailyTargetHours = computeDailyTargetHours(targetEntries, cfg, schedule.isSummerWeek, override);
+
+    // v3.5.13 (D3) — enmascarado de identidad de trabajadores externos, mismo
+    // principio que maskEntryForViewer para datos de salud: se resuelve aquí,
+    // en servidor, para que el nombre real no llegue al JSON de un viewer no
+    // autorizado.
+    const identity = maskIdentityForViewer(
+      { username: data.username, displayName: data.displayName, isExternal: data.isExternal },
+      viewer,
+      userId,
     );
+    // printLabel se calcula SIEMPRE a partir del nombre real (data.*, no
+    // identity.*) y es el mismo valor que ya recibe un viewer no autorizado en
+    // displayName — por eso no añade ninguna fuga nueva para ADMIN/MANAGER,
+    // que ya conocen el nombre real. Sin este campo fijo, el cliente tendría
+    // que recalcular las iniciales sobre lo que le haya llegado en displayName,
+    // y para un viewer no autorizado eso ya es "Externo (JEM)" — recalcular
+    // initiales encima de esa cadena da resultados absurdos (p.ej. "E(").
+    const printLabel = data.isExternal ? `Externo (${externalInitials(data.displayName, data.username)})` : null;
 
     rows.push({
       userId,
-      username: data.username,
-      displayName: data.displayName,
+      username: identity.username,
+      displayName: identity.displayName,
+      isExternal: identity.isExternal,
+      printLabel,
       entries,
       // Omitted entirely (not sent as `undefined`/zeroed) when the viewer is
       // not authorized — see the `summary?` doc comment on ScheduleView above.
       ...(showSummary
-        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours } }
+        ? { summary: { weeklyNetHours, teleworkDaysWeek, teleworkDaysMonth, travelDays, guardDays, weeklyTargetHours, dailyTargetHours } }
         : {}),
     });
   }
@@ -766,18 +849,18 @@ export async function listUserEntries(
   const rows = await loadUserEntriesInRange(prisma, userId, fromDate, toDate, visibility);
   if (rows.length === 0) return [];
 
-  // weeklyTargetHours (R2): a per-user override with a per-department
-  // fallback (DepartmentScheduleConfig.weeklyTargetNetHours) — resolved once
-  // per department touched in the range, not once per entry. v3.5.12: the
-  // value attached is the EFFECTIVE target for that entry's own week (base
-  // target minus VACACIONES/FESTIVO/FESTIVO_LOCAL days in the same week, same
-  // rule as buildScheduleView's row.summary.weeklyTargetHours) — grouped by
+  // weeklyTargetHours (R2): resolved once per department touched in the range,
+  // not once per entry. v3.5.13: the value attached is the SUM of the days
+  // actually planned in that entry's own week (computeEffectiveWeeklyTarget),
+  // scaled by the user's own explicit override when they have one — same rule
+  // as buildScheduleView's row.summary.weeklyTargetHours — grouped by
   // (departmentId, weekMonday) so a range spanning several weeks or a
   // mid-range department change is handled correctly, not just averaged flat.
   const cfgCache = new Map<string, ValidationConfig>();
   const authCache = new Map<string, boolean>();
-  const baseTargetCache = new Map<string, number>();
-  const summerCache = new Map<number, SummerPeriodLike | null>();
+  // El override es del USUARIO, no del departamento, así que basta con
+  // resolverlo una vez para toda la función en vez de por cada grupo.
+  const overridePromise = loadWeeklyTargetOverrides(prisma, [userId]);
 
   const weekKey = (departmentId: string, monday: string) => `${departmentId}|${monday}`;
   const weekGroups = new Map<string, { departmentId: string; monday: string; rows: typeof rows }>();
@@ -803,22 +886,14 @@ export async function listUserEntries(
       cfg = await loadValidationConfig(prisma, group.departmentId);
       cfgCache.set(group.departmentId, cfg);
     }
-    let baseTarget = baseTargetCache.get(group.departmentId);
-    if (baseTarget === undefined) {
-      const targets = await loadWeeklyTargetHours(prisma, [userId], cfg.weeklyTargetNetHours);
-      baseTarget = targets[userId];
-      baseTargetCache.set(group.departmentId, baseTarget);
-    }
-    const year = Number(group.monday.slice(0, 4));
-    let summer = summerCache.get(year);
-    if (summer === undefined) {
-      summer = await loadSummerForYear(prisma, year);
-      summerCache.set(year, summer);
-    }
-    const isSummer = detectSummer(group.monday, summer);
+    const override = (await overridePromise)[userId] ?? null;
+    // v3.5.13 — isSummerWeek se lee del horario al que pertenece el grupo
+    // (todas las filas del grupo comparten (departmentId, monday), es decir
+    // el mismo StaffSchedule), nunca recalculado con el periodo global.
+    const isSummer = group.rows[0].schedule.isSummerWeek;
 
     const entriesLike: EntryLike[] = group.rows.map((r) => ({ userId, date: isoDate(r.date), status: r.status }));
-    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, baseTarget));
+    effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, override));
   }
 
   const result: UserEntryView[] = [];

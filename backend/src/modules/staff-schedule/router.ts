@@ -424,7 +424,13 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
       // ANTES de enmascarar (mismo motivo que en buildScheduleView: recalcular
       // sobre un displayName ya enmascarado da resultados absurdos).
       const viewer = { id: req.user!.id, role: req.user!.role };
+      // v3.5.13 — maskIdentityForViewer devuelve un objeto NUEVO {username,
+      // displayName, isExternal} cuando enmascara: `id` se pierde si no se
+      // reinyecta explícitamente. Sin esto, un VIEWER no podía seleccionar en
+      // absoluto a un trabajador externo en el buscador (onSelect recibía
+      // undefined como userId) — bug real cazado en verificación en vivo.
       const masked = users.map((u) => ({
+        id: u.id,
         ...maskIdentityForViewer(u, viewer, u.id),
         printLabel: u.isExternal ? `Externo (${externalInitials(u.displayName, u.username)})` : null,
       }));

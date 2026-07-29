@@ -2546,6 +2546,77 @@
       "bulkInclude": "Include selected",
       "bulkExclude": "Exclude selected",
       "backToList": "Back to list"
+    },
+    "severity": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "INFO": "Informational"
+    },
+    "tabs": {
+      "all": "All",
+      "actionable": "Actionable",
+      "informational": "Informational",
+      "attention": "Needs attention",
+      "reappeared": "Reappeared"
+    },
+    "detail": {
+      "title": "Batch review",
+      "subtitle": "Review, correct, and decide before applying to the inventory",
+      "notFound": "Batch not found",
+      "notFoundHint": "The requested batch does not exist or was removed.",
+      "metadata": "Batch details",
+      "summary": "Summary",
+      "taskName": "Greenbone task",
+      "scanRange": "Scan period",
+      "uploadedBy": "Uploaded by",
+      "createdAt": "Uploaded at",
+      "resolvedBy": "Resolved by",
+      "entryCount": "Total entries",
+      "readOnlyNotice": "This batch has already been resolved (accepted or discarded) — read only.",
+      "readOnlyNoAdmin": "Only an administrator can review and decide on this batch.",
+      "notificationsRegion": "Notifications",
+      "closeNotification": "Close notification"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "No associated CVEs",
+      "noCi": "No matched CI",
+      "candidates": "Suggested candidates",
+      "edited": "Edited",
+      "reassignSuccess": "CI reassigned successfully"
+    },
+    "bulk": {
+      "includeVisible": "Include visible",
+      "excludeVisible": "Exclude visible",
+      "doneToast": "Decision applied to the visible entries"
+    },
+    "accept": {
+      "button": "Accept batch",
+      "confirmTitle": "Confirm batch acceptance",
+      "confirmBody": "All entries marked \"Include\" will be applied to the inventory. This action cannot be undone.",
+      "previewCi": "CIs affected",
+      "previewNew": "New",
+      "previewReopened": "Reopened",
+      "previewIncluded": "Total included",
+      "previewRefreshed": "Metadata refreshed",
+      "successTitle": "Batch accepted successfully",
+      "blockingTitle": "Unresolved entries are blocking acceptance",
+      "blockingBody": "The following included entries do not have an unambiguously resolved CI. Reassign a CI or exclude them before accepting the batch.",
+      "unresolvedWarning": "{count} included entry/entries still have no resolved CI — this will block acceptance."
+    },
+    "discard": {
+      "button": "Discard batch",
+      "confirmTitle": "Confirm batch discard",
+      "confirmBody": "The batch will be marked as discarded. Nothing will be written to any CI. This action cannot be undone.",
+      "successToast": "Batch discarded successfully"
+    },
+    "errors": {
+      "patchFailed": "Could not save the change:",
+      "bulkFailed": "Could not apply the bulk action:",
+      "acceptFailed": "Could not accept the batch:",
+      "discardFailed": "Could not discard the batch:"
     }
   }
 }

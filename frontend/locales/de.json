@@ -2427,6 +2427,77 @@
       "bulkInclude": "Auswahl einschließen",
       "bulkExclude": "Auswahl ausschließen",
       "backToList": "Zurück zur Liste"
+    },
+    "severity": {
+      "CRITICAL": "Kritisch",
+      "HIGH": "Hoch",
+      "MEDIUM": "Mittel",
+      "LOW": "Niedrig",
+      "INFO": "Informativ"
+    },
+    "tabs": {
+      "all": "Alle",
+      "actionable": "Handlungsbedarf",
+      "informational": "Informativ",
+      "attention": "Erfordert Aufmerksamkeit",
+      "reappeared": "Wieder aufgetreten"
+    },
+    "detail": {
+      "title": "Batch-Überprüfung",
+      "subtitle": "Prüfen, korrigieren und entscheiden, bevor es auf das Inventar angewendet wird",
+      "notFound": "Batch nicht gefunden",
+      "notFoundHint": "Der angeforderte Batch existiert nicht oder wurde entfernt.",
+      "metadata": "Batch-Daten",
+      "summary": "Zusammenfassung",
+      "taskName": "Greenbone-Aufgabe",
+      "scanRange": "Scan-Zeitraum",
+      "uploadedBy": "Hochgeladen von",
+      "createdAt": "Hochgeladen am",
+      "resolvedBy": "Bearbeitet von",
+      "entryCount": "Einträge insgesamt",
+      "readOnlyNotice": "Dieser Batch wurde bereits abgeschlossen (angenommen oder verworfen) — nur Lesezugriff.",
+      "readOnlyNoAdmin": "Nur ein Administrator kann diesen Batch überprüfen und entscheiden.",
+      "notificationsRegion": "Benachrichtigungen",
+      "closeNotification": "Benachrichtigung schließen"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "Keine zugehörigen CVEs",
+      "noCi": "Kein zugeordnetes CI",
+      "candidates": "Vorgeschlagene Kandidaten",
+      "edited": "Bearbeitet",
+      "reassignSuccess": "CI erfolgreich neu zugewiesen"
+    },
+    "bulk": {
+      "includeVisible": "Sichtbare einschließen",
+      "excludeVisible": "Sichtbare ausschließen",
+      "doneToast": "Entscheidung auf sichtbare Einträge angewendet"
+    },
+    "accept": {
+      "button": "Batch übernehmen",
+      "confirmTitle": "Übernahme des Batches bestätigen",
+      "confirmBody": "Alle als \"Einschließen\" markierten Einträge werden auf das Inventar angewendet. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "previewCi": "Betroffene CIs",
+      "previewNew": "Neu",
+      "previewReopened": "Wiedereröffnet",
+      "previewIncluded": "Insgesamt eingeschlossen",
+      "previewRefreshed": "Metadaten aktualisiert",
+      "successTitle": "Batch erfolgreich übernommen",
+      "blockingTitle": "Ungelöste Einträge blockieren die Übernahme",
+      "blockingBody": "Die folgenden eingeschlossenen Einträge haben kein eindeutig aufgelöstes CI. Weisen Sie ein CI zu oder schließen Sie sie aus, bevor Sie den Batch übernehmen.",
+      "unresolvedWarning": "{count} eingeschlossene(r) Eintrag/Einträge haben noch kein aufgelöstes CI — dies blockiert die Übernahme."
+    },
+    "discard": {
+      "button": "Batch verwerfen",
+      "confirmTitle": "Verwerfen des Batches bestätigen",
+      "confirmBody": "Der Batch wird als verworfen markiert. Es wird nichts in ein CI geschrieben. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "successToast": "Batch erfolgreich verworfen"
+    },
+    "errors": {
+      "patchFailed": "Änderung konnte nicht gespeichert werden:",
+      "bulkFailed": "Massenaktion konnte nicht angewendet werden:",
+      "acceptFailed": "Batch konnte nicht übernommen werden:",
+      "discardFailed": "Batch konnte nicht verworfen werden:"
     }
   }
 }

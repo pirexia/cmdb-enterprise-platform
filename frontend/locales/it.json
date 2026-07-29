@@ -2427,6 +2427,77 @@
       "bulkInclude": "Includi selezionati",
       "bulkExclude": "Escludi selezionati",
       "backToList": "Torna all'elenco"
+    },
+    "severity": {
+      "CRITICAL": "Critica",
+      "HIGH": "Alta",
+      "MEDIUM": "Media",
+      "LOW": "Bassa",
+      "INFO": "Informativa"
+    },
+    "tabs": {
+      "all": "Tutte",
+      "actionable": "Attuabili",
+      "informational": "Informative",
+      "attention": "Richiedono attenzione",
+      "reappeared": "Ricomparse"
+    },
+    "detail": {
+      "title": "Revisione del lotto",
+      "subtitle": "Rivedi, correggi e decidi prima di applicare all'inventario",
+      "notFound": "Lotto non trovato",
+      "notFoundHint": "Il lotto richiesto non esiste o è stato rimosso.",
+      "metadata": "Dati del lotto",
+      "summary": "Riepilogo",
+      "taskName": "Attività Greenbone",
+      "scanRange": "Periodo di scansione",
+      "uploadedBy": "Caricato da",
+      "createdAt": "Caricato il",
+      "resolvedBy": "Risolto da",
+      "entryCount": "Voci totali",
+      "readOnlyNotice": "Questo lotto è già stato risolto (accettato o scartato) — sola lettura.",
+      "readOnlyNoAdmin": "Solo un amministratore può rivedere e decidere su questo lotto.",
+      "notificationsRegion": "Notifiche",
+      "closeNotification": "Chiudi notifica"
+    },
+    "entry": {
+      "port": "Porta",
+      "noCves": "Nessun CVE associato",
+      "noCi": "Nessun CI abbinato",
+      "candidates": "Candidati suggeriti",
+      "edited": "Modificato",
+      "reassignSuccess": "CI riassegnato con successo"
+    },
+    "bulk": {
+      "includeVisible": "Includi visibili",
+      "excludeVisible": "Escludi visibili",
+      "doneToast": "Decisione applicata alle voci visibili"
+    },
+    "accept": {
+      "button": "Accetta lotto",
+      "confirmTitle": "Conferma accettazione del lotto",
+      "confirmBody": "Tutte le voci contrassegnate come \"Includi\" verranno applicate all'inventario. Questa azione non può essere annullata.",
+      "previewCi": "CI interessati",
+      "previewNew": "Nuove",
+      "previewReopened": "Riaperte",
+      "previewIncluded": "Totale incluse",
+      "previewRefreshed": "Metadati aggiornati",
+      "successTitle": "Lotto accettato con successo",
+      "blockingTitle": "Voci non risolte bloccano l'accettazione",
+      "blockingBody": "Le seguenti voci incluse non hanno un CI risolto in modo univoco. Riassegna un CI o escludile prima di accettare il lotto.",
+      "unresolvedWarning": "{count} voce/i inclusa/e non hanno ancora un CI risolto — questo bloccherà l'accettazione."
+    },
+    "discard": {
+      "button": "Scarta lotto",
+      "confirmTitle": "Conferma scarto del lotto",
+      "confirmBody": "Il lotto verrà contrassegnato come scartato. Non verrà scritto nulla in nessun CI. Questa azione non può essere annullata.",
+      "successToast": "Lotto scartato con successo"
+    },
+    "errors": {
+      "patchFailed": "Impossibile salvare la modifica:",
+      "bulkFailed": "Impossibile applicare l'azione massiva:",
+      "acceptFailed": "Impossibile accettare il lotto:",
+      "discardFailed": "Impossibile scartare il lotto:"
     }
   }
 }

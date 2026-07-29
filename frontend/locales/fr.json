@@ -2427,6 +2427,77 @@
       "bulkInclude": "Inclure la sélection",
       "bulkExclude": "Exclure la sélection",
       "backToList": "Retour à la liste"
+    },
+    "severity": {
+      "CRITICAL": "Critique",
+      "HIGH": "Élevée",
+      "MEDIUM": "Moyenne",
+      "LOW": "Faible",
+      "INFO": "Informative"
+    },
+    "tabs": {
+      "all": "Toutes",
+      "actionable": "Exploitables",
+      "informational": "Informatives",
+      "attention": "Nécessitent une attention",
+      "reappeared": "Réapparues"
+    },
+    "detail": {
+      "title": "Révision du lot",
+      "subtitle": "Vérifiez, corrigez et décidez avant l'application à l'inventaire",
+      "notFound": "Lot introuvable",
+      "notFoundHint": "Le lot demandé n'existe pas ou a été supprimé.",
+      "metadata": "Détails du lot",
+      "summary": "Résumé",
+      "taskName": "Tâche Greenbone",
+      "scanRange": "Période du scan",
+      "uploadedBy": "Envoyé par",
+      "createdAt": "Envoyé le",
+      "resolvedBy": "Résolu par",
+      "entryCount": "Entrées totales",
+      "readOnlyNotice": "Ce lot a déjà été résolu (accepté ou rejeté) — lecture seule.",
+      "readOnlyNoAdmin": "Seul un administrateur peut réviser et décider de ce lot.",
+      "notificationsRegion": "Notifications",
+      "closeNotification": "Fermer la notification"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "Aucun CVE associé",
+      "noCi": "Aucun CI associé",
+      "candidates": "Candidats suggérés",
+      "edited": "Modifié",
+      "reassignSuccess": "CI réattribué avec succès"
+    },
+    "bulk": {
+      "includeVisible": "Inclure les visibles",
+      "excludeVisible": "Exclure les visibles",
+      "doneToast": "Décision appliquée aux entrées visibles"
+    },
+    "accept": {
+      "button": "Accepter le lot",
+      "confirmTitle": "Confirmer l'acceptation du lot",
+      "confirmBody": "Toutes les entrées marquées \"Inclure\" seront appliquées à l'inventaire. Cette action est irréversible.",
+      "previewCi": "CI concernés",
+      "previewNew": "Nouvelles",
+      "previewReopened": "Rouvertes",
+      "previewIncluded": "Total incluses",
+      "previewRefreshed": "Métadonnées actualisées",
+      "successTitle": "Lot accepté avec succès",
+      "blockingTitle": "Des entrées non résolues bloquent l'acceptation",
+      "blockingBody": "Les entrées incluses suivantes n'ont pas de CI résolu sans ambiguïté. Réattribuez un CI ou excluez-les avant d'accepter le lot.",
+      "unresolvedWarning": "{count} entrée(s) incluse(s) n'ont toujours pas de CI résolu — cela bloquera l'acceptation."
+    },
+    "discard": {
+      "button": "Rejeter le lot",
+      "confirmTitle": "Confirmer le rejet du lot",
+      "confirmBody": "Le lot sera marqué comme rejeté. Rien ne sera écrit dans aucun CI. Cette action est irréversible.",
+      "successToast": "Lot rejeté avec succès"
+    },
+    "errors": {
+      "patchFailed": "Impossible d'enregistrer la modification :",
+      "bulkFailed": "Impossible d'appliquer l'action groupée :",
+      "acceptFailed": "Impossible d'accepter le lot :",
+      "discardFailed": "Impossible de rejeter le lot :"
     }
   }
 }

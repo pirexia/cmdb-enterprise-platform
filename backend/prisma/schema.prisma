@@ -153,13 +153,18 @@ model User {
   departmentId    String?          @db.Uuid @map("department_id")
   department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   weeklyTargetHours Float?         @map("weekly_target_hours")
-  // v3.5.11 — per-user telework quota override. Priority when resolving the
-  // effective monthly cap: teleworkFull > teleworkQuotaDays > teleworkQuotaPct
-  // > DepartmentScheduleConfig.monthlyTeleworkCap. All null/false = department
-  // default (previous behaviour).
-  teleworkFull      Boolean        @default(false) @map("telework_full")
-  teleworkQuotaDays Int?           @map("telework_quota_days")
-  teleworkQuotaPct  Int?           @map("telework_quota_pct")
+  // v3.5.11 — per-user telework quota override, extended in v3.5.13 with a
+  // fourth method (teleworkQuotaDaysPerWeek). The four methods are MUTUALLY
+  // EXCLUSIVE (D4): at most one may be set per user (CHECK
+  // users_telework_quota_single_method), because having e.g. both "3
+  // days/week" and "10 days/month" at once leaves it undefined which one
+  // applies. All unset = department default (previous behaviour).
+  teleworkFull             Boolean @default(false) @map("telework_full")
+  teleworkQuotaDays        Int?    @map("telework_quota_days")
+  /// v3.5.13 — tope semanal de dias de teletrabajo. Excluyente con los otros
+  /// tres metodos (CHECK users_telework_quota_single_method).
+  teleworkQuotaDaysPerWeek Int?    @map("telework_quota_days_per_week")
+  teleworkQuotaPct         Int?    @map("telework_quota_pct")
   managedDepartments DepartmentManager[]
   scheduleEntries ScheduleEntry[]
 

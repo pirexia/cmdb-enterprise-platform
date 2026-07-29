@@ -2327,6 +2327,7 @@
     "alert": {
       "title": "Alertas",
       "TELEWORK_QUOTA": "Cuota de teletrabajo superada",
+      "TELEWORK_QUOTA_WEEK": "Cuota semanal de teletrabajo superada",
       "WEEKLY_HOURS": "Horas semanales incumplidas",
       "DAILY_HOURS": "Horas diarias excedidas",
       "PRESENCE_PCT": "Presencialidad insuficiente",
@@ -2379,7 +2380,8 @@
       "weeklyHoursOverride": "Horas semanales (trabajador)",
       "weeklyHoursDefault": "Por defecto (departamento)",
       "weeklyHoursWorker": "Horas semanales (trabajador)",
-      "weeklyHoursSaved": "Horas semanales guardadas."
+      "weeklyHoursSaved": "Horas semanales guardadas.",
+      "teleworkExclusive": "Solo puede configurarse uno de los cuatro métodos"
     },
     "summary": {
       "weeklyHours": "Horas semanales",
@@ -2453,8 +2455,9 @@
       "full": "Teletrabajo total",
       "fullShort": "TT total",
       "days": "Días",
+      "daysPerWeek": "Días/semana",
       "pct": "%",
-      "hint": "Prioridad: teletrabajo total > días > porcentaje > tope del departamento. Déjalo vacío para usar el tope del departamento.",
+      "hint": "Solo puede fijarse uno de los cuatro métodos: total, días/mes, días/semana o porcentaje/mes. Déjalo vacío para usar el tope del departamento.",
       "saved": "Cuota de teletrabajo guardada"
     },
     "periodSelector": {

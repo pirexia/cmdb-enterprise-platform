@@ -1,7 +1,7 @@
 import {
   validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours,
   resolveTeleworkCap, workingDaysInMonth, computeEffectiveWeeklyTarget,
-  computeDailyTargetHours,
+  computeDailyTargetHours, resolveWeeklyTeleworkCap, TeleworkQuota,
 } from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
@@ -236,21 +236,21 @@ describe('INTENSIVO_TELETRABAJO (v3.5.11)', () => {
 describe('resolveTeleworkCap (v3.5.11)', () => {
   it('sin override -> tope del departamento', () => {
     expect(resolveTeleworkCap(undefined, 10, 2026, 7)).toBe(10);
-    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null }, 10, 2026, 7)).toBe(10);
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: null }, 10, 2026, 7)).toBe(10);
   });
 
   it('teleworkFull -> exento (null), aunque haya días/porcentaje fijados', () => {
-    expect(resolveTeleworkCap({ teleworkFull: true, teleworkQuotaDays: 3, teleworkQuotaPct: 20 }, 10, 2026, 7)).toBeNull();
+    expect(resolveTeleworkCap({ teleworkFull: true, teleworkQuotaDays: 3, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: 20 }, 10, 2026, 7)).toBeNull();
   });
 
   it('días manda sobre porcentaje', () => {
-    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: 4, teleworkQuotaPct: 90 }, 10, 2026, 7)).toBe(4);
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: 4, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: 90 }, 10, 2026, 7)).toBe(4);
   });
 
   it('porcentaje se calcula sobre los días L-V del mes natural', () => {
     // Julio 2026 tiene 23 días laborables -> 50% = 11.5 -> redondea a 12.
     expect(workingDaysInMonth(2026, 7)).toBe(23);
-    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: 50 }, 10, 2026, 7)).toBe(12);
+    expect(resolveTeleworkCap({ teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: 50 }, 10, 2026, 7)).toBe(12);
   });
 });
 
@@ -261,13 +261,13 @@ describe('TELEWORK_QUOTA con cuota por usuario (v3.5.11)', () => {
 
   it('el trabajador 100% teletrabajo nunca dispara la alerta', () => {
     const alerts = validate(schedule, entries, cfg, null, { u1: 22 }, {}, {
-      u1: { teleworkFull: true, teleworkQuotaDays: null, teleworkQuotaPct: null },
+      u1: { teleworkFull: true, teleworkQuotaDays: null, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: null },
     });
     expect(alertsOfType(alerts, 'TELEWORK_QUOTA')).toHaveLength(0);
   });
 
   it('un tope propio en días sustituye al del departamento', () => {
-    const quota = { u1: { teleworkFull: false, teleworkQuotaDays: 2, teleworkQuotaPct: null } };
+    const quota = { u1: { teleworkFull: false, teleworkQuotaDays: 2, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: null } };
     // 3 días > tope propio de 2, aunque el tope del departamento (10) no se supere.
     const alerts = validate(schedule, entries, cfg, null, { u1: 3 }, {}, quota);
     const fired = alertsOfType(alerts, 'TELEWORK_QUOTA');
@@ -476,5 +476,72 @@ describe('service.maskEntryForViewer (GDPR Art. 9)', () => {
     const result = maskEntryForViewer(entry, { id: 'viewer-2', role: 'AUDITOR' });
     expect(result.status).toBe('TELETRABAJO');
     expect(result.healthMasked).toBe(false);
+  });
+});
+
+// ─── v3.5.13 — cuota de teletrabajo semanal, métodos excluyentes (D4) ───────
+
+describe('resolveWeeklyTeleworkCap (v3.5.13 — D4)', () => {
+  const q = (o: Partial<TeleworkQuota>): TeleworkQuota => ({
+    teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null,
+    teleworkQuotaDaysPerWeek: null, ...o,
+  });
+
+  it('devuelve el tope semanal cuando es el método elegido', () => {
+    expect(resolveWeeklyTeleworkCap(q({ teleworkQuotaDaysPerWeek: 2 }))).toBe(2);
+  });
+
+  it('un trabajador exento (100% teletrabajo) no tiene tope semanal', () => {
+    expect(resolveWeeklyTeleworkCap(q({ teleworkFull: true }))).toBeNull();
+  });
+
+  it('sin método semanal no se evalúa límite semanal alguno', () => {
+    expect(resolveWeeklyTeleworkCap(q({ teleworkQuotaDays: 8 }))).toBeNull();
+    expect(resolveWeeklyTeleworkCap(undefined)).toBeNull();
+  });
+
+  it('un tope semanal de 0 es un tope real, no "sin configurar"', () => {
+    expect(resolveWeeklyTeleworkCap(q({ teleworkQuotaDaysPerWeek: 0 }))).toBe(0);
+  });
+});
+
+describe('TELEWORK_QUOTA_WEEK (v3.5.13)', () => {
+  it('se dispara al superar el tope semanal', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-08-24', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-25', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-26', status: 'INTENSIVO_TELETRABAJO' },
+    ];
+    const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
+    const alerts = validate(weekSchedule, entries, cfg, null, {}, {}, {
+      u1: { teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null, teleworkQuotaDaysPerWeek: 2 },
+    });
+    const weekAlert = alerts.find((a) => a.type === 'TELEWORK_QUOTA_WEEK');
+    expect(weekAlert).toBeDefined();
+    expect(weekAlert!.severity).toBe('ERROR');
+    expect(weekAlert!.userId).toBe('u1');
+  });
+
+  it('no se dispara dentro del tope', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-08-24', status: 'TELETRABAJO' },
+    ];
+    const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
+    const alerts = validate(weekSchedule, entries, cfg, null, {}, {}, {
+      u1: { teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null, teleworkQuotaDaysPerWeek: 2 },
+    });
+    expect(alertsOfType(alerts, 'TELEWORK_QUOTA_WEEK')).toHaveLength(0);
+  });
+
+  it('sin tope semanal configurado no se evalúa, aunque haya muchos días de teletrabajo', () => {
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-08-24', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-25', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-26', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-27', status: 'TELETRABAJO' },
+      { userId: 'u1', date: '2026-08-28', status: 'TELETRABAJO' },
+    ];
+    const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
+    expect(alertsOfType(validate(weekSchedule, entries, cfg, null, {}), 'TELEWORK_QUOTA_WEEK')).toHaveLength(0);
   });
 });

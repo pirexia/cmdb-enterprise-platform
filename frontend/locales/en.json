@@ -2327,6 +2327,7 @@
     "alert": {
       "title": "Alerts",
       "TELEWORK_QUOTA": "Telework quota exceeded",
+      "TELEWORK_QUOTA_WEEK": "Weekly telework quota exceeded",
       "WEEKLY_HOURS": "Weekly hours not met",
       "DAILY_HOURS": "Daily hours exceeded",
       "PRESENCE_PCT": "Insufficient onsite presence",
@@ -2379,7 +2380,8 @@
       "weeklyHoursOverride": "Weekly hours (worker)",
       "weeklyHoursDefault": "Department default",
       "weeklyHoursWorker": "Weekly hours (worker)",
-      "weeklyHoursSaved": "Weekly hours saved."
+      "weeklyHoursSaved": "Weekly hours saved.",
+      "teleworkExclusive": "Only one of the four methods can be configured"
     },
     "summary": {
       "weeklyHours": "Weekly hours",
@@ -2453,8 +2455,9 @@
       "full": "Full telework",
       "fullShort": "Full TW",
       "days": "Days",
+      "daysPerWeek": "Days/week",
       "pct": "%",
-      "hint": "Priority: full telework > days > percentage > department cap. Leave empty to use the department cap.",
+      "hint": "Only one of the four methods can be set: full, days/month, days/week or percentage/month. Leave it empty to use the department cap.",
       "saved": "Telework quota saved"
     },
     "periodSelector": {

@@ -2208,6 +2208,7 @@
     "alert": {
       "title": "Warnungen",
       "TELEWORK_QUOTA": "Homeoffice-Kontingent überschritten",
+      "TELEWORK_QUOTA_WEEK": "Wöchentliches Homeoffice-Kontingent überschritten",
       "WEEKLY_HOURS": "Wochenstunden nicht erreicht",
       "DAILY_HOURS": "Tägliche Stunden überschritten",
       "PRESENCE_PCT": "Unzureichende Präsenz vor Ort",
@@ -2260,7 +2261,8 @@
       "weeklyHoursOverride": "Wochenstunden (Mitarbeiter)",
       "weeklyHoursDefault": "Abteilungsstandard",
       "weeklyHoursWorker": "Wochenstunden (Mitarbeiter)",
-      "weeklyHoursSaved": "Wochenstunden gespeichert."
+      "weeklyHoursSaved": "Wochenstunden gespeichert.",
+      "teleworkExclusive": "Es kann nur eine der vier Methoden konfiguriert werden"
     },
     "summary": {
       "weeklyHours": "Wochenstunden",
@@ -2334,8 +2336,9 @@
       "full": "Vollständige Telearbeit",
       "fullShort": "Voll-TA",
       "days": "Tage",
+      "daysPerWeek": "Tage/Woche",
       "pct": "%",
-      "hint": "Priorität: vollständige Telearbeit > Tage > Prozentsatz > Abteilungsgrenze. Leer lassen, um die Abteilungsgrenze zu verwenden.",
+      "hint": "Nur eine der vier Methoden kann festgelegt werden: vollständig, Tage/Monat, Tage/Woche oder Prozent/Monat. Leer lassen, um die Obergrenze der Abteilung zu verwenden.",
       "saved": "Telearbeitskontingent gespeichert"
     },
     "periodSelector": {

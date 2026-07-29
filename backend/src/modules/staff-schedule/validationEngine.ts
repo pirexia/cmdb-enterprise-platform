@@ -107,9 +107,12 @@ export function computeNetHours(entry: EntryLike, cfg: ValidationConfig, isSumme
 
 // Per-user override of the department's monthly telework cap. Every field is
 // optional: a user with none of them set falls back to the department default.
+// v3.5.13 — the four methods are mutually exclusive (D4): at most one is ever
+// non-default/non-null for a given user.
 export interface TeleworkQuota {
   teleworkFull: boolean;
   teleworkQuotaDays: number | null;
+  teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
 }
 
@@ -142,6 +145,21 @@ export function resolveTeleworkCap(
     return Math.round((quota.teleworkQuotaPct / 100) * workingDaysInMonth(year, month));
   }
   return departmentCap;
+}
+
+// resolveWeeklyTeleworkCap (v3.5.13) — tope de dias de teletrabajo por SEMANA.
+// Devuelve null cuando no procede evaluar limite semanal: o bien el trabajador
+// esta exento (teleworkFull), o bien su cuota esta expresada por otro metodo.
+// Los cuatro metodos son excluyentes por diseño (D4), asi que esto nunca compite
+// con resolveTeleworkCap: como mucho uno de los dos devuelve un numero.
+//
+// Ojo con el 0: es un tope legitimo ("este trabajador no teletrabaja ningun
+// dia"), no un "sin configurar" — de ahi la comparacion explicita con null.
+export function resolveWeeklyTeleworkCap(quota: TeleworkQuota | undefined): number | null {
+  if (!quota) return null;
+  if (quota.teleworkFull) return null;
+  if (quota.teleworkQuotaDaysPerWeek != null) return quota.teleworkQuotaDaysPerWeek;
+  return null;
 }
 
 // dailyTargetHours — the contracted hours for a single weekday under the
@@ -342,6 +360,22 @@ export function validate(
         message: `Telework days this month (${teleMonth}) exceed the cap (${teleCap})`,
         userId,
       });
+    }
+
+    // ── TELEWORK_QUOTA_WEEK (ERROR): dias de teletrabajo de ESTA semana ──────
+    // Limite independiente del mensual: solo uno de los dos puede estar
+    // configurado por trabajador (D4), asi que nunca se solapan las alertas.
+    const weekCap = resolveWeeklyTeleworkCap(teleworkQuotasByUser[userId]);
+    if (weekCap !== null) {
+      const teleWeek = es.filter((e) => TELEWORK_STATUSES.includes(e.status)).length;
+      if (teleWeek > weekCap) {
+        alerts.push({
+          type: 'TELEWORK_QUOTA_WEEK',
+          severity: 'ERROR',
+          message: `Telework days this week (${teleWeek}) exceed the weekly cap (${weekCap})`,
+          userId,
+        });
+      }
     }
 
     // ── GUARDIA_COVERAGE (ERROR) — week-level reinterpretation, see note ────

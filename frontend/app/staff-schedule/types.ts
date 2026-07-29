@@ -168,9 +168,11 @@ export interface DepartmentMemberInfo {
   displayName: string | null;
   email: string;
   weeklyTargetHours: number | null;
-  // v3.5.11 — override de cuota de teletrabajo (total / días / porcentaje).
+  // v3.5.11 — override de cuota de teletrabajo (total / días/mes / porcentaje);
+  // v3.5.13 añade días/semana. Los cuatro son excluyentes (D4).
   teleworkFull: boolean;
   teleworkQuotaDays: number | null;
+  teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
 }
 

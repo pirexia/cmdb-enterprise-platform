@@ -120,6 +120,7 @@ export interface DepartmentMemberInfo {
   weeklyTargetHours: number | null;
   teleworkFull: boolean;
   teleworkQuotaDays: number | null;
+  teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
 }
 
@@ -128,7 +129,7 @@ export async function loadDepartmentMembers(prisma: Db, departmentId: string): P
     where: { departmentId, active: true },
     select: {
       id: true, username: true, displayName: true, email: true, weeklyTargetHours: true,
-      teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true,
+      teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true,
     },
     orderBy: { username: 'asc' },
   });
@@ -143,13 +144,14 @@ export async function loadTeleworkQuotas(
   if (userIds.length === 0) return {};
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+    select: { id: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true },
   });
   const map: Record<string, TeleworkQuota> = {};
   for (const u of users) {
     map[u.id] = {
       teleworkFull: u.teleworkFull,
       teleworkQuotaDays: u.teleworkQuotaDays,
+      teleworkQuotaDaysPerWeek: u.teleworkQuotaDaysPerWeek,
       teleworkQuotaPct: u.teleworkQuotaPct,
     };
   }

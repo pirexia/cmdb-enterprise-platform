@@ -2208,6 +2208,7 @@
     "alert": {
       "title": "Avvisi",
       "TELEWORK_QUOTA": "Quota di lavoro da remoto superata",
+      "TELEWORK_QUOTA_WEEK": "Quota settimanale di lavoro da remoto superata",
       "WEEKLY_HOURS": "Ore settimanali non raggiunte",
       "DAILY_HOURS": "Ore giornaliere superate",
       "PRESENCE_PCT": "Presenza in sede insufficiente",
@@ -2260,7 +2261,8 @@
       "weeklyHoursOverride": "Ore settimanali (dipendente)",
       "weeklyHoursDefault": "Predefinito del reparto",
       "weeklyHoursWorker": "Ore settimanali (lavoratore)",
-      "weeklyHoursSaved": "Ore settimanali salvate."
+      "weeklyHoursSaved": "Ore settimanali salvate.",
+      "teleworkExclusive": "È possibile configurare solo uno dei quattro metodi"
     },
     "summary": {
       "weeklyHours": "Ore settimanali",
@@ -2334,8 +2336,9 @@
       "full": "Telelavoro totale",
       "fullShort": "TL totale",
       "days": "Giorni",
+      "daysPerWeek": "Giorni/settimana",
       "pct": "%",
-      "hint": "Priorità: telelavoro totale > giorni > percentuale > limite del dipartimento. Lascia vuoto per usare il limite del dipartimento.",
+      "hint": "È possibile impostare solo uno dei quattro metodi: totale, giorni/mese, giorni/settimana o percentuale/mese. Lascia vuoto per usare il limite del dipartimento.",
       "saved": "Quota di telelavoro salvata"
     },
     "periodSelector": {

@@ -254,7 +254,7 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
   });
 
   // PUT /api/staff-schedule/users/:userId/telework-quota  (ADMIN)
-  // { teleworkFull, teleworkQuotaDays, teleworkQuotaPct }
+  // { teleworkFull, teleworkQuotaDays, teleworkQuotaDaysPerWeek, teleworkQuotaPct }
   router.put('/users/:userId/telework-quota', requireAdmin, requireUuidParam('userId'), async (req: Request, res: Response) => {
     const parsed = UserTeleworkQuotaSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
@@ -265,9 +265,10 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
           data: {
             teleworkFull: parsed.data.teleworkFull,
             teleworkQuotaDays: parsed.data.teleworkQuotaDays,
+            teleworkQuotaDaysPerWeek: parsed.data.teleworkQuotaDaysPerWeek,
             teleworkQuotaPct: parsed.data.teleworkQuotaPct,
           },
-          select: { id: true, username: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaPct: true },
+          select: { id: true, username: true, teleworkFull: true, teleworkQuotaDays: true, teleworkQuotaDaysPerWeek: true, teleworkQuotaPct: true },
         });
         await auditStaffSchedule(tx, { action: 'SET_USER_TELEWORK_QUOTA', entity: 'DEPARTMENT', entityId: req.params.userId as string, userEmail: req.user!.email });
         return u;

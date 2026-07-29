@@ -2466,12 +2466,20 @@
       "noCi": "Kein zugeordnetes CI",
       "candidates": "Vorgeschlagene Kandidaten",
       "edited": "Bearbeitet",
-      "reassignSuccess": "CI erfolgreich neu zugewiesen"
+      "reassignSuccess": "CI erfolgreich neu zugewiesen",
+      "showDetails": "Details anzeigen",
+      "hideDetails": "Details ausblenden",
+      "summaryLabel": "Beschreibung",
+      "solutionLabel": "Abhilfe",
+      "familyLabel": "Familie",
+      "qodLabel": "QoD",
+      "noDetails": "Keine Beschreibung verfügbar"
     },
     "bulk": {
       "includeVisible": "Sichtbare einschließen",
       "excludeVisible": "Sichtbare ausschließen",
-      "doneToast": "Entscheidung auf sichtbare Einträge angewendet"
+      "doneToast": "Entscheidung auf sichtbare Einträge angewendet",
+      "progress": "{done}/{total} angewendet"
     },
     "accept": {
       "button": "Batch übernehmen",

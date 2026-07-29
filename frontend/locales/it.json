@@ -2466,12 +2466,20 @@
       "noCi": "Nessun CI abbinato",
       "candidates": "Candidati suggeriti",
       "edited": "Modificato",
-      "reassignSuccess": "CI riassegnato con successo"
+      "reassignSuccess": "CI riassegnato con successo",
+      "showDetails": "Mostra dettagli",
+      "hideDetails": "Nascondi dettagli",
+      "summaryLabel": "Descrizione",
+      "solutionLabel": "Rimedio",
+      "familyLabel": "Famiglia",
+      "qodLabel": "QoD",
+      "noDetails": "Nessuna descrizione disponibile"
     },
     "bulk": {
       "includeVisible": "Includi visibili",
       "excludeVisible": "Escludi visibili",
-      "doneToast": "Decisione applicata alle voci visibili"
+      "doneToast": "Decisione applicata alle voci visibili",
+      "progress": "{done}/{total} applicato"
     },
     "accept": {
       "button": "Accetta lotto",

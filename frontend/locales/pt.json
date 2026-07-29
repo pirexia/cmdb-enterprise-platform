@@ -2466,12 +2466,20 @@
       "noCi": "Sem CI correspondido",
       "candidates": "Candidatos sugeridos",
       "edited": "Editado",
-      "reassignSuccess": "CI reatribuído com sucesso"
+      "reassignSuccess": "CI reatribuído com sucesso",
+      "showDetails": "Mostrar detalhes",
+      "hideDetails": "Ocultar detalhes",
+      "summaryLabel": "Descrição",
+      "solutionLabel": "Correção",
+      "familyLabel": "Família",
+      "qodLabel": "QoD",
+      "noDetails": "Sem descrição disponível"
     },
     "bulk": {
       "includeVisible": "Incluir visíveis",
       "excludeVisible": "Excluir visíveis",
-      "doneToast": "Decisão aplicada às entradas visíveis"
+      "doneToast": "Decisão aplicada às entradas visíveis",
+      "progress": "{done}/{total} aplicado"
     },
     "accept": {
       "button": "Aceitar lote",

@@ -2585,12 +2585,20 @@
       "noCi": "Sin CI emparejado",
       "candidates": "Candidatos sugeridos",
       "edited": "Editado",
-      "reassignSuccess": "CI reasignado correctamente"
+      "reassignSuccess": "CI reasignado correctamente",
+      "showDetails": "Mostrar detalles",
+      "hideDetails": "Ocultar detalles",
+      "summaryLabel": "Descripción",
+      "solutionLabel": "Solución",
+      "familyLabel": "Familia",
+      "qodLabel": "QoD",
+      "noDetails": "Sin descripción disponible"
     },
     "bulk": {
       "includeVisible": "Incluir visibles",
       "excludeVisible": "Excluir visibles",
-      "doneToast": "Decisión aplicada a las entradas visibles"
+      "doneToast": "Decisión aplicada a las entradas visibles",
+      "progress": "{done}/{total} aplicado"
     },
     "accept": {
       "button": "Aceptar lote",

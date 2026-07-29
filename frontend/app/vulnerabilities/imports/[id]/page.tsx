@@ -17,6 +17,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, CheckCircle,
   X, Check, Ban, Search, ChevronDown, Info, PackageCheck, Trash2,
+  ChevronUp,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -225,7 +226,7 @@ function CiReassignPicker({
 // ─── One entry row ─────────────────────────────────────────────────────────
 
 function EntryRow({
-  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, pending, t,
+  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, pending, expanded, onToggleExpand, t,
 }: {
   entry: VulnImportEntry;
   ciMap: Map<string, CiOption>;
@@ -235,11 +236,14 @@ function EntryRow({
   onToggleDecision: (entry: VulnImportEntry) => void;
   onReassignCi: (entry: VulnImportEntry, ciId: string) => void;
   pending: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
   t: (k: string) => string;
 }) {
   const matchedCi = entry.ciId ? ciMap.get(entry.ciId) : null;
   const needsAttention = entry.matchConfidence === "AMBIGUOUS" || entry.matchConfidence === "UNMATCHED";
   const included = entry.decision === "INCLUDE";
+  const hasDetails = !!(entry.summary || entry.solution || entry.family || entry.qod != null);
 
   return (
     <div className={`flex flex-col gap-2 border-b border-slate-100 p-4 last:border-b-0 ${included ? "" : "bg-slate-50/60"}`}>
@@ -252,6 +256,16 @@ function EntryRow({
             {entry.edited && (
               <span className="inline-flex items-center rounded-none bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">
                 {t("vulnImport.entry.edited")}
+              </span>
+            )}
+            {entry.family && (
+              <span className="inline-flex items-center rounded-none bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                {entry.family}
+              </span>
+            )}
+            {entry.qod != null && (
+              <span className="inline-flex items-center rounded-none bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                {t("vulnImport.entry.qodLabel")}: {entry.qod}%
               </span>
             )}
           </div>
@@ -269,6 +283,16 @@ function EntryRow({
             </div>
           ) : (
             <p className="mt-1.5 text-[11px] italic text-slate-400">{t("vulnImport.entry.noCves")}</p>
+          )}
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="mt-2 flex items-center gap-1 text-[11px] font-medium text-indigo-600 hover:text-indigo-700"
+            >
+              {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {expanded ? t("vulnImport.entry.hideDetails") : t("vulnImport.entry.showDetails")}
+            </button>
           )}
         </div>
 
@@ -317,6 +341,30 @@ function EntryRow({
           )}
         </div>
       </div>
+
+      {expanded && hasDetails && (
+        <div className="mt-1 space-y-2 rounded-none border border-slate-200 bg-white p-3 text-xs">
+          {entry.summary && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {t("vulnImport.entry.summaryLabel")}
+              </p>
+              <p className="whitespace-pre-wrap text-slate-700">{entry.summary}</p>
+            </div>
+          )}
+          {entry.solution && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {t("vulnImport.entry.solutionLabel")}
+              </p>
+              <p className="whitespace-pre-wrap text-slate-700">{entry.solution}</p>
+            </div>
+          )}
+          {!entry.summary && !entry.solution && (
+            <p className="italic text-slate-400">{t("vulnImport.entry.noDetails")}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -342,6 +390,15 @@ export default function VulnImportBatchDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [pendingEntryIds, setPendingEntryIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(new Set());
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedEntryIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  }, []);
 
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [accepting, setAccepting] = useState(false);
@@ -494,8 +551,18 @@ export default function VulnImportBatchDetailPage() {
     }
   };
 
+  // Bounded-concurrency chunk size for the per-entry PATCH fallback (path b —
+  // "attention"/"all" tabs, not representable by the server's bulk-decision
+  // filter vocabulary). A real batch can have hundreds of entries; firing
+  // them all at once as a single Promise.all is a robustness gap against an
+  // admin-gated write endpoint. Kept modest and not user-configurable —
+  // this doesn't need a queue library, just bounded concurrency.
+  const BULK_PATCH_CHUNK_SIZE = 8;
+
   const handleBulk = async (decision: VulnImportDecision) => {
     setBulkLoading(true);
+    setBulkProgress(null);
+    let failedCount = 0;
     try {
       if (activeTab === "reappeared") {
         await postBulk({ classification: "REAPARECIDA" }, decision);
@@ -505,19 +572,40 @@ export default function VulnImportBatchDetailPage() {
         for (const sev of INFORMATIONAL_SEVERITIES) await postBulk({ severity: sev }, decision);
       } else {
         const targets = filteredEntries.filter((e) => e.decision !== decision);
-        await Promise.all(targets.map((e) =>
-          apiFetch(`/api/vuln-import/batches/${batchId}/entries/${e.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ decision }),
-          })
-        ));
+        setBulkProgress({ done: 0, total: targets.length });
+        for (let i = 0; i < targets.length; i += BULK_PATCH_CHUNK_SIZE) {
+          const chunk = targets.slice(i, i + BULK_PATCH_CHUNK_SIZE);
+          // Promise.allSettled (not Promise.all): a single rejected/failed
+          // PATCH in a chunk must not abort the remaining chunks — those
+          // entries may otherwise never even be attempted, and whatever
+          // already-in-flight requests in THIS chunk succeeded server-side
+          // regardless of a sibling's outcome (finding #1).
+          const results = await Promise.allSettled(chunk.map((e) =>
+            apiFetch(`/api/vuln-import/batches/${batchId}/entries/${e.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ decision }),
+            })
+          ));
+          for (const r of results) {
+            if (r.status === "rejected" || !r.value.ok) failedCount += 1;
+          }
+          setBulkProgress({ done: Math.min(i + chunk.length, targets.length), total: targets.length });
+        }
       }
-      await fetchBatch();
+      if (failedCount > 0) {
+        throw new Error(t("vulnImport.errors.bulkFailed").replace(/:$/, "") + ` (${failedCount})`);
+      }
       addToast("success", t("vulnImport.bulk.doneToast"));
     } catch (e) {
       addToast("error", `${t("vulnImport.errors.bulkFailed")} ${e instanceof Error ? e.message : t("common.unknown_error")}`);
     } finally {
+      // Unconditional resync (success OR partial/total failure): whichever
+      // entries actually got persisted server-side must be reflected on
+      // screen — a stale on-screen state that no longer matches the server
+      // is worse than an error toast alone (finding #1).
+      await fetchBatch();
       setBulkLoading(false);
+      setBulkProgress(null);
     }
   };
 
@@ -801,7 +889,15 @@ export default function VulnImportBatchDetailPage() {
                   ))}
                 </div>
                 {canEdit && filteredEntries.length > 0 && (
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    {bulkLoading && bulkProgress && (
+                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        {t("vulnImport.bulk.progress")
+                          .replace("{done}", String(bulkProgress.done))
+                          .replace("{total}", String(bulkProgress.total))}
+                      </span>
+                    )}
                     <button
                       disabled={bulkLoading}
                       onClick={() => handleBulk("INCLUDE")}
@@ -835,6 +931,8 @@ export default function VulnImportBatchDetailPage() {
                       onToggleDecision={handleToggleDecision}
                       onReassignCi={handleReassignCi}
                       pending={pendingEntryIds.has(entry.id)}
+                      expanded={expandedEntryIds.has(entry.id)}
+                      onToggleExpand={() => toggleExpanded(entry.id)}
                       t={t}
                     />
                   ))}

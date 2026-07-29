@@ -299,7 +299,9 @@
       "status": "Stato",
       "description": "Descrizione",
       "source": "Fonte",
-      "score": "Punteggio CVSS"
+      "score": "Punteggio CVSS",
+      "port": "Porta",
+      "family": "Famiglia"
     },
     "status": {
       "NUEVO": "Nuovo",

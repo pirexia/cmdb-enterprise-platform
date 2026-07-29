@@ -16,7 +16,7 @@ jest.mock('@prisma/client', () => ({
 }));
 
 import { PrismaClient } from '@prisma/client';
-import { matchHost, isValidIPv4, escapeLike } from '../matcher.js';
+import { matchHost, isValidIPv4, isValidIPv6, isValidIP, escapeLike } from '../matcher.js';
 
 const prisma = new PrismaClient() as any;
 
@@ -40,6 +40,38 @@ describe('isValidIPv4', () => {
     expect(isValidIPv4('::1')).toBe(false);
     expect(isValidIPv4('2001:db8::1')).toBe(false);
     expect(isValidIPv4('')).toBe(false);
+  });
+});
+
+// ── isValidIPv6 / isValidIP ──────────────────────────────────────────────
+
+describe('isValidIPv6', () => {
+  it('accepts well-formed IPv6 in various textual forms', () => {
+    expect(isValidIPv6('::1')).toBe(true);
+    expect(isValidIPv6('2001:db8::1')).toBe(true);
+    expect(isValidIPv6('fe80::1ff:fe23:4567:890a')).toBe(true);
+    expect(isValidIPv6('2001:0db8:0000:0000:0000:ff00:0042:8329')).toBe(true);
+  });
+
+  it('rejects IPv4 and clearly-non-IP strings', () => {
+    expect(isValidIPv6('10.100.12.61')).toBe(false);
+    expect(isValidIPv6('not-an-ip')).toBe(false);
+    expect(isValidIPv6('SRV-MYGESTR01D')).toBe(false);
+    expect(isValidIPv6('')).toBe(false);
+  });
+});
+
+describe('isValidIP', () => {
+  it('accepts both IPv4 and IPv6', () => {
+    expect(isValidIP('10.100.12.61')).toBe(true);
+    expect(isValidIP('2001:db8::1')).toBe(true);
+    expect(isValidIP('::1')).toBe(true);
+  });
+
+  it('rejects a hostname or garbage string as neither family', () => {
+    expect(isValidIP('SRV-MYGESTR01D')).toBe(false);
+    expect(isValidIP('not-an-ip')).toBe(false);
+    expect(isValidIP('')).toBe(false);
   });
 });
 
@@ -73,6 +105,65 @@ describe('matchHost — EXACT_IP', () => {
 
     expect(result).toEqual({ confidence: 'UNMATCHED' });
     expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('matches a single CI by a well-formed IPv6 address with EXACT_IP confidence', async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      { level: 1, id: 'ci-1', name: 'SRV-MYGESTR01D' },
+    ]);
+
+    const result = await matchHost(prisma, { ip: '2001:db8::1' });
+
+    expect(result).toEqual({
+      confidence: 'EXACT_IP',
+      ci: { id: 'ci-1', name: 'SRV-MYGESTR01D' },
+    });
+    // The IPv6 string must actually reach the query as a bind param — proves
+    // the level-1 (admin_ip/mgmt_ip/console_ip) branch is active for it,
+    // exactly like it is for IPv4.
+    const values = mockQueryRaw.mock.calls[0].slice(1);
+    expect(values).toContain('2001:db8::1');
+  });
+
+  it('matches ::1 (compressed IPv6 loopback) with EXACT_IP confidence', async () => {
+    mockQueryRaw.mockResolvedValueOnce([
+      { level: 1, id: 'ci-1', name: 'SRV-LOOPBACK' },
+    ]);
+
+    const result = await matchHost(prisma, { ip: '::1' });
+
+    expect(result).toEqual({
+      confidence: 'EXACT_IP',
+      ci: { id: 'ci-1', name: 'SRV-LOOPBACK' },
+    });
+    const values = mockQueryRaw.mock.calls[0].slice(1);
+    expect(values).toContain('::1');
+  });
+
+  it('does not treat a clearly-invalid string as an IP — the ip bind param stays null and the DB is not queried when there is no hostname either', async () => {
+    const result = await matchHost(prisma, { ip: 'not-an-ip-and-not-ipv6' });
+
+    expect(result).toEqual({ confidence: 'UNMATCHED' });
+    expect(mockQueryRaw).not.toHaveBeenCalled();
+  });
+
+  it('falls back past the IP branch to hostname-only matching when the ip field is a garbage string but a hostname is also present', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ level: 2, id: 'ci-1', name: 'SRV-MYGESTR01D' }]);
+
+    const result = await matchHost(prisma, {
+      ip: 'not-an-ip-and-not-ipv6',
+      hostname: 'SRV-MYGESTR01D',
+    });
+
+    expect(result).toEqual({
+      confidence: 'EXACT_NAME',
+      ci: { id: 'ci-1', name: 'SRV-MYGESTR01D' },
+    });
+    // The invalid "ip" string must never travel as the ip bind param —
+    // only null (for admin_ip/mgmt_ip/console_ip) plus the hostname values.
+    const values = mockQueryRaw.mock.calls[0].slice(1);
+    expect(values).not.toContain('not-an-ip-and-not-ipv6');
+    expect(values).toContain(null);
   });
 });
 

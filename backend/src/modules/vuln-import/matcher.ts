@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import net from 'net';
 
 /**
  * CI-matching cascade for Greenbone (and future scanner) hosts.
@@ -69,15 +70,34 @@ const LEVEL_CONFIDENCE: Record<number, MatchConfidence> = {
 };
 
 // Standard dotted-quad IPv4 validator — each octet 0-255, no host part
-// beyond 4 groups. Deliberately IPv4-only per the task brief (the fixture
-// only has IPv4); a non-matching string (including IPv6) is simply treated
-// as "no IP" rather than thrown on, so the cascade degrades to the
-// hostname-based levels instead of crashing.
+// beyond 4 groups.
 const IPV4_RE =
   /^(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
 export function isValidIPv4(value: string): boolean {
   return IPV4_RE.test(value.trim());
+}
+
+// IPv6 has many valid textual forms (full, compressed `::`, mixed with an
+// embedded IPv4 tail, zone IDs, ...) — do not hand-roll this with a regex.
+// Node's built-in `net.isIP` is the standard, dependency-free validator for
+// both families; it returns 4, 6, or 0 (invalid).
+export function isValidIPv6(value: string): boolean {
+  return net.isIP(value.trim()) === 6;
+}
+
+// True for anything the matcher should treat as a real IP address (v4 or
+// v6) and therefore feed into the EXACT_IP level. The `admin_ip`/`mgmt_ip`/
+// `console_ip` columns on `configuration_items` are VARCHAR(45), explicitly
+// sized to hold IPv6, so both families must participate in that level (see
+// docs/internal/specs/2026-07-29-v3.6.0-greenbone-real-format-staging.md,
+// A03 row: "Las IPs se validan contra formato IPv4/IPv6 antes de entrar en
+// la consulta"). A non-matching string is simply treated as "no IP" rather
+// than thrown on, so the cascade degrades to the hostname-based levels
+// instead of crashing.
+export function isValidIP(value: string): boolean {
+  const trimmed = value.trim();
+  return isValidIPv4(trimmed) || isValidIPv6(trimmed);
 }
 
 /**
@@ -95,15 +115,15 @@ type CandidateRow = { level: number; id: string; name: string };
  * Runs the 5-level CI-matching cascade for one scanned host.
  *
  * Both `ip` and `hostname` are optional, but at least one must be usable
- * (a valid IPv4 for `ip`, or any non-empty string for `hostname`) or the
- * result is immediately UNMATCHED without a DB round-trip.
+ * (a valid IPv4 or IPv6 for `ip`, or any non-empty string for `hostname`)
+ * or the result is immediately UNMATCHED without a DB round-trip.
  */
 export async function matchHost(
   prisma: PrismaClient,
   identity: HostIdentity,
 ): Promise<MatchResult> {
   const ipInput = identity.ip?.trim() ?? '';
-  const ip = ipInput && isValidIPv4(ipInput) ? ipInput : null;
+  const ip = ipInput && isValidIP(ipInput) ? ipInput : null;
 
   const hostnameInput = identity.hostname?.trim() ?? '';
   const hostname = hostnameInput || null;

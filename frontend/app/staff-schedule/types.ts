@@ -60,6 +60,11 @@ export interface DepartmentScheduleConfig {
   flexEntryEnd: string;
   flexExitStart: string;
   flexExitEnd: string;
+  // v3.5.13 — verano por departamento. Desactivado = nunca entra en verano.
+  // Activado sin fechas propias = usa el periodo global del año.
+  summerEnabled: boolean;
+  summerStartDate: string | null;
+  summerEndDate: string | null;
 }
 
 export interface SummerSchedule {

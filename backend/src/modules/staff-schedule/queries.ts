@@ -190,6 +190,10 @@ export interface UserEntryRangeRow {
   userId: string;
   departmentId: string;
   department: { id: string; name: string };
+  // v3.5.13 — verano ya resuelto y almacenado en el horario al que pertenece
+  // esta entrada; evita recalcularlo con el periodo global en el llamador
+  // (ver el comentario de cabecera de validate() sobre la doble fuente).
+  schedule: { isSummerWeek: boolean };
 }
 
 export async function loadUserEntriesInRange(
@@ -205,7 +209,10 @@ export async function loadUserEntriesInRange(
       date: { gte: from, lte: to },
       schedule: visibility,
     },
-    include: { department: { select: { id: true, name: true } } },
+    include: {
+      department: { select: { id: true, name: true } },
+      schedule: { select: { isSummerWeek: true } },
+    },
     orderBy: { date: 'asc' },
   });
 }
@@ -263,4 +270,36 @@ export async function loadWeeklyTargetOverrides(
   const map: Record<string, number | null> = {};
   for (const u of users) map[u.id] = u.weeklyTargetHours ?? null;
   return map;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+// resolveSummerForDepartment (v3.5.13) — periodo de verano APLICABLE a un
+// departamento concreto. Tres ramas, en este orden:
+//
+//   summerEnabled = false            -> null (ese departamento no tiene verano)
+//   fechas propias fijadas           -> las suyas
+//   activado sin fechas / sin config -> el periodo global del año
+//
+// La rama por defecto (activado, sin fechas) reproduce exactamente el
+// comportamiento anterior a v3.5.13, que es lo que tienen todas las filas ya
+// existentes en produccion.
+export async function resolveSummerForDepartment(
+  prisma: Db,
+  departmentId: string,
+  year: number,
+): Promise<{ year: number; startDate: string; endDate: string } | null> {
+  const cfg = await prisma.departmentScheduleConfig.findUnique({
+    where: { departmentId },
+    select: { summerEnabled: true, summerStartDate: true, summerEndDate: true },
+  });
+  if (cfg && !cfg.summerEnabled) return null;
+  if (cfg?.summerStartDate && cfg.summerEndDate) {
+    return { year, startDate: isoDate(cfg.summerStartDate), endDate: isoDate(cfg.summerEndDate) };
+  }
+  const global = await prisma.summerSchedule.findUnique({ where: { year } });
+  if (!global) return null;
+  return { year: global.year, startDate: isoDate(global.startDate), endDate: isoDate(global.endDate) };
 }

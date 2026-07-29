@@ -269,12 +269,19 @@ export function detectSummer(weekStart: string, summer?: SummerPeriodLike | null
   return ws >= start && ws <= end;
 }
 
-// validate(schedule, entries, cfg, summer, teleworkCountsByUser) -> alerts[]
+// validate(schedule, entries, cfg, isSummer, teleworkCountsByUser) -> alerts[]
 //
 // Pure and synchronous by design: `teleworkCountsByUser` must be computed
 // beforehand by the caller (service.ts) via an async DB query
 // (queries.countTeleworkThisMonth), because the engine itself must stay
 // side-effect free and unit-testable without a DB connection.
+//
+// v3.5.13 — `isSummer` llega YA RESUELTO por el llamador desde la columna
+// staff_schedules.is_summer_week. Antes esta funcion lo recalculaba con
+// detectSummer sobre el periodo global, de modo que el mismo horario podia
+// considerarse de verano al validarlo y de invierno al mostrarlo. Con el
+// verano configurable por departamento esa divergencia dejaba de ser
+// teorica, asi que se elimina la segunda fuente: una sola, la almacenada.
 //
 // Deviation note (V6/V7): the spec's pseudocode phrases GUARDIA_COVERAGE and
 // BAJA_CONFLICT as "same-day" status intersections, but ScheduleEntry has a
@@ -291,13 +298,12 @@ export function validate(
   schedule: ScheduleLike,
   entries: EntryLike[],
   cfg: ValidationConfig,
-  summer: SummerPeriodLike | null | undefined,
+  isSummer: boolean,
   teleworkCountsByUser: Record<string, number>,
   weeklyTargetsByUser: Record<string, number | null> = {},
   teleworkQuotasByUser: Record<string, TeleworkQuota> = {},
 ): GeneratedAlert[] {
   const alerts: GeneratedAlert[] = [];
-  const isSummer = detectSummer(schedule.weekStart, summer ?? null);
   // Month the week belongs to — the same month countTeleworkThisMonth uses,
   // and the base for a percentage-expressed telework quota.
   const month = Number(schedule.weekStart.slice(5, 7));

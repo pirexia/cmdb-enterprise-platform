@@ -1,7 +1,7 @@
 import {
   validate, ValidationConfig, EntryLike, ScheduleLike, computeNetHours,
   resolveTeleworkCap, workingDaysInMonth, computeEffectiveWeeklyTarget,
-  computeDailyTargetHours, resolveWeeklyTeleworkCap, TeleworkQuota,
+  computeDailyTargetHours, resolveWeeklyTeleworkCap, TeleworkQuota, detectSummer,
 } from '../validationEngine';
 import { maskEntryForViewer } from '../service';
 
@@ -40,7 +40,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' }, // Thu net 8h
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },  // Fri net 6h
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(0);
     expect(alertsOfType(alerts, 'DAILY_HOURS')).toHaveLength(0);
   });
@@ -56,7 +56,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '07:00', endTime: '13:00' }, // Thu net 5h
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },  // Fri 6h
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const weekly = alertsOfType(alerts, 'WEEKLY_HOURS');
     expect(weekly).toHaveLength(1);
     expect(weekly[0].severity).toBe('ERROR');
@@ -67,7 +67,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '07:00', endTime: '18:00' }, // Mon gross11h-1h=10h net
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const daily = alertsOfType(alerts, 'DAILY_HOURS');
     expect(daily).toHaveLength(1);
     expect(daily[0].severity).toBe('ERROR');
@@ -79,7 +79,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '17:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, { u1: 11 });
+    const alerts = validate(schedule, entries, cfg, false, { u1: 11 });
     const quota = alertsOfType(alerts, 'TELEWORK_QUOTA');
     expect(quota).toHaveLength(1);
     expect(quota[0].severity).toBe('ERROR');
@@ -95,7 +95,7 @@ describe('validationEngine.validate', () => {
         entries.push({ userId, date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '17:00' });
       }
     }
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const presence = alertsOfType(alerts, 'PRESENCE_PCT');
     expect(presence).toHaveLength(1);
     expect(presence[0].severity).toBe('WARNING');
@@ -120,7 +120,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
       { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'GUARDIA_COVERAGE')).toHaveLength(0);
     expect(alertsOfType(alerts, 'BAJA_CONFLICT')).toHaveLength(0);
   });
@@ -130,7 +130,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
       { userId: 'u1', date: '2026-07-07', status: 'VACACIONES' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const coverage = alertsOfType(alerts, 'GUARDIA_COVERAGE');
     expect(coverage).toHaveLength(1);
     expect(coverage[0].severity).toBe('ERROR');
@@ -140,7 +140,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', onGuard: true, startTime: '08:00', endTime: '17:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'GUARDIA_COVERAGE')).toHaveLength(0);
     expect(alertsOfType(alerts, 'GUARDIA_UNIQUE')).toHaveLength(0);
   });
@@ -150,7 +150,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', onGuard: true, startTime: '08:00', endTime: '17:00' },
       { userId: 'u2', date: '2026-07-06', status: 'TELETRABAJO', onGuard: true, startTime: '08:00', endTime: '17:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const unique = alertsOfType(alerts, 'GUARDIA_UNIQUE');
     expect(unique).toHaveLength(2);
     expect(unique.map((a) => a.userId).sort()).toEqual(['u1', 'u2']);
@@ -162,7 +162,7 @@ describe('validationEngine.validate', () => {
       { userId: 'u1', date: '2026-07-06', status: 'BAJA_MEDICA' },
       { userId: 'u1', date: '2026-07-07', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const conflict = alertsOfType(alerts, 'BAJA_CONFLICT');
     expect(conflict).toHaveLength(1);
     expect(conflict[0].severity).toBe('WARNING');
@@ -174,7 +174,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'INTENSIVO', startTime: '06:00', endTime: '14:00' }, // fuera de 07:00-10:30/16:00-19:00
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'FLEX_RANGE')).toHaveLength(0);
   });
 
@@ -182,7 +182,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '06:00', endTime: '14:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     const flex = alertsOfType(alerts, 'FLEX_RANGE');
     expect(flex).toHaveLength(1);
     expect(flex[0].severity).toBe('WARNING');
@@ -192,7 +192,7 @@ describe('validationEngine.validate', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'TELETRABAJO', startTime: '06:00', endTime: '14:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'FLEX_RANGE')).toHaveLength(1);
   });
 });
@@ -211,7 +211,7 @@ describe('INTENSIVO_TELETRABAJO (v3.5.11)', () => {
     const entries: EntryLike[] = [
       { userId: 'u1', date: '2026-07-06', status: 'INTENSIVO_TELETRABAJO', startTime: '06:00', endTime: '14:00' },
     ];
-    expect(alertsOfType(validate(schedule, entries, cfg, null, {}), 'FLEX_RANGE')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, cfg, false, {}), 'FLEX_RANGE')).toHaveLength(0);
   });
 
   it('cuenta como viernes intensivo para WEEKLY_HOURS', () => {
@@ -228,7 +228,7 @@ describe('INTENSIVO_TELETRABAJO (v3.5.11)', () => {
       { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '14:00' }, // Thu net 5h
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO_TELETRABAJO', startTime: '08:00', endTime: '14:00' }, // Fri 6h
     ];
-    const weekly = alertsOfType(validate(schedule, entries, cfg, null, {}), 'WEEKLY_HOURS');
+    const weekly = alertsOfType(validate(schedule, entries, cfg, false, {}), 'WEEKLY_HOURS');
     expect(weekly).toHaveLength(1); // 26h < 38h de objetivo (4x8+6)
   });
 });
@@ -260,7 +260,7 @@ describe('TELEWORK_QUOTA con cuota por usuario (v3.5.11)', () => {
   ];
 
   it('el trabajador 100% teletrabajo nunca dispara la alerta', () => {
-    const alerts = validate(schedule, entries, cfg, null, { u1: 22 }, {}, {
+    const alerts = validate(schedule, entries, cfg, false, { u1: 22 }, {}, {
       u1: { teleworkFull: true, teleworkQuotaDays: null, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: null },
     });
     expect(alertsOfType(alerts, 'TELEWORK_QUOTA')).toHaveLength(0);
@@ -269,7 +269,7 @@ describe('TELEWORK_QUOTA con cuota por usuario (v3.5.11)', () => {
   it('un tope propio en días sustituye al del departamento', () => {
     const quota = { u1: { teleworkFull: false, teleworkQuotaDays: 2, teleworkQuotaDaysPerWeek: null, teleworkQuotaPct: null } };
     // 3 días > tope propio de 2, aunque el tope del departamento (10) no se supere.
-    const alerts = validate(schedule, entries, cfg, null, { u1: 3 }, {}, quota);
+    const alerts = validate(schedule, entries, cfg, false, { u1: 3 }, {}, quota);
     const fired = alertsOfType(alerts, 'TELEWORK_QUOTA');
     expect(fired).toHaveLength(1);
     expect(fired[0].message).toContain('(2)');
@@ -286,7 +286,7 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL', startTime: '07:30', endTime: '16:00' },
       { userId: 'u2', date: '2026-07-06', status: 'PRESENCIAL', startTime: '09:00', endTime: '17:30' },
     ];
-    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, wideCfg, false, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 
   it('los ausentes salen del denominador: 1 presente + 3 de vacaciones = 100%', () => {
@@ -296,7 +296,7 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u3', date: '2026-07-06', status: 'BAJA_MEDICA' },
       { userId: 'u4', date: '2026-07-06', status: 'VIAJE' },
     ];
-    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, wideCfg, false, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 
   it('una semana recién creada (PRESENCIAL sin horas) no reporta 0%', () => {
@@ -304,7 +304,7 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u1', date: '2026-07-06', status: 'PRESENCIAL' },
       { userId: 'u2', date: '2026-07-06', status: 'PRESENCIAL' },
     ];
-    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, wideCfg, false, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 
   it('sigue avisando cuando la presencialidad real es insuficiente', () => {
@@ -313,7 +313,7 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u2', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '16:30' },
       { userId: 'u3', date: '2026-07-06', status: 'TELETRABAJO', startTime: '08:00', endTime: '16:30' },
     ];
-    const fired = alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT');
+    const fired = alertsOfType(validate(schedule, entries, wideCfg, false, {}), 'PRESENCE_PCT');
     expect(fired).toHaveLength(1);
     expect(fired[0].message).toContain('33.3%');
   });
@@ -323,7 +323,7 @@ describe('PRESENCE_PCT — cobertura por solape (v3.5.11)', () => {
       { userId: 'u1', date: '2026-07-06', status: 'VACACIONES' },
       { userId: 'u2', date: '2026-07-06', status: 'VACACIONES' },
     ];
-    expect(alertsOfType(validate(schedule, entries, wideCfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, wideCfg, false, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 });
 
@@ -342,7 +342,7 @@ describe('FESTIVO/FESTIVO_LOCAL (v3.5.12)', () => {
       { userId: 'u1', date: '2026-07-06', status: 'FESTIVO' },
       { userId: 'u2', date: '2026-07-06', status: 'FESTIVO_LOCAL' },
     ];
-    expect(alertsOfType(validate(schedule, entries, cfg, null, {}), 'PRESENCE_PCT')).toHaveLength(0);
+    expect(alertsOfType(validate(schedule, entries, cfg, false, {}), 'PRESENCE_PCT')).toHaveLength(0);
   });
 });
 
@@ -432,7 +432,7 @@ describe('WEEKLY_HOURS con el objetivo de v3.5.13 (regresión)', () => {
       { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' }, // Thu 8h
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },  // Fri 6h
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(0);
   });
 
@@ -444,7 +444,7 @@ describe('WEEKLY_HOURS con el objetivo de v3.5.13 (regresión)', () => {
       { userId: 'u1', date: '2026-07-09', status: 'PRESENCIAL', startTime: '08:00', endTime: '17:00' },
       { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '14:00' },
     ];
-    const alerts = validate(schedule, entries, cfg, null, {});
+    const alerts = validate(schedule, entries, cfg, false, {});
     expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(1);
   });
 });
@@ -513,7 +513,7 @@ describe('TELEWORK_QUOTA_WEEK (v3.5.13)', () => {
       { userId: 'u1', date: '2026-08-26', status: 'INTENSIVO_TELETRABAJO' },
     ];
     const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
-    const alerts = validate(weekSchedule, entries, cfg, null, {}, {}, {
+    const alerts = validate(weekSchedule, entries, cfg, false, {}, {}, {
       u1: { teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null, teleworkQuotaDaysPerWeek: 2 },
     });
     const weekAlert = alerts.find((a) => a.type === 'TELEWORK_QUOTA_WEEK');
@@ -527,7 +527,7 @@ describe('TELEWORK_QUOTA_WEEK (v3.5.13)', () => {
       { userId: 'u1', date: '2026-08-24', status: 'TELETRABAJO' },
     ];
     const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
-    const alerts = validate(weekSchedule, entries, cfg, null, {}, {}, {
+    const alerts = validate(weekSchedule, entries, cfg, false, {}, {}, {
       u1: { teleworkFull: false, teleworkQuotaDays: null, teleworkQuotaPct: null, teleworkQuotaDaysPerWeek: 2 },
     });
     expect(alertsOfType(alerts, 'TELEWORK_QUOTA_WEEK')).toHaveLength(0);
@@ -542,6 +542,35 @@ describe('TELEWORK_QUOTA_WEEK (v3.5.13)', () => {
       { userId: 'u1', date: '2026-08-28', status: 'TELETRABAJO' },
     ];
     const weekSchedule: ScheduleLike = { id: 'sched-2', weekStart: '2026-08-24', year: 2026 };
-    expect(alertsOfType(validate(weekSchedule, entries, cfg, null, {}), 'TELEWORK_QUOTA_WEEK')).toHaveLength(0);
+    expect(alertsOfType(validate(weekSchedule, entries, cfg, false, {}), 'TELEWORK_QUOTA_WEEK')).toHaveLength(0);
+  });
+});
+
+// ─── v3.5.13 — verano por departamento (elimina la doble fuente de verdad) ──
+
+describe('detectSummer con periodo por departamento (v3.5.13)', () => {
+  it('un departamento sin verano nunca entra en horario de verano', () => {
+    // resolveSummerForDepartment devuelve null y detectSummer lo respeta.
+    expect(detectSummer('2026-08-24', null)).toBe(false);
+  });
+
+  it('un periodo propio del departamento manda sobre el global', () => {
+    const own = { year: 2026, startDate: '2026-08-01', endDate: '2026-08-15' };
+    expect(detectSummer('2026-08-03', own)).toBe(true);
+    expect(detectSummer('2026-08-24', own)).toBe(false); // fuera de SU periodo
+  });
+});
+
+describe('validate recibe isSummer ya resuelto (v3.5.13)', () => {
+  it('isSummer=true aplica la jornada de verano aunque no exista periodo global', () => {
+    // Antes v3.5.13 recalculaba internamente con detectSummer(weekStart, summer)
+    // sobre el periodo GLOBAL; ahora el llamador decide isSummer (puede venir
+    // del periodo propio de un departamento, inexistente a nivel global).
+    const summerCfg: ValidationConfig = { ...cfg, summerFridayNetHours: 4 };
+    const entries: EntryLike[] = [
+      { userId: 'u1', date: '2026-07-10', status: 'INTENSIVO', startTime: '08:00', endTime: '12:00' }, // Fri 4h
+    ];
+    const alerts = validate(schedule, entries, summerCfg, true, {});
+    expect(alertsOfType(alerts, 'WEEKLY_HOURS')).toHaveLength(0); // 4h cumple el objetivo de verano (4h)
   });
 });

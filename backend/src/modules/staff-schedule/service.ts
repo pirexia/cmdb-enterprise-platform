@@ -8,13 +8,12 @@ import {
   validate,
   EntryLike,
   ValidationConfig,
-  SummerPeriodLike,
   ScheduleLike,
   GeneratedAlert,
 } from './validationEngine.js';
 import { loadScheduleWithEntries, countTeleworkThisMonth, loadDepartmentUsers, loadWeeklyTargetOverrides,
          buildScheduleVisibilityFilter, loadManagedDepartmentIds, loadDepartmentMembers,
-         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange } from './queries.js';
+         loadDepartmentManagerIds, loadTeleworkQuotas, loadUserEntriesInRange, resolveSummerForDepartment } from './queries.js';
 import { canUserEditDepartment } from './authz.js';
 
 export class ScheduleServiceError extends Error {
@@ -195,12 +194,6 @@ async function loadValidationConfig(prisma: Prisma.TransactionClient, department
   };
 }
 
-async function loadSummerForYear(prisma: Prisma.TransactionClient, year: number): Promise<SummerPeriodLike | null> {
-  const summer = await prisma.summerSchedule.findUnique({ where: { year } });
-  if (!summer) return null;
-  return { year: summer.year, startDate: isoDate(summer.startDate), endDate: isoDate(summer.endDate) };
-}
-
 // createSchedule — auto-creates base PRESENCIAL entries (Mon-Fri) for every
 // active user in the department.
 export async function createSchedule(
@@ -210,7 +203,9 @@ export async function createSchedule(
   const weekStartDate = parseDateOnly(params.weekStart);
   const weekEndDate = addDaysUtc(weekStartDate, 4);
   const year = weekStartDate.getUTCFullYear();
-  const summer = await loadSummerForYear(prisma, year);
+  // v3.5.13 — el periodo de verano se resuelve por departamento (D-summer),
+  // no globalmente; ver resolveSummerForDepartment.
+  const summer = await resolveSummerForDepartment(prisma, params.departmentId, year);
   const isSummerWeek = detectSummer(isoDate(weekStartDate), summer);
 
   const schedule = await prisma.staffSchedule.create({
@@ -320,7 +315,6 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   if (!schedule) throw new ScheduleServiceError(404, 'Schedule not found');
 
   const cfg = await loadValidationConfig(prisma, schedule.departmentId);
-  const summer = await loadSummerForYear(prisma, schedule.year);
 
   const entriesLike: EntryLike[] = schedule.entries.map((e) => ({
     userId: e.userId,
@@ -341,8 +335,11 @@ export async function runValidation(prisma: Prisma.TransactionClient, scheduleId
   const teleworkQuotasByUser = await loadTeleworkQuotas(prisma, userIds);
 
   const scheduleLike: ScheduleLike = { id: schedule.id, weekStart: isoDate(schedule.weekStart), year: schedule.year };
+  // v3.5.13 — isSummerWeek se lee de la columna almacenada (fijada al crear o
+  // clonar el horario), nunca se recalcula aquí. Ver el comentario de
+  // cabecera de validate() en validationEngine.ts.
   const alerts = validate(
-    scheduleLike, entriesLike, cfg, summer, teleworkCountsByUser, weeklyTargetsByUser, teleworkQuotasByUser,
+    scheduleLike, entriesLike, cfg, schedule.isSummerWeek, teleworkCountsByUser, weeklyTargetsByUser, teleworkQuotasByUser,
   );
 
   await prisma.scheduleAlert.deleteMany({ where: { scheduleId } });
@@ -486,7 +483,7 @@ export async function cloneToWeek(
 
   const newWeekEnd = addDaysUtc(newWeekStart, 4);
   const year = newWeekStart.getUTCFullYear();
-  const summer = await loadSummerForYear(prisma, year);
+  const summer = await resolveSummerForDepartment(prisma, origin.departmentId, year);
   const isSummerWeek = detectSummer(isoDate(newWeekStart), summer);
 
   const created = await prisma.staffSchedule.create({
@@ -864,7 +861,6 @@ export async function listUserEntries(
   // El override es del USUARIO, no del departamento, así que basta con
   // resolverlo una vez para toda la función en vez de por cada grupo.
   const overridePromise = loadWeeklyTargetOverrides(prisma, [userId]);
-  const summerCache = new Map<number, SummerPeriodLike | null>();
 
   const weekKey = (departmentId: string, monday: string) => `${departmentId}|${monday}`;
   const weekGroups = new Map<string, { departmentId: string; monday: string; rows: typeof rows }>();
@@ -891,13 +887,10 @@ export async function listUserEntries(
       cfgCache.set(group.departmentId, cfg);
     }
     const override = (await overridePromise)[userId] ?? null;
-    const year = Number(group.monday.slice(0, 4));
-    let summer = summerCache.get(year);
-    if (summer === undefined) {
-      summer = await loadSummerForYear(prisma, year);
-      summerCache.set(year, summer);
-    }
-    const isSummer = detectSummer(group.monday, summer);
+    // v3.5.13 — isSummerWeek se lee del horario al que pertenece el grupo
+    // (todas las filas del grupo comparten (departmentId, monday), es decir
+    // el mismo StaffSchedule), nunca recalculado con el periodo global.
+    const isSummer = group.rows[0].schedule.isSummerWeek;
 
     const entriesLike: EntryLike[] = group.rows.map((r) => ({ userId, date: isoDate(r.date), status: r.status }));
     effectiveTargetByKey.set(key, computeEffectiveWeeklyTarget(entriesLike, cfg, isSummer, override));

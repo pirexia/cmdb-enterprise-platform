@@ -502,6 +502,51 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 {numField("weeklyTargetNetHours", t("staffSchedule.summary.weeklyHours"))}
                 {numField("monthlyTeleworkCap", t("staffSchedule.config.monthlyTeleworkCap"), "1")}
 
+                {/* v3.5.13 — horario de verano por departamento. Desactivado =
+                    este departamento nunca entra en verano; activado sin
+                    fechas propias = usa el periodo global del año (panel
+                    aparte, SummerScheduleConfig). */}
+                <div className="col-span-4 border-t border-slate-200 pt-3">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={cfgForm.summerEnabled ?? true}
+                      onChange={(e) => setCfgForm((f) => ({ ...f, summerEnabled: e.target.checked }))}
+                      className="h-4 w-4 rounded-none border-slate-300"
+                    />
+                    {t("staffSchedule.config.summerEnabled")}
+                  </label>
+                </div>
+                {cfgForm.summerEnabled === false ? (
+                  <div className="col-span-4">
+                    <p className="text-xs text-amber-700">{t("staffSchedule.config.summerDisabledHint")}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.deptSummerStart")}</label>
+                      <input
+                        type="date"
+                        value={cfgForm.summerStartDate?.slice(0, 10) ?? ""}
+                        onChange={(e) => setCfgForm((f) => ({ ...f, summerStartDate: e.target.value || null }))}
+                        className="w-full rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.deptSummerEnd")}</label>
+                      <input
+                        type="date"
+                        value={cfgForm.summerEndDate?.slice(0, 10) ?? ""}
+                        onChange={(e) => setCfgForm((f) => ({ ...f, summerEndDate: e.target.value || null }))}
+                        className="w-full rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2 flex items-end">
+                      <p className="text-xs text-slate-400">{t("staffSchedule.config.summerFallbackHint")}</p>
+                    </div>
+                  </>
+                )}
+
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexEntryFrom")}</label>
                   <input

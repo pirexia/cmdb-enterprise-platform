@@ -35,6 +35,9 @@ export default function SummerScheduleConfig() {
   return (
     <div className="bg-white shadow-sm ring-1 ring-slate-200 p-5 space-y-4">
       <h3 className="text-sm font-semibold text-slate-900">{t("staffSchedule.config.summerSchedule")}</h3>
+      {/* v3.5.13 — este es el periodo POR DEFECTO: cada departamento puede
+          desactivar el verano o fijar el suyo propio en su configuración. */}
+      <p className="text-xs text-slate-400">{t("staffSchedule.config.summerGlobalHint")}</p>
 
       <div className="grid grid-cols-3 gap-3">
         <div>

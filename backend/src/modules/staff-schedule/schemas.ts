@@ -76,22 +76,30 @@ export const DepartmentUpdateSchema = DepartmentSchema.partial();
 
 // ─── Department schedule config ────────────────────────────────────────────
 
-export const DeptConfigSchema = z.object({
-  winterDailyNetHours: z.number().min(0).max(24).optional(),
-  winterMaxDailyNetHours: z.number().min(0).max(24).optional(),
-  winterBreakMinutes: z.number().int().min(0).max(600).optional(),
-  winterFridayNetHours: z.number().min(0).max(24).optional(),
-  summerDailyNetHours: z.number().min(0).max(24).optional(),
-  summerMaxDailyNetHours: z.number().min(0).max(24).optional(),
-  summerBreakMinutes: z.number().int().min(0).max(600).optional(),
-  summerFridayNetHours: z.number().min(0).max(24).optional(),
-  weeklyTargetNetHours: z.number().min(0).max(168).optional(),
-  monthlyTeleworkCap: z.number().int().min(0).max(31).optional(),
-  flexEntryStart: timeSchema.optional(),
-  flexEntryEnd: timeSchema.optional(),
-  flexExitStart: timeSchema.optional(),
-  flexExitEnd: timeSchema.optional(),
-});
+export const DeptConfigSchema = z
+  .object({
+    winterDailyNetHours: z.number().min(0).max(24).optional(),
+    winterMaxDailyNetHours: z.number().min(0).max(24).optional(),
+    winterBreakMinutes: z.number().int().min(0).max(600).optional(),
+    winterFridayNetHours: z.number().min(0).max(24).optional(),
+    summerDailyNetHours: z.number().min(0).max(24).optional(),
+    summerMaxDailyNetHours: z.number().min(0).max(24).optional(),
+    summerBreakMinutes: z.number().int().min(0).max(600).optional(),
+    summerFridayNetHours: z.number().min(0).max(24).optional(),
+    weeklyTargetNetHours: z.number().min(0).max(168).optional(),
+    monthlyTeleworkCap: z.number().int().min(0).max(31).optional(),
+    flexEntryStart: timeSchema.optional(),
+    flexEntryEnd: timeSchema.optional(),
+    flexExitStart: timeSchema.optional(),
+    flexExitEnd: timeSchema.optional(),
+    // ─── Verano por departamento (v3.5.13) ───────────────────────────────
+    summerEnabled: z.boolean().optional(),
+    summerStartDate: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date').nullable().optional(),
+    summerEndDate: z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Invalid date').nullable().optional(),
+  })
+  .refine((d) => (d.summerStartDate == null) === (d.summerEndDate == null), {
+    message: 'Se deben indicar ambas fechas del periodo de verano, o ninguna',
+  });
 
 // ─── Summer schedule (global period, D7) ───────────────────────────────────
 

@@ -1576,6 +1576,13 @@ model DepartmentScheduleConfig {
   flexExitStart          String @default("16:00") @map("flex_exit_start")
   flexExitEnd            String @default("19:00") @map("flex_exit_end")
 
+  /// v3.5.13 — horario de verano por departamento. Desactivado = ese
+  /// departamento nunca entra en verano. Activado sin fechas = usa el periodo
+  /// global del año (SummerSchedule); con fechas = usa las suyas.
+  summerEnabled   Boolean   @default(true) @map("summer_enabled")
+  summerStartDate DateTime? @db.Date @map("summer_start_date")
+  summerEndDate   DateTime? @db.Date @map("summer_end_date")
+
   department             Department @relation(fields: [departmentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@map("department_schedule_configs")

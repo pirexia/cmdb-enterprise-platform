@@ -123,11 +123,20 @@ export function createStaffScheduleRouter(prisma: PrismaClient): Router {
     const parsed = DeptConfigSchema.safeParse(req.body);
     if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
     try {
+      // v3.5.13 — summerStartDate/summerEndDate llegan como cadena ISO (Zod
+      // solo valida el formato); Prisma espera Date para una columna @db.Date,
+      // mismo patrón que POST /summer.
+      const { summerStartDate, summerEndDate, ...rest } = parsed.data;
+      const data = {
+        ...rest,
+        ...(summerStartDate !== undefined ? { summerStartDate: summerStartDate ? new Date(summerStartDate) : null } : {}),
+        ...(summerEndDate !== undefined ? { summerEndDate: summerEndDate ? new Date(summerEndDate) : null } : {}),
+      };
       const config = await prisma.$transaction(async (tx) => {
         const c = await tx.departmentScheduleConfig.upsert({
           where: { departmentId: req.params.id as string },
-          create: { departmentId: req.params.id as string, ...parsed.data },
-          update: parsed.data,
+          create: { departmentId: req.params.id as string, ...data },
+          update: data,
         });
         await auditStaffSchedule(tx, { action: 'UPDATE_DEPARTMENT_CONFIG', entity: 'DEPARTMENT', entityId: req.params.id as string, userEmail: req.user!.email });
         return c;

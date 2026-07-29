@@ -31,7 +31,7 @@ export default function StaffSchedulePage() {
   const [periodMode, setPeriodMode] = useState<PeriodMode>("week");
   const [monthYear, setMonthYear] = useState(() => new Date().getUTCFullYear());
   const [monthNum, setMonthNum] = useState(() => new Date().getUTCMonth() + 1);
-  const [worker, setWorker] = useState<{ userId: string; label: string } | null>(null);
+  const [worker, setWorker] = useState<{ userId: string; label: string; isExternal: boolean; printLabel: string | null } | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [showClonePicker, setShowClonePicker] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -93,10 +93,11 @@ export default function StaffSchedulePage() {
 
   const handleImportPreviousWeek = () => runAction(importPreviousWeek);
 
-  // v3.5.10 refinamiento — cubre tanto un horario vacío (creado/clonado antes
-  // de que el departamento tuviera su membresía final) como un trabajador
-  // nuevo que se incorpora a un departamento con horarios ya planificados.
-  const [syncResult, setSyncResult] = useState<{ added: number } | null>(null);
+  // v3.5.10 refinamiento, ampliado en v3.5.13 (D5) — cubre un horario vacío
+  // (creado/clonado antes de que el departamento tuviera su membresía final),
+  // un trabajador nuevo que se incorpora, y un trabajador retirado del
+  // departamento (sus entradas se borran de este DRAFT).
+  const [syncResult, setSyncResult] = useState<{ added: number; removed: number } | null>(null);
   const handleSyncMembers = () => runAction(async () => {
     const result = await syncMembers();
     setSyncResult(result);
@@ -279,7 +280,7 @@ export default function StaffSchedulePage() {
             <DepartmentFilter departments={departments} value={departmentId} onChange={setDepartmentId} />
             <WorkerFilter
               selectedLabel={worker?.label ?? null}
-              onSelect={(userId, label) => setWorker({ userId, label })}
+              onSelect={(userId, label, isExternal, printLabel) => setWorker({ userId, label, isExternal, printLabel })}
               onClear={() => setWorker(null)}
             />
             <div className="flex items-center gap-1 rounded-none border border-slate-300 overflow-hidden">
@@ -318,7 +319,15 @@ export default function StaffSchedulePage() {
         <PrintHeader
           title={t("staffSchedule.title")}
           weekLabel={printWeekLabel}
-          subtitle={worker ? worker.label : selectedDepartment ? selectedDepartment.name : t("staffSchedule.filter.allDepartments")}
+          subtitle={
+            worker
+              ? worker.isExternal
+                ? (worker.printLabel ?? worker.label)
+                : worker.label
+              : selectedDepartment
+                ? selectedDepartment.name
+                : t("staffSchedule.filter.allDepartments")
+          }
           rangeLabel={printRangeLabel}
         />
 
@@ -338,7 +347,7 @@ export default function StaffSchedulePage() {
         {syncResult && (
           <div className="flex items-center gap-2 bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700 no-print">
             <Users className="h-4 w-4 shrink-0" />
-            {t("staffSchedule.syncMembers.added", { n: syncResult.added })}
+            {t("staffSchedule.syncMembers.result", { added: syncResult.added, removed: syncResult.removed })}
           </div>
         )}
 
@@ -373,6 +382,8 @@ export default function StaffSchedulePage() {
           <WorkerScheduleView
             userId={worker.userId}
             workerLabel={worker.label}
+            isExternal={worker.isExternal}
+            printLabel={worker.printLabel}
             mode={periodMode}
             weekStart={weekStart}
             year={monthYear}

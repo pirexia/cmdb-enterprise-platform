@@ -60,6 +60,11 @@ export interface DepartmentScheduleConfig {
   flexEntryEnd: string;
   flexExitStart: string;
   flexExitEnd: string;
+  // v3.5.13 — verano por departamento. Desactivado = nunca entra en verano.
+  // Activado sin fechas propias = usa el periodo global del año.
+  summerEnabled: boolean;
+  summerStartDate: string | null;
+  summerEndDate: string | null;
 }
 
 export interface SummerSchedule {
@@ -94,10 +99,22 @@ export interface ScheduleRow {
   userId: string;
   username: string;
   displayName: string | null;
+  // v3.5.13 (D3) — displayName/username ya vienen enmascarados por el servidor
+  // cuando el visor no está autorizado. printLabel es la etiqueta fija para
+  // imprimir ("Externo (INI)"), calculada siempre del nombre real en
+  // servidor — nunca recalcular en cliente sobre displayName, porque para un
+  // visor no autorizado ya llega enmascarado.
+  isExternal: boolean;
+  printLabel: string | null;
   entries: Record<string, MaskedEntryFields>;
   summary: {
     weeklyNetHours: number;
     weeklyTargetHours: number;
+    // v3.5.13 — jornada contratada de UN día laborable planificado de esta
+    // semana, usada para el autorrelleno de la hora de salida (ya no se puede
+    // asumir weeklyTargetHours/5: una semana con vacaciones da jornadas
+    // distintas por día).
+    dailyTargetHours: number;
     teleworkDaysWeek: number;
     teleworkDaysMonth: number;
     travelDays: number;
@@ -163,10 +180,13 @@ export interface DepartmentMemberInfo {
   displayName: string | null;
   email: string;
   weeklyTargetHours: number | null;
-  // v3.5.11 — override de cuota de teletrabajo (total / días / porcentaje).
+  // v3.5.11 — override de cuota de teletrabajo (total / días/mes / porcentaje);
+  // v3.5.13 añade días/semana. Los cuatro son excluyentes (D4).
   teleworkFull: boolean;
   teleworkQuotaDays: number | null;
+  teleworkQuotaDaysPerWeek: number | null;
   teleworkQuotaPct: number | null;
+  isExternal: boolean;
 }
 
 // v3.5.12 (R5/F4) — GET /api/staff-schedule/users?q=. Deliberately no email
@@ -175,6 +195,10 @@ export interface WorkerSearchResult {
   id: string;
   username: string;
   displayName: string | null;
+  isExternal: boolean;
+  // v3.5.13 (D3) — etiqueta fija para imprimir, calculada en servidor a partir
+  // del nombre real; se propaga hasta la vista de trabajador individual.
+  printLabel: string | null;
 }
 
 // v3.5.12 (R5/F4) — one day of GET /user/:userId/entries?from=&to=. Already

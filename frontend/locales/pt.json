@@ -2208,6 +2208,7 @@
     "alert": {
       "title": "Alertas",
       "TELEWORK_QUOTA": "Cota de teletrabalho excedida",
+      "TELEWORK_QUOTA_WEEK": "Cota semanal de teletrabalho excedida",
       "WEEKLY_HOURS": "Horas semanais não cumpridas",
       "DAILY_HOURS": "Horas diárias excedidas",
       "PRESENCE_PCT": "Presença insuficiente",
@@ -2246,8 +2247,14 @@
       "flexExitFrom": "Saída flexível: desde",
       "flexExitTo": "Saída flexível: até",
       "summerSchedule": "Horário de verão",
+      "summerGlobalHint": "Período por defeito. Cada departamento pode desativar o horário de verão ou definir o seu próprio período na sua configuração.",
       "summerStart": "Início do verão",
       "summerEnd": "Fim do verão",
+      "summerEnabled": "Aplica horário de verão",
+      "deptSummerStart": "Início do verão (opcional)",
+      "deptSummerEnd": "Fim do verão (opcional)",
+      "summerFallbackHint": "Vazio = usa-se o período geral do ano",
+      "summerDisabledHint": "Este departamento não aplica horário de verão",
       "minPresencePct": "% mínima de presença",
       "winterHours": "Jornada de inverno",
       "summerHours": "Jornada de verão",
@@ -2260,7 +2267,8 @@
       "weeklyHoursOverride": "Horas semanais (trabalhador)",
       "weeklyHoursDefault": "Padrão do departamento",
       "weeklyHoursWorker": "Horas semanais (trabalhador)",
-      "weeklyHoursSaved": "Horas semanais guardadas."
+      "weeklyHoursSaved": "Horas semanais guardadas.",
+      "teleworkExclusive": "Só é possível configurar um dos quatro métodos"
     },
     "summary": {
       "weeklyHours": "Horas semanais",
@@ -2321,21 +2329,28 @@
     },
     "members": {
       "title": "Membros do departamento",
-      "none": "Sem membros atribuídos."
+      "none": "Sem membros atribuídos.",
+      "remove": "Remover",
+      "removeConfirm": "Remover {name} do departamento? Os horários já publicados não mudarão; os rascunhos serão atualizados ao clicar em \"Sincronizar membros\".",
+      "removeError": "Não foi possível remover o trabalhador do departamento",
+      "external": "Trabalhador externo (proteção de dados)",
+      "externalShort": "Externo",
+      "externalError": "Não foi possível atualizar a marca de externo"
     },
     "confirm": {
       "deleteSchedule": "Eliminar esta planificação? Todas as suas entradas serão perdidas. Esta ação não pode ser revertida."
     },
     "syncMembers": {
-      "added": "{n} trabalhador(es) adicionado(s) à planificação."
+      "result": "Sincronização: {added} adicionados, {removed} removidos"
     },
     "telework": {
       "title": "Quota de teletrabalho por trabalhador",
       "full": "Teletrabalho total",
       "fullShort": "TT total",
       "days": "Dias",
+      "daysPerWeek": "Dias/semana",
       "pct": "%",
-      "hint": "Prioridade: teletrabalho total > dias > percentagem > limite do departamento. Deixe vazio para usar o limite do departamento.",
+      "hint": "Só pode ser definido um dos quatro métodos: total, dias/mês, dias/semana ou percentagem/mês. Deixe vazio para usar o limite do departamento.",
       "saved": "Quota de teletrabalho guardada"
     },
     "periodSelector": {

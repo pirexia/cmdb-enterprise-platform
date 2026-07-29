@@ -2208,6 +2208,7 @@
     "alert": {
       "title": "Warnungen",
       "TELEWORK_QUOTA": "Homeoffice-Kontingent überschritten",
+      "TELEWORK_QUOTA_WEEK": "Wöchentliches Homeoffice-Kontingent überschritten",
       "WEEKLY_HOURS": "Wochenstunden nicht erreicht",
       "DAILY_HOURS": "Tägliche Stunden überschritten",
       "PRESENCE_PCT": "Unzureichende Präsenz vor Ort",
@@ -2246,8 +2247,14 @@
       "flexExitFrom": "Flexibles Ende: von",
       "flexExitTo": "Flexibles Ende: bis",
       "summerSchedule": "Sommerzeitplan",
+      "summerGlobalHint": "Standardzeitraum. Jede Abteilung kann die Sommerzeit deaktivieren oder in ihrer Konfiguration einen eigenen Zeitraum festlegen.",
       "summerStart": "Beginn Sommerzeit",
       "summerEnd": "Ende Sommerzeit",
+      "summerEnabled": "Sommerzeit anwenden",
+      "deptSummerStart": "Sommerbeginn (optional)",
+      "deptSummerEnd": "Sommerende (optional)",
+      "summerFallbackHint": "Leer = der allgemeine Zeitraum des Jahres wird verwendet",
+      "summerDisabledHint": "Diese Abteilung wendet keine Sommerzeit an",
       "minPresencePct": "Mindestanwesenheit vor Ort (%)",
       "winterHours": "Arbeitszeit Winter",
       "summerHours": "Arbeitszeit Sommer",
@@ -2260,7 +2267,8 @@
       "weeklyHoursOverride": "Wochenstunden (Mitarbeiter)",
       "weeklyHoursDefault": "Abteilungsstandard",
       "weeklyHoursWorker": "Wochenstunden (Mitarbeiter)",
-      "weeklyHoursSaved": "Wochenstunden gespeichert."
+      "weeklyHoursSaved": "Wochenstunden gespeichert.",
+      "teleworkExclusive": "Es kann nur eine der vier Methoden konfiguriert werden"
     },
     "summary": {
       "weeklyHours": "Wochenstunden",
@@ -2321,21 +2329,28 @@
     },
     "members": {
       "title": "Abteilungsmitglieder",
-      "none": "Keine Mitglieder zugewiesen."
+      "none": "Keine Mitglieder zugewiesen.",
+      "remove": "Entfernen",
+      "removeConfirm": "{name} aus der Abteilung entfernen? Bereits veröffentlichte Pläne ändern sich nicht; Entwürfe werden aktualisiert, sobald Sie auf \"Mitglieder synchronisieren\" klicken.",
+      "removeError": "Der Mitarbeiter konnte nicht aus der Abteilung entfernt werden",
+      "external": "Externer Mitarbeiter (Datenschutz)",
+      "externalShort": "Extern",
+      "externalError": "Die Markierung als extern konnte nicht aktualisiert werden"
     },
     "confirm": {
       "deleteSchedule": "Diese Planung löschen? Alle Einträge gehen verloren. Diese Aktion kann nicht rückgängig gemacht werden."
     },
     "syncMembers": {
-      "added": "{n} Mitarbeiter zur Planung hinzugefügt."
+      "result": "Synchronisierung: {added} hinzugefügt, {removed} entfernt"
     },
     "telework": {
       "title": "Telearbeitskontingent pro Mitarbeiter",
       "full": "Vollständige Telearbeit",
       "fullShort": "Voll-TA",
       "days": "Tage",
+      "daysPerWeek": "Tage/Woche",
       "pct": "%",
-      "hint": "Priorität: vollständige Telearbeit > Tage > Prozentsatz > Abteilungsgrenze. Leer lassen, um die Abteilungsgrenze zu verwenden.",
+      "hint": "Nur eine der vier Methoden kann festgelegt werden: vollständig, Tage/Monat, Tage/Woche oder Prozent/Monat. Leer lassen, um die Obergrenze der Abteilung zu verwenden.",
       "saved": "Telearbeitskontingent gespeichert"
     },
     "periodSelector": {

@@ -56,10 +56,14 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
   const [weeklyHoursSaving, setWeeklyHoursSaving] = useState(false);
   const [weeklyHoursSuccess, setWeeklyHoursSuccess] = useState(false);
 
-  // v3.5.11 — cuota de teletrabajo por trabajador (días / porcentaje / total).
+  // v3.5.11 — cuota de teletrabajo por trabajador (días/mes / porcentaje/mes /
+  // total). v3.5.13 — cuarto método días/semana; los cuatro son EXCLUYENTES
+  // (D4): al rellenar uno se limpian los otros tres, tanto en la UI como en el
+  // servidor (Zod + CHECK en BD).
   const [teleworkUserId, setTeleworkUserId] = useState("");
   const [teleworkFull, setTeleworkFull] = useState(false);
   const [teleworkDays, setTeleworkDays] = useState("");
+  const [teleworkDaysWeek, setTeleworkDaysWeek] = useState("");
   const [teleworkPct, setTeleworkPct] = useState("");
   const [teleworkError, setTeleworkError] = useState<string | null>(null);
   const [teleworkSaving, setTeleworkSaving] = useState(false);
@@ -86,19 +90,41 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     setWeeklyHoursSuccess(false);
   }, [weeklyHoursUserId, currentMembers]);
 
-  // Prefija los tres campos de cuota con los valores actuales del trabajador
-  // elegido (vacío = usa el tope del departamento).
+  // Prefija los cuatro campos de cuota con los valores actuales del trabajador
+  // elegido (vacío/desmarcado = usa el tope del departamento). Solo uno de los
+  // cuatro puede venir fijado del servidor (D4), así que como mucho un campo
+  // queda relleno.
   useEffect(() => {
     if (!teleworkUserId) {
-      setTeleworkFull(false); setTeleworkDays(""); setTeleworkPct("");
+      setTeleworkFull(false); setTeleworkDays(""); setTeleworkDaysWeek(""); setTeleworkPct("");
       return;
     }
     const member = currentMembers.find((m) => m.id === teleworkUserId);
     setTeleworkFull(member?.teleworkFull ?? false);
     setTeleworkDays(member?.teleworkQuotaDays != null ? String(member.teleworkQuotaDays) : "");
+    setTeleworkDaysWeek(member?.teleworkQuotaDaysPerWeek != null ? String(member.teleworkQuotaDaysPerWeek) : "");
     setTeleworkPct(member?.teleworkQuotaPct != null ? String(member.teleworkQuotaPct) : "");
     setTeleworkSuccess(false);
   }, [teleworkUserId, currentMembers]);
+
+  // v3.5.13 (D4) — al fijar un método, se limpian los otros tres para que la
+  // exclusividad sea visible en la UI, no solo un 400 sorpresa del servidor.
+  const chooseTeleworkFull = (checked: boolean) => {
+    setTeleworkFull(checked);
+    if (checked) { setTeleworkDays(""); setTeleworkDaysWeek(""); setTeleworkPct(""); }
+  };
+  const chooseTeleworkDays = (v: string) => {
+    setTeleworkDays(v);
+    if (v !== "") { setTeleworkFull(false); setTeleworkDaysWeek(""); setTeleworkPct(""); }
+  };
+  const chooseTeleworkDaysWeek = (v: string) => {
+    setTeleworkDaysWeek(v);
+    if (v !== "") { setTeleworkFull(false); setTeleworkDays(""); setTeleworkPct(""); }
+  };
+  const chooseTeleworkPct = (v: string) => {
+    setTeleworkPct(v);
+    if (v !== "") { setTeleworkFull(false); setTeleworkDays(""); setTeleworkDaysWeek(""); }
+  };
 
   const selectedDept = departments.find((d) => d.id === selectedDeptId) ?? null;
 
@@ -230,6 +256,47 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     }
   };
 
+  // v3.5.13 — retirada de un trabajador del departamento. Reutiliza el endpoint
+  // de asignacion con departmentId=null (ADMIN, transaccional, auditado como
+  // ASSIGN_USER_DEPARTMENT); no hace falta ruta nueva.
+  //
+  // Se avisa explicitamente del alcance (D5): los horarios ya publicados NO
+  // cambian, y los borradores solo se actualizan al pulsar "Sincronizar
+  // miembros". Sin ese aviso, el operador esperaria que el calendario se
+  // limpiara solo y lo tomaria por un fallo.
+  const handleRemoveMember = async (userId: string, label: string) => {
+    if (!confirm(t("staffSchedule.members.removeConfirm", { name: label }))) return;
+    setManagersError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${userId}/department`, {
+        method: "PUT",
+        body: JSON.stringify({ departmentId: null }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await refetchMembers();
+      onDepartmentsChanged();
+    } catch {
+      setManagersError(t("staffSchedule.members.removeError"));
+    }
+  };
+
+  // v3.5.13 (D3) — marca/desmarca a un trabajador como externo. El
+  // enmascarado real ocurre en servidor (maskIdentityForViewer); este toggle
+  // solo cambia el dato de partida.
+  const handleToggleExternal = async (userId: string, isExternal: boolean) => {
+    setManagersError(null);
+    try {
+      const res = await apiFetch(`/api/staff-schedule/users/${userId}/external`, {
+        method: "PUT",
+        body: JSON.stringify({ isExternal }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      await refetchMembers();
+    } catch {
+      setManagersError(t("staffSchedule.members.externalError"));
+    }
+  };
+
   // v3.5.10 refinamiento — antes dependía de assignUserId (el selector de la
   // sección "asignar departamento" de arriba): sin elegir un trabajador ahí,
   // el botón de esta sección nunca se habilitaba. Ahora tiene su propio
@@ -258,9 +325,9 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
     }
   };
 
-  // v3.5.11 — la cuota efectiva se resuelve en el servidor con la prioridad
-  // total > días > porcentaje > tope del departamento; aquí solo se envían los
-  // tres campos tal cual los deja el administrador.
+  // v3.5.13 (D4) — los cuatro métodos son excluyentes; el servidor rechaza con
+  // 400 si llegara más de uno relleno, pero la UI ya los mantiene mutuamente
+  // excluyentes desde que se elige uno (choose* de arriba).
   const handleSetTeleworkQuota = async () => {
     if (!teleworkUserId) return;
     setTeleworkError(null);
@@ -272,6 +339,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
         body: JSON.stringify({
           teleworkFull,
           teleworkQuotaDays: teleworkDays === "" ? null : Number(teleworkDays),
+          teleworkQuotaDaysPerWeek: teleworkDaysWeek === "" ? null : Number(teleworkDaysWeek),
           teleworkQuotaPct: teleworkPct === "" ? null : Number(teleworkPct),
         }),
       });
@@ -434,6 +502,51 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 {numField("weeklyTargetNetHours", t("staffSchedule.summary.weeklyHours"))}
                 {numField("monthlyTeleworkCap", t("staffSchedule.config.monthlyTeleworkCap"), "1")}
 
+                {/* v3.5.13 — horario de verano por departamento. Desactivado =
+                    este departamento nunca entra en verano; activado sin
+                    fechas propias = usa el periodo global del año (panel
+                    aparte, SummerScheduleConfig). */}
+                <div className="col-span-4 border-t border-slate-200 pt-3">
+                  <label className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={cfgForm.summerEnabled ?? true}
+                      onChange={(e) => setCfgForm((f) => ({ ...f, summerEnabled: e.target.checked }))}
+                      className="h-4 w-4 rounded-none border-slate-300"
+                    />
+                    {t("staffSchedule.config.summerEnabled")}
+                  </label>
+                </div>
+                {cfgForm.summerEnabled === false ? (
+                  <div className="col-span-4">
+                    <p className="text-xs text-amber-700">{t("staffSchedule.config.summerDisabledHint")}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.deptSummerStart")}</label>
+                      <input
+                        type="date"
+                        value={cfgForm.summerStartDate?.slice(0, 10) ?? ""}
+                        onChange={(e) => setCfgForm((f) => ({ ...f, summerStartDate: e.target.value || null }))}
+                        className="w-full rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.deptSummerEnd")}</label>
+                      <input
+                        type="date"
+                        value={cfgForm.summerEndDate?.slice(0, 10) ?? ""}
+                        onChange={(e) => setCfgForm((f) => ({ ...f, summerEndDate: e.target.value || null }))}
+                        className="w-full rounded-none border border-slate-300 px-2.5 py-2 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-2 flex items-end">
+                      <p className="text-xs text-slate-400">{t("staffSchedule.config.summerFallbackHint")}</p>
+                    </div>
+                  </>
+                )}
+
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">{t("staffSchedule.config.flexEntryFrom")}</label>
                   <input
@@ -546,17 +659,37 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
               {currentMembers.length > 0 ? (
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1">
                   {currentMembers.map((m) => (
-                    <li key={m.id} className="flex items-center justify-between bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
-                      <span className="text-slate-700">{displayLabel(m)}</span>
-                      <span className="text-slate-400">
-                        {m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}
-                        {m.teleworkFull
-                          ? ` · ${t("staffSchedule.telework.fullShort")}`
-                          : m.teleworkQuotaDays != null
-                            ? ` · ${m.teleworkQuotaDays}d`
-                            : m.teleworkQuotaPct != null
-                              ? ` · ${m.teleworkQuotaPct}%`
-                              : ""}
+                    <li key={m.id} className="flex items-center justify-between gap-2 bg-slate-50 ring-1 ring-slate-200 px-3 py-1.5 text-xs">
+                      <span className="text-slate-700 truncate">{displayLabel(m)}</span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="text-slate-400">
+                          {m.weeklyTargetHours != null ? `${m.weeklyTargetHours}h` : "—"}
+                          {m.teleworkFull
+                            ? ` · ${t("staffSchedule.telework.fullShort")}`
+                            : m.teleworkQuotaDays != null
+                              ? ` · ${m.teleworkQuotaDays}d/mes`
+                              : m.teleworkQuotaDaysPerWeek != null
+                                ? ` · ${m.teleworkQuotaDaysPerWeek}d/sem`
+                                : m.teleworkQuotaPct != null
+                                  ? ` · ${m.teleworkQuotaPct}%`
+                                  : ""}
+                        </span>
+                        <label className="flex items-center gap-1 text-xs text-slate-500" title={t("staffSchedule.members.external")}>
+                          <input
+                            type="checkbox"
+                            checked={m.isExternal}
+                            onChange={(e) => handleToggleExternal(m.id, e.target.checked)}
+                            className="h-3.5 w-3.5 rounded-none border-slate-300"
+                          />
+                          {t("staffSchedule.members.externalShort")}
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m.id, displayLabel(m))}
+                          className="rounded-none border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          {t("staffSchedule.members.remove")}
+                        </button>
                       </span>
                     </li>
                   ))}
@@ -672,7 +805,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   <input
                     type="checkbox"
                     checked={teleworkFull}
-                    onChange={(e) => setTeleworkFull(e.target.checked)}
+                    onChange={(e) => chooseTeleworkFull(e.target.checked)}
                     className="h-4 w-4 rounded-none border-slate-300"
                   />
                   {t("staffSchedule.telework.full")}
@@ -682,11 +815,23 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   min={0}
                   max={31}
                   step={1}
-                  disabled={teleworkFull}
+                  disabled={teleworkFull || teleworkDaysWeek !== "" || teleworkPct !== ""}
                   placeholder={t("staffSchedule.telework.days")}
                   title={t("staffSchedule.telework.days")}
                   value={teleworkDays}
-                  onChange={(e) => setTeleworkDays(e.target.value)}
+                  onChange={(e) => chooseTeleworkDays(e.target.value)}
+                  className="w-24 rounded-none border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={7}
+                  step={1}
+                  disabled={teleworkFull || teleworkDays !== "" || teleworkPct !== ""}
+                  placeholder={t("staffSchedule.telework.daysPerWeek")}
+                  title={t("staffSchedule.telework.daysPerWeek")}
+                  value={teleworkDaysWeek}
+                  onChange={(e) => chooseTeleworkDaysWeek(e.target.value)}
                   className="w-24 rounded-none border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 <input
@@ -694,11 +839,11 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                   min={0}
                   max={100}
                   step={1}
-                  disabled={teleworkFull || teleworkDays !== ""}
+                  disabled={teleworkFull || teleworkDays !== "" || teleworkDaysWeek !== ""}
                   placeholder={t("staffSchedule.telework.pct")}
                   title={t("staffSchedule.telework.pct")}
                   value={teleworkPct}
-                  onChange={(e) => setTeleworkPct(e.target.value)}
+                  onChange={(e) => chooseTeleworkPct(e.target.value)}
                   className="w-24 rounded-none border border-slate-300 px-2.5 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 <button
@@ -711,6 +856,7 @@ export default function ScheduleConfigPanel({ departments, onClose, onDepartment
                 </button>
               </div>
               <p className="text-xs text-slate-400">{t("staffSchedule.telework.hint")}</p>
+              <p className="text-xs text-slate-400">{t("staffSchedule.config.teleworkExclusive")}</p>
               {teleworkSuccess && <p className="text-xs text-green-700">{t("staffSchedule.telework.saved")}</p>}
               {teleworkError && <p className="text-xs text-red-600">{teleworkError}</p>}
             </div>

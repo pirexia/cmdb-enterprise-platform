@@ -10,6 +10,11 @@ import ScheduleCell from "./ScheduleCell";
 interface Props {
   userId: string;
   workerLabel: string;
+  // v3.5.13 (D3) — cuando isExternal, la impresión debe mostrar printLabel
+  // ("Externo (INI)") en vez de workerLabel, incluso si el visor (ADMIN/
+  // MANAGER) ve el nombre real en pantalla legítimamente.
+  isExternal: boolean;
+  printLabel: string | null;
   mode: "week" | "month";
   /** Monday (UTC ISO), used when mode === 'week'. */
   weekStart: string;
@@ -39,8 +44,17 @@ function formatDay(iso: string, opts: Intl.DateTimeFormatOptions) {
 // authorization actually lives). Mode and date range are owned by the
 // parent (page.tsx, F-INT) and passed in as props — this component doesn't
 // keep its own period state, so wiring it up is a prop-drill, not a rewrite.
-export default function WorkerScheduleView({ userId, workerLabel, mode, weekStart, year, month }: Props) {
+export default function WorkerScheduleView({ userId, workerLabel, isExternal, printLabel, mode, weekStart, year, month }: Props) {
   const { t } = useLanguage();
+
+  const nameNode = isExternal ? (
+    <>
+      <span className="no-print">{workerLabel}</span>
+      <span className="print-only">{printLabel}</span>
+    </>
+  ) : (
+    workerLabel
+  );
 
   const weekDays = useMemo(() => [0, 1, 2, 3, 4].map((n) => addDaysIso(weekStart, n)), [weekStart]);
   const weekTo = weekDays[weekDays.length - 1];
@@ -120,7 +134,7 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
 
   return (
     <div className="print-block space-y-4">
-      <div className="text-sm font-semibold text-slate-800">{workerLabel}</div>
+      <div className="text-sm font-semibold text-slate-800">{nameNode}</div>
 
       {mode === "week" ? (
         <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-auto">
@@ -145,7 +159,7 @@ export default function WorkerScheduleView({ userId, workerLabel, mode, weekStar
             </thead>
             <tbody>
               <tr>
-                <td className="border border-slate-100 px-3 py-2 text-xs font-medium text-slate-800">{workerLabel}</td>
+                <td className="border border-slate-100 px-3 py-2 text-xs font-medium text-slate-800">{nameNode}</td>
                 {weekDays.map((d) => (
                   <ScheduleCell key={d} entry={entryMap.get(d)} editable={false} onClick={() => {}} />
                 ))}

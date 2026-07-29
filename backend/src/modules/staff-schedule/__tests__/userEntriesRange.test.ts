@@ -34,6 +34,7 @@ function makeMockPrisma(opts: {
         return opts.scheduleEntries.map((e) => ({
           ...e,
           department: { id: e.departmentId, name: 'Test Dept' },
+          schedule: { isSummerWeek: false },
         }));
       },
     },

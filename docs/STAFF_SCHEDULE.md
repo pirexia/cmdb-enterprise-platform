@@ -396,3 +396,75 @@ Corregido con `h-full` en lugar de la altura fija, manteniendo el color en el `<
 #### 17.9.4 Número de día en la rejilla mensual
 
 La rejilla mensual de la vista de trabajador solo mostraba los nombres de los días de la semana (lun-vie) reutilizados en cada fila, sin ninguna indicación de qué día del mes era cada celda. `ScheduleCell` gana una prop opcional `dayNumber` que se pinta como una pequeña marca en la esquina; las vistas semanales la omiten porque su cabecera de columna ya lleva la fecha completa. `DepartmentMonthView` no la necesita: cada semana muestra su rango de fechas en su propia cabecera.
+
+## 18. Cambios de v3.5.13 — cuotas, membresía, externos, verano por departamento
+
+Seis defectos/carencias reales detectados en uso con datos de producción (departamento Security, usuario real `jorge.espinosam`) más dos capacidades pedidas por el usuario.
+
+### 18.1 (D1) Fix: el objetivo semanal mostraba un residuo inexplicable ("0.0h / 2.0h")
+
+**Síntoma real**: una semana entera de vacaciones en Security (departamento con 8h L-J, 6h viernes, objetivo semanal *declarado* 40h) mostraba `Horas semanales: 0.0h / 2.0h` en vez de `0.0h / 0.0h`.
+
+**Causa**: el objetivo semanal (`computeEffectiveWeeklyTarget`, introducido en v3.5.12) restaba las horas de los días reductores sobre `weeklyTargetNetHours` (un valor plano, 40h), no sobre la suma real de los días contratados (4×8 + 6 = 38h). El campo `weeklyTargetNetHours` de la configuración del departamento nunca se validó contra la suma de sus propios campos diarios — nadie forzaba que 40 = 4×8+6, y en Security no cuadraba. Al restar 38h (cinco días de vacaciones) sobre un objetivo de 40, quedaba el residuo de 2h.
+
+**Fix**: el objetivo pasa a ser la **suma de los días laborables efectivamente planificados** de esa semana, no `objetivo_declarado − reducción`. Una semana entera de vacaciones da `0` por construcción, sin depender de que el campo `weeklyTargetNetHours` esté bien calibrado. Consecuencia visible: una semana **normal** de Security pasa a mostrar `38.0h` de objetivo, no `40.0h` — es la corrección del propio descuadre, no un defecto nuevo.
+
+Para un trabajador con override propio (`users.weekly_target_hours`), el objetivo se escala en la misma proporción de días planificados: `override × (días_planificados / días_nominales_de_la_semana)`. Esto sustituye la firma de `computeEffectiveWeeklyTarget`, que ahora recibe el **override explícito o `null`** (nunca un valor ya resuelto con el defecto del departamento) — necesario porque «sin override» y «con override» ahora producen fórmulas distintas, no solo bases distintas de la misma resta.
+
+Efecto colateral encontrado al implementar: el autorrelleno de la hora de salida en el editor de entradas hacía `weeklyTargetHours / 5`, que con el nuevo objetivo daba jornadas absurdas en cuanto la semana tenía algún día de vacaciones (4 días de vacaciones + 1 presencial → 8/5 = 1.6h de jornada "esperada"). El servidor manda ahora `dailyTargetHours` explícito, repartiendo el objetivo entre los días efectivamente planificados.
+
+Verificado en vivo contra producción: la semana `2026-08-24` de Security (`jorge.espinosam`, 5 días de vacaciones) pasa de `0.0h / 2.0h` a `0.0h / 0.0h` tras el despliegue.
+
+### 18.2 (D2) Fix: el responsable de un departamento no podía despublicar
+
+`POST /:id/unpublish` era `requireAdmin`, mientras que `PUT /:id` (editar) solo acepta `DRAFT`. Un MANAGER responsable de su departamento podía publicar (`/publish` sí usaba `requireDeptEditAccess`) pero no revertir una semana ya publicada — quedaba en un callejón sin salida.
+
+**Fix**: `unpublish` pasa al mismo control de fila que `publish` (`requireDeptEditAccess`). Un MANAGER opera el ciclo completo (crear → validar → publicar → despublicar → editar → republicar) sobre **sus** departamentos y sobre ningún otro; la invariante D10 de v3.5.10 (lo publicado es inmutable hasta despublicar) no se toca. Verificado en producción con la cuenta ADMIN (que también pasa por `requireDeptEditAccess`, rama ADMIN): despublicar/republicar un horario real funciona; los límites de fila para un MANAGER quedan cubiertos por 7 tests de integración (`unpublishAuthorization.test.ts`) que ejercitan el 403 con mocks de `departmentManager`, no se pudo probar en vivo con una cuenta MANAGER real sin credenciales de un usuario de producción.
+
+### 18.3 (D4) Cuota de teletrabajo semanal, cuatro métodos excluyentes
+
+Nuevo campo `users.telework_quota_days_per_week` (0–7). A partir de esta versión, los **cuatro** métodos de cuota (total, días/mes, días/semana, porcentaje/mes) son **mutuamente excluyentes** — antes (v3.5.11) eran una cadena de prioridad que permitía guardar dos a la vez sin que el operador supiera cuál se aplicaba realmente. Forzado en Zod (`.refine`) **y** con `CHECK` en la BD (`users_telework_quota_single_method`), para que el invariante aguante también una escritura que no pase por la API.
+
+Alerta nueva `TELEWORK_QUOTA_WEEK` (independiente de `TELEWORK_QUOTA`, la mensual — nunca se solapan porque los métodos son excluyentes). `resolveWeeklyTeleworkCap()` devuelve `null` cuando no aplica (exento o cuota expresada por otro método); un tope de `0` es legítimo ("no teletrabaja ningún día") y se distingue explícitamente de "sin configurar".
+
+Verificado en vivo: fijar 2 días/semana a un trabajador de prueba se guarda correctamente; intentar fijar un segundo método a la vez (`teleworkQuotaDays: 5` junto con `teleworkQuotaDaysPerWeek: 2`) rechaza con `400` y el mensaje de exclusividad.
+
+### 18.4 (D5) Quitar trabajadores de un departamento
+
+Hasta ahora solo se podía **añadir** gente a un departamento; no había manera auditada de sacar a alguien salvo borrar el horario entero. `sync-members` (v3.5.10) era estrictamente aditivo por diseño.
+
+**Fix**: botón "Quitar" en el panel de configuración (reutiliza `PUT /users/:userId/department` con `departmentId: null` — ya auditado como `ASSIGN_USER_DEPARTMENT`, transaccional) + `sync-members` pasa a reconciliar en las **dos direcciones** sobre horarios `DRAFT`: añade entradas a quien falta y **borra** las entradas de quien ya no es miembro.
+
+**Alcance deliberado, confirmado con el usuario**: los horarios ya `PUBLISHED` **nunca** se tocan — siguen devolviendo `409` en `sync-members`, y quitar a alguien del departamento no les afecta en absoluto. Solo los `DRAFT` se reconcilian, y solo cuando el operador pulsa explícitamente "Sincronizar miembros"; no hay reconciliación automática al cambiar la membresía. Esto es intencionado: un horario publicado es un testimonio de lo que se publicó en su día.
+
+Verificado en vivo con una cuenta de prueba local (`auditor`, no una persona real) asignada temporalmente a un departamento de pruebas: tras publicar un horario y retirar al usuario del departamento, sus entradas siguen apareciendo en el horario `PUBLISHED` (`rows` sin cambios); tras despublicar y pulsar "Sincronizar miembros", `{added: 0, removed: 1}` y el usuario desaparece del `DRAFT`.
+
+### 18.5 (D3) Marca de trabajador externo, con enmascarado de identidad
+
+Por protección de datos, algunos trabajadores son externos y su nombre no debe verse. Columna nueva `users.is_external` (booleano, por defecto `false`). Casilla en el panel de configuración, junto a cada miembro del departamento.
+
+**El enmascarado ocurre en servidor**, no al pintar — mismo principio que `maskEntryForViewer` para los datos de salud (GDPR Art. 9): un VIEWER/AUDITOR nunca recibe el nombre real en el JSON, ni en el calendario ni en el buscador de trabajadores (`GET /users?q=`). `maskIdentityForViewer()` decide, por fila, si el visor está autorizado (ADMIN, MANAGER del departamento, o el propio interesado) — cualquier otro rol, incluido uno desconocido, recibe `{username: "Externo (INI)", displayName: "Externo (INI)"}` (fail-closed).
+
+**Impresión**: ADMIN/MANAGER ven el nombre real en pantalla legítimamente, pero la hoja impresa sale del control de la aplicación, así que también se enmascara al imprimir. Esto exige un campo servidor `printLabel` **calculado siempre a partir del nombre real**, nunca recalculado en cliente a partir de lo que ya llegó — recalcular sobre un `displayName` que ya viene enmascarado (p. ej. para un VIEWER) produce iniciales absurdas ("Externo (JEM)" → "E("). `printLabel` es el mismo valor que ya recibe un VIEWER en `displayName`, así que enviarlo también a ADMIN/MANAGER no añade ninguna fuga: ya conocen el nombre real.
+
+**Bug real cazado en la verificación en vivo, no por tests ni revisión de código**: `maskIdentityForViewer()` devuelve un objeto **nuevo** `{username, displayName, isExternal}` cuando enmascara — el campo `id` se perdía si no se reinyectaba explícitamente en el router. Un VIEWER no podía seleccionar en absoluto a un trabajador externo en el buscador (`onSelect` del frontend recibía `userId: undefined`). Confirmado contra producción marcando temporalmente a una cuenta de prueba como externa: la respuesta de `GET /users?q=` para AUDITOR llegaba sin la clave `id`; corregido reinyectando `id: u.id` antes de aplicar el enmascarado, verificado de nuevo tras redeploy con el `id` presente.
+
+### 18.6 Verano configurable por departamento
+
+`DepartmentScheduleConfig` gana `summerEnabled` (booleano, por defecto `true`), `summerStartDate`/`summerEndDate` (opcionales, ambas o ninguna — `CHECK dept_summer_dates_both_or_neither`). Tres ramas resueltas por `resolveSummerForDepartment()`:
+
+1. `summerEnabled = false` → el departamento nunca entra en verano, sea cual sea el periodo global.
+2. Fechas propias fijadas → mandan sobre el periodo global.
+3. Activado sin fechas propias (o sin fila de configuración) → usa el periodo global del año (`SummerSchedule`), que es el comportamiento anterior a v3.5.13 para toda fila ya existente.
+
+**Efecto colateral, no pedido pero corregido de raíz**: `validate()` recalculaba internamente el verano con `detectSummer(weekStart, periodo_global)`, mientras que `isSummerWeek` ya vivía **almacenado** en `staff_schedules` (fijado al crear/clonar el horario). Con el verano global único ambas fuentes coincidían por casualidad; en cuanto el verano pasa a ser por departamento, podían divergir — un horario podía considerarse de verano al mostrarlo y de invierno al validarlo, o viceversa. Se elimina la segunda fuente: `validate()` recibe `isSummer: boolean` ya resuelto por el llamador (la columna almacenada), nunca lo recalcula. `listUserEntries()` deja de mantener una caché de periodo global por año y lee `isSummerWeek` directamente del horario de cada entrada (`schedule.isSummerWeek`, incluido en la consulta).
+
+Verificado en vivo: departamento "Testing" con verano desactivado, semana `2026-08-17` (dentro del periodo global `2026-07-13`–`2026-09-13`) creada con `isSummerWeek: false` — confirma que la desactivación por departamento manda sobre el periodo global.
+
+### 18.7 Investigado sin encontrar defecto: `jorge.espinosam` y el departamento Security
+
+El usuario reportó no poder añadir a `jorge.espinosam` a Security y preguntó si el `display_name` ausente en algunos usuarios era la causa. Verificado contra la base de datos real: `jorge.espinosam` ya estaba en Security, activo, con `display_name` correcto (`Jorge Espinosa Male`), y además ya era responsable (`DepartmentManager`) del departamento. Los 5 únicos usuarios sin `display_name` eran cuentas locales (`admin`, `claude`, `auditor`, `andre.lead`, `roo.engineer`), ninguna LDAP, ninguna con departamento — no relacionado. Lo que sí explicaba el síntoma percibido era §18.2: como MANAGER, no podía operar sobre rutas que exigían `requireAdmin` (`unpublish`).
+
+### 18.8 Deploy
+
+Recordatorio operativo (ya documentado en §17.8, recurrió durante esta sesión): un `podman-compose up -d --build <servicio>` selectivo reconstruye la imagen pero **no garantiza** que el contenedor la recoja — verificado en vivo (`podman inspect --format {{.Image}}` mostró el hash **anterior** tras un rebuild selectivo del backend). Solo un `down`/`up` completo del stack lo garantiza.

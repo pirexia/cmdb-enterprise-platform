@@ -2208,6 +2208,7 @@
     "alert": {
       "title": "Avvisi",
       "TELEWORK_QUOTA": "Quota di lavoro da remoto superata",
+      "TELEWORK_QUOTA_WEEK": "Quota settimanale di lavoro da remoto superata",
       "WEEKLY_HOURS": "Ore settimanali non raggiunte",
       "DAILY_HOURS": "Ore giornaliere superate",
       "PRESENCE_PCT": "Presenza in sede insufficiente",
@@ -2246,8 +2247,14 @@
       "flexExitFrom": "Uscita flessibile: dalle",
       "flexExitTo": "Uscita flessibile: alle",
       "summerSchedule": "Orario estivo",
+      "summerGlobalHint": "Periodo predefinito. Ogni reparto può disattivare l'orario estivo o impostare il proprio periodo nella propria configurazione.",
       "summerStart": "Inizio estate",
       "summerEnd": "Fine estate",
+      "summerEnabled": "Applica orario estivo",
+      "deptSummerStart": "Inizio estate (opzionale)",
+      "deptSummerEnd": "Fine estate (opzionale)",
+      "summerFallbackHint": "Vuoto = usa il periodo generale dell'anno",
+      "summerDisabledHint": "Questo reparto non applica l'orario estivo",
       "minPresencePct": "% minima di presenza in sede",
       "winterHours": "Orario invernale",
       "summerHours": "Orario estivo",
@@ -2260,7 +2267,8 @@
       "weeklyHoursOverride": "Ore settimanali (dipendente)",
       "weeklyHoursDefault": "Predefinito del reparto",
       "weeklyHoursWorker": "Ore settimanali (lavoratore)",
-      "weeklyHoursSaved": "Ore settimanali salvate."
+      "weeklyHoursSaved": "Ore settimanali salvate.",
+      "teleworkExclusive": "È possibile configurare solo uno dei quattro metodi"
     },
     "summary": {
       "weeklyHours": "Ore settimanali",
@@ -2321,21 +2329,28 @@
     },
     "members": {
       "title": "Membri del dipartimento",
-      "none": "Nessun membro assegnato."
+      "none": "Nessun membro assegnato.",
+      "remove": "Rimuovi",
+      "removeConfirm": "Rimuovere {name} dal reparto? Gli orari già pubblicati non cambieranno; le bozze verranno aggiornate cliccando su \"Sincronizza membri\".",
+      "removeError": "Impossibile rimuovere il lavoratore dal reparto",
+      "external": "Lavoratore esterno (protezione dei dati)",
+      "externalShort": "Esterno",
+      "externalError": "Impossibile aggiornare il contrassegno di esterno"
     },
     "confirm": {
       "deleteSchedule": "Eliminare questa pianificazione? Tutte le voci andranno perse. Questa azione non può essere annullata."
     },
     "syncMembers": {
-      "added": "{n} lavoratore/i aggiunto/i alla pianificazione."
+      "result": "Sincronizzazione: {added} aggiunti, {removed} rimossi"
     },
     "telework": {
       "title": "Quota di telelavoro per lavoratore",
       "full": "Telelavoro totale",
       "fullShort": "TL totale",
       "days": "Giorni",
+      "daysPerWeek": "Giorni/settimana",
       "pct": "%",
-      "hint": "Priorità: telelavoro totale > giorni > percentuale > limite del dipartimento. Lascia vuoto per usare il limite del dipartimento.",
+      "hint": "È possibile impostare solo uno dei quattro metodi: totale, giorni/mese, giorni/settimana o percentuale/mese. Lascia vuoto per usare il limite del dipartimento.",
       "saved": "Quota di telelavoro salvata"
     },
     "periodSelector": {

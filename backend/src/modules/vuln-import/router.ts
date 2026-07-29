@@ -1,5 +1,4 @@
 import { Router, Request, Response } from 'express';
-import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ZodError } from 'zod';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
@@ -24,10 +23,14 @@ export interface RagOps {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// 20MB body-size limit specific to the upload route (spec D10) — the
-// project-wide default in index.ts is 2MB, too small for a multi-host scan
-// export; nginx already allows up to 50MB, so this is the app-level ceiling.
-const uploadBodyParser = express.json({ limit: '20mb' });
+// The 20MB body-size ceiling for this route (spec D10) is enforced in
+// index.ts via a path-scoped `express.json({limit:'20mb'})` mounted on
+// '/api/vuln-import/upload' AHEAD of the app-wide `express.json({limit:'2mb'})`.
+// A route-local body parser here would run too late: the global 2MB parser
+// (registered before this router is mounted) would already have rejected —
+// or already parsed — the body by the time Express reached this router's
+// own middleware, since Express dispatches path-matching middleware in
+// registration order. See index.ts around the global express.json() call.
 
 export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Router {
   const router = Router();
@@ -37,7 +40,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   const queueVuln = (ciId: string, vulnKey: string) => { if (rag) void rag.queueEntity('vulnerability', vulnUuid(ciId, vulnKey)); };
 
   // ── POST /upload ────────────────────────────────────────────────────────
-  router.post('/upload', authenticateToken, requireAdmin, uploadBodyParser, async (req: Request, res: Response) => {
+  router.post('/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
     try {
       const body = UploadRequestSchema.parse(req.body);
       const result = await uploadReport(prisma, body, req.user!.email);

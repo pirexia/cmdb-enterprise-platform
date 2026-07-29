@@ -169,6 +169,19 @@ app.use(cors({
   credentials: true,
 }));
 
+// ── Raised body-size limit for the Greenbone upload route (spec D10) ─────────
+// A multi-host Greenbone scan export can exceed the app-wide 2MB JSON limit
+// below; nginx already allows up to 50MB. Express matches middleware in
+// registration order, so a path-scoped parser registered here — ahead of the
+// blanket `express.json({limit:'2mb'})` — gets first crack at this one route
+// and parses (or 413s) against the 20MB ceiling before the global 2MB parser
+// ever sees the request. For every other path this middleware simply does
+// not match, so the global 2MB limit still applies unchanged everywhere
+// else. (Registering the raised limit only inside the vuln-import router
+// does NOT work: that router is mounted after this global parser below, so
+// the global 2MB parser would already have rejected — or already parsed —
+// the body by the time the router's own middleware runs.)
+app.use('/api/vuln-import/upload', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 

@@ -17,7 +17,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, CheckCircle,
   X, Search, ChevronDown, Info, PackageCheck, Trash2,
-  ChevronUp,
+  ChevronUp, ShieldAlert, Flame,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -97,6 +97,25 @@ const BATCH_STATUS_STYLES: Record<string, string> = {
 const ACTIONABLE_SEVERITIES: VulnImportSeverity[] = ["MEDIUM", "HIGH", "CRITICAL"];
 const INFORMATIONAL_SEVERITIES: VulnImportSeverity[] = ["LOW", "INFO"];
 const ATTENTION_CONFIDENCES: (MatchConfidence | null)[] = ["UNMATCHED", "AMBIGUOUS", "FUZZY"];
+
+// CrowdStrike Spotlight `exploitStatus` labels that count as "active
+// exploitation" (task F2, spec D4). This project has no precedent for the
+// frontend importing anything from backend/src/ (checked), so this list is a
+// deliberate, honest duplication of
+// backend/src/modules/vuln-import/classifier.ts `ACTIVE_EXPLOITATION_LABELS`
+// — MUST stay in sync with that constant if it ever changes. Do not widen
+// this to a substring/heuristic match; it must mirror the backend's own
+// premarking decision exactly so the UI badge and the server's INCLUDE
+// premarking are visibly explained by the same signal.
+const ACTIVE_EXPLOITATION_LABELS: ReadonlySet<string> = new Set([
+  "Actively used (critical)",
+  "Easily Accessible (high)",
+]);
+
+function isActivelyExploited(exploitStatus: string | null | undefined): boolean {
+  if (!exploitStatus) return false;
+  return ACTIVE_EXPLOITATION_LABELS.has(exploitStatus);
+}
 
 // ─── Small presentational pieces ─────────────────────────────────────────
 
@@ -243,7 +262,12 @@ function EntryRow({
   const matchedCi = entry.ciId ? ciMap.get(entry.ciId) : null;
   const needsAttention = entry.matchConfidence === "AMBIGUOUS" || entry.matchConfidence === "UNMATCHED";
   const included = entry.decision === "INCLUDE";
-  const hasDetails = !!(entry.summary || entry.solution || entry.family || entry.qod != null);
+  const activelyExploited = isActivelyExploited(entry.exploitStatus);
+  const hasDetails = !!(
+    entry.summary || entry.solution || entry.family || entry.qod != null ||
+    entry.exprtRating || entry.daysOpen != null || entry.products.length > 0 ||
+    entry.cvssVersion || entry.externalStatus
+  );
 
   return (
     <div className={`flex flex-col gap-2 border-b border-slate-100 p-4 last:border-b-0 ${included ? "" : "bg-slate-50/60"}`}>
@@ -253,6 +277,20 @@ function EntryRow({
             <SeverityPill severity={entry.severity} t={t} />
             <ClassificationPill classification={entry.classification} t={t} />
             <ConfidencePill confidence={entry.matchConfidence} t={t} />
+            {entry.cisaKev && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white ring-1 ring-red-700">
+                <ShieldAlert className="h-3 w-3" />
+                {entry.cisaDueDate
+                  ? t("vulnImport.entry.cisaKevWithDue").replace("{date}", new Date(entry.cisaDueDate).toLocaleDateString())
+                  : t("vulnImport.entry.cisaKevLabel")}
+              </span>
+            )}
+            {activelyExploited && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
+                <Flame className="h-3 w-3" />
+                {t("vulnImport.entry.activeExploitationBadge")}
+              </span>
+            )}
             {entry.edited && (
               <span className="inline-flex items-center rounded-none bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-600 ring-1 ring-indigo-100">
                 {t("vulnImport.entry.edited")}
@@ -368,7 +406,59 @@ function EntryRow({
               <p className="whitespace-pre-wrap text-slate-700">{entry.solution}</p>
             </div>
           )}
-          {!entry.summary && !entry.solution && (
+          {(entry.exprtRating || entry.daysOpen != null || entry.cvssVersion) && (
+            <div className="flex flex-wrap gap-4">
+              {entry.exprtRating && (
+                <div>
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {t("vulnImport.entry.exprtRatingLabel")}
+                  </p>
+                  {/* CrowdStrike's own AI-driven rating — a distinct signal
+                      from the CVSS-derived `severity` pill shown in the
+                      collapsed row, deliberately not merged with it. */}
+                  <p className="text-slate-700">{entry.exprtRating}</p>
+                </div>
+              )}
+              {entry.daysOpen != null && (
+                <div>
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {t("vulnImport.entry.daysOpenLabel")}
+                  </p>
+                  <p className="text-slate-700">{entry.daysOpen}</p>
+                </div>
+              )}
+              {entry.cvssVersion && (
+                <div>
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {t("vulnImport.entry.cvssVersionLabel")}
+                  </p>
+                  <p className="text-slate-700">{entry.cvssVersion}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {entry.products.length > 0 && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {t("vulnImport.entry.productsLabel")}
+              </p>
+              <ul className="list-disc space-y-0.5 pl-4 text-slate-700">
+                {entry.products.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {entry.externalStatus && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {t("vulnImport.entry.externalStatusLabel")}
+              </p>
+              <p className="text-slate-700">{entry.externalStatus}</p>
+            </div>
+          )}
+          {!entry.summary && !entry.solution && !entry.exprtRating && entry.daysOpen == null &&
+            entry.products.length === 0 && !entry.cvssVersion && !entry.externalStatus && (
             <p className="italic text-slate-400">{t("vulnImport.entry.noDetails")}</p>
           )}
         </div>

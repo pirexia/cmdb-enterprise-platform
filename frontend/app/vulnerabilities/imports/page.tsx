@@ -286,7 +286,12 @@ export default function VulnImportListPage() {
                       className="border-b border-slate-100 hover:bg-[var(--accent)]/5 transition-colors cursor-pointer"
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium text-slate-800">{b.filename}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-800">{b.filename}</span>
+                          <span className="inline-block px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide rounded-full bg-slate-100 text-slate-500 flex-shrink-0">
+                            {t(`vulnImport.batch.source.${b.source}`)}
+                          </span>
+                        </div>
                         {b.taskName && <div className="text-xs text-slate-400">{b.taskName}</div>}
                       </td>
                       <td className="px-4 py-3 text-slate-500 text-xs">

@@ -328,21 +328,24 @@ export default function IntegrationsPage() {
             icon={<Shield className="h-5 w-5 text-white" />}
             accent="bg-red-700"
             endpoint="/api/integrations/crowdstrike"
-            placeholder={`{
-  "platform": "CrowdStrike Falcon",
-  "export_date": "2026-03-13T19:00:00Z",
-  "devices": [
-    {
-      "hostname": "PROD-SRV-01",
-      "agent_id": "a1b2c3d4e5f6",
-      "agent_version": "7.14.17706.0",
-      "status": "normal",
-      "prevention_policy": "active",
-      "last_seen": "2026-03-13T18:55:00Z",
-      "detections": []
-    }
-  ]
-}`}
+            placeholder={`[
+  {
+    "hostname": "SRV-MYGESTR01D",
+    "local_ip": "10.100.12.61",
+    "vulnerability_id": "CVE-2025-41244",
+    "cve_id": "CVE-2025-41244",
+    "base_score": "7.8 v3.x",
+    "exprt_rating": "Critical",
+    "severity": "High",
+    "exploit_status": { "value": 0, "label": "Actively used (critical)" },
+    "cisa_info": { "is_cisa_kev": true, "due_date": "2025-11-20T00:00:00Z" },
+    "products": [
+      { "product_name": "Windows Server 2019", "product_name_version": "Windows Server 2019 1809", "sub_status": "open" }
+    ],
+    "status": "Reopened",
+    "days_open": 301
+  }
+]`}
           />
         </div>
       </div>

@@ -2408,7 +2408,7 @@
     },
     "classification": {
       "NUEVA": "Nuova",
-      "EXISTENTE_PENDIENTE": "Esistente, in attesa",
+      "EXISTENTE_PENDIENTE": "Esiste già su questo CI",
       "REAPARECIDA": "Riapparsa"
     },
     "matchConfidence": {
@@ -2422,8 +2422,8 @@
       "MANUAL": "Assegnato manualmente"
     },
     "decision": {
-      "INCLUDE": "Includi",
-      "EXCLUDE": "Escludi"
+      "INCLUDE": "Verrà importato",
+      "EXCLUDE": "Non verrà importato"
     },
     "actions": {
       "upload": "Carica report",
@@ -2500,7 +2500,8 @@
       "solutionLabel": "Rimedio",
       "familyLabel": "Famiglia",
       "qodLabel": "QoD",
-      "noDetails": "Nessuna descrizione disponibile"
+      "noDetails": "Nessuna descrizione disponibile",
+      "existingPendingHint": "Non verrà reimportato; verranno aggiornati solo i suoi dati"
     },
     "bulk": {
       "includeVisible": "Includi visibili",

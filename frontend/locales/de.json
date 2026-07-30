@@ -2408,7 +2408,7 @@
     },
     "classification": {
       "NUEVA": "Neu",
-      "EXISTENTE_PENDIENTE": "Vorhanden, ausstehend",
+      "EXISTENTE_PENDIENTE": "Existiert bereits auf diesem CI",
       "REAPARECIDA": "Wieder aufgetreten"
     },
     "matchConfidence": {
@@ -2422,8 +2422,8 @@
       "MANUAL": "Manuell zugewiesen"
     },
     "decision": {
-      "INCLUDE": "Einschließen",
-      "EXCLUDE": "Ausschließen"
+      "INCLUDE": "Wird importiert",
+      "EXCLUDE": "Wird nicht importiert"
     },
     "actions": {
       "upload": "Bericht hochladen",
@@ -2500,7 +2500,8 @@
       "solutionLabel": "Abhilfe",
       "familyLabel": "Familie",
       "qodLabel": "QoD",
-      "noDetails": "Keine Beschreibung verfügbar"
+      "noDetails": "Keine Beschreibung verfügbar",
+      "existingPendingHint": "Wird nicht erneut importiert; nur die Daten werden aktualisiert"
     },
     "bulk": {
       "includeVisible": "Sichtbare einschließen",

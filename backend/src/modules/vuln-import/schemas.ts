@@ -111,3 +111,101 @@ export const BulkDecisionSchema = z.object({
   decision: DecisionEnum,
 }).strict();
 export type BulkDecisionBody = z.infer<typeof BulkDecisionSchema>;
+
+// ─── B2 — CrowdStrike Spotlight real-format schemas (v3.6.1, spec §1 B1/B2) ─
+//
+// Shapes verified directly against the real fixture
+// (docs/mocks/crowdstrike_SRV-MYGESTR01D.json, 841 records, 1 host). The
+// top level is a FLAT ARRAY, unlike Greenbone's object-with-key shape — the
+// old/invented mock (crowdstrike_sample.json) is a `{platform, export_date,
+// devices: [...]}` object describing agent/EDR status, a different domain
+// entirely; see crowdstrikeParser.ts's `UnsupportedCrowdStrikeFormatError`
+// for the rejection of that shape.
+
+/** `products[]` entry — verified as an array of objects (NOT strings) in
+ *  the real export. `product_name_version` is the more specific field
+ *  (e.g. "JRE 1.8.0"); `product_name` alone (e.g. "JRE") is the fallback
+ *  when the version field happens to be empty. */
+export const CrowdStrikeProductSchema = z.object({
+  product_name: z.string(),
+  product_name_version: z.string(),
+  sub_status: z.string().optional(),
+}).passthrough();
+
+/** `recommended_remediations[]` entry — only `detail` is reliably populated
+ *  free text in the real fixture; the other string fields are frequently
+ *  `""`. `extra_steps` is `null` on every record observed. */
+export const CrowdStrikeRemediationSchema = z.object({
+  remediation: z.string().optional(),
+  detail: z.string(),
+  link: z.string().optional(),
+  vendor_advisory_url: z.string().optional(),
+  extra_steps: z.string().nullable().optional(),
+}).passthrough();
+
+/** `exploit_status` — an OBJECT in the real export (`{value, label}`), not
+ *  a plain string. `ParsedVulnEntry.exploitStatus` extracts `.label` only. */
+export const CrowdStrikeExploitStatusSchema = z.object({
+  value: z.number().optional(),
+  label: z.string(),
+}).passthrough();
+
+/** `cisa_info` — verified `due_date` is `""` (empty string), never
+ *  null/absent, on non-KEV records. The parser coerces `""` to `undefined`
+ *  rather than storing it as if it were a real date. */
+export const CrowdStrikeCisaInfoSchema = z.object({
+  is_cisa_kev: z.boolean(),
+  due_date: z.string().optional().default(''),
+}).passthrough();
+
+/** One raw CrowdStrike Spotlight record. CrowdStrike emits ONE RECORD PER
+ *  AFFECTED PRODUCT for the same vulnerability — `crowdstrikeParser.ts`
+ *  merges records sharing the same `vulnerability_id` into a single
+ *  `ParsedVulnEntry` (spec D2: identity = `vulnerability_id` alone).
+ *
+ *  `products` and `cve_id` are optional: verified in the real fixture that
+ *  `Reopened`-status records omit `products` entirely (not `[]`), and
+ *  exactly 1/841 records (`CS-V26-A757135`) has no `cve_id` at all — never
+ *  synthesize a fake CVE for that case. */
+export const CrowdStrikeVulnerabilitySchema = z.object({
+  hostname: z.string(),
+  local_ip: z.string(),
+  os_version: z.string().optional(),
+  os_build: z.string().optional(),
+  vulnerability_id: z.string(),
+  cve_id: z.string().optional(),
+  /** Rare (3/841 in the real fixture) — a common name, e.g. "Terrapin". */
+  cve_name: z.string().optional(),
+  cve_published_date: z.string().optional(),
+  // Glued CVSS score + spec version, e.g. "7.8 v3.x" — verified as this
+  // exact "N.N vN.x" shape across all 841 real records. Split by the
+  // parser into `severityScore` (number) and `cvssVersion` (string).
+  base_score: z.string(),
+  /** CrowdStrike's own AI-driven severity rating — a separate signal from
+   *  CVSS-derived `severity`, never conflated with it (spec D-note). */
+  exprt_rating: z.string().optional(),
+  // CVSS-derived severity band. Present in the data but NOT used directly
+  // by the parser — severity is derived from `base_score` via the shared
+  // `scoreToSeverity()` so both sources' severity bands mean the same
+  // thing, matching Greenbone's convention.
+  severity: z.string().optional(),
+  exploit_status: CrowdStrikeExploitStatusSchema.optional(),
+  cisa_info: CrowdStrikeCisaInfoSchema.optional(),
+  recommended_remediations: z.array(CrowdStrikeRemediationSchema).optional().default([]),
+  products: z.array(CrowdStrikeProductSchema).optional().default([]),
+  // "Open" | "Reopened" in the real fixture, tolerated as a free string —
+  // this is the SOURCE SYSTEM's own status word, distinct from this app's
+  // classification (maps to `ParsedVulnEntry.externalStatus`).
+  status: z.string().optional(),
+  days_open: z.number().optional(),
+  vulnerability_confidence: z.string().optional(),
+}).passthrough();
+
+// Top-level shape: a flat array at the root (NOT an object with a
+// `devices`/`results` key — that's the old/invented mock's shape).
+export const CrowdStrikeReportSchema = z.array(CrowdStrikeVulnerabilitySchema);
+
+export type CrowdStrikeProduct = z.infer<typeof CrowdStrikeProductSchema>;
+export type CrowdStrikeRemediation = z.infer<typeof CrowdStrikeRemediationSchema>;
+export type CrowdStrikeVulnerability = z.infer<typeof CrowdStrikeVulnerabilitySchema>;
+export type CrowdStrikeReport = z.infer<typeof CrowdStrikeReportSchema>;

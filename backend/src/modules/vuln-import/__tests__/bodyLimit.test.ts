@@ -39,6 +39,7 @@ import supertest from 'supertest';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 import { createVulnImportRouter } from '../router.js';
+import { createIntegrationsRouter } from '../../integrations/router.js';
 
 const TEST_SECRET = 'test-secret-32-chars-minimum-len!!';
 const prisma = new PrismaClient() as any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -62,9 +63,11 @@ const ADMIN_TOKEN = jwt.sign(
 function buildAppMirroringIndexTs() {
   const app = express();
   app.use('/api/vuln-import/upload', express.json({ limit: '20mb' }));
+  app.use('/api/integrations/crowdstrike', express.json({ limit: '20mb' }));
   app.use(express.json({ limit: '2mb' }));
   app.post('/api/other', (req, res) => res.status(200).json({ ok: true, size: JSON.stringify(req.body).length }));
   app.use('/api/vuln-import', createVulnImportRouter(prisma));
+  app.use('/api/integrations', createIntegrationsRouter(prisma, () => {}));
   return supertest(app);
 }
 
@@ -119,6 +122,62 @@ describe('POST /api/vuln-import/upload body-size limit (index.ts ordering)', () 
     const payload = { entryIds: ['x'], decision: 'INCLUDE', _padding: 'A'.repeat(3 * 1024 * 1024) };
     const res = await buildAppMirroringIndexTs()
       .post('/api/vuln-import/batches/cccccccc-dddd-eeee-ffff-000000000000/entries/bulk-decision')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
+      .send(payload);
+
+    expect(res.status).toBe(413);
+  });
+});
+
+/**
+ * B4 (v3.6.1) — same ordering fix, same test approach, for
+ * POST /api/integrations/crowdstrike: a real CrowdStrike Spotlight export
+ * is ~686KB for a SINGLE host (docs/mocks/crowdstrike_SRV-MYGESTR01D.json);
+ * a multi-host export easily exceeds the app-wide 2MB JSON limit. See
+ * index.ts's path-scoped `express.json({limit:'20mb'})` on
+ * '/api/integrations/crowdstrike', registered ahead of the blanket 2MB
+ * parser exactly like the vuln-import upload route above.
+ */
+function buildOversizedSpotlightPayload(approxBytes: number) {
+  return [{ vulnerability_id: 'padding', local_ip: '1.2.3.4', hostname: 'h', base_score: '7.8 v3.x', _padding: 'A'.repeat(approxBytes) }];
+}
+
+describe('POST /api/integrations/crowdstrike body-size limit (index.ts ordering)', () => {
+  it('does NOT reject a body between 2MB and 20MB with 413 (proves the 20MB ceiling is live)', async () => {
+    const payload = buildOversizedSpotlightPayload(4 * 1024 * 1024); // ~4MB, > 2MB global default
+    const res = await buildAppMirroringIndexTs()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
+      .send(payload);
+
+    // May still fail downstream (matching/classification/schema) — that's
+    // fine; we're only proving the body parser doesn't 413 it.
+    expect(res.status).not.toBe(413);
+  });
+
+  it('still rejects a body over the 20MB route ceiling with 413', async () => {
+    const payload = buildOversizedSpotlightPayload(21 * 1024 * 1024); // > 20MB
+    const res = await buildAppMirroringIndexTs()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
+      .send(payload);
+
+    expect(res.status).toBe(413);
+  });
+
+  it('leaves the global 2MB limit intact for other routes (does not raise the app-wide ceiling)', async () => {
+    const payload = buildOversizedPayload(3 * 1024 * 1024); // > 2MB
+    const res = await buildAppMirroringIndexTs()
+      .post('/api/other')
+      .send(payload);
+
+    expect(res.status).toBe(413);
+  });
+
+  it('still enforces the 2MB limit on the OTHER crowdstrike-adjacent route (/api/integrations/greenbone)', async () => {
+    const payload = { allHostSubreportEntries: [], _padding: 'A'.repeat(3 * 1024 * 1024) };
+    const res = await buildAppMirroringIndexTs()
+      .post('/api/integrations/greenbone')
       .set('Authorization', `Bearer ${ADMIN_TOKEN}`)
       .send(payload);
 

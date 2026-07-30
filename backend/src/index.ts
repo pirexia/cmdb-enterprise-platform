@@ -182,6 +182,13 @@ app.use(cors({
 // the global 2MB parser would already have rejected — or already parsed —
 // the body by the time the router's own middleware runs.)
 app.use('/api/vuln-import/upload', express.json({ limit: '20mb' }));
+// Same ceiling, same reasoning, for POST /api/integrations/crowdstrike
+// (v3.6.1): a real CrowdStrike Spotlight export is ~686KB for a SINGLE
+// host (docs/mocks/crowdstrike_SRV-MYGESTR01D.json) — a multi-host export
+// easily exceeds the 2MB global limit. Must stay registered here, ahead of
+// the blanket parser below, for the identical reason as the vuln-import
+// route above.
+app.use('/api/integrations/crowdstrike', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 

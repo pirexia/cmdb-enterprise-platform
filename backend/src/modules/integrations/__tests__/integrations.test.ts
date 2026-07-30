@@ -100,6 +100,17 @@ const CS_BODY = {
   }],
 };
 
+// Real CrowdStrike Spotlight export shape (v3.6.1 B4) — a flat top-level
+// array of vulnerability records, structurally nothing like CS_BODY above
+// (the old/invented device mock). Minimal but schema-valid record.
+const CS_SPOTLIGHT_BODY = [{
+  hostname: 'workstation01', local_ip: '10.0.0.9', vulnerability_id: 'CVE-2024-9999',
+  cve_id: 'CVE-2024-9999', base_score: '7.8 v3.x', exploit_status: { label: 'Unproven' },
+  cisa_info: { is_cisa_kev: false, due_date: '' }, status: 'Open', days_open: 5,
+  products: [{ product_name: 'JRE', product_name_version: 'JRE 1.8.0' }],
+  recommended_remediations: [{ detail: 'Patch it' }],
+}];
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Default: auth check succeeds, all writes succeed
@@ -272,6 +283,112 @@ describe('POST /api/integrations/crowdstrike — processing', () => {
     expect(res.status).toBe(200);
     expect(res.body.totalMatched).toBe(0);
     expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // only audit log
+  });
+});
+
+// ── CrowdStrike Spotlight — format autodetection (B4, v3.6.1, spec D1) ─────
+//
+// The SAME route now also accepts a real CrowdStrike Spotlight vulnerability
+// export (a flat top-level array) and delegates to the vuln-import staging
+// pipeline — mirroring exactly how /api/integrations/greenbone delegates to
+// uploadReport(). The device/agent-status branch above is completely
+// unaffected (proved by the untouched tests above still passing unmodified).
+
+describe('POST /api/integrations/crowdstrike — Spotlight format autodetection (B4)', () => {
+  it('a flat-array Spotlight body creates a PENDING staging batch, source "crowdstrike"', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])                          // auth
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost (EXACT_IP)
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send(CS_SPOTLIGHT_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('CrowdStrike Spotlight report processed via staging');
+    expect(res.body.batchId).toBe('cccccccc-dddd-eeee-ffff-000000000000');
+    expect(res.body.summary).toMatchObject({ totalEntries: 1, matched: 1, nueva: 1 });
+    expect(mockBatchCreate).toHaveBeenCalledTimes(1);
+    expect(mockBatchCreate.mock.calls[0][0].data.source).toBe('crowdstrike');
+  });
+
+  it('a flat-array Spotlight body wrapped in the {filename?, report} envelope is also accepted', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }])
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ filename: 'spotlight-export.json', report: CS_SPOTLIGHT_BODY });
+
+    expect(res.status).toBe(200);
+    expect(res.body.batchId).toBe('cccccccc-dddd-eeee-ffff-000000000000');
+  });
+
+  it('device/agent-status body ({devices: [...]}) still takes the OLD, unchanged path — not routed to staging', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ id: CI_ID, name: 'workstation01' }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send(CS_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('CrowdStrike report processed'); // old message, not the staging one
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  it('an unrecognized shape (neither devices[] nor a flat array) is rejected with 400 naming both formats', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ someOtherKey: 'value' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/devices/);
+    expect(res.body.error).toMatch(/Spotlight/);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  // Regression guard: a legacy Greenbone `{results: [...]}` mock body posted
+  // to the WRONG endpoint must fail sensibly (400), never crash (500) or
+  // silently succeed.
+  it('a legacy Greenbone results[]-shaped body (wrong format, wrong endpoint) 400s, does not crash', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({
+        results: [{
+          host: { hostname: 'server01' },
+          vulnerabilities: [{ cve: 'CVE-2024-0001', severity: 'high', name: 'Test Vuln', description: 'A test vuln', cvss_score: 7.5 }],
+        }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  it('RBAC: 401 without token, 403 for AUDITOR, on the Spotlight-shaped body too', async () => {
+    const res401 = await buildApp().post('/api/integrations/crowdstrike').send(CS_SPOTLIGHT_BODY);
+    expect(res401.status).toBe(401);
+
+    const res403 = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('AUDITOR')}`)
+      .send(CS_SPOTLIGHT_BODY);
+    expect(res403.status).toBe(403);
   });
 });
 

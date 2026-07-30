@@ -5,6 +5,7 @@ import { createAuthenticateToken } from '../../shared/middleware/authenticate.js
 import { requireSecurityRead, requireSecurityWrite } from '../../shared/middleware/requireSecurity.js';
 import { vulnUuid } from '../../services/entitySerializer.js';
 import { UnsupportedGreenboneFormatError } from './parser.js';
+import { UnsupportedCrowdStrikeFormatError } from './crowdstrikeParser.js';
 import { UploadRequestSchema, PatchEntrySchema, BulkDecisionSchema } from './schemas.js';
 import {
   uploadReport, listBatches, getBatchDetail, patchEntry, bulkDecision, discardBatch, acceptBatch,
@@ -45,12 +46,16 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
       const result = await uploadReport(prisma, body, req.user!.email);
       res.status(201).json(result);
     } catch (err) {
-      if (err instanceof UnsupportedGreenboneFormatError) {
+      // This generic endpoint auto-detects Greenbone vs. CrowdStrike
+      // Spotlight from the report's top-level shape (see service.ts's
+      // `detectSource`) — either format's own "unsupported/legacy shape"
+      // error is a caller mistake, mapped to 400 here.
+      if (err instanceof UnsupportedGreenboneFormatError || err instanceof UnsupportedCrowdStrikeFormatError) {
         res.status(400).json({ error: err.message });
         return;
       }
       if (err instanceof ZodError) {
-        res.status(400).json({ error: 'Invalid Greenbone report', details: err.issues });
+        res.status(400).json({ error: 'Invalid vulnerability report', details: err.issues });
         return;
       }
       console.error('[POST /api/vuln-import/upload] Error:', err);

@@ -247,6 +247,86 @@ describe('POST /api/vuln-import/upload', () => {
   });
 });
 
+// ── POST /upload — CrowdStrike Spotlight (B4, v3.6.1: source auto-detection) ─
+//
+// The generic /upload endpoint accepts EITHER format without the caller
+// declaring which — `uploadReport()` structurally auto-detects a flat
+// top-level array as CrowdStrike Spotlight (service.ts's `detectSource`).
+
+function buildCrowdStrikeRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    hostname: 'workstation01', local_ip: '10.0.0.9', vulnerability_id: 'CVE-2024-9999',
+    cve_id: 'CVE-2024-9999', base_score: '7.8 v3.x', exploit_status: { label: 'Unproven' },
+    cisa_info: { is_cisa_kev: false, due_date: '' }, status: 'Open', days_open: 5,
+    products: [{ product_name: 'JRE', product_name_version: 'JRE 1.8.0' }],
+    recommended_remediations: [{ detail: 'Patch it' }],
+    ...overrides,
+  };
+}
+
+describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection', () => {
+  it('201: a flat-array body is auto-detected as CrowdStrike, persists source "crowdstrike" with the 8 CrowdStrike-specific fields threaded through', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);                       // getCiVulnerabilities
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: [buildCrowdStrikeRecord()] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary).toMatchObject({ totalEntries: 1, matched: 1, nueva: 1 });
+
+    const createArg = mockBatchCreate.mock.calls[0][0];
+    expect(createArg.data.source).toBe('crowdstrike');
+    expect(createArg.data.entries.create[0]).toMatchObject({
+      vulnKey: 'CVE-2024-9999',
+      products: ['JRE 1.8.0'],
+      exprtRating: null,
+      cisaKev: false,
+      exploitStatus: 'Unproven',
+      daysOpen: 5,
+      externalStatus: 'Open',
+      cvssVersion: 'v3.x',
+    });
+  });
+
+  it('400: the old/invented device mock ({devices: [...]}, not a flat array) fails validation rather than silently succeeding', async () => {
+    // detectSource() distinguishes solely on "is the report a flat array" —
+    // this object-shaped body is attempted as Greenbone (like any other
+    // non-array report) and rejected by Greenbone's own Zod schema, since
+    // it has neither `allHostSubreportEntries` nor a recognizable Greenbone
+    // shape. It must NOT be silently accepted with 0 entries either way.
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: { platform: 'falcon', devices: [] } });
+
+    expect(res.status).toBe(400);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  it('201: an empty flat array is a structurally valid (if empty) CrowdStrike export, not rejected', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: [] });
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary.totalEntries).toBe(0);
+    expect(mockBatchCreate).toHaveBeenCalledTimes(1);
+    expect(mockBatchCreate.mock.calls[0][0].data.source).toBe('crowdstrike');
+  });
+});
+
 // ── GET /batches ─────────────────────────────────────────────────────────────
 
 describe('GET /api/vuln-import/batches', () => {
@@ -470,14 +550,23 @@ function buildAcceptFixture(opts: {
   failAudit: boolean;
   initialVulns?: unknown[];
   entry?: Record<string, unknown>;
+  batchSource?: string;
 }) {
   const committed: StagedState = { vulns: opts.initialVulns ? [...opts.initialVulns] : [], auditActions: [] };
-  const batchRow = { id: BATCH_ID, status: 'PENDING' };
-  const entryRow = opts.entry ?? {
+  const batchRow = { id: BATCH_ID, status: 'PENDING', source: opts.batchSource ?? 'greenbone' };
+  // CrowdStrike Spotlight fields (v3.6.1) — real VulnImportEntry rows always
+  // carry these (defaults products:[]/cisaKev:false/others null), so the
+  // fixture mirrors that shape even for a Greenbone-classification entry.
+  const CROWDSTRIKE_FIELD_DEFAULTS = {
+    products: [], exprtRating: null, cisaKev: false, cisaDueDate: null,
+    exploitStatus: null, daysOpen: null, externalStatus: null, cvssVersion: null,
+  };
+  const entryRow = opts.entry ? { ...CROWDSTRIKE_FIELD_DEFAULTS, ...opts.entry } : {
     id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
     classification: 'NUEVA', vulnKey: 'oid1@443', cves: ['CVE-2024-0001'], oid: 'oid1', port: '443',
     severity: 'HIGH', severityScore: 7.5, name: 'Test Vuln', summary: 'A test vulnerability',
     solution: null, family: null, qod: null, epssScore: null,
+    ...CROWDSTRIKE_FIELD_DEFAULTS,
   };
 
   const prisma = {
@@ -553,5 +642,95 @@ describe('acceptBatch — transactional atomicity', () => {
     expect(stored.reopenedAt).toBeTruthy();
     expect(typeof stored.reopenedAt).toBe('string');
     expect(committed.auditActions).toEqual(expect.arrayContaining(['VULN_REOPENED', 'VULN_IMPORT_ACCEPT']));
+  });
+
+  // ── B4 — CrowdStrike Spotlight fields carried through accept ─────────────
+
+  it('NUEVA (CrowdStrike-sourced): carries products/exprtRating/cisaKev/cisaDueDate/exploitStatus/daysOpen/externalStatus/cvssVersion into the stored Vulnerability, with source "crowdstrike"', async () => {
+    const entry = {
+      id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
+      classification: 'NUEVA', vulnKey: 'CVE-2024-9999', cves: ['CVE-2024-9999'], oid: null, port: null,
+      severity: 'HIGH', severityScore: 7.8, name: 'Test Vuln', summary: 'A test vulnerability',
+      solution: null, family: null, qod: null, epssScore: null,
+      products: ['JRE 1.8.0', 'JDK 11'], exprtRating: 'High', cisaKev: true,
+      cisaDueDate: new Date('2026-08-15T00:00:00.000Z'), exploitStatus: 'Actively used (critical)',
+      daysOpen: 12, externalStatus: 'Open', cvssVersion: 'v3.x',
+    };
+    const { prisma, committed } = buildAcceptFixture({ failAudit: false, entry, batchSource: 'crowdstrike' });
+
+    const result = await acceptBatch(prisma as any, BATCH_ID, 'admin@test.local'); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    expect(result.summary.newCount).toBe(1);
+    const stored = committed.vulns[0] as Record<string, unknown>;
+    expect(stored.source).toBe('crowdstrike');
+    expect(stored.products).toEqual(['JRE 1.8.0', 'JDK 11']);
+    expect(stored.exprtRating).toBe('High');
+    expect(stored.cisaKev).toBe(true);
+    expect(stored.cisaDueDate).toBe('2026-08-15T00:00:00.000Z');
+    expect(stored.exploitStatus).toBe('Actively used (critical)');
+    expect(stored.daysOpen).toBe(12);
+    expect(stored.externalStatus).toBe('Open');
+    expect(stored.cvssVersion).toBe('v3.x');
+  });
+
+  it('REAPARECIDA (CrowdStrike-sourced, externalStatus "Reopened"): carries the 8 CrowdStrike fields into the reopened stored Vulnerability', async () => {
+    const existing = {
+      key: 'CVE-2024-9999', cve: 'CVE-2024-9999', severity: 'MEDIUM', description: 'old', status: 'RESUELTO',
+      importedAt: '2026-01-01T00:00:00.000Z', resolvedAt: '2026-02-01T00:00:00.000Z',
+      products: ['Old Product 1.0'], cisaKev: false,
+    };
+    const entry = {
+      id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
+      classification: 'REAPARECIDA', vulnKey: 'CVE-2024-9999', cves: ['CVE-2024-9999'], oid: null, port: null,
+      severity: 'CRITICAL', severityScore: 9.1, name: 'Test Vuln', summary: 'reappeared',
+      solution: null, family: null, qod: null, epssScore: null,
+      products: ['New Product 2.0'], exprtRating: 'Critical', cisaKev: true,
+      cisaDueDate: new Date('2026-09-01T00:00:00.000Z'), exploitStatus: 'Easily Accessible (high)',
+      daysOpen: 3, externalStatus: 'Reopened', cvssVersion: 'v3.x',
+    };
+    const { prisma, committed } = buildAcceptFixture({
+      failAudit: false, initialVulns: [existing], entry, batchSource: 'crowdstrike',
+    });
+
+    const result = await acceptBatch(prisma as any, BATCH_ID, 'admin@test.local'); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    expect(result.summary.reopenedCount).toBe(1);
+    const stored = committed.vulns[0] as Record<string, unknown>;
+    expect(stored.status).toBe('REABIERTA');
+    expect(stored.products).toEqual(['New Product 2.0']);
+    expect(stored.exprtRating).toBe('Critical');
+    expect(stored.cisaKev).toBe(true);
+    expect(stored.cisaDueDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(stored.exploitStatus).toBe('Easily Accessible (high)');
+    expect(stored.daysOpen).toBe(3);
+    expect(stored.externalStatus).toBe('Reopened');
+    expect(stored.cvssVersion).toBe('v3.x');
+  });
+
+  it('REAPARECIDA: preserves the previously-stored CrowdStrike fields when the reopening entry does not carry them (e.g. a Greenbone reimport)', async () => {
+    const existing = {
+      key: 'oid1@443', cve: 'CVE-2024-0001', severity: 'HIGH', description: 'old', status: 'RESUELTO',
+      importedAt: '2026-01-01T00:00:00.000Z', resolvedAt: '2026-02-01T00:00:00.000Z',
+      products: ['Preserved Product 1.0'], exprtRating: 'High', cisaDueDate: '2026-08-15T00:00:00.000Z',
+      exploitStatus: 'Unproven', daysOpen: 20, externalStatus: 'Open', cvssVersion: 'v3.x',
+    };
+    const entry = {
+      id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
+      classification: 'REAPARECIDA', vulnKey: 'oid1@443', cves: ['CVE-2024-0001'], oid: 'oid1', port: '443',
+      severity: 'CRITICAL', severityScore: 9.5, name: 'Test Vuln', summary: 'reappeared',
+      solution: null, family: null, qod: null, epssScore: null,
+    };
+    const { prisma, committed } = buildAcceptFixture({ failAudit: false, initialVulns: [existing], entry });
+
+    await acceptBatch(prisma as any, BATCH_ID, 'admin@test.local'); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    const stored = committed.vulns[0] as Record<string, unknown>;
+    expect(stored.products).toEqual(['Preserved Product 1.0']);
+    expect(stored.exprtRating).toBe('High');
+    expect(stored.cisaDueDate).toBe('2026-08-15T00:00:00.000Z');
+    expect(stored.exploitStatus).toBe('Unproven');
+    expect(stored.daysOpen).toBe(20);
+    expect(stored.externalStatus).toBe('Open');
+    expect(stored.cvssVersion).toBe('v3.x');
   });
 });

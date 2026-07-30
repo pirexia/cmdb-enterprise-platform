@@ -1,6 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import type { Vulnerability, VulnSeverity } from '../integrations/types.js';
-import { parseGreenboneReport } from './parser.js';
+import { parseGreenboneReport, type ParsedGreenboneScan } from './parser.js';
+import { parseCrowdStrikeReport } from './crowdstrikeParser.js';
 import { matchHost, type MatchResult } from './matcher.js';
 import { classifyVulnerability } from './classifier.js';
 import { vulnImportAudit } from './audit.js';
@@ -64,19 +65,45 @@ function safeDate(value: string | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** The two report sources this module can stage. */
+export type VulnImportSource = 'greenbone' | 'crowdstrike';
+
 /**
- * Parses, matches, and classifies a raw Greenbone report, then persists the
- * resulting batch + entries as PENDING in one transaction (+ audit row).
+ * Structural auto-detection used by the generic `/api/vuln-import/upload`
+ * endpoint, which accepts either format without the caller saying which:
+ * CrowdStrike Spotlight's real export is always a flat top-level array;
+ * Greenbone's is always a top-level object (`{allHostSubreportEntries: […]}`).
+ * Callers that have ALREADY determined the source structurally (e.g.
+ * `/api/integrations/crowdstrike`'s format-branching, see integrations
+ * router.ts) should pass `source` explicitly instead of relying on this.
+ */
+function detectSource(report: unknown): VulnImportSource {
+  return Array.isArray(report) ? 'crowdstrike' : 'greenbone';
+}
+
+/**
+ * Parses, matches, and classifies a raw vulnerability report (Greenbone or
+ * CrowdStrike Spotlight), then persists the resulting batch + entries as
+ * PENDING in one transaction (+ audit row).
  *
- * Throws `UnsupportedGreenboneFormatError` or a Zod `ZodError` on a
- * structurally invalid report — router maps both to 400.
+ * `source` selects the parser explicitly. When omitted, it is
+ * structurally auto-detected from `body.report` (see `detectSource`) — this
+ * is what lets `POST /api/vuln-import/upload` accept either format without
+ * the caller declaring it.
+ *
+ * Throws `UnsupportedGreenboneFormatError`/`UnsupportedCrowdStrikeFormatError`
+ * or a Zod `ZodError` on a structurally invalid report — router maps all of
+ * these to 400.
  */
 export async function uploadReport(
   prisma: PrismaClient,
   body: UploadRequestBody,
   userEmail: string,
+  source: VulnImportSource = detectSource(body.report),
 ): Promise<UploadResult> {
-  const parsed = parseGreenboneReport(body.report);
+  const parsed = source === 'crowdstrike'
+    ? parseCrowdStrikeReport(body.report)
+    : parseGreenboneReport(body.report);
 
   // Group entries by host so the matching cascade runs once per distinct
   // host, not once per vulnerability (per spec — matching is a host-level
@@ -125,7 +152,17 @@ export async function uploadReport(
       storedVulns = storedVulnsByCi.get(ciId)!;
     }
 
-    const classification = classifyVulnerability({ key: entry.key, severity: entry.severity }, storedVulns);
+    // externalStatus/cisaKev/exploitStatus are only ever set on
+    // CrowdStrike-sourced entries — Greenbone entries simply leave them
+    // undefined, so passing them through unconditionally for both sources
+    // is safe and avoids branching on `source` here.
+    const classification = classifyVulnerability({
+      key: entry.key,
+      severity: entry.severity,
+      externalStatus: entry.externalStatus,
+      cisaKev: entry.cisaKev,
+      exploitStatus: entry.exploitStatus,
+    }, storedVulns);
 
     switch (classification.classification) {
       case 'NUEVA': summary.nueva++; break;
@@ -156,26 +193,55 @@ export async function uploadReport(
       existingStatus: classification.existingStatus,
       classification: classification.classification,
       decision: classification.decision,
+      // CrowdStrike Spotlight fields (v3.6.1) — undefined/absent on
+      // Greenbone-sourced entries, normalized to their column defaults here
+      // exactly like the Greenbone-specific fields above.
+      products: entry.products ?? [],
+      exprtRating: entry.exprtRating ?? null,
+      cisaKev: entry.cisaKev ?? false,
+      cisaDueDate: safeDate(entry.cisaDueDate),
+      exploitStatus: entry.exploitStatus ?? null,
+      daysOpen: entry.daysOpen ?? null,
+      externalStatus: entry.externalStatus ?? null,
+      cvssVersion: entry.cvssVersion ?? null,
     });
   }
   summary.totalEntries = newEntries.length;
 
-  const filename = body.filename?.trim() || `greenbone-import-${Date.now()}.json`;
+  const filename = body.filename?.trim() || `${source}-import-${Date.now()}.json`;
 
   // rawMeta preserves top-level scan metadata for later display, minus the
   // (potentially large) per-host vulnerability payload already normalized
-  // into entries.
-  const rawInput = body.report as Record<string, unknown>;
-  const { allHostSubreportEntries: _omit, ...rawMeta } = rawInput ?? {};
-  void _omit;
+  // into entries. Greenbone-only: CrowdStrike's flat export carries no
+  // scan-level metadata (see crowdstrikeParser.ts's `ParsedCrowdStrikeScan`
+  // doc comment), and `body.report` there is the flat array itself — naively
+  // spreading it as `rawMeta` would produce a numeric-keyed object mirroring
+  // the entire (potentially huge) entry list, which is exactly what rawMeta
+  // is meant to exclude.
+  let rawMeta: Record<string, unknown> | undefined;
+  if (source === 'greenbone') {
+    const rawInput = body.report as Record<string, unknown>;
+    const { allHostSubreportEntries: _omit, ...meta } = rawInput ?? {};
+    void _omit;
+    rawMeta = meta;
+  }
+
+  // Scan-level metadata (taskName/greenboneTaskId/scanStart/scanEnd) only
+  // exists on the Greenbone side of the `parsed` union — CrowdStrike's flat
+  // export carries none of it (see `ParsedCrowdStrikeScan`'s doc comment).
+  const greenboneMeta = source === 'greenbone' ? (parsed as ParsedGreenboneScan) : null;
+  const taskName = greenboneMeta?.taskName ?? null;
+  const greenboneTaskId = greenboneMeta?.greenboneTaskId ?? null;
+  const scanStart = greenboneMeta ? safeDate(greenboneMeta.scanStart) : null;
+  const scanEnd = greenboneMeta ? safeDate(greenboneMeta.scanEnd) : null;
 
   const batchInput: NewBatchInput = {
-    source: 'greenbone',
+    source,
     filename,
-    taskName: parsed.taskName ?? null,
-    greenboneTaskId: parsed.greenboneTaskId ?? null,
-    scanStart: safeDate(parsed.scanStart),
-    scanEnd: safeDate(parsed.scanEnd),
+    taskName,
+    greenboneTaskId,
+    scanStart,
+    scanEnd,
     uploadedBy: userEmail,
     rawMeta,
     entries: newEntries,
@@ -302,7 +368,10 @@ function buildNewVulnerability(entry: {
   vulnKey: string; cves: string[]; oid: string | null; port: string | null; severity: string;
   summary: string | null; name: string; severityScore: number; family: string | null;
   solution: string | null; qod: number | null; epssScore: number | null;
-}, now: string): Vulnerability {
+  products: string[]; exprtRating: string | null; cisaKev: boolean; cisaDueDate: Date | null;
+  exploitStatus: string | null; daysOpen: number | null; externalStatus: string | null;
+  cvssVersion: string | null;
+}, now: string, source: string): Vulnerability {
   return {
     key: entry.vulnKey,
     cve: entry.cves[0] ?? '',
@@ -311,7 +380,7 @@ function buildNewVulnerability(entry: {
     port: entry.port ?? undefined,
     severity: entry.severity as VulnSeverity,
     description: entry.summary || entry.name,
-    source: 'greenbone',
+    source,
     cvss_score: entry.severityScore,
     status: 'NUEVO',
     importedAt: now,
@@ -320,6 +389,16 @@ function buildNewVulnerability(entry: {
     solution: entry.solution ?? undefined,
     qod: entry.qod ?? undefined,
     epssScore: entry.epssScore ?? undefined,
+    // CrowdStrike Spotlight fields (v3.6.1) — undefined/false/[] for
+    // Greenbone-sourced entries, mirroring the qod/epssScore pattern above.
+    products: entry.products,
+    exprtRating: entry.exprtRating ?? undefined,
+    cisaKev: entry.cisaKev,
+    cisaDueDate: entry.cisaDueDate ? entry.cisaDueDate.toISOString() : undefined,
+    exploitStatus: entry.exploitStatus ?? undefined,
+    daysOpen: entry.daysOpen ?? undefined,
+    externalStatus: entry.externalStatus ?? undefined,
+    cvssVersion: entry.cvssVersion ?? undefined,
   };
 }
 
@@ -370,7 +449,7 @@ export async function acceptBatch(
         vulnKeysTouched.push(entry.vulnKey);
 
         if (entry.classification === 'NUEVA') {
-          byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now));
+          byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
           newCount++;
         } else if (entry.classification === 'REAPARECIDA') {
           const existing = byIdentity.get(entry.vulnKey);
@@ -381,7 +460,7 @@ export async function acceptBatch(
             // concurrent import/edit removed it), there's nothing to
             // "reopen" — treat it as a fresh finding rather than silently
             // dropping it.
-            byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now));
+            byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
             newCount++;
             continue;
           }
@@ -401,6 +480,19 @@ export async function acceptBatch(
             solution: entry.solution ?? existing.solution,
             qod: entry.qod ?? existing.qod,
             epssScore: entry.epssScore ?? existing.epssScore,
+            // CrowdStrike Spotlight fields (v3.6.1) — same fallback pattern
+            // as oid/port/family/solution/qod/epssScore above: preserve the
+            // previously-stored value when this entry's source doesn't
+            // carry it (e.g. a Greenbone reimport reopening a vulnerability
+            // that was last enriched by a CrowdStrike upload).
+            products: entry.products.length > 0 ? entry.products : existing.products,
+            exprtRating: entry.exprtRating ?? existing.exprtRating,
+            cisaKev: entry.cisaKev,
+            cisaDueDate: entry.cisaDueDate ? entry.cisaDueDate.toISOString() : existing.cisaDueDate,
+            exploitStatus: entry.exploitStatus ?? existing.exploitStatus,
+            daysOpen: entry.daysOpen ?? existing.daysOpen,
+            externalStatus: entry.externalStatus ?? existing.externalStatus,
+            cvssVersion: entry.cvssVersion ?? existing.cvssVersion,
           });
           reopenedCount++;
           await vulnImportAudit(tx, 'VULN_REOPENED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
@@ -418,7 +510,7 @@ export async function acceptBatch(
             });
             refreshedCount++;
           } else {
-            byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now));
+            byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
             newCount++;
           }
         }

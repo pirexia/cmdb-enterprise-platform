@@ -2509,10 +2509,13 @@
       "exprtRatingLabel": "Valutazione ExPRT",
       "cisaKevLabel": "CISA KEV",
       "cisaDueDateLabel": "Data limite CISA",
+      "cisaKevWithDue": "CISA KEV — scade il {date}",
       "exploitStatusLabel": "Stato di sfruttamento",
+      "activeExploitationBadge": "Sfruttamento attivo",
       "daysOpenLabel": "Giorni aperti",
       "productsLabel": "Prodotti interessati",
-      "externalStatusLabel": "Stato nell'origine"
+      "externalStatusLabel": "Stato nell'origine",
+      "cvssVersionLabel": "Versione CVSS"
     },
     "bulk": {
       "includeVisible": "Includi visibili",

@@ -1,15 +1,19 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import {
   Bug, Shield, Upload, Play, CheckCircle, XCircle, AlertTriangle,
-  Loader2, RefreshCw,
+  Loader2, RefreshCw, ArrowRight,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
+import type { UploadResponse } from "@/lib/types/vulnImport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// CrowdStrike's endpoint still applies directly and reports per-host results
+// inline (unchanged backend response shape).
 interface ProcessedEntry {
   ci:        string;
   matched:   boolean;
@@ -22,6 +26,19 @@ interface IntegrationResult {
   processed:      ProcessedEntry[];
   totalMatched:   number;
   totalUnmatched: number;
+}
+
+// Greenbone's endpoint (v3.6.0) is a thin compat shim over the vuln-import
+// staging workflow — it creates a PENDING batch and writes nothing to any
+// CI. Response shape matches POST /api/vuln-import/upload's, plus a message.
+interface StagingResult extends UploadResponse {
+  message: string;
+}
+
+type CardResult = IntegrationResult | StagingResult;
+
+function isStagingResult(r: CardResult): r is StagingResult {
+  return "batchId" in r;
 }
 
 type CardState = "idle" | "loading" | "success" | "error";
@@ -45,7 +62,7 @@ function IntegrationCard({
   const { t } = useLanguage();
   const [json,   setJson]   = useState("");
   const [state,  setState]  = useState<CardState>("idle");
-  const [result, setResult] = useState<IntegrationResult | null>(null);
+  const [result, setResult] = useState<CardResult | null>(null);
   const [error,  setError]  = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -88,7 +105,7 @@ function IntegrationCard({
       }
 
       const data = await res.json();
-      setResult(data as IntegrationResult);
+      setResult(data as CardResult);
       setState("success");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.unknown_error"));
@@ -170,8 +187,37 @@ function IntegrationCard({
           </div>
         )}
 
-        {/* Result */}
-        {result && state === "success" && (
+        {/* Result — staging (Greenbone, v3.6.0): nothing was written to any
+            CI yet, this created a PENDING batch that still needs review. */}
+        {result && state === "success" && isStagingResult(result) && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-blue-700">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-sm font-semibold">{result.message}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-blue-700">
+              <span>{t("integrations.staging_total")}: <strong>{result.summary.totalEntries}</strong></span>
+              <span>{t("integrations.staging_matched")}: <strong>{result.summary.matched}</strong></span>
+              <span>{t("integrations.staging_nueva")}: <strong>{result.summary.nueva}</strong></span>
+              <span>{t("integrations.staging_reaparecida")}: <strong>{result.summary.reaparecida}</strong></span>
+              {(result.summary.ambiguous > 0 || result.summary.unmatched > 0) && (
+                <span className="col-span-2 text-amber-600">
+                  {result.summary.ambiguous + result.summary.unmatched} {t("integrations.staging_needs_attention")}
+                </span>
+              )}
+            </div>
+            <Link
+              href={`/vulnerabilities/imports/${result.batchId}`}
+              className="flex items-center justify-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+            >
+              {t("integrations.staging_review_cta")}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        )}
+
+        {/* Result — direct apply (CrowdStrike): unchanged legacy shape. */}
+        {result && state === "success" && !isStagingResult(result) && (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
             <div className="flex items-center gap-2 text-emerald-700">
               <CheckCircle className="h-4 w-4" />
@@ -253,18 +299,21 @@ export default function IntegrationsPage() {
             accent="bg-green-600"
             endpoint="/api/integrations/greenbone"
             placeholder={`{
-  "scanner": "Greenbone Security Manager",
-  "scan_date": "2026-03-13T18:00:00Z",
-  "results": [
+  "taskName": "800_Madrid - Recheck 02",
+  "greenboneTaskId": "ce3d933a-175b-44c2-a203-4fb3dec1ee20",
+  "scanStart": "2026-07-29T09:38:15Z",
+  "scanEnd": "2026-07-29T10:18:50Z",
+  "allHostSubreportEntries": [
     {
-      "host": { "hostname": "PROD-SRV-01 Web Server", "ip": "10.0.1.10" },
+      "host": "10.100.12.61",
       "vulnerabilities": [
         {
-          "cve": "CVE-2024-21413",
-          "severity": "CRITICAL",
-          "name": "Outlook RCE",
-          "cvss_score": 9.8,
-          "description": "Remote Code Execution via MIME link"
+          "name": "SSL/TLS: Deprecated TLSv1.0 and TLSv1.1 Protocol Detection",
+          "severity": 4.3,
+          "port": "3389/tcp",
+          "oid": "1.3.6.1.4.1.25623.1.0.117274",
+          "cve": ["CVE-2011-3389"],
+          "thread": "Alarm"
         }
       ]
     }

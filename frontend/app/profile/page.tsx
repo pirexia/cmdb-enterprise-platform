@@ -187,7 +187,15 @@ export default function ProfilePage() {
   const roleBadgeClass =
     user?.role === "ADMIN"   ? "bg-red-100 text-red-700"    :
     user?.role === "AUDITOR" ? "bg-amber-100 text-amber-700" :
+    user?.role === "SOC"     ? "bg-blue-100 text-blue-700"   :
+    user?.role === "MANAGER" ? "bg-purple-100 text-purple-700" :
                                "bg-slate-100 text-slate-500";
+  const roleLabelKey = {
+    ADMIN: "settings.users.role_admin", AUDITOR: "settings.users.role_auditor",
+    VIEWER: "settings.users.role_viewer", MANAGER: "settings.users.role_manager",
+    SOC: "settings.users.role_soc",
+  } as const;
+  const roleLabel = user?.role ? t(roleLabelKey[user.role]) : "—";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -213,7 +221,7 @@ export default function ProfilePage() {
               <p className="text-lg font-bold text-slate-900">{user?.username ?? "—"}</p>
               <p className="text-sm text-slate-500">{user?.email ?? "—"}</p>
               <span className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-semibold ${roleBadgeClass}`}>
-                {user?.role}
+                {roleLabel}
               </span>
             </div>
           </div>

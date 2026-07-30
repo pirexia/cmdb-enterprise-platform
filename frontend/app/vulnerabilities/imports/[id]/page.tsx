@@ -373,7 +373,7 @@ function EntryRow({
 
 export default function VulnImportBatchDetailPage() {
   const { t } = useLanguage();
-  const { isAdmin } = useAuth();
+  const { canManageSecurity } = useAuth();
   const params = useParams();
   const router = useRouter();
   const batchId = params.id as string;
@@ -460,7 +460,7 @@ export default function VulnImportBatchDetailPage() {
 
   const ciMap = useMemo(() => new Map(ciOptions.map((c) => [c.id, c])), [ciOptions]);
 
-  const canEdit = isAdmin && batch?.status === "PENDING";
+  const canEdit = canManageSecurity && batch?.status === "PENDING";
 
   // ── Tab filtering (client-side, per spec — tabs are independent views) ──
 

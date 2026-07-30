@@ -22,7 +22,7 @@ interface User {
   username:         string;
   displayName?:     string | null;
   email:            string;
-  role:             "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER";
+  role:             "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER" | "SOC";
   active:           boolean;
   sso_external_id:  string | null;
   mfa_enabled:      boolean;
@@ -144,7 +144,7 @@ export default function SettingsPage() {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   // ── Change role ────────────────────────────────────────────────────────────
-  const handleRoleChange = async (userId: string, role: "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER") => {
+  const handleRoleChange = async (userId: string, role: "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER" | "SOC") => {
     setSaving((p) => ({ ...p, [`role_${userId}`]: true }));
     try {
       const res = await apiFetch(`/api/users/${userId}/role`, {
@@ -555,12 +555,13 @@ export default function SettingsPage() {
                               <Sel
                                 value={u.role}
                                 disabled={!isAdmin || isSelf || roleSaving}
-                                onChange={(e) => handleRoleChange(u.id, e.target.value as "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER")}
+                                onChange={(e) => handleRoleChange(u.id, e.target.value as "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER" | "SOC")}
                               >
                                 <option value="ADMIN">{t('settings.users.role_admin')}</option>
                                 <option value="AUDITOR">{t('settings.users.role_auditor')}</option>
                                 <option value="VIEWER">{t('settings.users.role_viewer')}</option>
                                 <option value="MANAGER">{t('settings.users.role_manager')}</option>
+                                <option value="SOC">{t('settings.users.role_soc')}</option>
                               </Sel>
                               {roleSaving && <RefreshCw className="h-3 w-3 animate-spin text-indigo-400" />}
                             </div>

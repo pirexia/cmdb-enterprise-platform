@@ -52,7 +52,7 @@ let _toastId = 0;
 
 export default function VulnImportListPage() {
   const { t } = useLanguage();
-  const { isAdmin } = useAuth();
+  const { canManageSecurity } = useAuth();
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -211,7 +211,7 @@ export default function VulnImportListPage() {
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
             </button>
-            {isAdmin && (
+            {canManageSecurity && (
               <>
                 <input
                   ref={fileRef}
@@ -322,7 +322,7 @@ export default function VulnImportListPage() {
                           >
                             {t("vulnImport.actions.review")} <ChevronRight className="h-3.5 w-3.5" />
                           </button>
-                          {isAdmin && b.status === "PENDING" && (
+                          {canManageSecurity && b.status === "PENDING" && (
                             <button
                               onClick={() => handleDiscard(b)}
                               disabled={discarding === b.id}

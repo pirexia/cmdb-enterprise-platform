@@ -12,6 +12,7 @@ enum UserRole {
   AUDITOR
   VIEWER
   MANAGER
+  SOC
 }
 
 enum Criticality {

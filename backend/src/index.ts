@@ -1282,8 +1282,8 @@ app.get('/api/users', authenticateToken, async (_req: Request, res: Response) =>
 app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { role } = req.body as { role?: string };
-  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'MANAGER'] as string[]).includes(role)) {
-    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER" or "MANAGER"' });
+  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'MANAGER', 'SOC'] as string[]).includes(role)) {
+    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER", "MANAGER" or "SOC"' });
     return;
   }
   try {

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
 import { requireAdmin }            from '../../shared/middleware/requireAdmin.js';
 import { requireAudit }            from '../../shared/middleware/requireAudit.js';
+import { requireSecurityWrite }    from '../../shared/middleware/requireSecurity.js';
 import { smtpConfigured }          from '../alerts/smtp-transport.js';
 import { uploadReport }            from '../vuln-import/service.js';
 import { UploadRequestSchema }     from '../vuln-import/schemas.js';
@@ -61,7 +62,7 @@ export function createIntegrationsRouter(
    * parsing and is rejected with 400 — it must NOT silently succeed as it
    * did before this fix.
    */
-  router.post('/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/greenbone', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     console.log('[POST /api/integrations/greenbone] Delegating to vuln-import staging…');
     try {
       const rawBody = (req.body ?? {}) as Record<string, unknown>;
@@ -102,9 +103,9 @@ export function createIntegrationsRouter(
 
   /**
    * POST /api/integrations/crowdstrike
-   * Ingests a CrowdStrike Falcon agent status export. ADMIN only.
+   * Ingests a CrowdStrike Falcon agent status export. ADMIN or SOC.
    */
-  router.post('/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/crowdstrike', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     console.log('[POST /api/integrations/crowdstrike] Processing report…');
     try {
       type CSDevice = {

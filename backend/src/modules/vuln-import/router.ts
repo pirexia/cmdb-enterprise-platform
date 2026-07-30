@@ -2,8 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ZodError } from 'zod';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
-import { requireAdmin } from '../../shared/middleware/requireAdmin.js';
-import { requireAudit } from '../../shared/middleware/requireAudit.js';
+import { requireSecurityRead, requireSecurityWrite } from '../../shared/middleware/requireSecurity.js';
 import { vulnUuid } from '../../services/entitySerializer.js';
 import { UnsupportedGreenboneFormatError } from './parser.js';
 import { UploadRequestSchema, PatchEntrySchema, BulkDecisionSchema } from './schemas.js';
@@ -40,7 +39,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   const queueVuln = (ciId: string, vulnKey: string) => { if (rag) void rag.queueEntity('vulnerability', vulnUuid(ciId, vulnKey)); };
 
   // ── POST /upload ────────────────────────────────────────────────────────
-  router.post('/upload', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/upload', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const body = UploadRequestSchema.parse(req.body);
       const result = await uploadReport(prisma, body, req.user!.email);
@@ -60,7 +59,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── GET /batches ─────────────────────────────────────────────────────────
-  router.get('/batches', authenticateToken, requireAudit, async (req: Request, res: Response) => {
+  router.get('/batches', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;
       const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
@@ -74,7 +73,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── GET /batches/:id ─────────────────────────────────────────────────────
-  router.get('/batches/:id', authenticateToken, requireAudit, async (req: Request, res: Response) => {
+  router.get('/batches/:id', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
     try {
       if (!UUID_RE.test(req.params.id as string)) { res.status(404).json({ error: 'BATCH_NOT_FOUND' }); return; }
       const classification = typeof req.query.classification === 'string' ? req.query.classification : undefined;
@@ -90,7 +89,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── PATCH /batches/:id/entries/:entryId ─────────────────────────────────
-  router.patch('/batches/:id/entries/:entryId', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.patch('/batches/:id/entries/:entryId', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const body = PatchEntrySchema.parse(req.body);
       const updated = await patchEntry(prisma, req.params.id as string, req.params.entryId as string, body, req.user!.email);
@@ -106,7 +105,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── POST /batches/:id/entries/bulk-decision ─────────────────────────────
-  router.post('/batches/:id/entries/bulk-decision', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/batches/:id/entries/bulk-decision', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const body = BulkDecisionSchema.parse(req.body);
       const result = await bulkDecision(prisma, req.params.id as string, body, req.user!.email);
@@ -121,7 +120,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── POST /batches/:id/accept ─────────────────────────────────────────────
-  router.post('/batches/:id/accept', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/batches/:id/accept', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const result = await acceptBatch(prisma, req.params.id as string, req.user!.email);
 
@@ -147,7 +146,7 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   });
 
   // ── POST /batches/:id/discard ─────────────────────────────────────────────
-  router.post('/batches/:id/discard', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
+  router.post('/batches/:id/discard', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const updated = await discardBatch(prisma, req.params.id as string, req.user!.email);
       res.json(updated);

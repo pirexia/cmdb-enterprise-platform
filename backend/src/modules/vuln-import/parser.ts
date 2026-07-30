@@ -30,10 +30,14 @@ export class UnsupportedGreenboneFormatError extends Error {
  *  minus the DB-only bookkeeping columns (batchId, ciId, matchConfidence, ...)
  *  that a later task (matcher/service) is responsible for adding. */
 export interface ParsedVulnEntry {
-  /** Identity per spec D1: `${oid}@${port}` — stable across re-scans. */
+  /** Identity per spec D1: `${oid}@${port}` for Greenbone — stable across
+   *  re-scans. A CrowdStrike-sourced entry (B2, parallel task) will use a
+   *  different scheme built from its own identity field. */
   key: string;
-  oid: string;
-  port: string;
+  /** Greenbone-specific (OpenVAS plugin id). No CrowdStrike equivalent. */
+  oid?: string;
+  /** Greenbone-specific. No CrowdStrike equivalent. */
+  port?: string;
   /** Parsed `cve` array — `[]` if the report reports none. Never synthesized. */
   cves: string[];
   severityScore: number;
@@ -43,16 +47,40 @@ export interface ParsedVulnEntry {
   /** `description` array joined with "\n" into a flat string. */
   description: string;
   solution: string;
-  family: string;
-  thread: string;
-  qod: number;
+  /** Greenbone-specific (NVT family). No CrowdStrike equivalent. */
+  family?: string;
+  /** Greenbone-specific (Alarm/Log). No CrowdStrike equivalent. */
+  thread?: string;
+  /** Greenbone-specific (Quality of Detection). No CrowdStrike equivalent. */
+  qod?: number;
   epssScore: number | undefined;
   /** IP address of the host this vulnerability was reported against
    *  (`allHostSubreportEntries[].host`). */
   hostAddress: string;
   /** Original, untouched vulnerability object — for audit/debug storage
    *  (`VulnImportEntry.raw`). */
-  raw: GreenboneVulnerability;
+  raw: GreenboneVulnerability | Record<string, unknown>;
+
+  // CrowdStrike Spotlight fields (v3.6.1, spec §1 B1) — all optional, added
+  // by B2's crowdstrikeParser.ts. Never set by parseGreenboneReport below.
+  /** Affected product/version strings, e.g. `["JRE 1.8.0", "JDK 11"]`. */
+  products?: string[];
+  /** CrowdStrike's own AI-driven severity rating (Low/Medium/High/Critical),
+   *  a separate signal from `severity` — never conflated with it. */
+  exprtRating?: string;
+  /** CISA Known Exploited Vulnerabilities flag. */
+  cisaKev?: boolean;
+  /** CISA KEV remediation deadline (ISO date string), set when `cisaKev`. */
+  cisaDueDate?: string;
+  /** Human-readable exploit status label, e.g. "Actively used (critical)". */
+  exploitStatus?: string;
+  daysOpen?: number;
+  /** The SOURCE SYSTEM's own status word (e.g. CrowdStrike's "Open"/
+   *  "Reopened") — distinct from this app's own classification/decision. */
+  externalStatus?: string;
+  /** CVSS version, e.g. "v3.x" — parsed out of CrowdStrike's glued
+   *  `base_score` string. The numeric part goes in `severityScore`. */
+  cvssVersion?: string;
 }
 
 /** Scan-level metadata plus the flattened list of parsed vulnerability

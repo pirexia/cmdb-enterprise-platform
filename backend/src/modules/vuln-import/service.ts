@@ -140,7 +140,7 @@ export async function uploadReport(
       matchConfidence,
       matchCandidates,
       vulnKey: entry.key,
-      oid: entry.oid,
+      oid: entry.oid ?? null,
       port: entry.port || null,
       cves: entry.cves,
       severityScore: entry.severityScore,
@@ -150,7 +150,7 @@ export async function uploadReport(
       solution: entry.solution || null,
       family: entry.family || null,
       thread: entry.thread || null,
-      qod: entry.qod,
+      qod: entry.qod ?? null,
       epssScore: entry.epssScore ?? null,
       raw: entry.raw,
       existingStatus: classification.existingStatus,
@@ -299,7 +299,7 @@ export interface AcceptResult { summary: AcceptSummary; touched: TouchedCi[] }
  *  fallback when the previously-matched stored entry can no longer be found
  *  — see the comment at its one call site below). */
 function buildNewVulnerability(entry: {
-  vulnKey: string; cves: string[]; oid: string; port: string | null; severity: string;
+  vulnKey: string; cves: string[]; oid: string | null; port: string | null; severity: string;
   summary: string | null; name: string; severityScore: number; family: string | null;
   solution: string | null; qod: number | null; epssScore: number | null;
 }, now: string): Vulnerability {
@@ -307,7 +307,7 @@ function buildNewVulnerability(entry: {
     key: entry.vulnKey,
     cve: entry.cves[0] ?? '',
     cves: entry.cves,
-    oid: entry.oid,
+    oid: entry.oid ?? undefined,
     port: entry.port ?? undefined,
     severity: entry.severity as VulnSeverity,
     description: entry.summary || entry.name,
@@ -395,7 +395,7 @@ export async function acceptBatch(
             cvss_score: entry.severityScore,
             lastSeenAt: now,
             cves: entry.cves,
-            oid: entry.oid,
+            oid: entry.oid ?? existing.oid,
             port: entry.port ?? existing.port,
             family: entry.family ?? existing.family,
             solution: entry.solution ?? existing.solution,

@@ -23,4 +23,15 @@ export interface Vulnerability {
   family?:      string;
   solution?:    string;
   epssScore?:   number;
+  // CrowdStrike Spotlight fields (v3.6.1, spec §1 B1) — all optional, mirror
+  // the same-named VulnImportEntry columns in JSON-storage shape (camelCase,
+  // no DB-specific types). Absent for Greenbone-sourced entries.
+  products?:      string[];
+  exprtRating?:   string;
+  cisaKev?:       boolean;
+  cisaDueDate?:   string;
+  exploitStatus?: string;
+  daysOpen?:      number;
+  externalStatus?: string;
+  cvssVersion?:   string;
 }

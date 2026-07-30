@@ -8,6 +8,7 @@ import { smtpConfigured }          from '../alerts/smtp-transport.js';
 import { uploadReport }            from '../vuln-import/service.js';
 import { UploadRequestSchema }     from '../vuln-import/schemas.js';
 import { UnsupportedGreenboneFormatError } from '../vuln-import/parser.js';
+import { UnsupportedCrowdStrikeFormatError } from '../vuln-import/crowdstrikeParser.js';
 import { ZodError }                from 'zod';
 import { loadVCenterConfig, isConfigured, toPublicConfig } from './vcenterConfig.js';
 import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
@@ -103,10 +104,83 @@ export function createIntegrationsRouter(
 
   /**
    * POST /api/integrations/crowdstrike
-   * Ingests a CrowdStrike Falcon agent status export. ADMIN or SOC.
+   *
+   * Format-aware (v3.6.1, spec D1): this route historically only ever
+   * ingested a CrowdStrike Falcon agent/EDR status export (`{devices: [...]}`
+   * — a completely invented mock shape unrelated to Spotlight, feeding the
+   * `agent_status` column that 4 inventory filters, a badge, CSV export and
+   * a security report all depend on today). That agent/EDR path below is
+   * UNCHANGED. This now also accepts a real CrowdStrike Spotlight
+   * vulnerability export (a flat top-level JSON array, optionally wrapped
+   * in the same `{filename?, report}` envelope `/api/vuln-import/upload`
+   * accepts) and routes it to the SAME staging pipeline as
+   * `/api/integrations/greenbone` above — parsing, CI matching,
+   * classification and PENDING batch persistence, never a direct CI write
+   * (A04 — staging + explicit human acceptance). The branch is a routing
+   * decision only; both paths sit behind the same `requireSecurityWrite`.
    */
   router.post('/crowdstrike', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
-    console.log('[POST /api/integrations/crowdstrike] Processing report…');
+    const rawBody = (req.body ?? {}) as Record<string, unknown> | unknown[];
+
+    // The old/invented mock format is the only shape that has ever used a
+    // top-level "devices" key — mirrors how Greenbone's legacy shim detects
+    // its own old shape (a distinguishing key), never a generic "does it
+    // parse" heuristic.
+    const isAgentStatusShape = !Array.isArray(rawBody) && rawBody !== null
+      && typeof rawBody === 'object' && 'devices' in (rawBody as Record<string, unknown>);
+
+    if (!isAgentStatusShape) {
+      const asRecord = Array.isArray(rawBody) ? null : (rawBody as Record<string, unknown>);
+      const hasEnvelope = asRecord !== null && 'report' in asRecord;
+      const spotlightCandidate = hasEnvelope ? (asRecord as Record<string, unknown>).report : rawBody;
+
+      if (Array.isArray(spotlightCandidate)) {
+        console.log('[POST /api/integrations/crowdstrike] Spotlight export detected — delegating to vuln-import staging…');
+        try {
+          const envelope = hasEnvelope
+            ? (asRecord as Record<string, unknown>)
+            : { filename: `legacy-crowdstrike-upload-${new Date().toISOString()}.json`, report: rawBody };
+
+          const body = UploadRequestSchema.parse(envelope);
+          const result = await uploadReport(prisma, body, req.user!.email, 'crowdstrike');
+
+          res.json({
+            message: 'CrowdStrike Spotlight report processed via staging',
+            batchId: result.batchId,
+            summary: result.summary,
+          });
+        } catch (err) {
+          if (err instanceof UnsupportedCrowdStrikeFormatError) {
+            res.status(400).json({ error: err.message });
+            return;
+          }
+          if (err instanceof ZodError) {
+            res.status(400).json({
+              error: 'Invalid CrowdStrike Spotlight report — expected a flat array of vulnerability records.',
+              details: err.issues,
+            });
+            return;
+          }
+          console.error('[POST /api/integrations/crowdstrike] Error:', err);
+          res.status(500).json({ error: 'Internal server error' });
+        }
+        return;
+      }
+
+      // Neither the agent/EDR shape nor a recognizable Spotlight export
+      // (e.g. the legacy Greenbone `{results: [...]}` mock posted to the
+      // wrong endpoint) — reject explicitly rather than silently matching
+      // nothing, same principle as Greenbone's legacy-format rejection.
+      res.status(400).json({
+        error: 'Unsupported request body for POST /api/integrations/crowdstrike. Expected either ' +
+          '(1) a CrowdStrike Falcon agent/EDR status export ({"devices": [...]}), or ' +
+          '(2) a real CrowdStrike Spotlight vulnerability export (a top-level flat JSON array of ' +
+          'vulnerability records, optionally wrapped in {filename?, report}).',
+      });
+      return;
+    }
+
+    console.log('[POST /api/integrations/crowdstrike] Processing agent/EDR status report…');
     try {
       type CSDevice = {
         hostname: string; agent_id: string; agent_version: string;

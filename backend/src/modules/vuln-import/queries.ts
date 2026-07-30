@@ -36,6 +36,16 @@ export interface NewEntryInput {
   existingStatus: string | null;
   classification: string;
   decision: string;
+  // CrowdStrike Spotlight fields (v3.6.1) — null/false/[] for Greenbone
+  // entries, which never set these. Mirrors VulnImportEntry's columns.
+  products: string[];
+  exprtRating: string | null;
+  cisaKev: boolean;
+  cisaDueDate: Date | null;
+  exploitStatus: string | null;
+  daysOpen: number | null;
+  externalStatus: string | null;
+  cvssVersion: string | null;
 }
 
 export interface NewBatchInput {
@@ -88,6 +98,14 @@ export async function createBatchWithEntries(tx: Prisma.TransactionClient, input
           existingStatus: e.existingStatus,
           classification: e.classification,
           decision: e.decision,
+          products: e.products,
+          exprtRating: e.exprtRating,
+          cisaKev: e.cisaKev,
+          cisaDueDate: e.cisaDueDate,
+          exploitStatus: e.exploitStatus,
+          daysOpen: e.daysOpen,
+          externalStatus: e.externalStatus,
+          cvssVersion: e.cvssVersion,
         })),
       },
     },

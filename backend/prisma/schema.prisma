@@ -1111,7 +1111,7 @@ model VulnImportEntry {
   matchConfidence  String?         @map("match_confidence") @db.VarChar(30)
   matchCandidates  Json?           @map("match_candidates")
   vulnKey          String          @map("vuln_key") @db.VarChar(500)
-  oid              String          @db.VarChar(255)
+  oid              String?         @db.VarChar(255)
   port             String?         @db.VarChar(50)
   cves             String[]        @default([])
   severityScore    Float           @map("severity_score")
@@ -1123,6 +1123,16 @@ model VulnImportEntry {
   thread           String?         @db.VarChar(20)
   qod              Int?
   epssScore        Float?          @map("epss_score")
+  // CrowdStrike Spotlight fields (v3.6.1, spec §1 B1) — all optional; empty
+  // array / null / false for Greenbone entries, which never set these.
+  products         String[]        @default([])
+  exprtRating      String?         @map("exprt_rating") @db.VarChar(20)
+  cisaKev          Boolean         @default(false) @map("cisa_kev")
+  cisaDueDate      DateTime?       @map("cisa_due_date")
+  exploitStatus    String?         @map("exploit_status") @db.VarChar(255)
+  daysOpen         Int?            @map("days_open")
+  externalStatus   String?         @map("external_status") @db.VarChar(30)
+  cvssVersion      String?         @map("cvss_version") @db.VarChar(20)
   raw              Json
   existingStatus   String?         @map("existing_status") @db.VarChar(30)
   classification   String          @db.VarChar(30)

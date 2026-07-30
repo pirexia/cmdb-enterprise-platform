@@ -19,7 +19,8 @@ export interface NewEntryInput {
   matchConfidence: string | null;
   matchCandidates: unknown | null;
   vulnKey: string;
-  oid: string;
+  /** Greenbone-specific (OpenVAS plugin id); null for CrowdStrike-sourced entries. */
+  oid: string | null;
   port: string | null;
   cves: string[];
   severityScore: number;

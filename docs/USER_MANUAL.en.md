@@ -622,6 +622,28 @@ When a vulnerability that had been marked **Resolved** reappears in a later scan
 3. Upload the JSON file.
 4. The platform updates the Falcon agent status on the corresponding assets.
 
+### Importing and reviewing vulnerabilities from CrowdStrike Spotlight
+
+CrowdStrike Spotlight is a different CrowdStrike product from CrowdStrike Falcon: it manages **vulnerabilities**, not EDR agent status. A Spotlight report is uploaded to the same place and goes through the **same review screen** as a Greenbone report — see "Importing and reviewing vulnerabilities from Greenbone OpenVAS (real format, staging)" above for the full flow (upload, tabs, CI reassignment, accept/discard). This section only covers what's specific to CrowdStrike Spotlight.
+
+1. Export the report from CrowdStrike Spotlight in JSON format.
+2. Go to **Vulnerabilities → Imports** (`/vulnerabilities/imports`) and upload the file just like you would for Greenbone. The system automatically detects it's a Spotlight report (as opposed to a Falcon agent-status report) from the shape of the JSON.
+3. The batch list shows a small badge indicating each batch's source (Greenbone or CrowdStrike).
+
+**New signals on the review screen:**
+
+| Signal | What it means | Where it shows |
+|---|---|---|
+| **CISA KEV badge** | The vulnerability is in the official US-government Known Exploited Vulnerabilities catalog — there's confirmation of real-world exploitation, not just a theoretical risk. If CrowdStrike provides a remediation due date, it's shown next to the badge. | Directly in the row, no need to expand — this is one of the most important signals in this data |
+| **Active-exploitation badge** | CrowdStrike assesses that exploit code is either easily accessible or actively used in the wild (not just "available" or "unproven" — those two cases do not show this badge) | Directly in the row, no need to expand |
+| **`exprtRating`** | CrowdStrike's own AI-driven rating, e.g. "Critical". This is a **separate** signal from the CVSS-derived severity shown elsewhere in the application — deliberately not merged, because in practice they often disagree. Treat them as two independent opinions, not the same thing shown twice. | Expandable detail panel |
+
+Both badges (CISA KEV and active exploitation) cause the entry to come **pre-selected for inclusion** on the review screen regardless of its severity — a low-severity vulnerability with confirmed active exploitation is more urgent than a purely theoretical high-severity one.
+
+CrowdStrike also reports whether it considers a vulnerability itself "reopened" (`Reopened`). When it does, the entry is classified and pre-marked as **Reappeared** on the review screen, exactly like a Greenbone vulnerability that had gone through "Resolved" and shows up again — even if the CMDB had no prior record of it at all.
+
+**Note on the review-screen controls:** each entry's decision checkbox now states the outcome, not a command — "Will be imported" means that accepting the batch will apply that vulnerability to the asset; "Will not be imported" means it will be left out. Similarly, when an entry already exists on the asset and is still pending resolution, the label reads "Already exists on this CI" — it won't be re-imported as something new, only refreshed if you upload the same finding again.
+
 ---
 
 ## 11. Document Repository

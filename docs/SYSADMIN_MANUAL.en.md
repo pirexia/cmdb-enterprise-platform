@@ -2589,3 +2589,13 @@ Running it before enabling the module is not required — it's a consistency cle
 ### Known gap: stale `PENDING` batches are not purged
 
 An import batch (`VulnImportBatch`) that gets uploaded and is **never accepted or discarded** stays in `PENDING` state indefinitely. This release's spec proposed folding the purge of abandoned `PENDING` batches into the existing maintenance cron (the same one that cleans up expired trusted devices and the SSO state store), but **it was not implemented in this version** — do not assume it exists. A stale `PENDING` batch carries no data-integrity risk (it never touched any CI); it only accumulates rows in `vuln_import_batches`/`vuln_import_entries` and stays visible in the `/vulnerabilities/imports` list until someone accepts or discards it manually.
+
+### Second source: CrowdStrike Spotlight (same branch, not yet tagged)
+
+> See `docs/INTEGRATIONS.md` § 9.12 for the full architecture (identity model, merge-by-`vulnerability_id`, CISA KEV / active-exploitation premarking, CrowdStrike's own reopen-signal path). This section covers only the sysadmin/operational side.
+
+**New columns, no new backup procedure.** `vuln_import_entries` gains 8 nullable columns (`products`, `exprt_rating`, `cisa_kev`, `cisa_due_date`, `exploit_status`, `days_open`, `external_status`, `cvss_version`) for CrowdStrike Spotlight-specific signals. Same as the Greenbone-specific columns added in v3.6.0, **they require no new backup procedure** — they're covered by the regular `pg_dump` dump described in [§6](#6-database-backup-and-restore).
+
+**Nullability change on `oid`/`port`.** These two columns, previously always populated in practice (Greenbone's NVT-and-port identity), are now nullable: a CrowdStrike entry has neither an NVT nor a port, so both are `NULL` on those rows. If you have any ad-hoc SQL queries or custom reporting tooling against `vuln_import_entries` that assume `oid`/`port` are always populated, review them — any row with `source='crowdstrike'` will have them `NULL`.
+
+**20MB limit now also on `/api/integrations/crowdstrike`.** The 20MB body-size override (vs. the app-wide 2MB limit), already applied to `/api/vuln-import/upload` in v3.6.0, is now also applied to the legacy `/api/integrations/crowdstrike` endpoint, which as of this round can also receive a real Spotlight export (in addition to the original agent/EDR shape, which still works unchanged). A real single-host Spotlight export is around 686KB in the test fixture — a multi-host export can easily approach or exceed the previous 2MB limit. No configuration action is needed: the override is already registered in `index.ts` in the correct order (ahead of the global parser) for both routes.

@@ -622,6 +622,28 @@ Cuando una vulnerabilidad que se había marcado como **Resuelto** vuelve a apare
 3. Sube el fichero JSON.
 4. La plataforma actualiza el estado del agente Falcon en los activos correspondientes.
 
+### Importar y revisar vulnerabilidades desde CrowdStrike Spotlight
+
+CrowdStrike Spotlight es un producto distinto de CrowdStrike Falcon: gestiona **vulnerabilidades**, no el estado del agente EDR. Un informe Spotlight se sube al mismo lugar y pasa por la **misma pantalla de revisión** que un informe Greenbone — ver "Importar y revisar vulnerabilidades desde Greenbone OpenVAS" más arriba para el flujo completo (subida, pestañas, reasignación de CI, aceptar/descartar). Esta sección cubre solo lo específico de CrowdStrike Spotlight.
+
+1. Exporta el informe desde CrowdStrike Spotlight en formato JSON.
+2. Ve a **Vulnerabilidades → Importaciones** (`/vulnerabilities/imports`) y sube el fichero igual que con Greenbone. El sistema detecta automáticamente que es un informe Spotlight (y no un informe de estado de agente Falcon) por la forma del JSON.
+3. En el listado de lotes verás una pequeña insignia indicando la fuente de cada lote (Greenbone o CrowdStrike).
+
+**Señales nuevas en la pantalla de revisión:**
+
+| Señal | Qué significa | Dónde se ve |
+|---|---|---|
+| **Insignia CISA KEV** | La vulnerabilidad está en el catálogo oficial de EE.UU. de Vulnerabilidades Explotadas Conocidas — hay constancia de explotación real, no solo teórica. Si CrowdStrike aporta una fecha límite de remediación, se muestra junto a la insignia. | Directamente en la fila, sin necesidad de expandir — es una de las señales más importantes de estos datos |
+| **Insignia de explotación activa** | CrowdStrike valora que existe código de explotación fácilmente accesible o en uso activo (no solo "disponible" o "no probado" — esos dos casos no muestran esta insignia) | Directamente en la fila, sin necesidad de expandir |
+| **`exprtRating`** | La valoración propia de CrowdStrike (basada en IA), p. ej. "Critical". Es una señal **distinta** de la severidad (basada en CVSS) que se muestra en el resto de la aplicación — a propósito no se combinan, porque en la práctica discrepan con frecuencia. Trátalas como dos opiniones independientes, no como la misma cosa vista dos veces. | Panel de detalle expandible |
+
+Ambas insignias (CISA KEV y explotación activa) hacen que la entrada venga **premarcada para incluir** en la pantalla de revisión con independencia de su severidad — una vulnerabilidad de severidad baja pero con explotación activa confirmada es más urgente que una de severidad alta puramente teórica.
+
+CrowdStrike también informa sobre si él mismo considera una vulnerabilidad "reaparecida" (`Reopened`). Si lo hace, la entrada se clasifica y premarca como **Reaparecida** en la pantalla de revisión, exactamente igual que una vulnerabilidad Greenbone que había pasado por "Resuelto" y vuelve a aparecer — aunque el CMDB no tuviera ningún registro previo de ella.
+
+**Nota sobre los controles de la pantalla de revisión:** la casilla de decisión de cada entrada ahora indica el resultado, no una orden — "Se importará" significa que al aceptar el lote esa vulnerabilidad se incorporará al activo; "No se importará" significa que quedará fuera. Del mismo modo, cuando una entrada ya existe en el activo y sigue pendiente de resolución, la etiqueta es "Ya existe en este CI" — no se reimportará como algo nuevo, solo se refrescará su información si vuelves a subir el mismo hallazgo.
+
 ---
 
 ## 11. Repositorio Documental

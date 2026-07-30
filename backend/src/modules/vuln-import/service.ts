@@ -487,7 +487,13 @@ export async function acceptBatch(
             // that was last enriched by a CrowdStrike upload).
             products: entry.products.length > 0 ? entry.products : existing.products,
             exprtRating: entry.exprtRating ?? existing.exprtRating,
-            cisaKev: entry.cisaKev,
+            // Sticky-true: cisaKev is a NOT NULL boolean, so entry.cisaKev
+            // is always a real true/false (never null/undefined) — a `??`
+            // fallback like the fields above would be dead code. Once a
+            // vulnerability has EVER been flagged CISA KEV, that flag must
+            // not be silently cleared by a later re-scan whose payload
+            // doesn't happen to carry it as true again.
+            cisaKev: entry.cisaKev || existing.cisaKev,
             cisaDueDate: entry.cisaDueDate ? entry.cisaDueDate.toISOString() : existing.cisaDueDate,
             exploitStatus: entry.exploitStatus ?? existing.exploitStatus,
             daysOpen: entry.daysOpen ?? existing.daysOpen,

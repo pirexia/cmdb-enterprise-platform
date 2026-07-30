@@ -712,13 +712,19 @@ describe('acceptBatch — transactional atomicity', () => {
       key: 'oid1@443', cve: 'CVE-2024-0001', severity: 'HIGH', description: 'old', status: 'RESUELTO',
       importedAt: '2026-01-01T00:00:00.000Z', resolvedAt: '2026-02-01T00:00:00.000Z',
       products: ['Preserved Product 1.0'], exprtRating: 'High', cisaDueDate: '2026-08-15T00:00:00.000Z',
-      exploitStatus: 'Unproven', daysOpen: 20, externalStatus: 'Open', cvssVersion: 'v3.x',
+      // cisaKev: true here, matched against buildAcceptFixture's default
+      // entry.cisaKev of false below — proves the sticky-true merge (D
+      // below is the load-bearing assertion: a KEV flag must never be
+      // silently cleared just because the reopening source doesn't carry it).
+      exploitStatus: 'Unproven', daysOpen: 20, externalStatus: 'Open', cvssVersion: 'v3.x', cisaKev: true,
     };
     const entry = {
       id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
       classification: 'REAPARECIDA', vulnKey: 'oid1@443', cves: ['CVE-2024-0001'], oid: 'oid1', port: '443',
       severity: 'CRITICAL', severityScore: 9.5, name: 'Test Vuln', summary: 'reappeared',
       solution: null, family: null, qod: null, epssScore: null,
+      // cisaKev intentionally omitted — buildAcceptFixture defaults it to
+      // false, i.e. this incoming entry does NOT carry a KEV flag.
     };
     const { prisma, committed } = buildAcceptFixture({ failAudit: false, initialVulns: [existing], entry });
 
@@ -732,5 +738,34 @@ describe('acceptBatch — transactional atomicity', () => {
     expect(stored.daysOpen).toBe(20);
     expect(stored.externalStatus).toBe('Open');
     expect(stored.cvssVersion).toBe('v3.x');
+    // Load-bearing: existing.cisaKev=true, incoming entry.cisaKev=false
+    // (defaulted) — merged result must stay true (sticky-true), not be
+    // overwritten by the incoming false.
+    expect(stored.cisaKev).toBe(true);
+  });
+
+  it.each([
+    ['existing true, incoming true -> true', true, true, true],
+    ['existing false, incoming false -> false', false, false, false],
+    ['existing false, incoming true -> true', false, true, true],
+  ])('REAPARECIDA cisaKev sticky-true merge: %s', async (_label, existingCisaKev, incomingCisaKev, expected) => {
+    const existing = {
+      key: 'oid1@443', cve: 'CVE-2024-0001', severity: 'HIGH', description: 'old', status: 'RESUELTO',
+      importedAt: '2026-01-01T00:00:00.000Z', resolvedAt: '2026-02-01T00:00:00.000Z',
+      cisaKev: existingCisaKev,
+    };
+    const entry = {
+      id: ENTRY_ID, batchId: BATCH_ID, ciId: CI_ID, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
+      classification: 'REAPARECIDA', vulnKey: 'oid1@443', cves: ['CVE-2024-0001'], oid: 'oid1', port: '443',
+      severity: 'CRITICAL', severityScore: 9.5, name: 'Test Vuln', summary: 'reappeared',
+      solution: null, family: null, qod: null, epssScore: null,
+      cisaKev: incomingCisaKev,
+    };
+    const { prisma, committed } = buildAcceptFixture({ failAudit: false, initialVulns: [existing], entry });
+
+    await acceptBatch(prisma as any, BATCH_ID, 'admin@test.local'); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    const stored = committed.vulns[0] as Record<string, unknown>;
+    expect(stored.cisaKev).toBe(expected);
   });
 });

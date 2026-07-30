@@ -1,8 +1,14 @@
-import { classifyVulnerability, isSeverityAtLeast, IncomingVulnerability } from '../classifier.js';
+import {
+  classifyVulnerability,
+  isSeverityAtLeast,
+  isActivelyExploited,
+  ACTIVE_EXPLOITATION_LABELS,
+  IncomingVulnerability,
+} from '../classifier.js';
 import type { Vulnerability, VulnSeverity, VulnStatus } from '../../integrations/types.js';
 
-function incoming(key: string, severity: VulnSeverity): IncomingVulnerability {
-  return { key, severity };
+function incoming(key: string, severity: VulnSeverity, extra: Partial<IncomingVulnerability> = {}): IncomingVulnerability {
+  return { key, severity, ...extra };
 }
 
 function stored(overrides: Partial<Vulnerability> & { status: VulnStatus }): Pick<Vulnerability, 'key' | 'cve' | 'status'> {
@@ -111,5 +117,142 @@ describe('isSeverityAtLeast', () => {
 
   test('explicit threshold: INFO >= INFO is true', () => {
     expect(isSeverityAtLeast('INFO', 'INFO')).toBe(true);
+  });
+});
+
+// CrowdStrike Spotlight extensions (v3.6.1, spec D4/D5). Greenbone-era tests
+// above are untouched; everything below is additive.
+describe('classifyVulnerability — CrowdStrike externalStatus (D5)', () => {
+  test('externalStatus Reopened, no CMDB match at all -> REAPARECIDA, not NUEVA', () => {
+    const result = classifyVulnerability(
+      incoming('cs-key-reopened-no-match', 'HIGH', { externalStatus: 'Reopened' }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'REAPARECIDA', decision: 'INCLUDE', existingStatus: null });
+  });
+
+  test('externalStatus Reopened, CMDB has it as NUEVO (still open) -> REAPARECIDA (overrides EXISTENTE_PENDIENTE)', () => {
+    const key = 'cs-key-reopened-nuevo';
+    const result = classifyVulnerability(
+      incoming(key, 'HIGH', { externalStatus: 'Reopened' }),
+      [stored({ key, status: 'NUEVO' })],
+    );
+    expect(result).toEqual({ classification: 'REAPARECIDA', decision: 'INCLUDE', existingStatus: 'NUEVO' });
+  });
+
+  test('externalStatus Reopened, CMDB has it as RESUELTO -> REAPARECIDA (same outcome, reachable via either path)', () => {
+    const key = 'cs-key-reopened-resuelto';
+    const result = classifyVulnerability(
+      incoming(key, 'HIGH', { externalStatus: 'Reopened' }),
+      [stored({ key, status: 'RESUELTO' })],
+    );
+    expect(result).toEqual({ classification: 'REAPARECIDA', decision: 'INCLUDE', existingStatus: 'RESUELTO' });
+  });
+
+  test('externalStatus Open behaves exactly as before (no regression), matched NUEVO -> EXISTENTE_PENDIENTE', () => {
+    const key = 'cs-key-open-nuevo';
+    const result = classifyVulnerability(
+      incoming(key, 'HIGH', { externalStatus: 'Open' }),
+      [stored({ key, status: 'NUEVO' })],
+    );
+    expect(result).toEqual({ classification: 'EXISTENTE_PENDIENTE', decision: 'EXCLUDE', existingStatus: 'NUEVO' });
+  });
+
+  test('externalStatus absent/undefined (Greenbone-style) behaves exactly as before, unmatched HIGH -> NUEVA / INCLUDE', () => {
+    const result = classifyVulnerability(incoming('cs-key-no-external-status', 'HIGH'), []);
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'INCLUDE', existingStatus: null });
+  });
+});
+
+describe('classifyVulnerability — CrowdStrike KEV / active exploitation premarking (D4)', () => {
+  test('cisaKev true, severity LOW, no CMDB match -> NUEVA / INCLUDE (pre-selected, not the default EXCLUDE a plain LOW would get)', () => {
+    const result = classifyVulnerability(
+      incoming('cs-kev-low', 'LOW', { cisaKev: true }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'INCLUDE', existingStatus: null });
+  });
+
+  test('exploitStatus "Actively used (critical)", severity LOW -> pre-selected INCLUDE', () => {
+    const result = classifyVulnerability(
+      incoming('cs-exploit-active-critical', 'LOW', { exploitStatus: 'Actively used (critical)' }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'INCLUDE', existingStatus: null });
+  });
+
+  test('exploitStatus "Available (medium)", severity LOW -> NOT pre-selected (available != active)', () => {
+    const result = classifyVulnerability(
+      incoming('cs-exploit-available-medium', 'LOW', { exploitStatus: 'Available (medium)' }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'EXCLUDE', existingStatus: null });
+  });
+
+  test('exploitStatus "Unproven", severity LOW -> NOT pre-selected', () => {
+    const result = classifyVulnerability(
+      incoming('cs-exploit-unproven', 'LOW', { exploitStatus: 'Unproven' }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'EXCLUDE', existingStatus: null });
+  });
+
+  test('exploitStatus "Easily Accessible (high)", severity INFO -> pre-selected INCLUDE', () => {
+    const result = classifyVulnerability(
+      incoming('cs-exploit-easily-accessible', 'INFO', { exploitStatus: 'Easily Accessible (high)' }),
+      [],
+    );
+    expect(result).toEqual({ classification: 'NUEVA', decision: 'INCLUDE', existingStatus: null });
+  });
+
+  test('EXISTENTE_PENDIENTE default-EXCLUDE is unaffected by cisaKev (already-tracked-and-pending stays EXCLUDE)', () => {
+    const key = 'cs-existente-pendiente-kev';
+    const result = classifyVulnerability(
+      incoming(key, 'LOW', { cisaKev: true }),
+      [stored({ key, status: 'NUEVO' })],
+    );
+    expect(result).toEqual({ classification: 'EXISTENTE_PENDIENTE', decision: 'EXCLUDE', existingStatus: 'NUEVO' });
+  });
+
+  test('EXISTENTE_PENDIENTE default-EXCLUDE is unaffected by an actively-exploited exploitStatus', () => {
+    const key = 'cs-existente-pendiente-exploit';
+    const result = classifyVulnerability(
+      incoming(key, 'LOW', { exploitStatus: 'Actively used (critical)' }),
+      [stored({ key, status: 'ASIGNADO' })],
+    );
+    expect(result).toEqual({ classification: 'EXISTENTE_PENDIENTE', decision: 'EXCLUDE', existingStatus: 'ASIGNADO' });
+  });
+});
+
+describe('isActivelyExploited', () => {
+  test.each<[string, boolean]>([
+    ['Unproven', false],
+    ['Available (medium)', false],
+    ['Actively used (critical)', true],
+    ['Easily Accessible (high)', true],
+  ])('%s -> %s', (label, expected) => {
+    expect(isActivelyExploited(label)).toBe(expected);
+  });
+
+  test('undefined -> false', () => {
+    expect(isActivelyExploited(undefined)).toBe(false);
+  });
+
+  test('null -> false', () => {
+    expect(isActivelyExploited(null)).toBe(false);
+  });
+
+  test('empty string -> false', () => {
+    expect(isActivelyExploited('')).toBe(false);
+  });
+
+  test('unrecognized label -> false', () => {
+    expect(isActivelyExploited('Some Future Label')).toBe(false);
+  });
+
+  test('ACTIVE_EXPLOITATION_LABELS contains exactly the two active labels', () => {
+    expect(Array.from(ACTIVE_EXPLOITATION_LABELS).sort()).toEqual(
+      ['Actively used (critical)', 'Easily Accessible (high)'].sort(),
+    );
   });
 });

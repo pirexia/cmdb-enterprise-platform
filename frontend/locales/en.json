@@ -2527,7 +2527,7 @@
     },
     "classification": {
       "NUEVA": "New",
-      "EXISTENTE_PENDIENTE": "Existing, pending",
+      "EXISTENTE_PENDIENTE": "Already exists on this CI",
       "REAPARECIDA": "Reoccurred"
     },
     "matchConfidence": {
@@ -2541,8 +2541,8 @@
       "MANUAL": "Manually assigned"
     },
     "decision": {
-      "INCLUDE": "Include",
-      "EXCLUDE": "Exclude"
+      "INCLUDE": "Will be imported",
+      "EXCLUDE": "Will not be imported"
     },
     "actions": {
       "upload": "Upload report",
@@ -2619,7 +2619,8 @@
       "solutionLabel": "Remediation",
       "familyLabel": "Family",
       "qodLabel": "QoD",
-      "noDetails": "No description available"
+      "noDetails": "No description available",
+      "existingPendingHint": "Won't be re-imported; only its data will be refreshed"
     },
     "bulk": {
       "includeVisible": "Include visible",

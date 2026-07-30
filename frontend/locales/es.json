@@ -2527,7 +2527,7 @@
     },
     "classification": {
       "NUEVA": "Nueva",
-      "EXISTENTE_PENDIENTE": "Existente pendiente",
+      "EXISTENTE_PENDIENTE": "Ya existe en este CI",
       "REAPARECIDA": "Reaparecida"
     },
     "matchConfidence": {
@@ -2541,8 +2541,8 @@
       "MANUAL": "Asignado manualmente"
     },
     "decision": {
-      "INCLUDE": "Incluir",
-      "EXCLUDE": "Excluir"
+      "INCLUDE": "Se importará",
+      "EXCLUDE": "No se importará"
     },
     "actions": {
       "upload": "Subir informe",
@@ -2619,7 +2619,8 @@
       "solutionLabel": "Solución",
       "familyLabel": "Familia",
       "qodLabel": "QoD",
-      "noDetails": "Sin descripción disponible"
+      "noDetails": "Sin descripción disponible",
+      "existingPendingHint": "No se volverá a importar; solo se actualizan sus datos"
     },
     "bulk": {
       "includeVisible": "Incluir visibles",

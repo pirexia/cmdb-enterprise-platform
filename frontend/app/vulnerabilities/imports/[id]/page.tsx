@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, CheckCircle,
-  X, Check, Ban, Search, ChevronDown, Info, PackageCheck, Trash2,
+  X, Search, ChevronDown, Info, PackageCheck, Trash2,
   ChevronUp,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -284,6 +284,9 @@ function EntryRow({
           ) : (
             <p className="mt-1.5 text-[11px] italic text-slate-400">{t("vulnImport.entry.noCves")}</p>
           )}
+          {entry.classification === "EXISTENTE_PENDIENTE" && (
+            <p className="mt-1.5 text-[11px] italic text-slate-400">{t("vulnImport.entry.existingPendingHint")}</p>
+          )}
           {hasDetails && (
             <button
               type="button"
@@ -298,19 +301,24 @@ function EntryRow({
 
         <div className="flex flex-shrink-0 flex-col items-end gap-2">
           {canEdit ? (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() => onToggleDecision(entry)}
-              className={`flex items-center gap-1.5 rounded-none px-3 py-1.5 text-xs font-semibold ring-1 transition-colors disabled:opacity-50 ${
+            <label
+              className={`flex cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs font-semibold ring-1 transition-colors ${
+                pending ? "cursor-not-allowed opacity-50" : ""
+              } ${
                 included
                   ? "bg-emerald-50 text-emerald-700 ring-emerald-200 hover:bg-emerald-100"
                   : "bg-slate-100 text-slate-500 ring-slate-200 hover:bg-slate-200"
               }`}
             >
-              {included ? <Check className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+              <input
+                type="checkbox"
+                checked={included}
+                disabled={pending}
+                onChange={() => onToggleDecision(entry)}
+                className="h-3.5 w-3.5 rounded-none border-slate-400 text-emerald-600 focus:ring-2 focus:ring-emerald-300 disabled:cursor-not-allowed"
+              />
               {included ? t("vulnImport.decision.INCLUDE") : t("vulnImport.decision.EXCLUDE")}
-            </button>
+            </label>
           ) : (
             <span className={`rounded-none px-2 py-0.5 text-[11px] font-semibold ${included ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
               {included ? t("vulnImport.decision.INCLUDE") : t("vulnImport.decision.EXCLUDE")}

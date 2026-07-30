@@ -2408,7 +2408,7 @@
     },
     "classification": {
       "NUEVA": "Nouvelle",
-      "EXISTENTE_PENDIENTE": "Existante, en attente",
+      "EXISTENTE_PENDIENTE": "Existe déjà sur ce CI",
       "REAPARECIDA": "Réapparue"
     },
     "matchConfidence": {
@@ -2422,8 +2422,8 @@
       "MANUAL": "Assigné manuellement"
     },
     "decision": {
-      "INCLUDE": "Inclure",
-      "EXCLUDE": "Exclure"
+      "INCLUDE": "Sera importé",
+      "EXCLUDE": "Ne sera pas importé"
     },
     "actions": {
       "upload": "Téléverser le rapport",
@@ -2500,7 +2500,8 @@
       "solutionLabel": "Remédiation",
       "familyLabel": "Famille",
       "qodLabel": "QoD",
-      "noDetails": "Aucune description disponible"
+      "noDetails": "Aucune description disponible",
+      "existingPendingHint": "Ne sera pas réimporté ; seules ses données seront actualisées"
     },
     "bulk": {
       "includeVisible": "Inclure les visibles",

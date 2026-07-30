@@ -2404,7 +2404,11 @@
         "DISCARDED": "Scartato"
       },
       "singular": "lotto",
-      "plural": "lotti"
+      "plural": "lotti",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
     },
     "classification": {
       "NUEVA": "Nuova",
@@ -2501,7 +2505,14 @@
       "familyLabel": "Famiglia",
       "qodLabel": "QoD",
       "noDetails": "Nessuna descrizione disponibile",
-      "existingPendingHint": "Non verrà reimportato; verranno aggiornati solo i suoi dati"
+      "existingPendingHint": "Non verrà reimportato; verranno aggiornati solo i suoi dati",
+      "exprtRatingLabel": "Valutazione ExPRT",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "Data limite CISA",
+      "exploitStatusLabel": "Stato di sfruttamento",
+      "daysOpenLabel": "Giorni aperti",
+      "productsLabel": "Prodotti interessati",
+      "externalStatusLabel": "Stato nell'origine"
     },
     "bulk": {
       "includeVisible": "Includi visibili",

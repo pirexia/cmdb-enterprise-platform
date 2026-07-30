@@ -2404,7 +2404,11 @@
         "DISCARDED": "Verworfen"
       },
       "singular": "Charge",
-      "plural": "Chargen"
+      "plural": "Chargen",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
     },
     "classification": {
       "NUEVA": "Neu",
@@ -2501,7 +2505,14 @@
       "familyLabel": "Familie",
       "qodLabel": "QoD",
       "noDetails": "Keine Beschreibung verfügbar",
-      "existingPendingHint": "Wird nicht erneut importiert; nur die Daten werden aktualisiert"
+      "existingPendingHint": "Wird nicht erneut importiert; nur die Daten werden aktualisiert",
+      "exprtRatingLabel": "ExPRT-Bewertung",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "CISA-Fälligkeitsdatum",
+      "exploitStatusLabel": "Exploit-Status",
+      "daysOpenLabel": "Tage offen",
+      "productsLabel": "Betroffene Produkte",
+      "externalStatusLabel": "Status im Quellsystem"
     },
     "bulk": {
       "includeVisible": "Sichtbare einschließen",

@@ -2523,7 +2523,11 @@
         "DISCARDED": "Discarded"
       },
       "singular": "batch",
-      "plural": "batches"
+      "plural": "batches",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
     },
     "classification": {
       "NUEVA": "New",
@@ -2620,7 +2624,14 @@
       "familyLabel": "Family",
       "qodLabel": "QoD",
       "noDetails": "No description available",
-      "existingPendingHint": "Won't be re-imported; only its data will be refreshed"
+      "existingPendingHint": "Won't be re-imported; only its data will be refreshed",
+      "exprtRatingLabel": "ExPRT rating",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "CISA due date",
+      "exploitStatusLabel": "Exploitation status",
+      "daysOpenLabel": "Days open",
+      "productsLabel": "Affected products",
+      "externalStatusLabel": "Source status"
     },
     "bulk": {
       "includeVisible": "Include visible",

@@ -1,4 +1,5 @@
-// ─── Greenbone staging/review workflow — frontend types (v3.6.0, task F1) ───
+// ─── Greenbone/CrowdStrike staging/review workflow — frontend types ────────
+// (v3.6.0, task F1; extended v3.6.1, task F1 for CrowdStrike Spotlight)
 //
 // Single source of truth for F2 (batch-list page), F3 (batch-review page) and
 // F4 (/vulnerabilities page updates). Every type here is derived field-for-
@@ -16,6 +17,25 @@
 //   - backend/src/modules/vuln-import/classifier.ts       (VulnClassification, VulnDecision)
 //   - backend/prisma/schema.prisma                         (model VulnImportBatch / VulnImportEntry, ~line 1084)
 //   - backend/src/modules/integrations/types.ts             (Vulnerability, VulnSeverity, VulnStatus)
+//
+// v3.6.1 (task F1) re-verified the above against the backend after the B1
+// schema-generalization task landed (base commit 8e76ff7 on this branch):
+//   - backend/prisma/schema.prisma ~line 1106 (model VulnImportEntry): 8 new
+//     optional CrowdStrike Spotlight columns added (products/exprtRating/
+//     cisaKev/cisaDueDate/exploitStatus/daysOpen/externalStatus/cvssVersion),
+//     and the pre-existing `oid` column changed from required to optional
+//     (`String?`, was `String`).
+//   - backend/src/modules/integrations/types.ts `Vulnerability` interface
+//     (lines 26-36): same 8 fields added, camelCase, JSON-storage shape.
+//   - backend/src/modules/vuln-import/parser.ts `ParsedVulnEntry` (lines
+//     64-73): same 8 fields documented as populated only by the (separate,
+//     parallel-task) crowdstrikeParser.ts, never by parseGreenboneReport.
+// Note: `POST /api/integrations/crowdstrike` (backend/src/modules/
+// integrations/router.ts ~line 108) is the PRE-EXISTING Falcon device/agent
+// ingestion route — unrelated to this Spotlight vulnerability-import flow,
+// response shape `{message, processed, totalMatched, totalUnmatched}` not
+// modeled here. Spotlight files go through the same `POST /api/vuln-import/
+// upload` endpoint as Greenbone; see the `UploadResponse` note below.
 
 // ─── Severity / status — authoritative sets, for F4 to replace its stale ────
 // local copies (frontend/app/vulnerabilities/page.tsx currently defines its
@@ -77,6 +97,18 @@ export type VulnImportDecision = 'INCLUDE' | 'EXCLUDE';
  *  stored Vulnerability" doesn't silently merge two different concepts. */
 export type VulnImportSeverity = VulnSeverity;
 
+/** VulnImportBatch.source (schema.prisma ~line 1087: plain `VarChar(50)`,
+ *  no DB enum/check constraint — genuinely a free string column). The only
+ *  two values any backend code path currently writes are 'greenbone'
+ *  (service.ts lines 173/314, hardcoded) and 'crowdstrike' (assigned by the
+ *  v3.6.1 CrowdStrike Spotlight upload path, parallel task B2/B3 — not yet
+ *  landed as of this file). Modeled as a union for autocomplete/documentation
+ *  on the two known values; `VulnImportBatch.source` itself stays typed as
+ *  plain `string` (see below) so a future third source, or any value that
+ *  slips past this narrower alias, doesn't fail to typecheck against a
+ *  genuinely unconstrained DB column. */
+export type VulnImportSource = 'greenbone' | 'crowdstrike';
+
 // ─── VulnImportBatch (schema.prisma model VulnImportBatch, ~line 1084) ─────
 //
 // Field names below are the Prisma *client* field names (camelCase, as
@@ -93,6 +125,8 @@ export type VulnImportSeverity = VulnSeverity;
 // should be used) from GET /batches, absent from GET /batches/:id.
 export interface VulnImportBatch {
   id: string;
+  /** See `VulnImportSource` above — free-string DB column, currently always
+   *  'greenbone' or 'crowdstrike' in practice but not constrained as such. */
   source: string;
   filename: string;
   taskName: string | null;
@@ -127,7 +161,11 @@ export interface VulnImportEntry {
    *  (service.ts line 241: `data.matchCandidates = null`). */
   matchCandidates: VulnImportCiCandidate[] | null;
   vulnKey: string;
-  oid: string;
+  /** Greenbone-specific (OpenVAS plugin id). schema.prisma ~line 1114:
+   *  `String?` — changed from required to optional in v3.6.1 (task B1) to
+   *  accommodate CrowdStrike Spotlight entries, which have no OID equivalent
+   *  and never set this field. */
+  oid: string | null;
   port: string | null;
   cves: string[];
   severityScore: number;
@@ -139,8 +177,34 @@ export interface VulnImportEntry {
   thread: string | null;
   qod: number | null;
   epssScore: number | null;
-  /** Raw per-vulnerability Greenbone JSON as originally parsed — shape not
-   *  contractually fixed here (parser.ts owns it); treat as opaque. */
+  // ── CrowdStrike Spotlight fields (v3.6.1, task B1/F1) ──────────────────
+  // schema.prisma ~lines 1126-1135. Empty array / null / false for every
+  // Greenbone-sourced entry, which never sets these (parser.ts never
+  // populates them for Greenbone reports — see `ParsedVulnEntry` comment).
+  /** Affected product/version strings, e.g. `["JRE 1.8.0", "JDK 11"]`.
+   *  `String[] @default([])` — never null, defaults to `[]`. */
+  products: string[];
+  /** CrowdStrike's own AI-driven severity rating (Low/Medium/High/Critical)
+   *  — a distinct signal from `severity`, never conflated with it. */
+  exprtRating: string | null;
+  /** CISA Known Exploited Vulnerabilities flag. `Boolean @default(false)`
+   *  — never null. */
+  cisaKev: boolean;
+  /** CISA-mandated remediation due date for a KEV-flagged finding.
+   *  `DateTime? @map("cisa_due_date")` — serializes to an ISO string over
+   *  JSON like every other DateTime field in this file, never a `Date`. */
+  cisaDueDate: string | null;
+  exploitStatus: string | null;
+  daysOpen: number | null;
+  /** The SOURCE SYSTEM's own status word (e.g. CrowdStrike's "Open" /
+   *  "Reopened") — distinct from this app's own `existingStatus` /
+   *  `classification` / `decision` fields below, which are never derived
+   *  from it. */
+  externalStatus: string | null;
+  cvssVersion: string | null;
+  /** Raw per-vulnerability Greenbone/CrowdStrike JSON as originally parsed —
+   *  shape not contractually fixed here (parser.ts / crowdstrikeParser.ts
+   *  own it); treat as opaque. */
   raw: unknown;
   existingStatus: VulnStatus | null;
   classification: VulnImportClassification;
@@ -183,7 +247,11 @@ export interface BulkDecisionBody {
 // ─── Response types — one per endpoint, named after the endpoint ──────────
 
 /** POST /upload → 201, res.json(result) where result: UploadResult
- *  (service.ts lines 56-59: { batchId, summary: UploadSummary }). */
+ *  (service.ts lines 56-59: { batchId, summary: UploadSummary }).
+ *  Re-checked v3.6.1 (task F1): every field here is classification/match
+ *  terminology generic to the staging workflow, not Greenbone-specific —
+ *  this shape is already source-agnostic and needs no change for
+ *  CrowdStrike Spotlight uploads through the same endpoint. */
 export interface UploadSummary {
   totalEntries: number;
   matched: number;

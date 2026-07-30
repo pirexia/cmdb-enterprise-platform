@@ -2523,7 +2523,11 @@
         "DISCARDED": "Descartado"
       },
       "singular": "lote",
-      "plural": "lotes"
+      "plural": "lotes",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
     },
     "classification": {
       "NUEVA": "Nueva",
@@ -2620,7 +2624,14 @@
       "familyLabel": "Familia",
       "qodLabel": "QoD",
       "noDetails": "Sin descripción disponible",
-      "existingPendingHint": "No se volverá a importar; solo se actualizan sus datos"
+      "existingPendingHint": "No se volverá a importar; solo se actualizan sus datos",
+      "exprtRatingLabel": "Valoración ExPRT",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "Fecha límite CISA",
+      "exploitStatusLabel": "Estado de explotación",
+      "daysOpenLabel": "Días abierta",
+      "productsLabel": "Productos afectados",
+      "externalStatusLabel": "Estado en origen"
     },
     "bulk": {
       "includeVisible": "Incluir visibles",

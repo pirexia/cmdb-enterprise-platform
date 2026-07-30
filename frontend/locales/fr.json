@@ -2404,7 +2404,11 @@
         "DISCARDED": "Rejeté"
       },
       "singular": "lot",
-      "plural": "lots"
+      "plural": "lots",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
     },
     "classification": {
       "NUEVA": "Nouvelle",
@@ -2501,7 +2505,14 @@
       "familyLabel": "Famille",
       "qodLabel": "QoD",
       "noDetails": "Aucune description disponible",
-      "existingPendingHint": "Ne sera pas réimporté ; seules ses données seront actualisées"
+      "existingPendingHint": "Ne sera pas réimporté ; seules ses données seront actualisées",
+      "exprtRatingLabel": "Évaluation ExPRT",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "Date limite CISA",
+      "exploitStatusLabel": "Statut d'exploitation",
+      "daysOpenLabel": "Jours ouverts",
+      "productsLabel": "Produits concernés",
+      "externalStatusLabel": "Statut à la source"
     },
     "bulk": {
       "includeVisible": "Inclure les visibles",

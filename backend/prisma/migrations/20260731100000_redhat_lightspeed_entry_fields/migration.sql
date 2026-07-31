@@ -1,0 +1,8 @@
+BEGIN;
+
+ALTER TABLE "vuln_import_entries"
+  ADD COLUMN IF NOT EXISTS "redhat_impact" VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS "known_exploit" BOOLEAN,
+  ADD COLUMN IF NOT EXISTS "public_date" TIMESTAMPTZ;
+
+COMMIT;

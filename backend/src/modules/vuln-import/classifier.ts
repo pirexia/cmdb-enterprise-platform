@@ -30,6 +30,9 @@ export interface IncomingVulnerability {
    * (e.g. "Actively used (critical)", "Unproven"). Only specific values
    * count as "active exploitation" — see `isActivelyExploited`. */
   exploitStatus?: string;
+  /** Red Hat Lightspeed's own "known exploit" flag — a third, independent
+   *  forced-premarking signal alongside CISA KEV / active-exploitation. */
+  knownExploit?: boolean;
 }
 
 export type VulnClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA';
@@ -107,7 +110,7 @@ export function isActivelyExploited(exploitStatus: string | undefined | null): b
  * `isSeverityAtLeast`).
  */
 function isForcedPremarked(incoming: IncomingVulnerability): boolean {
-  return incoming.cisaKev === true || isActivelyExploited(incoming.exploitStatus);
+  return incoming.cisaKev === true || isActivelyExploited(incoming.exploitStatus) || incoming.knownExploit === true;
 }
 
 /**

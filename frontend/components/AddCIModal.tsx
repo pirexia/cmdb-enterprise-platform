@@ -89,9 +89,15 @@ function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 // ─── Modal ────────────────────────────────────────────────────────────────────
 
-export default function AddCIModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }): React.ReactElement {
+export default function AddCIModal({
+  onClose, onCreated, initialValues,
+}: {
+  onClose: () => void;
+  onCreated: (ci: { id: string; name: string }) => void;
+  initialValues?: Partial<Pick<FormState, "name" | "hostName" | "adminIp" | "dns">>;
+}): React.ReactElement {
   const { t } = useLanguage();
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  const [form, setForm] = useState<FormState>({ ...INITIAL_FORM, ...initialValues });
   const [users,            setUsers]            = useState<User[]>([]);
   const [branches,         setBranches]         = useState<Branch[]>([]);
   const [manufacturers,    setManufacturers]    = useState<MasterItem[]>([]);
@@ -221,7 +227,9 @@ export default function AddCIModal({ onClose, onCreated }: { onClose: () => void
         if (ct.includes("application/json")) { const err = await res.json(); throw new Error(err.error ?? `Error ${res.status}`); }
         else { const t = await res.text(); throw new Error(`Error ${res.status}: ${t.replace(/<[^>]+>/g, "").trim().slice(0, 120)}`); }
       }
-      onCreated(); onClose();
+      const created = await res.json();
+      onCreated({ id: created.id, name: created.name ?? form.name });
+      onClose();
     } catch (err) { setError(err instanceof Error ? err.message : "Unknown error"); }
     finally { setSubmitting(false); }
   };

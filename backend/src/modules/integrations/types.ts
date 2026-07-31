@@ -34,4 +34,9 @@ export interface Vulnerability {
   daysOpen?:      number;
   externalStatus?: string;
   cvssVersion?:   string;
+  // Red Hat Lightspeed fields (v3.7.0) — all optional, mirror the
+  // same-named VulnImportEntry columns. Absent for Greenbone/CrowdStrike.
+  redhatImpact?: string;
+  knownExploit?: boolean;
+  publicDate?: string;
 }

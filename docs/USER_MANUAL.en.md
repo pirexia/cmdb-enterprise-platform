@@ -644,6 +644,28 @@ CrowdStrike also reports whether it considers a vulnerability itself "reopened" 
 
 **Note on the review-screen controls:** each entry's decision checkbox now states the outcome, not a command — "Will be imported" means that accepting the batch will apply that vulnerability to the asset; "Will not be imported" means it will be left out. Similarly, when an entry already exists on the asset and is still pending resolution, the label reads "Already exists on this CI" — it won't be re-imported as something new, only refreshed if you upload the same finding again.
 
+### Importing vulnerabilities from Red Hat Lightspeed
+
+Unlike Greenbone and CrowdStrike, this connector **doesn't require uploading any file** — it connects directly to the Red Hat Insights API and pulls every open CVE on your RHEL servers with a single click.
+
+1. Go to **Connectors** and locate the **Red Hat Lightspeed** card. If the "Import" button is disabled, ask your administrator to configure the service account (see the sysadmin manual).
+2. Click **Import**. The system queries every RHEL system visible to the configured service account and creates a review batch, exactly like Greenbone/CrowdStrike.
+3. You'll be redirected to the usual review screen — same tabs, same decision checkbox, same accept/discard button.
+
+**Signals specific to Lightspeed on the review screen:**
+
+| Signal | What it means |
+|---|---|
+| **Red Hat impact** | Red Hat's own rating (Low/Moderate/Important/Critical), independent of the CVSS severity you already know from the rest of the app — treat them as two distinct opinions. |
+| **Known exploit** | Red Hat flags the vulnerability as a known exploit — like CISA KEV, this pre-selects the entry for inclusion regardless of severity. |
+
+**Accepting a Lightspeed batch does two things the other sources don't:**
+
+- If Red Hat reports a different RHEL version than the asset currently has on record, it's corrected automatically — and if that RHEL version has never been seen before, its official end-of-support and end-of-life dates are filled in too.
+- Any Lightspeed vulnerability the asset had open that **no longer appears** in this import is marked resolved automatically — Red Hat gives you a complete picture of what's still open on each system, so if something disappears it's because it was already fixed. Greenbone/CrowdStrike vulnerabilities on the same asset are never affected by this automatic closure.
+
+**If Lightspeed reports a server that doesn't exist in the CMDB:** the entry shows as "no matching asset." Next to the manual reassignment search you'll see a **Create CI** option, which opens the new-asset form pre-filled with the name, IP, and hostname from the Red Hat data.
+
 ---
 
 ## 11. Document Repository

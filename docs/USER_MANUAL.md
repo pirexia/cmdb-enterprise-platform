@@ -644,6 +644,28 @@ CrowdStrike también informa sobre si él mismo considera una vulnerabilidad "re
 
 **Nota sobre los controles de la pantalla de revisión:** la casilla de decisión de cada entrada ahora indica el resultado, no una orden — "Se importará" significa que al aceptar el lote esa vulnerabilidad se incorporará al activo; "No se importará" significa que quedará fuera. Del mismo modo, cuando una entrada ya existe en el activo y sigue pendiente de resolución, la etiqueta es "Ya existe en este CI" — no se reimportará como algo nuevo, solo se refrescará su información si vuelves a subir el mismo hallazgo.
 
+### Importar vulnerabilidades desde Red Hat Lightspeed
+
+A diferencia de Greenbone y CrowdStrike, este conector **no requiere subir ningún fichero**: se conecta directamente a la API de Red Hat Insights y trae todas las CVE abiertas de tus servidores RHEL con un solo clic.
+
+1. Ve a **Conectores** y localiza la tarjeta **Red Hat Lightspeed**. Si el botón "Importar" aparece deshabilitado, pide a tu administrador que configure la cuenta de servicio (ver el manual de administración de sistemas).
+2. Pulsa **Importar**. El sistema consulta todos los sistemas RHEL visibles para la cuenta de servicio configurada y crea un lote de revisión, exactamente como con Greenbone/CrowdStrike.
+3. Serás redirigido a la pantalla de revisión habitual — mismas pestañas, misma casilla de decisión, mismo botón de aceptar/descartar.
+
+**Señales propias de Lightspeed en la pantalla de revisión:**
+
+| Señal | Qué significa |
+|---|---|
+| **Impacto Red Hat** | La valoración propia de Red Hat (Low/Moderate/Important/Critical), independiente de la severidad CVSS que ya conoces del resto de la aplicación — trátalas como dos opiniones distintas. |
+| **Explotación conocida** | Red Hat marca la vulnerabilidad como de explotación conocida — al igual que CISA KEV, esto premarca la entrada para incluir con independencia de su severidad. |
+
+**Al aceptar un lote de Lightspeed ocurren dos cosas que no pasan con las otras fuentes:**
+
+- Si Red Hat reporta una versión de RHEL distinta a la que tenía registrado el activo, se corrige automáticamente — y si es la primera vez que se ve esa versión de RHEL en el sistema, se rellenan también sus fechas oficiales de fin de soporte y fin de vida.
+- Cualquier vulnerabilidad de Lightspeed que el activo tuviera abierta y que **ya no aparezca** en esta importación se marca automáticamente como resuelta — Red Hat te da una foto completa de lo que sigue abierto en cada sistema, así que si algo desaparece es porque ya se corrigió. Las vulnerabilidades de Greenbone o CrowdStrike del mismo activo nunca se ven afectadas por este cierre automático.
+
+**Si Lightspeed reporta un servidor que no existe en el CMDB:** la entrada aparece como "sin activo asociado". Junto al buscador de reasignación manual verás una opción **Crear CI**, que abre el formulario de alta con el nombre, la IP y el hostname ya rellenados a partir de los datos de Red Hat.
+
 ---
 
 ## 11. Repositorio Documental

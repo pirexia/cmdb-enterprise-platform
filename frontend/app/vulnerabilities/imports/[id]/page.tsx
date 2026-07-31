@@ -17,11 +17,12 @@ import { useParams, useRouter } from "next/navigation";
 import {
   RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, CheckCircle,
   X, Search, ChevronDown, Info, PackageCheck, Trash2,
-  ChevronUp, ShieldAlert, Flame,
+  ChevronUp, ShieldAlert, Flame, Plus,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
+import AddCIModal from "@/components/AddCIModal";
 import type {
   VulnImportEntry,
   GetBatchDetailResponse,
@@ -147,12 +148,14 @@ function ConfidencePill({ confidence, t }: { confidence: MatchConfidence | null;
 // ─── CI reassignment picker (searchable, loaded lazily from the shared CI list) ──
 
 function CiReassignPicker({
-  entry, ciOptions, ciLoading, onAssign, assigning, t,
+  entry, ciOptions, ciLoading, onAssign, onCreateCi, canCreateCi, assigning, t,
 }: {
   entry: VulnImportEntry;
   ciOptions: CiOption[];
   ciLoading: boolean;
   onAssign: (ciId: string) => void;
+  onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   assigning: boolean;
   t: (k: string) => string;
 }) {
@@ -203,6 +206,16 @@ function CiReassignPicker({
               </ul>
             </div>
           )}
+          {entry.matchConfidence === "UNMATCHED" && canCreateCi && (
+            <button
+              type="button"
+              onClick={() => { onCreateCi(entry); setOpen(false); }}
+              className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("vulnImport.actions.createCi")}
+            </button>
+          )}
           <div className="border-b border-slate-100 p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -245,7 +258,7 @@ function CiReassignPicker({
 // ─── One entry row ─────────────────────────────────────────────────────────
 
 function EntryRow({
-  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, pending, expanded, onToggleExpand, t,
+  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, onCreateCi, canCreateCi, pending, expanded, onToggleExpand, t,
 }: {
   entry: VulnImportEntry;
   ciMap: Map<string, CiOption>;
@@ -254,6 +267,8 @@ function EntryRow({
   canEdit: boolean;
   onToggleDecision: (entry: VulnImportEntry) => void;
   onReassignCi: (entry: VulnImportEntry, ciId: string) => void;
+  onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   pending: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -266,7 +281,9 @@ function EntryRow({
   const hasDetails = !!(
     entry.summary || entry.solution || entry.family || entry.qod != null ||
     entry.exprtRating || entry.daysOpen != null || entry.products.length > 0 ||
-    entry.cvssVersion || entry.externalStatus
+    entry.cvssVersion || entry.externalStatus || entry.redhatImpact
+    // knownExploit is intentionally NOT here — like cisaKev/activelyExploited,
+    // it's shown as a collapsed-row badge above, not detail-panel content.
   );
 
   return (
@@ -289,6 +306,12 @@ function EntryRow({
               <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
                 <Flame className="h-3 w-3" />
                 {t("vulnImport.entry.activeExploitationBadge")}
+              </span>
+            )}
+            {entry.knownExploit && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
+                <Flame className="h-3 w-3" />
+                {t("vulnImport.entry.knownExploitBadge")}
               </span>
             )}
             {entry.edited && (
@@ -382,6 +405,8 @@ function EntryRow({
               ciLoading={ciLoading}
               assigning={pending}
               onAssign={(ciId) => onReassignCi(entry, ciId)}
+              onCreateCi={onCreateCi}
+              canCreateCi={canCreateCi}
               t={t}
             />
           )}
@@ -406,7 +431,7 @@ function EntryRow({
               <p className="whitespace-pre-wrap text-slate-700">{entry.solution}</p>
             </div>
           )}
-          {(entry.exprtRating || entry.daysOpen != null || entry.cvssVersion) && (
+          {(entry.exprtRating || entry.daysOpen != null || entry.cvssVersion || entry.redhatImpact) && (
             <div className="flex flex-wrap gap-4">
               {entry.exprtRating && (
                 <div>
@@ -417,6 +442,17 @@ function EntryRow({
                       from the CVSS-derived `severity` pill shown in the
                       collapsed row, deliberately not merged with it. */}
                   <p className="text-slate-700">{entry.exprtRating}</p>
+                </div>
+              )}
+              {entry.redhatImpact && (
+                <div>
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {t("vulnImport.entry.redhatImpactLabel")}
+                  </p>
+                  {/* Red Hat's own severity rating — a distinct signal from
+                      the CVSS-derived `severity` pill, deliberately not
+                      merged with it, same principle as exprtRating above. */}
+                  <p className="text-slate-700">{entry.redhatImpact}</p>
                 </div>
               )}
               {entry.daysOpen != null && (
@@ -458,7 +494,8 @@ function EntryRow({
             </div>
           )}
           {!entry.summary && !entry.solution && !entry.exprtRating && entry.daysOpen == null &&
-            entry.products.length === 0 && !entry.cvssVersion && !entry.externalStatus && (
+            entry.products.length === 0 && !entry.cvssVersion && !entry.externalStatus &&
+            !entry.redhatImpact && (
             <p className="italic text-slate-400">{t("vulnImport.entry.noDetails")}</p>
           )}
         </div>
@@ -471,7 +508,7 @@ function EntryRow({
 
 export default function VulnImportBatchDetailPage() {
   const { t } = useLanguage();
-  const { canManageSecurity } = useAuth();
+  const { canManageSecurity, isAdmin } = useAuth();
   const params = useParams();
   const router = useRouter();
   const batchId = params.id as string;
@@ -559,6 +596,11 @@ export default function VulnImportBatchDetailPage() {
   const ciMap = useMemo(() => new Map(ciOptions.map((c) => [c.id, c])), [ciOptions]);
 
   const canEdit = canManageSecurity && batch?.status === "PENDING";
+  // "Crear CI" calls POST /api/cis, which is ADMIN-only on the backend
+  // (requireAdmin) — SOC has canManageSecurity/canEdit for this review
+  // screen's other actions, but would hit a 403 here. Gate on isAdmin
+  // specifically so the option is never offered to a role that can't use it.
+  const canCreateCi = isAdmin && batch?.status === "PENDING";
 
   // ── Tab filtering (client-side, per spec — tabs are independent views) ──
 
@@ -623,6 +665,13 @@ export default function VulnImportBatchDetailPage() {
     } finally {
       setPendingEntryIds((prev) => { const n = new Set(prev); n.delete(entry.id); return n; });
     }
+  };
+
+  const [createCiForEntry, setCreateCiForEntry] = useState<VulnImportEntry | null>(null);
+
+  const handleCiCreated = (entry: VulnImportEntry, ci: { id: string; name: string }) => {
+    setCreateCiForEntry(null);
+    void handleReassignCi(entry, ci.id);
   };
 
   // ── Bulk decision on the currently-visible (tab-filtered) entries ───────
@@ -1028,6 +1077,8 @@ export default function VulnImportBatchDetailPage() {
                       canEdit={canEdit}
                       onToggleDecision={handleToggleDecision}
                       onReassignCi={handleReassignCi}
+                      onCreateCi={setCreateCiForEntry}
+                      canCreateCi={canCreateCi}
                       pending={pendingEntryIds.has(entry.id)}
                       expanded={expandedEntryIds.has(entry.id)}
                       onToggleExpand={() => toggleExpanded(entry.id)}
@@ -1089,6 +1140,18 @@ export default function VulnImportBatchDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {createCiForEntry && (
+        <AddCIModal
+          onClose={() => setCreateCiForEntry(null)}
+          onCreated={(ci) => handleCiCreated(createCiForEntry, ci)}
+          initialValues={{
+            name: createCiForEntry.hostAddress,
+            hostName: (createCiForEntry.raw as { hostname?: string } | null)?.hostname ?? "",
+            adminIp: /^\d+\.\d+\.\d+\.\d+$/.test(createCiForEntry.hostAddress) ? createCiForEntry.hostAddress : "",
+          }}
+        />
       )}
     </div>
   );

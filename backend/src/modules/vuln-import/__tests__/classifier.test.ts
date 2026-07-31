@@ -256,3 +256,23 @@ describe('isActivelyExploited', () => {
     );
   });
 });
+
+describe('classifyVulnerability — Red Hat Lightspeed knownExploit premarking', () => {
+  it('force-premarks a NUEVA, low-severity entry when knownExploit is true (Red Hat Lightspeed signal)', () => {
+    const result = classifyVulnerability(
+      { key: 'CVE-2024-9999', severity: 'LOW', knownExploit: true },
+      null,
+    );
+    expect(result.classification).toBe('NUEVA');
+    expect(result.decision).toBe('INCLUDE');
+  });
+
+  it('does not force-premark a NUEVA, low-severity entry when knownExploit is false/absent', () => {
+    const result = classifyVulnerability(
+      { key: 'CVE-2024-9998', severity: 'LOW', knownExploit: false },
+      null,
+    );
+    expect(result.classification).toBe('NUEVA');
+    expect(result.decision).toBe('EXCLUDE');
+  });
+});

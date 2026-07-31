@@ -51,6 +51,17 @@ describe('runRedHatLightspeedImport', () => {
     await first;
   });
 
+  it('refreshes the access token before each system, not just once at the start (live verification: a real 105-system pull outlived a single token\'s lifetime)', async () => {
+    (vulnClient.listSystems as jest.Mock).mockResolvedValue([
+      { inventory_id: 'inv-1', display_name: 'srv-a', os: 'RHEL 9.4', cve_count: 1 },
+      { inventory_id: 'inv-2', display_name: 'srv-b', os: 'RHEL 8.10', cve_count: 1 },
+    ]);
+    (tokenClient.fetchAccessToken as jest.Mock).mockClear();
+    await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
+    // One fetch for listSystems + one per system in the loop = 3 total.
+    expect(tokenClient.fetchAccessToken).toHaveBeenCalledTimes(3);
+  });
+
   it('carries the inventory identity OS facts + hostname into each entry\'s raw payload, so acceptBatch\'s OS correction has data to read', async () => {
     await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
     const createCall = (prisma.vulnImportBatch.create as jest.Mock).mock.calls[0][0];

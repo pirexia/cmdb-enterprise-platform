@@ -42,7 +42,7 @@ export async function runRedHatLightspeedImport(
     const cfg = loadRedHatLightspeedConfig();
     if (!isConfigured(cfg)) throw new RedHatLightspeedNotConfiguredError();
 
-    const token = await fetchAccessToken(cfg);
+    let token = await fetchAccessToken(cfg);
     const systems = await listSystems(cfg.baseUrl, token);
 
     const newEntries: NewEntryInput[] = [];
@@ -52,7 +52,13 @@ export async function runRedHatLightspeedImport(
     };
     const storedVulnsByCi = new Map<string, Vulnerability[]>();
 
+    // Live verification found the bearer token expiring mid-run: a real org
+    // (105 systems, one with 4600 open CVEs) takes long enough, sequentially,
+    // to outlive a single OAuth2 client_credentials token's lifetime. Refresh
+    // it before each system rather than tracking expiry — a service account
+    // token exchange is cheap, and this removes the whole class of bug.
     for (const system of systems) {
+      token = await fetchAccessToken(cfg);
       const [cves, identity] = await Promise.all([
         listSystemCves(cfg.baseUrl, token, system.inventory_id),
         getHostIdentity(cfg.baseUrl, token, system.inventory_id),

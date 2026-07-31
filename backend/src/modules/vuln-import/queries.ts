@@ -1,5 +1,7 @@
 import { Prisma, PrismaClient } from '@prisma/client';
+import type { VulnImportBatch } from '@prisma/client';
 import type { Vulnerability } from '../integrations/types.js';
+import { vulnImportAudit } from './audit.js';
 
 // DB access layer for the vuln-import staging module. Business logic
 // (parsing/matching/classification orchestration, the accept transaction)
@@ -63,6 +65,12 @@ export interface NewBatchInput {
   entries: NewEntryInput[];
 }
 
+/** Batch metadata without the entries — what `createBatchShell` needs. Split
+ *  out so callers building a large `entries` array don't have to thread it
+ *  through the batch-creation step; see `writeBatchEntries` below, which
+ *  takes entries separately and outside any transaction. */
+export type NewBatchMeta = Omit<NewBatchInput, 'entries'>;
+
 // Chunk size for the entries createMany calls below. Live verification with
 // a real Red Hat Lightspeed pull (13,868 entries in one batch) hit
 // `RangeError: Invalid string length` when the original implementation
@@ -111,33 +119,96 @@ function toEntryCreateInput(batchId: string, e: NewEntryInput) {
   };
 }
 
-/** Creates a VulnImportBatch, then its VulnImportEntry rows via chunked
- *  `createMany` calls (never one giant nested write — see ENTRY_CHUNK_SIZE's
- *  comment). Must be called with a transaction client so the caller can add
- *  the audit insert to the same `$transaction`. */
-export async function createBatchWithEntries(tx: Prisma.TransactionClient, input: NewBatchInput) {
-  const batch = await tx.vulnImportBatch.create({
+/** Creates only the VulnImportBatch row, in a short transaction the caller
+ *  provides. Status starts as `RUNNING` (not `PENDING`) — the batch isn't
+ *  ready for operator review until `finalizeBatch` moves it to `PENDING`
+ *  once every entry has actually been written. This is deliberately split
+ *  from entry-writing (see `writeBatchEntries`) so a batch with thousands
+ *  of entries never holds a single interactive transaction open for the
+ *  whole write — that was the root cause of the timeout this refactor
+ *  fixes (see `writeBatchEntries`'s comment for the concrete failure). */
+export async function createBatchShell(
+  tx: Prisma.TransactionClient,
+  meta: NewBatchMeta,
+): Promise<VulnImportBatch> {
+  return tx.vulnImportBatch.create({
     data: {
-      source: input.source,
-      filename: input.filename,
-      taskName: input.taskName ?? null,
-      greenboneTaskId: input.greenboneTaskId ?? null,
-      scanStart: input.scanStart ?? null,
-      scanEnd: input.scanEnd ?? null,
-      status: 'PENDING',
-      uploadedBy: input.uploadedBy,
-      rawMeta: input.rawMeta === undefined ? Prisma.JsonNull : (input.rawMeta as Prisma.InputJsonValue),
+      source: meta.source,
+      filename: meta.filename,
+      taskName: meta.taskName ?? null,
+      greenboneTaskId: meta.greenboneTaskId ?? null,
+      scanStart: meta.scanStart ?? null,
+      scanEnd: meta.scanEnd ?? null,
+      status: 'RUNNING',
+      uploadedBy: meta.uploadedBy,
+      rawMeta: meta.rawMeta === undefined ? Prisma.JsonNull : (meta.rawMeta as Prisma.InputJsonValue),
+    },
+  });
+}
+
+/** Writes VulnImportEntry rows for a batch via chunked `createMany` calls,
+ *  deliberately run directly on the base `PrismaClient` — NOT inside any
+ *  `$transaction`. Live verification with a real Red Hat Lightspeed pull
+ *  (13,868 entries in one batch) hit two failures from the original
+ *  single-transaction design: (1) `RangeError: Invalid string length` when
+ *  every entry was nested under one `vulnImportBatch.create({data:{entries:
+ *  {create:[...]}}})` call — Prisma serializes that whole nested write as
+ *  one JSON payload for the query engine, and it exceeded V8's max string
+ *  length; and (2) even after chunking, wrapping thousands of sequential
+ *  `createMany` calls inside a single interactive transaction held a DB
+ *  connection + row locks open long enough to hit Prisma's interactive
+ *  transaction timeout. Running the chunk loop outside any transaction
+ *  avoids both: each `createMany` call commits independently, and no call's
+ *  payload grows with the total entry count regardless of how large `raw`
+ *  happens to be per entry. */
+export async function writeBatchEntries(
+  prisma: PrismaClient,
+  batchId: string,
+  entries: NewEntryInput[],
+  onProgress?: (written: number, total: number) => void,
+): Promise<void> {
+  const total = entries.length;
+  let written = 0;
+  for (let i = 0; i < entries.length; i += ENTRY_CHUNK_SIZE) {
+    const chunk = entries.slice(i, i + ENTRY_CHUNK_SIZE);
+    await prisma.vulnImportEntry.createMany({
+      data: chunk.map((e) => toEntryCreateInput(batchId, e)),
+    });
+    written += chunk.length;
+    onProgress?.(written, total);
+  }
+}
+
+/** Moves a batch out of `RUNNING` into its terminal upload-time state — a
+ *  short transaction the caller provides, so the status update and its
+ *  audit record commit atomically (ISO 27001 A.8.15 — see `vulnImportAudit`'s
+ *  comment). `PENDING` means the batch is ready for operator review, exactly
+ *  what the old `createBatchWithEntries` used to set unconditionally on
+ *  success; `FAILED` records `errorMessage` for a batch whose entry-write
+ *  loop (`writeBatchEntries`, run outside this transaction) didn't complete.
+ *  The audited `userEmail` is read back off the batch row itself
+ *  (`uploadedBy`, set by `createBatchShell`) rather than threaded through
+ *  as a parameter — the caller already committed to that value when it
+ *  created the batch. */
+export async function finalizeBatch(
+  tx: Prisma.TransactionClient,
+  batchId: string,
+  status: 'PENDING' | 'FAILED',
+  errorMessage?: string | null,
+): Promise<void> {
+  const batch = await tx.vulnImportBatch.update({
+    where: { id: batchId },
+    data: {
+      status,
+      errorMessage: status === 'FAILED' ? (errorMessage ?? null) : null,
     },
   });
 
-  for (let i = 0; i < input.entries.length; i += ENTRY_CHUNK_SIZE) {
-    const chunk = input.entries.slice(i, i + ENTRY_CHUNK_SIZE);
-    await tx.vulnImportEntry.createMany({
-      data: chunk.map((e) => toEntryCreateInput(batch.id, e)),
-    });
-  }
-
-  return batch;
+  const action = status === 'FAILED' ? 'VULN_IMPORT_FAILED' : 'VULN_IMPORT_UPLOAD';
+  await vulnImportAudit(tx, action, 'VulnImportBatch', batch.id, batch.uploadedBy, {
+    status,
+    ...(status === 'FAILED' && errorMessage ? { errorMessage } : {}),
+  });
 }
 
 export interface BatchListFilter {

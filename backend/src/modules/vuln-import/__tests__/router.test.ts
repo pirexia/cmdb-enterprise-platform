@@ -25,6 +25,7 @@ const mockEntryFindMany   = jest.fn();
 const mockEntryFindFirst  = jest.fn();
 const mockEntryUpdate     = jest.fn();
 const mockEntryUpdateMany = jest.fn();
+const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 
 const mockTransaction = jest.fn();
 
@@ -40,7 +41,7 @@ jest.mock('@prisma/client', () => ({
       },
       vulnImportEntry: {
         groupBy: mockEntryGroupBy, findMany: mockEntryFindMany, findFirst: mockEntryFindFirst,
-        update: mockEntryUpdate, updateMany: mockEntryUpdateMany,
+        update: mockEntryUpdate, updateMany: mockEntryUpdateMany, createMany: mockEntryCreateMany,
       },
     };
     // The real Prisma runs $transaction(fn) against an interactive tx client;
@@ -196,8 +197,8 @@ describe('POST /api/vuln-import/upload', () => {
       nueva: 1, existentePendiente: 0, reaparecida: 0, preselectedInclude: 1,
     });
 
-    const createArg = mockBatchCreate.mock.calls[0][0];
-    expect(createArg.data.entries.create[0]).toMatchObject({
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0]).toMatchObject({
       ciId: CI_ID, matchConfidence: 'EXACT_IP', classification: 'NUEVA', decision: 'INCLUDE',
     });
     expect(mockExecuteRaw).toHaveBeenCalledWith(
@@ -222,10 +223,10 @@ describe('POST /api/vuln-import/upload', () => {
     expect(res.status).toBe(201);
     expect(res.body.summary.ambiguous).toBe(1);
     expect(res.body.summary.matched).toBe(0);
-    const createArg = mockBatchCreate.mock.calls[0][0];
-    expect(createArg.data.entries.create[0].ciId).toBeNull();
-    expect(createArg.data.entries.create[0].matchConfidence).toBe('AMBIGUOUS');
-    expect(createArg.data.entries.create[0].matchCandidates).toEqual([
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0].ciId).toBeNull();
+    expect(entriesArg.data[0].matchConfidence).toBe('AMBIGUOUS');
+    expect(entriesArg.data[0].matchCandidates).toEqual([
       { id: 'ci-a', name: 'dup' }, { id: 'ci-b', name: 'dup' },
     ]);
   });
@@ -282,7 +283,8 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
 
     const createArg = mockBatchCreate.mock.calls[0][0];
     expect(createArg.data.source).toBe('crowdstrike');
-    expect(createArg.data.entries.create[0]).toMatchObject({
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0]).toMatchObject({
       vulnKey: 'CVE-2024-9999',
       products: ['JRE 1.8.0'],
       exprtRating: null,

@@ -8,13 +8,16 @@ const mockQueryRaw   = jest.fn();
 const mockExecuteRaw = jest.fn();
 const mockVulnUuid   = jest.fn().mockReturnValue('aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee');
 const mockBatchCreate = jest.fn();
+const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 const mockTransaction = jest.fn();
 
 // POST /api/integrations/greenbone (v3.6.0 B6) now delegates to the
 // vuln-import staging module's `uploadReport()` — the mocked Prisma client
 // must therefore also support the calls that flow makes ($transaction +
-// vulnImportBatch.create), mirroring
-// modules/vuln-import/__tests__/router.test.ts's mock shape.
+// vulnImportBatch.create + vulnImportEntry.createMany, the latter added
+// when createBatchWithEntries moved off a single giant nested create to
+// chunked createMany calls — see queries.ts's ENTRY_CHUNK_SIZE comment),
+// mirroring modules/vuln-import/__tests__/router.test.ts's mock shape.
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => {
     const instance: Record<string, unknown> = {
@@ -22,6 +25,7 @@ jest.mock('@prisma/client', () => ({
       $executeRaw: mockExecuteRaw,
       $transaction: mockTransaction,
       vulnImportBatch: { create: mockBatchCreate },
+      vulnImportEntry: { createMany: mockEntryCreateMany },
     };
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(instance));
     return instance;

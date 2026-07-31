@@ -63,11 +63,60 @@ export interface NewBatchInput {
   entries: NewEntryInput[];
 }
 
-/** Creates a VulnImportBatch + all its VulnImportEntry rows in one nested
- *  Prisma write. Must be called with a transaction client so the caller can
- *  add the audit insert to the same `$transaction`. */
+// Chunk size for the entries createMany calls below. Live verification with
+// a real Red Hat Lightspeed pull (13,868 entries in one batch) hit
+// `RangeError: Invalid string length` when the original implementation
+// nested all entries under a single `vulnImportBatch.create({data:{entries:
+// {create:[...]}}})` — Prisma serializes that whole nested write as one
+// JSON payload for the query engine, and it exceeded V8's max string
+// length. 500 per chunk keeps each createMany call's payload comfortably
+// small regardless of how large `raw` happens to be per entry.
+const ENTRY_CHUNK_SIZE = 500;
+
+function toEntryCreateInput(batchId: string, e: NewEntryInput) {
+  return {
+    batchId,
+    hostAddress: e.hostAddress,
+    ciId: e.ciId,
+    matchConfidence: e.matchConfidence,
+    matchCandidates: e.matchCandidates === null ? Prisma.JsonNull : (e.matchCandidates as Prisma.InputJsonValue),
+    vulnKey: e.vulnKey,
+    oid: e.oid,
+    port: e.port,
+    cves: e.cves,
+    severityScore: e.severityScore,
+    severity: e.severity,
+    name: e.name,
+    summary: e.summary,
+    solution: e.solution,
+    family: e.family,
+    thread: e.thread,
+    qod: e.qod,
+    epssScore: e.epssScore,
+    raw: e.raw as Prisma.InputJsonValue,
+    existingStatus: e.existingStatus,
+    classification: e.classification,
+    decision: e.decision,
+    products: e.products,
+    exprtRating: e.exprtRating,
+    cisaKev: e.cisaKev,
+    cisaDueDate: e.cisaDueDate,
+    exploitStatus: e.exploitStatus,
+    daysOpen: e.daysOpen,
+    externalStatus: e.externalStatus,
+    cvssVersion: e.cvssVersion,
+    redhatImpact: e.redhatImpact,
+    knownExploit: e.knownExploit,
+    publicDate: e.publicDate,
+  };
+}
+
+/** Creates a VulnImportBatch, then its VulnImportEntry rows via chunked
+ *  `createMany` calls (never one giant nested write — see ENTRY_CHUNK_SIZE's
+ *  comment). Must be called with a transaction client so the caller can add
+ *  the audit insert to the same `$transaction`. */
 export async function createBatchWithEntries(tx: Prisma.TransactionClient, input: NewBatchInput) {
-  return tx.vulnImportBatch.create({
+  const batch = await tx.vulnImportBatch.create({
     data: {
       source: input.source,
       filename: input.filename,
@@ -78,45 +127,17 @@ export async function createBatchWithEntries(tx: Prisma.TransactionClient, input
       status: 'PENDING',
       uploadedBy: input.uploadedBy,
       rawMeta: input.rawMeta === undefined ? Prisma.JsonNull : (input.rawMeta as Prisma.InputJsonValue),
-      entries: {
-        create: input.entries.map((e) => ({
-          hostAddress: e.hostAddress,
-          ciId: e.ciId,
-          matchConfidence: e.matchConfidence,
-          matchCandidates: e.matchCandidates === null ? Prisma.JsonNull : (e.matchCandidates as Prisma.InputJsonValue),
-          vulnKey: e.vulnKey,
-          oid: e.oid,
-          port: e.port,
-          cves: e.cves,
-          severityScore: e.severityScore,
-          severity: e.severity,
-          name: e.name,
-          summary: e.summary,
-          solution: e.solution,
-          family: e.family,
-          thread: e.thread,
-          qod: e.qod,
-          epssScore: e.epssScore,
-          raw: e.raw as Prisma.InputJsonValue,
-          existingStatus: e.existingStatus,
-          classification: e.classification,
-          decision: e.decision,
-          products: e.products,
-          exprtRating: e.exprtRating,
-          cisaKev: e.cisaKev,
-          cisaDueDate: e.cisaDueDate,
-          exploitStatus: e.exploitStatus,
-          daysOpen: e.daysOpen,
-          externalStatus: e.externalStatus,
-          cvssVersion: e.cvssVersion,
-          redhatImpact: e.redhatImpact,
-          knownExploit: e.knownExploit,
-          publicDate: e.publicDate,
-        })),
-      },
     },
-    include: { entries: true },
   });
+
+  for (let i = 0; i < input.entries.length; i += ENTRY_CHUNK_SIZE) {
+    const chunk = input.entries.slice(i, i + ENTRY_CHUNK_SIZE);
+    await tx.vulnImportEntry.createMany({
+      data: chunk.map((e) => toEntryCreateInput(batch.id, e)),
+    });
+  }
+
+  return batch;
 }
 
 export interface BatchListFilter {

@@ -17,6 +17,7 @@ describe('runRedHatLightspeedImport', () => {
     $queryRaw: jest.fn().mockResolvedValue([]),
     $executeRaw: jest.fn().mockResolvedValue(1),
     vulnImportBatch: { create: jest.fn().mockResolvedValue({ id: 'batch-1' }) },
+    vulnImportEntry: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
   } as unknown as PrismaClient;
 
   beforeEach(() => {
@@ -64,8 +65,8 @@ describe('runRedHatLightspeedImport', () => {
 
   it('carries the inventory identity OS facts + hostname into each entry\'s raw payload, so acceptBatch\'s OS correction has data to read', async () => {
     await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
-    const createCall = (prisma.vulnImportBatch.create as jest.Mock).mock.calls[0][0];
-    const entry = createCall.data.entries.create[0];
+    const entriesCall = (prisma.vulnImportEntry.createMany as jest.Mock).mock.calls[0][0];
+    const entry = entriesCall.data[0];
     expect(entry.raw).toMatchObject({
       synopsis: 'CVE-2024-1234',
       os_name: 'RHEL', os_major: 9, os_minor: 4,

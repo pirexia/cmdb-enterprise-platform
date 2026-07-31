@@ -426,3 +426,58 @@ describe('GET /api/integrations/status', () => {
     expect(res.body).toEqual({ ldap: false, smtp: false });
   });
 });
+
+// ── Red Hat Lightspeed connector (v3.7.0) ───────────────────────────────────────
+
+describe('Red Hat Lightspeed connector routes', () => {
+  const OLD_ENV = { ...process.env };
+  afterEach(() => {
+    process.env.REDHAT_LIGHTSPEED_CLIENT_ID = OLD_ENV.REDHAT_LIGHTSPEED_CLIENT_ID;
+    process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET = OLD_ENV.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+  });
+
+  describe('GET /api/integrations/redhat-lightspeed/status', () => {
+    it('returns 403 for VIEWER (requireAudit is ADMIN/AUDITOR/SOC only)', async () => {
+      const res = await buildApp()
+        .get('/api/integrations/redhat-lightspeed/status')
+        .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('reports unconfigured when the client credentials are blank', async () => {
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_ID;
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+      const res = await buildApp()
+        .get('/api/integrations/redhat-lightspeed/status')
+        .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ configured: false, baseUrl: 'https://console.redhat.com' });
+    });
+  });
+
+  describe('POST /api/integrations/redhat-lightspeed/import', () => {
+    it('returns 503 when the connector is not configured', async () => {
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_ID;
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ error: 'NOT_CONFIGURED' });
+    });
+
+    it('rejects a VIEWER with 403 (requireSecurityWrite is ADMIN/SOC only)', async () => {
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects an AUDITOR with 403 (read-only role, not write-eligible)', async () => {
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+      expect(res.status).toBe(403);
+    });
+  });
+});

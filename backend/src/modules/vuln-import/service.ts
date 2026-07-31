@@ -12,6 +12,7 @@ import {
   type NewBatchInput, type NewEntryInput, type EntryFilter,
 } from './queries.js';
 import type { UploadRequestBody, PatchEntryBody, BulkDecisionBody } from './schemas.js';
+import { getRhelLifecycleDates } from '../integrations/connectors/redhatLightspeed/lifecycleClient.js';
 
 // Business-logic orchestration for the Greenbone staging/review workflow.
 // Spec: docs/internal/specs/2026-07-29-v3.6.0-greenbone-real-format-staging.md
@@ -409,6 +410,48 @@ function buildNewVulnerability(entry: {
   };
 }
 
+/** Physical-fact OS correction for a Lightspeed-matched CI, run ONLY inside
+ *  acceptBatch's transaction, for batch.source === 'redhat-lightspeed'.
+ *  Unlike hypervisorId (create-once classification), operatingSystemId is
+ *  ALWAYS refreshed — the external system owns this physical fact (D5). */
+async function correctOperatingSystem(
+  tx: Prisma.TransactionClient,
+  ciId: string,
+  raw: { os_name?: string; os_major?: number; os_minor?: number },
+): Promise<void> {
+  if (!raw.os_name || raw.os_major === undefined) return;
+
+  const code = `${raw.os_name}_${raw.os_major}${raw.os_minor !== undefined ? `.${raw.os_minor}` : ''}`;
+  let os = await tx.operatingSystem.findUnique({ where: { code } });
+  if (!os) {
+    os = await tx.operatingSystem.create({
+      data: { code, name: `${raw.os_name} ${raw.os_major}${raw.os_minor !== undefined ? `.${raw.os_minor}` : ''}`, isSystem: false },
+    });
+    // Lifecycle dates only fetched on first creation of this OS row — a
+    // later accept for the same RHEL version reuses the stored dates
+    // rather than re-hitting the public API on every batch.
+    const lifecycle = await getRhelLifecycleDates(raw.os_major);
+    if (lifecycle.eosDate || lifecycle.eolDate) {
+      const [eosType] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "date_types" WHERE code = 'os-end-of-support' LIMIT 1`;
+      const [eolType] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "date_types" WHERE code = 'os-end-of-life' LIMIT 1`;
+      if (eosType && lifecycle.eosDate) {
+        await tx.$executeRaw`
+          INSERT INTO "operating_system_dates" (id, operating_system_id, date_type_id, date_value)
+          VALUES (gen_random_uuid(), ${os.id}::uuid, ${eosType.id}::uuid, ${lifecycle.eosDate})
+          ON CONFLICT (operating_system_id, date_type_id) DO NOTHING`;
+      }
+      if (eolType && lifecycle.eolDate) {
+        await tx.$executeRaw`
+          INSERT INTO "operating_system_dates" (id, operating_system_id, date_type_id, date_value)
+          VALUES (gen_random_uuid(), ${os.id}::uuid, ${eolType.id}::uuid, ${lifecycle.eolDate})
+          ON CONFLICT (operating_system_id, date_type_id) DO NOTHING`;
+      }
+    }
+  }
+
+  await tx.cI.update({ where: { id: ciId }, data: { operatingSystemId: os.id } });
+}
+
 export async function acceptBatch(
   prisma: PrismaClient,
   batchId: string,
@@ -528,6 +571,27 @@ export async function acceptBatch(
           } else {
             byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
             newCount++;
+          }
+        }
+      }
+
+      if (batch.source === 'redhat-lightspeed') {
+        const osHint = entries.map((e) => e.raw as { os_name?: string; os_major?: number; os_minor?: number }).find((r) => r?.os_name);
+        if (osHint) await correctOperatingSystem(tx, ciId, osHint);
+
+        // Closure sweep: this batch gives a COMPLETE picture of every CVE
+        // Lightspeed currently sees on this CI (spec §8) — ALL entries for
+        // this CI in this batch (not just INCLUDEd ones; an EXCLUDEd entry
+        // still means "Lightspeed still reports this as open"), scoped
+        // strictly to source='redhat-lightspeed' so Greenbone/CrowdStrike
+        // vulns on the same CI are never touched.
+        const allBatchEntriesForCi = allEntries.filter((e) => e.ciId === ciId);
+        const stillReportedKeys = new Set(allBatchEntriesForCi.map((e) => e.vulnKey));
+        for (const [key, v] of byIdentity) {
+          if (v.source === 'redhat-lightspeed' && !stillReportedKeys.has(key)
+              && ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'].includes(v.status)) {
+            byIdentity.set(key, { ...v, status: 'RESUELTO', resolvedAt: now });
+            await vulnImportAudit(tx, 'VULN_AUTO_RESOLVED', 'CI', ciId, userEmail, { vulnKey: key });
           }
         }
       }

@@ -204,6 +204,9 @@ export async function uploadReport(
       daysOpen: entry.daysOpen ?? null,
       externalStatus: entry.externalStatus ?? null,
       cvssVersion: entry.cvssVersion ?? null,
+      redhatImpact: entry.redhatImpact ?? null,
+      knownExploit: entry.knownExploit ?? null,
+      publicDate: safeDate(entry.publicDate),
     });
   }
   summary.totalEntries = newEntries.length;
@@ -371,6 +374,7 @@ function buildNewVulnerability(entry: {
   products: string[]; exprtRating: string | null; cisaKev: boolean; cisaDueDate: Date | null;
   exploitStatus: string | null; daysOpen: number | null; externalStatus: string | null;
   cvssVersion: string | null;
+  redhatImpact: string | null; knownExploit: boolean | null; publicDate: Date | null;
 }, now: string, source: string): Vulnerability {
   return {
     key: entry.vulnKey,
@@ -399,6 +403,9 @@ function buildNewVulnerability(entry: {
     daysOpen: entry.daysOpen ?? undefined,
     externalStatus: entry.externalStatus ?? undefined,
     cvssVersion: entry.cvssVersion ?? undefined,
+    redhatImpact: entry.redhatImpact ?? undefined,
+    knownExploit: entry.knownExploit ?? undefined,
+    publicDate: entry.publicDate ? entry.publicDate.toISOString() : undefined,
   };
 }
 
@@ -499,6 +506,9 @@ export async function acceptBatch(
             daysOpen: entry.daysOpen ?? existing.daysOpen,
             externalStatus: entry.externalStatus ?? existing.externalStatus,
             cvssVersion: entry.cvssVersion ?? existing.cvssVersion,
+            redhatImpact: entry.redhatImpact ?? existing.redhatImpact,
+            knownExploit: entry.knownExploit ?? existing.knownExploit,
+            publicDate: entry.publicDate ? entry.publicDate.toISOString() : existing.publicDate,
           });
           reopenedCount++;
           await vulnImportAudit(tx, 'VULN_REOPENED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });

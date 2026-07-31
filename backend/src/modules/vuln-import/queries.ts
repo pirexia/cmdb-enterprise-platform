@@ -46,6 +46,9 @@ export interface NewEntryInput {
   daysOpen: number | null;
   externalStatus: string | null;
   cvssVersion: string | null;
+  redhatImpact: string | null;
+  knownExploit: boolean | null;
+  publicDate: Date | null;
 }
 
 export interface NewBatchInput {
@@ -106,6 +109,9 @@ export async function createBatchWithEntries(tx: Prisma.TransactionClient, input
           daysOpen: e.daysOpen,
           externalStatus: e.externalStatus,
           cvssVersion: e.cvssVersion,
+          redhatImpact: e.redhatImpact,
+          knownExploit: e.knownExploit,
+          publicDate: e.publicDate,
         })),
       },
     },

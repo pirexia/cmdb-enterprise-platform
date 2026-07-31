@@ -81,6 +81,18 @@ export interface ParsedVulnEntry {
   /** CVSS version, e.g. "v3.x" — parsed out of CrowdStrike's glued
    *  `base_score` string. The numeric part goes in `severityScore`. */
   cvssVersion?: string;
+
+  // Red Hat Lightspeed fields (v3.7.0) — all optional, added by
+  // redhatLightspeed/mapper.ts. Never set by parseGreenboneReport or
+  // parseCrowdStrikeReport.
+  /** Red Hat's own severity rating (Low/Moderate/Important/Critical) — a
+   *  separate signal from `severity`, never conflated with it (same
+   *  principle as CrowdStrike's exprtRating). */
+  redhatImpact?: string;
+  /** Red Hat's own "known exploit" flag. */
+  knownExploit?: boolean;
+  /** CVE disclosure date (ISO string), informational. */
+  publicDate?: string;
 }
 
 /** Scan-level metadata plus the flattened list of parsed vulnerability

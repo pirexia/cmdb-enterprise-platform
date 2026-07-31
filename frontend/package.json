@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "3.5.13",
+  "version": "3.6.0",
   "private": true,
   "scripts": {
     "prebuild": "node scripts/gen-version.mjs",

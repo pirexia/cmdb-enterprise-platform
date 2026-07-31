@@ -69,18 +69,32 @@ describe('acceptBatch — Red Hat Lightspeed OS/EOL correction + closure sweep',
     // CVE-2023-0000 is deliberately ABSENT from findMany's result, simulating
     // "Lightspeed no longer reports this as open on this CI".
 
-    const executeRawCalls: string[] = [];
-    (prisma.$executeRaw as jest.Mock).mockImplementation((strings: TemplateStringsArray) => {
-      executeRawCalls.push(strings.join(''));
+    const auditCalls: { action: string; vulnKey: string }[] = [];
+    let writtenVulns: { key: string; status: string; resolvedAt?: string }[] | null = null;
+    (prisma.$executeRaw as jest.Mock).mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join('');
+      if (sql.includes('SET "vulnerabilities"')) {
+        writtenVulns = JSON.parse(values[0] as string);
+      }
+      if (sql.includes('audit_logs')) {
+        // vulnImportAudit's tagged template interpolates
+        // (action, entity, entityId, userEmail, detailsJson) in that order.
+        const details = values[4] ? JSON.parse(values[4] as string) : {};
+        auditCalls.push({ action: values[0] as string, vulnKey: details.vulnKey });
+      }
       return Promise.resolve(1);
     });
 
     await acceptBatch(prisma, 'batch-1', 'tester@cmdb.local');
 
-    const vulnUpdateCall = executeRawCalls.find((s) => s.includes('SET "vulnerabilities"'));
-    expect(vulnUpdateCall).toBeDefined();
-    const auditCall = executeRawCalls.find((s) => s.includes('audit_logs'));
-    expect(auditCall).toBeDefined();
+    // The stale vuln must actually be CLOSED in the written array, not just
+    // "some SQL statement ran" — this is the assertion the review flagged
+    // as missing (Important finding #6).
+    expect(writtenVulns).not.toBeNull();
+    const closedEntry = writtenVulns!.find((v) => v.key === 'CVE-2023-0000');
+    expect(closedEntry).toMatchObject({ status: 'RESUELTO' });
+    expect(closedEntry!.resolvedAt).toBeDefined();
+    expect(auditCalls).toContainEqual({ action: 'VULN_AUTO_RESOLVED', vulnKey: 'CVE-2023-0000' });
   });
 
   it('does not touch a stale vuln from a different source (greenbone) on a redhat-lightspeed batch', async () => {
@@ -95,8 +109,53 @@ describe('acceptBatch — Red Hat Lightspeed OS/EOL correction + closure sweep',
       raw: {},
     }]);
 
+    let writtenVulns: { key: string; status: string; source: string }[] | null = null;
+    const auditActions: string[] = [];
+    (prisma.$executeRaw as jest.Mock).mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = strings.join('');
+      if (sql.includes('SET "vulnerabilities"')) writtenVulns = JSON.parse(values[0] as string);
+      if (sql.includes('audit_logs')) auditActions.push(values[0] as string);
+      return Promise.resolve(1);
+    });
+
     const result = await acceptBatch(prisma, 'batch-1', 'tester@cmdb.local');
-    // The greenbone vuln must survive untouched — no VULN_AUTO_RESOLVED for it.
+
+    // The greenbone vuln must survive completely untouched — same status,
+    // never closed by a Lightspeed accept's sweep — and no auto-resolve
+    // audit row for it (the strong version of the assertion the review
+    // flagged: it's not enough that summary.newCount looks right).
+    const greenboneEntry = writtenVulns!.find((v) => v.key === 'oid1@22/tcp');
+    expect(greenboneEntry).toMatchObject({ status: 'NUEVO', source: 'greenbone' });
+    expect(auditActions).not.toContain('VULN_AUTO_RESOLVED');
     expect(result.summary.newCount).toBe(1);
+  });
+
+  it('runs the closure sweep even when every entry for a CI is EXCLUDEd (steady-state re-import, Important finding #3)', async () => {
+    const staleVuln = { key: 'CVE-2023-0000', cve: 'CVE-2023-0000', severity: 'MEDIUM', description: 'stale', source: 'redhat-lightspeed', status: 'NUEVO', importedAt: '2026-01-01T00:00:00Z' };
+    const prisma = buildPrismaMock({ existingOs: { id: 'os-1' }, ciVulns: [staleVuln] });
+    // Every entry for ci-1 is EXISTENTE_PENDIENTE/EXCLUDE — the normal shape
+    // of a second-or-later pull where nothing new needs review. Note
+    // CVE-2023-0000 (the stale one) is NOT among these entries, simulating
+    // "Lightspeed no longer reports it" even though nothing was INCLUDEd.
+    (prisma.vulnImportEntry.findMany as jest.Mock).mockResolvedValue([{
+      id: 'e1', ciId: 'ci-1', decision: 'EXCLUDE', classification: 'EXISTENTE_PENDIENTE', vulnKey: 'CVE-2024-9999',
+      severity: 'LOW', severityScore: 2.0, summary: 'x', name: 'CVE-2024-9999', cves: ['CVE-2024-9999'],
+      oid: null, port: null, family: null, solution: null, qod: null, epssScore: null,
+      products: [], exprtRating: null, cisaKev: false, cisaDueDate: null, exploitStatus: null,
+      daysOpen: null, externalStatus: null, cvssVersion: null, redhatImpact: null, knownExploit: false, publicDate: null,
+      raw: {},
+    }]);
+
+    let writtenVulns: { key: string; status: string }[] | null = null;
+    (prisma.$executeRaw as jest.Mock).mockImplementation((strings: TemplateStringsArray, ...values: unknown[]) => {
+      if (strings.join('').includes('SET "vulnerabilities"')) writtenVulns = JSON.parse(values[0] as string);
+      return Promise.resolve(1);
+    });
+
+    const result = await acceptBatch(prisma, 'batch-1', 'tester@cmdb.local');
+
+    expect(writtenVulns).not.toBeNull();
+    expect(writtenVulns!.find((v) => v.key === 'CVE-2023-0000')).toMatchObject({ status: 'RESUELTO' });
+    expect(result.touched.map((t) => t.ciId)).toContain('ci-1');
   });
 });

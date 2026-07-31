@@ -96,7 +96,20 @@ export async function runRedHatLightspeedImport(
           vulnKey: entry.key, oid: null, port: null, cves: entry.cves,
           severityScore: entry.severityScore, severity: entry.severity, name: entry.name,
           summary: entry.summary || null, solution: entry.solution || null,
-          family: null, thread: null, qod: null, epssScore: null, raw: entry.raw,
+          family: null, thread: null, qod: null, epssScore: null,
+          // OS facts + hostname carried alongside the raw CVE payload — this
+          // is what acceptBatch's correctOperatingSystem() and the review
+          // screen's "Crear CI" prefill both read (raw.os_name/os_major/
+          // os_minor/hostname). Never derive these from a scanner-specific
+          // shape; they come from the same inventory identity used for CI
+          // matching above, so they always describe the same host.
+          raw: {
+            ...(entry.raw as Record<string, unknown>),
+            os_name: identity.osName ?? undefined,
+            os_major: identity.osMajor ?? undefined,
+            os_minor: identity.osMinor ?? undefined,
+            hostname: identity.hostname ?? undefined,
+          },
           existingStatus: classification.existingStatus,
           classification: classification.classification, decision: classification.decision,
           products: [], exprtRating: null, cisaKev: false, cisaDueDate: null,

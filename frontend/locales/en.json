@@ -2638,6 +2638,7 @@
       "cisaKevWithDue": "CISA KEV — due {date}",
       "exploitStatusLabel": "Exploitation status",
       "activeExploitationBadge": "Active exploitation",
+      "knownExploitBadge": "Known exploit",
       "daysOpenLabel": "Days open",
       "productsLabel": "Affected products",
       "externalStatusLabel": "Source status",

@@ -23,8 +23,13 @@ export interface RhelLifecycleDates {
   eolDate: Date | null;
 }
 
+// Every outbound Red Hat call gets a hard timeout (see redhatLightspeed
+// tokenClient.ts's FETCH_TIMEOUT_MS comment for the reasoning) — doubly
+// important here since this call can run inside acceptBatch's transaction.
+const FETCH_TIMEOUT_MS = 8_000;
+
 export async function getRhelLifecycleDates(majorVersion: number): Promise<RhelLifecycleDates> {
-  const res = await fetch(LIFECYCLE_API_URL);
+  const res = await fetch(LIFECYCLE_API_URL, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!res.ok) {
     throw new Error(`Red Hat Product Life Cycle API request failed: ${res.status}`);
   }

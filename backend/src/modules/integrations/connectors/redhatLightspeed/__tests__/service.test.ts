@@ -50,4 +50,15 @@ describe('runRedHatLightspeedImport', () => {
     await expect(runRedHatLightspeedImport(prisma, 'tester@cmdb.local')).rejects.toThrow(RedHatLightspeedSyncInProgressError);
     await first;
   });
+
+  it('carries the inventory identity OS facts + hostname into each entry\'s raw payload, so acceptBatch\'s OS correction has data to read', async () => {
+    await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
+    const createCall = (prisma.vulnImportBatch.create as jest.Mock).mock.calls[0][0];
+    const entry = createCall.data.entries.create[0];
+    expect(entry.raw).toMatchObject({
+      synopsis: 'CVE-2024-1234',
+      os_name: 'RHEL', os_major: 9, os_minor: 4,
+      hostname: 'srv-a.example.com',
+    });
+  });
 });

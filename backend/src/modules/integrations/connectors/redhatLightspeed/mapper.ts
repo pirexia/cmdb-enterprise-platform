@@ -11,11 +11,18 @@ import type { HostIdentity } from './inventoryClient.js';
 // (vulnerability_id), Red Hat's own data model is CVE-centric — the key IS
 // the CVE id (`synopsis`).
 
-function toScore(cve: LightspeedCve): number {
+/** Returns the numeric CVSS score, or `null` if this one CVE has neither
+ *  cvss3_score nor cvss2_score. Malformed on a single record — never the
+ *  whole pull's problem: one bad record from a live third-party API must
+ *  not abort every other CVE on every other system (finding from the final
+ *  branch review, Minor #13). Skipped records are logged, never silently
+ *  dropped without a trace. */
+function toScore(cve: LightspeedCve): number | null {
   const raw = cve.cvss3_score ?? cve.cvss2_score;
   const n = raw !== undefined ? Number(raw) : NaN;
   if (Number.isNaN(n)) {
-    throw new Error(`Red Hat Lightspeed mapper: CVE ${cve.synopsis} has no valid cvss3_score/cvss2_score`);
+    console.warn(`[redhatLightspeed mapper] Skipping CVE ${cve.synopsis}: no valid cvss3_score/cvss2_score`);
+    return null;
   }
   return n;
 }
@@ -27,9 +34,11 @@ export function mapSystemToEntries(
 ): ParsedVulnEntry[] {
   const hostAddress = identity.ip || identity.hostname || system.display_name;
 
-  return cves.map((cve) => {
+  const entries: ParsedVulnEntry[] = [];
+  for (const cve of cves) {
     const severityScore = toScore(cve);
-    return {
+    if (severityScore === null) continue;
+    entries.push({
       key: cve.synopsis,
       cves: [cve.synopsis],
       severityScore,
@@ -44,6 +53,7 @@ export function mapSystemToEntries(
       redhatImpact: cve.impact,
       knownExploit: cve.known_exploit,
       publicDate: cve.public_date,
-    };
-  });
+    });
+  }
+  return entries;
 }

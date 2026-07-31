@@ -160,6 +160,10 @@ services:
       VCENTER_DEFAULT_ENVIRONMENT: ${VCENTER_DEFAULT_ENVIRONMENT:-PRODUCTION}
       VCENTER_DEFAULT_CRITICALITY: ${VCENTER_DEFAULT_CRITICALITY:-MEDIUM}
       VCENTER_SYNC_CRON:           ${VCENTER_SYNC_CRON:-0 */6 * * *}
+      # ── Red Hat Lightspeed / Insights vulnerability connector (v3.7.0, optional) ───────
+      REDHAT_LIGHTSPEED_CLIENT_ID:     ${REDHAT_LIGHTSPEED_CLIENT_ID:-}
+      REDHAT_LIGHTSPEED_CLIENT_SECRET: ${REDHAT_LIGHTSPEED_CLIENT_SECRET:-}
+      REDHAT_LIGHTSPEED_BASE_URL:      ${REDHAT_LIGHTSPEED_BASE_URL:-https://console.redhat.com}
     volumes:
       # Shared TLS certs — backend writes CSR/key here via admin UI
       - tls-certs:/app/certs:Z

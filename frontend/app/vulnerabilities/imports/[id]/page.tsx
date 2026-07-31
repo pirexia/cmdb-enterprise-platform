@@ -148,13 +148,14 @@ function ConfidencePill({ confidence, t }: { confidence: MatchConfidence | null;
 // ─── CI reassignment picker (searchable, loaded lazily from the shared CI list) ──
 
 function CiReassignPicker({
-  entry, ciOptions, ciLoading, onAssign, onCreateCi, assigning, t,
+  entry, ciOptions, ciLoading, onAssign, onCreateCi, canCreateCi, assigning, t,
 }: {
   entry: VulnImportEntry;
   ciOptions: CiOption[];
   ciLoading: boolean;
   onAssign: (ciId: string) => void;
   onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   assigning: boolean;
   t: (k: string) => string;
 }) {
@@ -205,7 +206,7 @@ function CiReassignPicker({
               </ul>
             </div>
           )}
-          {entry.matchConfidence === "UNMATCHED" && (
+          {entry.matchConfidence === "UNMATCHED" && canCreateCi && (
             <button
               type="button"
               onClick={() => { onCreateCi(entry); setOpen(false); }}
@@ -257,7 +258,7 @@ function CiReassignPicker({
 // ─── One entry row ─────────────────────────────────────────────────────────
 
 function EntryRow({
-  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, onCreateCi, pending, expanded, onToggleExpand, t,
+  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, onCreateCi, canCreateCi, pending, expanded, onToggleExpand, t,
 }: {
   entry: VulnImportEntry;
   ciMap: Map<string, CiOption>;
@@ -267,6 +268,7 @@ function EntryRow({
   onToggleDecision: (entry: VulnImportEntry) => void;
   onReassignCi: (entry: VulnImportEntry, ciId: string) => void;
   onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   pending: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -279,7 +281,9 @@ function EntryRow({
   const hasDetails = !!(
     entry.summary || entry.solution || entry.family || entry.qod != null ||
     entry.exprtRating || entry.daysOpen != null || entry.products.length > 0 ||
-    entry.cvssVersion || entry.externalStatus || entry.redhatImpact || entry.knownExploit
+    entry.cvssVersion || entry.externalStatus || entry.redhatImpact
+    // knownExploit is intentionally NOT here — like cisaKev/activelyExploited,
+    // it's shown as a collapsed-row badge above, not detail-panel content.
   );
 
   return (
@@ -302,6 +306,12 @@ function EntryRow({
               <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
                 <Flame className="h-3 w-3" />
                 {t("vulnImport.entry.activeExploitationBadge")}
+              </span>
+            )}
+            {entry.knownExploit && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
+                <Flame className="h-3 w-3" />
+                {t("vulnImport.entry.knownExploitBadge")}
               </span>
             )}
             {entry.edited && (
@@ -396,6 +406,7 @@ function EntryRow({
               assigning={pending}
               onAssign={(ciId) => onReassignCi(entry, ciId)}
               onCreateCi={onCreateCi}
+              canCreateCi={canCreateCi}
               t={t}
             />
           )}
@@ -497,7 +508,7 @@ function EntryRow({
 
 export default function VulnImportBatchDetailPage() {
   const { t } = useLanguage();
-  const { canManageSecurity } = useAuth();
+  const { canManageSecurity, isAdmin } = useAuth();
   const params = useParams();
   const router = useRouter();
   const batchId = params.id as string;
@@ -585,6 +596,11 @@ export default function VulnImportBatchDetailPage() {
   const ciMap = useMemo(() => new Map(ciOptions.map((c) => [c.id, c])), [ciOptions]);
 
   const canEdit = canManageSecurity && batch?.status === "PENDING";
+  // "Crear CI" calls POST /api/cis, which is ADMIN-only on the backend
+  // (requireAdmin) — SOC has canManageSecurity/canEdit for this review
+  // screen's other actions, but would hit a 403 here. Gate on isAdmin
+  // specifically so the option is never offered to a role that can't use it.
+  const canCreateCi = isAdmin && batch?.status === "PENDING";
 
   // ── Tab filtering (client-side, per spec — tabs are independent views) ──
 
@@ -1062,6 +1078,7 @@ export default function VulnImportBatchDetailPage() {
                       onToggleDecision={handleToggleDecision}
                       onReassignCi={handleReassignCi}
                       onCreateCi={setCreateCiForEntry}
+                      canCreateCi={canCreateCi}
                       pending={pendingEntryIds.has(entry.id)}
                       expanded={expandedEntryIds.has(entry.id)}
                       onToggleExpand={() => toggleExpanded(entry.id)}

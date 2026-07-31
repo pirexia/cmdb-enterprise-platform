@@ -20,6 +20,10 @@ export interface LightspeedCve {
 
 interface PagedResponse<T> { data: T[]; meta?: { count?: number } }
 
+// Every outbound Red Hat call gets a hard timeout (see redhatLightspeed
+// tokenClient.ts's FETCH_TIMEOUT_MS comment for the reasoning).
+const FETCH_TIMEOUT_MS = 15_000;
+
 async function getPaged<T>(url: string, token: string): Promise<T[]> {
   const results: T[] = [];
   let offset = 0;
@@ -29,13 +33,22 @@ async function getPaged<T>(url: string, token: string): Promise<T[]> {
   // realistic single-org inventory.
   for (let page = 0; page < 50; page++) {
     const pageUrl = `${url}${url.includes('?') ? '&' : '?'}limit=${limit}&offset=${offset}`;
-    const res = await fetch(pageUrl, { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch(pageUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) {
       throw new Error(`Red Hat Insights Vulnerability API request failed: ${res.status} ${pageUrl}`);
     }
     const body = (await res.json()) as PagedResponse<T>;
+    if (!Array.isArray(body?.data)) {
+      throw new Error(`Red Hat Insights Vulnerability API returned an unexpected response shape (no "data" array) for ${pageUrl}`);
+    }
     results.push(...body.data);
     if (body.data.length < limit) break;
+    if (page === 49) {
+      console.warn(`[vulnClient] Hit the 50-page pagination cap for ${url} — results may be truncated.`);
+    }
     offset += limit;
   }
   return results;
@@ -46,5 +59,5 @@ export async function listSystems(baseUrl: string, token: string): Promise<Light
 }
 
 export async function listSystemCves(baseUrl: string, token: string, inventoryId: string): Promise<LightspeedCve[]> {
-  return getPaged<LightspeedCve>(`${baseUrl}/api/vulnerability/v1/systems/${inventoryId}/cves`, token);
+  return getPaged<LightspeedCve>(`${baseUrl}/api/vulnerability/v1/systems/${encodeURIComponent(inventoryId)}/cves`, token);
 }

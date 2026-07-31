@@ -42,8 +42,16 @@ describe('mapSystemToEntries', () => {
     expect(entries[0].hostAddress).toBe('srv-a.example.com');
   });
 
-  it('throws when a CVE has neither cvss3_score nor cvss2_score', () => {
-    const cves: LightspeedCve[] = [{ synopsis: 'CVE-2020-0003', impact: 'Low', known_exploit: false }];
-    expect(() => mapSystemToEntries(system, cves, identity)).toThrow('no valid cvss3_score/cvss2_score');
+  it('skips a CVE with neither cvss3_score nor cvss2_score, without aborting the rest of the pull', () => {
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const cves: LightspeedCve[] = [
+      { synopsis: 'CVE-2020-0003', impact: 'Low', known_exploit: false },
+      { synopsis: 'CVE-2020-0004', cvss3_score: '4.0', impact: 'Moderate', known_exploit: false },
+    ];
+    const entries = mapSystemToEntries(system, cves, identity);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].key).toBe('CVE-2020-0004');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CVE-2020-0003'));
+    warnSpy.mockRestore();
   });
 });

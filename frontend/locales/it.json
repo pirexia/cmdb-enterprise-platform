@@ -2519,6 +2519,7 @@
       "cisaKevWithDue": "CISA KEV — scade il {date}",
       "exploitStatusLabel": "Stato di sfruttamento",
       "activeExploitationBadge": "Sfruttamento attivo",
+      "knownExploitBadge": "Exploit noto",
       "daysOpenLabel": "Giorni aperti",
       "productsLabel": "Prodotti interessati",
       "externalStatusLabel": "Stato nell'origine",

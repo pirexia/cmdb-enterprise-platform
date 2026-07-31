@@ -2599,3 +2599,29 @@ An import batch (`VulnImportBatch`) that gets uploaded and is **never accepted o
 **Nullability change on `oid`/`port`.** These two columns, previously always populated in practice (Greenbone's NVT-and-port identity), are now nullable: a CrowdStrike entry has neither an NVT nor a port, so both are `NULL` on those rows. If you have any ad-hoc SQL queries or custom reporting tooling against `vuln_import_entries` that assume `oid`/`port` are always populated, review them — any row with `source='crowdstrike'` will have them `NULL`.
 
 **20MB limit now also on `/api/integrations/crowdstrike`.** The 20MB body-size override (vs. the app-wide 2MB limit), already applied to `/api/vuln-import/upload` in v3.6.0, is now also applied to the legacy `/api/integrations/crowdstrike` endpoint, which as of this round can also receive a real Spotlight export (in addition to the original agent/EDR shape, which still works unchanged). A real single-host Spotlight export is around 686KB in the test fixture — a multi-host export can easily approach or exceed the previous 2MB limit. No configuration action is needed: the override is already registered in `index.ts` in the correct order (ahead of the global parser) for both routes.
+
+### Third source: Red Hat Lightspeed (v3.7.0)
+
+> See `docs/INTEGRATIONS.md` § 9.13 for the full architecture (the three Red Hat APIs, CVE-centric identity model, OS/EOL correction, closure sweep). This section covers only the sysadmin/operational side: how to create the service account and which variables to set.
+
+**Unlike Greenbone/CrowdStrike, this connector is live-pull** — no file is uploaded; the backend calls Red Hat's API directly. It requires a configured service account before the "Import" button works.
+
+**Step 1 — create the service account at Red Hat:**
+
+1. Sign in at [console.redhat.com](https://console.redhat.com) with the organization that has your RHEL systems registered in Insights.
+2. Go to **Identity & Access Management → Service Accounts** and click **Create service account**. Note the **Client ID** and **Client secret** shown — the secret is **shown only once**; if lost, you'll need to regenerate it (invalidating the previous one).
+3. Under **User Access → Groups**, add the service account to a group with read access to **Vulnerability** and **Inventory** (or your organization's equivalent read-only role).
+
+**Step 2 — set the environment variables** (see also `docs/INTEGRATIONS.md` § 3):
+
+```bash
+REDHAT_LIGHTSPEED_CLIENT_ID=<client id from step 1>
+REDHAT_LIGHTSPEED_CLIENT_SECRET=<client secret from step 1>
+REDHAT_LIGHTSPEED_BASE_URL=https://console.redhat.com
+```
+
+After editing `.env`, restart the backend (`podman-compose -f docker-compose.prod.yml up -d --build backend`, or this project's usual full `down`/`up` cycle) so it picks up the new variables. The connector needs no additional manual migration beyond the `prisma migrate deploy` already applied when deploying this version.
+
+**New columns, no new backup procedure.** `vuln_import_entries` gains 3 nullable columns (`redhat_impact`, `known_exploit`, `public_date`) — same pattern as the CrowdStrike Spotlight columns, covered by the regular `pg_dump` (§6), no retention-script changes needed.
+
+**The secret never appears in logs or API responses** — `GET /api/integrations/redhat-lightspeed/status` only returns `{configured, baseUrl}`.

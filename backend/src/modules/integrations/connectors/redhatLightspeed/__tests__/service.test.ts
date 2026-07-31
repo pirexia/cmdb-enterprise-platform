@@ -162,4 +162,50 @@ describe('runRedHatLightspeedImport', () => {
       hostname: 'srv-a.example.com',
     });
   });
+
+  it('releases the lock and propagates the error unchanged when batch-shell creation itself fails (critical fix: no try/catch previously meant the lock leaked forever)', async () => {
+    (prisma.vulnImportBatch.create as jest.Mock).mockRejectedValue(new Error('connection pool exhausted'));
+
+    await expect(runRedHatLightspeedImport(prisma, 'tester@cmdb.local')).rejects.toThrow('connection pool exhausted');
+
+    // No background work was ever started (there is no batch to attach it
+    // to), so the lock must already be released — a following call must not
+    // see RedHatLightspeedSyncInProgressError.
+    (prisma.vulnImportBatch.create as jest.Mock).mockResolvedValue({ id: 'batch-1', uploadedBy: 'tester@cmdb.local' });
+    (vulnClient.listSystems as jest.Mock).mockResolvedValue([]);
+    await expect(runRedHatLightspeedImport(prisma, 'tester@cmdb.local')).resolves.toEqual({ batchId: 'batch-1' });
+    await waitForBackgroundWork();
+  });
+
+  it('never rejects the background promise, and still releases the lock, when finalizeBatch(FAILED) also fails after the background pull itself already failed (critical fix: previously this was an uncaught rejection able to crash the whole process)', async () => {
+    (vulnClient.listSystems as jest.Mock).mockRejectedValue(new Error('lightspeed API unreachable'));
+    // Every vulnImportBatch.update call fails — including the finalizeBatch(...,
+    // 'FAILED', ...) call inside the catch block of runImportBackground.
+    (prisma.vulnImportBatch.update as jest.Mock).mockRejectedValue(new Error('db down during error handling'));
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
+    expect(result).toEqual({ batchId: 'batch-1' });
+
+    // Flush microtasks/timers long enough for the background work (which
+    // rejects internally) to settle without throwing an unhandled rejection
+    // out of the test process.
+    for (let i = 0; i < 50; i++) {
+      await Promise.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      expect.stringContaining(`failed to record FAILED status for batch ${result.batchId}`),
+      expect.any(Error),
+    );
+
+    // Lock released despite both failures — a following call must succeed.
+    (prisma.vulnImportBatch.update as jest.Mock).mockResolvedValue({ id: 'batch-1', uploadedBy: 'tester@cmdb.local' });
+    (vulnClient.listSystems as jest.Mock).mockResolvedValue([]);
+    await expect(runRedHatLightspeedImport(prisma, 'tester@cmdb.local')).resolves.toEqual({ batchId: 'batch-1' });
+    await waitForBackgroundWork();
+
+    consoleErrorSpy.mockRestore();
+  });
 });

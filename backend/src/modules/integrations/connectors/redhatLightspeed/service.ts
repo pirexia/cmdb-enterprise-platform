@@ -59,9 +59,19 @@ export async function runRedHatLightspeedImport(
   }
 
   const filename = `redhat-lightspeed-import-${Date.now()}.json`;
-  const batch = await prisma.$transaction(async (tx) =>
-    createBatchShell(tx, { source: 'redhat-lightspeed', filename, uploadedBy: userEmail }),
-  );
+  let batch: { id: string };
+  try {
+    batch = await prisma.$transaction(async (tx) =>
+      createBatchShell(tx, { source: 'redhat-lightspeed', filename, uploadedBy: userEmail }),
+    );
+  } catch (err) {
+    // Batch creation failed before any background work was ever started —
+    // there is nothing holding the lock afterwards (runImportBackground's
+    // .finally() below never gets attached), so release it here or every
+    // future call gets stuck behind a 409 IMPORT_IN_PROGRESS until restart.
+    importInProgress = false;
+    throw err;
+  }
 
   // Fire-and-forget: the caller (router) gets {batchId} as soon as the batch
   // shell above is created, without waiting for any of this. The lock is
@@ -204,8 +214,23 @@ async function runImportBackground(
       await finalizeBatch(tx, batchId, 'PENDING');
     });
   } catch (err) {
-    await prisma.$transaction(async (tx) => {
-      await finalizeBatch(tx, batchId, 'FAILED', err instanceof Error ? err.message : String(err));
-    });
+    try {
+      await prisma.$transaction(async (tx) => {
+        await finalizeBatch(tx, batchId, 'FAILED', err instanceof Error ? err.message : String(err));
+      });
+    } catch (finalizeErr) {
+      // If even recording the failure fails (e.g. another transient DB
+      // error hitting right as we handle the first one), swallow it rather
+      // than let it propagate: this function's caller attaches only
+      // `.finally()`, which does not absorb rejections — an uncaught
+      // rejection here with no global unhandledRejection handler would
+      // crash the whole Node process (Node 22 default), not just this
+      // import. The batch is left stuck in RUNNING in this rare case, which
+      // is recoverable manually; a crashed backend is not.
+      console.error(
+        `[redhat-lightspeed] failed to record FAILED status for batch ${batchId} after import error:`,
+        finalizeErr,
+      );
+    }
   }
 }

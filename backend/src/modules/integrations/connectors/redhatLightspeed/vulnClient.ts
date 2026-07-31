@@ -25,20 +25,23 @@ export interface LightspeedCve {
 }
 
 interface JsonApiRecord<T> { id: string; type: string; attributes: T }
-interface PagedResponse<T> { data: JsonApiRecord<T>[] }
+interface PagedResponse<T> { data: JsonApiRecord<T>[]; links?: { next: string | null } }
 
 // Every outbound Red Hat call gets a hard timeout (see redhatLightspeed
 // tokenClient.ts's FETCH_TIMEOUT_MS comment for the reasoning).
 const FETCH_TIMEOUT_MS = 15_000;
 
+// Defensive upper bound so a misbehaving API can never spin this loop
+// forever. A single RHEL system's open-CVE backlog was observed at 4600
+// during live verification (46 pages at limit=100) — 500 pages covers a
+// system with 10x that before truncating.
+const MAX_PAGES = 500;
+
 async function getPaged<T>(url: string, token: string): Promise<T[]> {
   const results: T[] = [];
   let offset = 0;
   const limit = 100;
-  // Defensive upper bound so a misbehaving API can never spin this loop
-  // forever — 50 pages * 100 = 5000 systems/CVEs is far beyond any
-  // realistic single-org inventory.
-  for (let page = 0; page < 50; page++) {
+  for (let page = 0; page < MAX_PAGES; page++) {
     const pageUrl = `${url}${url.includes('?') ? '&' : '?'}limit=${limit}&offset=${offset}`;
     const res = await fetch(pageUrl, {
       headers: { Authorization: `Bearer ${token}` },
@@ -52,9 +55,17 @@ async function getPaged<T>(url: string, token: string): Promise<T[]> {
       throw new Error(`Red Hat Insights Vulnerability API returned an unexpected response shape (no "data" array) for ${pageUrl}`);
     }
     results.push(...body.data.map((r) => r.attributes));
-    if (body.data.length < limit) break;
-    if (page === 49) {
-      console.warn(`[vulnClient] Hit the 50-page pagination cap for ${url} — results may be truncated.`);
+
+    // `links.next` is the authoritative stop signal (confirmed against the
+    // real API during live verification): when the total item count is an
+    // exact multiple of `limit`, a length-based "was this page short?"
+    // check never fires, and requesting the next offset past the end
+    // returns 400, not an empty page. Fall back to the length check only
+    // if a response happens not to carry `links` at all.
+    const hasNext = body.links ? body.links.next !== null : body.data.length === limit;
+    if (!hasNext) break;
+    if (page === MAX_PAGES - 1) {
+      console.warn(`[vulnClient] Hit the ${MAX_PAGES}-page pagination cap for ${url} — results may be truncated.`);
     }
     offset += limit;
   }

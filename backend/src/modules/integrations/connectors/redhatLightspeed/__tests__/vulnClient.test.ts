@@ -40,4 +40,29 @@ describe('vulnClient', () => {
     global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 500 }) as unknown as typeof fetch;
     await expect(listSystems(baseUrl, token)).rejects.toThrow('Red Hat Insights Vulnerability API request failed: 500');
   });
+
+  // Real bug caught during live verification: when a system's total CVE
+  // count is an EXACT multiple of the page size, a page-length heuristic
+  // ("was this page short?") never fires — the real API returns a full
+  // page every time and then a 400 on the next (out-of-range) offset,
+  // instead of an empty final page. `links.next` is the only reliable stop
+  // signal, confirmed against the real response shape.
+  it('stops paginating using links.next, even when every page is exactly full (total count is a multiple of limit)', async () => {
+    const fullPage = (next: string | null) => ({
+      data: Array.from({ length: 100 }, (_, i) => ({
+        id: `CVE-2024-${i}`, type: 'cve',
+        attributes: { synopsis: `CVE-2024-${i}`, cvss3_score: '5.0', impact: 'Moderate', known_exploit: false },
+      })),
+      links: { next },
+    });
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => fullPage('/next-page') })
+      .mockResolvedValueOnce({ ok: true, json: async () => fullPage(null) });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const cves = await listSystemCves(baseUrl, token, 'a');
+
+    expect(cves).toHaveLength(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });

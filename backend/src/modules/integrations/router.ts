@@ -3,9 +3,13 @@ import { PrismaClient } from '@prisma/client';
 import { createAuthenticateToken } from '../../shared/middleware/authenticate.js';
 import { requireAdmin }            from '../../shared/middleware/requireAdmin.js';
 import { requireAudit }            from '../../shared/middleware/requireAudit.js';
-import { vulnUuid }                from '../../services/entitySerializer.js';
+import { requireSecurityWrite }    from '../../shared/middleware/requireSecurity.js';
 import { smtpConfigured }          from '../alerts/smtp-transport.js';
-import { Vulnerability, VulnSeverity, VulnStatus } from './types.js';
+import { uploadReport }            from '../vuln-import/service.js';
+import { UploadRequestSchema }     from '../vuln-import/schemas.js';
+import { UnsupportedGreenboneFormatError } from '../vuln-import/parser.js';
+import { UnsupportedCrowdStrikeFormatError } from '../vuln-import/crowdstrikeParser.js';
+import { ZodError }                from 'zod';
 import { loadVCenterConfig, isConfigured, toPublicConfig } from './vcenterConfig.js';
 import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
 import { runVCenterSync, buildVCenterConnector, SyncLockedError } from './vcenterService.js';
@@ -34,109 +38,149 @@ export function createIntegrationsRouter(
 
   /**
    * POST /api/integrations/greenbone
-   * Ingests a Greenbone OpenVAS JSON report. ADMIN only.
+   *
+   * LEGACY compatibility shim (spec §D9, v3.6.0 B6). This used to be a
+   * standalone direct-merge importer that read `req.body.results` — a field
+   * that does not exist in a real Greenbone export, so it silently matched
+   * nothing and returned 200 with `totalMatched: 0` every time. It is kept
+   * (not deleted, per D9 — some external automation may already call it)
+   * but now delegates entirely to the new staging module
+   * (`modules/vuln-import/service.ts`): parsing, CI matching, severity
+   * classification and batch persistence are the SAME code path as
+   * `POST /api/vuln-import/upload`. No CI is mutated directly here — a
+   * PENDING batch is created and must still be reviewed/accepted via the
+   * `/api/vuln-import` endpoints, same as any other upload (A04 — staging +
+   * explicit human acceptance is the design mitigation, not bypassed here).
+   *
+   * Request body: accepts the same envelope as `/api/vuln-import/upload`
+   * (`{filename?, report}`). For backward compatibility with callers that
+   * still POST the raw Greenbone report object directly at the top level
+   * (the pre-v3.6.0 shape for this specific route), the whole body is
+   * wrapped as `{filename: <synthesized>, report: req.body}` whenever it
+   * doesn't already look like the upload envelope (i.e. has no `report`
+   * key). A body still shaped like the old invented `{results: [...]}`
+   * mock is neither the envelope nor a real Greenbone report, so it fails
+   * parsing and is rejected with 400 — it must NOT silently succeed as it
+   * did before this fix.
    */
-  router.post('/greenbone', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-    console.log('[POST /api/integrations/greenbone] Processing report…');
+  router.post('/greenbone', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
+    console.log('[POST /api/integrations/greenbone] Delegating to vuln-import staging…');
     try {
-      type GBVuln   = { cve: string; severity: string; name: string; cvss_score?: number; description: string };
-      type GBResult = { host: { hostname: string; ip?: string }; vulnerabilities: GBVuln[] };
-      const { results = [] } = req.body as { results: GBResult[] };
+      const rawBody = (req.body ?? {}) as Record<string, unknown>;
+      const looksLikeUploadEnvelope = typeof rawBody === 'object' && rawBody !== null && 'report' in rawBody;
+      const envelope = looksLikeUploadEnvelope
+        ? rawBody
+        : { filename: `legacy-integration-upload-${new Date().toISOString()}.json`, report: rawBody };
 
-      const processed: { ci: string; matched: boolean; vulnCount: number }[] = [];
+      const body = UploadRequestSchema.parse(envelope);
+      const result = await uploadReport(prisma, body, req.user!.email);
 
-      for (const result of results) {
-        const hostname = result.host?.hostname ?? '';
-        if (!hostname) continue;
-
-        // Escape LIKE wildcards to prevent wildcard injection (%, _, \)
-        const escaped = hostname.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
-        type CIRow = { id: string; name: string };
-        const rows = await prisma.$queryRaw<CIRow[]>`
-          SELECT id, name FROM "configuration_items"
-          WHERE LOWER(name) LIKE LOWER(${'%' + escaped + '%'}) ESCAPE '\\'
-          ORDER BY LENGTH(name) ASC
-          LIMIT 1
-        `;
-
-        if (rows.length === 0) {
-          processed.push({ ci: hostname, matched: false, vulnCount: 0 });
-          continue;
-        }
-
-        const ci = rows[0];
-
-        // Read existing vulnerabilities to MERGE — preserves analyst-set lifecycle
-        // status (RESUELTO, EN_CURSO, etc.) and retains vulns from other sources
-        type ExistingVulnRow = { vulnerabilities: unknown };
-        const existingRows = await prisma.$queryRaw<ExistingVulnRow[]>`
-          SELECT vulnerabilities FROM "configuration_items" WHERE id = ${ci.id}::uuid LIMIT 1
-        `;
-        const existingVulns = (existingRows[0]?.vulnerabilities ?? []) as Vulnerability[];
-        const existingByCve = new Map(existingVulns.map((v) => [v.cve, v]));
-
-        const importedAt = new Date().toISOString();
-        const incoming = (result.vulnerabilities ?? []).map((v) => ({
-          cve:         v.cve,
-          severity:    v.severity?.toUpperCase() as VulnSeverity,
-          description: v.description ?? v.name ?? '',
-          source:      'greenbone' as const,
-          cvss_score:  v.cvss_score ?? null,
-          status:      'NUEVO' as VulnStatus,
-          importedAt,
-        }));
-
-        const incomingByCve = new Map(incoming.map((v) => [v.cve, v]));
-        const merged: Vulnerability[] = [
-          // Existing: refresh fields if re-reported; preserve status set by analyst
-          ...existingVulns.map((existing) => {
-            const fresh = incomingByCve.get(existing.cve);
-            if (!fresh) return existing;
-            return { ...fresh, status: existing.status };
-          }),
-          // New vulns not previously known
-          ...incoming.filter((v) => !existingByCve.has(v.cve)),
-        ];
-
-        await prisma.$executeRaw`
-          UPDATE "configuration_items"
-          SET "vulnerabilities" = ${JSON.stringify(merged)}::jsonb
-          WHERE "id" = ${ci.id}::uuid
-        `;
-
-        const newCount = incoming.filter((v) => !existingByCve.has(v.cve)).length;
-        processed.push({ ci: ci.name, matched: true, vulnCount: merged.length });
-        console.log(`  ✓ ${ci.name} → ${merged.length} total (${newCount} new, ${incoming.length - newCount} updated)`);
-
-        for (const v of merged) {
-          void queueForIndexing('vulnerability', vulnUuid(ci.id, v.cve));
-        }
-        void queueForIndexing('ci', ci.id);
-      }
-
-      const totalMatched = processed.filter((p) => p.matched).length;
-      await prisma.$executeRaw`
-        INSERT INTO "audit_logs"(id, action, entity, entity_id, user_email, details, created_at)
-        VALUES(gen_random_uuid(), 'INTEGRATION_GREENBONE', 'SYSTEM', '00000000-0000-0000-0000-000000000000'::uuid, ${req.user!.email},
-               ${JSON.stringify({ totalMatched, totalUnmatched: processed.length - totalMatched })}::jsonb, now())`;
       res.json({
-        message: 'Greenbone report processed',
-        processed,
-        totalMatched,
-        totalUnmatched: processed.filter((p) => !p.matched).length,
+        message: 'Greenbone report processed via staging',
+        batchId: result.batchId,
+        summary: result.summary,
       });
-    } catch (error) {
-      console.error('[POST /api/integrations/greenbone] Error:', error);
+    } catch (err) {
+      if (err instanceof UnsupportedGreenboneFormatError) {
+        res.status(400).json({
+          error: `${err.message} This endpoint now expects the real Greenbone export format ` +
+            '(top-level "allHostSubreportEntries"), not the legacy "results" mock shape. ' +
+            'No staging batch was created.',
+        });
+        return;
+      }
+      if (err instanceof ZodError) {
+        res.status(400).json({
+          error: 'Invalid Greenbone report — this endpoint now expects the real Greenbone export ' +
+            'format. No staging batch was created.',
+          details: err.issues,
+        });
+        return;
+      }
+      console.error('[POST /api/integrations/greenbone] Error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
   /**
    * POST /api/integrations/crowdstrike
-   * Ingests a CrowdStrike Falcon agent status export. ADMIN only.
+   *
+   * Format-aware (v3.6.1, spec D1): this route historically only ever
+   * ingested a CrowdStrike Falcon agent/EDR status export (`{devices: [...]}`
+   * — a completely invented mock shape unrelated to Spotlight, feeding the
+   * `agent_status` column that 4 inventory filters, a badge, CSV export and
+   * a security report all depend on today). That agent/EDR path below is
+   * UNCHANGED. This now also accepts a real CrowdStrike Spotlight
+   * vulnerability export (a flat top-level JSON array, optionally wrapped
+   * in the same `{filename?, report}` envelope `/api/vuln-import/upload`
+   * accepts) and routes it to the SAME staging pipeline as
+   * `/api/integrations/greenbone` above — parsing, CI matching,
+   * classification and PENDING batch persistence, never a direct CI write
+   * (A04 — staging + explicit human acceptance). The branch is a routing
+   * decision only; both paths sit behind the same `requireSecurityWrite`.
    */
-  router.post('/crowdstrike', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
-    console.log('[POST /api/integrations/crowdstrike] Processing report…');
+  router.post('/crowdstrike', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
+    const rawBody = (req.body ?? {}) as Record<string, unknown> | unknown[];
+
+    // The old/invented mock format is the only shape that has ever used a
+    // top-level "devices" key — mirrors how Greenbone's legacy shim detects
+    // its own old shape (a distinguishing key), never a generic "does it
+    // parse" heuristic.
+    const isAgentStatusShape = !Array.isArray(rawBody) && rawBody !== null
+      && typeof rawBody === 'object' && 'devices' in (rawBody as Record<string, unknown>);
+
+    if (!isAgentStatusShape) {
+      const asRecord = Array.isArray(rawBody) ? null : (rawBody as Record<string, unknown>);
+      const hasEnvelope = asRecord !== null && 'report' in asRecord;
+      const spotlightCandidate = hasEnvelope ? (asRecord as Record<string, unknown>).report : rawBody;
+
+      if (Array.isArray(spotlightCandidate)) {
+        console.log('[POST /api/integrations/crowdstrike] Spotlight export detected — delegating to vuln-import staging…');
+        try {
+          const envelope = hasEnvelope
+            ? (asRecord as Record<string, unknown>)
+            : { filename: `legacy-crowdstrike-upload-${new Date().toISOString()}.json`, report: rawBody };
+
+          const body = UploadRequestSchema.parse(envelope);
+          const result = await uploadReport(prisma, body, req.user!.email, 'crowdstrike');
+
+          res.json({
+            message: 'CrowdStrike Spotlight report processed via staging',
+            batchId: result.batchId,
+            summary: result.summary,
+          });
+        } catch (err) {
+          if (err instanceof UnsupportedCrowdStrikeFormatError) {
+            res.status(400).json({ error: err.message });
+            return;
+          }
+          if (err instanceof ZodError) {
+            res.status(400).json({
+              error: 'Invalid CrowdStrike Spotlight report — expected a flat array of vulnerability records.',
+              details: err.issues,
+            });
+            return;
+          }
+          console.error('[POST /api/integrations/crowdstrike] Error:', err);
+          res.status(500).json({ error: 'Internal server error' });
+        }
+        return;
+      }
+
+      // Neither the agent/EDR shape nor a recognizable Spotlight export
+      // (e.g. the legacy Greenbone `{results: [...]}` mock posted to the
+      // wrong endpoint) — reject explicitly rather than silently matching
+      // nothing, same principle as Greenbone's legacy-format rejection.
+      res.status(400).json({
+        error: 'Unsupported request body for POST /api/integrations/crowdstrike. Expected either ' +
+          '(1) a CrowdStrike Falcon agent/EDR status export ({"devices": [...]}), or ' +
+          '(2) a real CrowdStrike Spotlight vulnerability export (a top-level flat JSON array of ' +
+          'vulnerability records, optionally wrapped in {filename?, report}).',
+      });
+      return;
+    }
+
+    console.log('[POST /api/integrations/crowdstrike] Processing agent/EDR status report…');
     try {
       type CSDevice = {
         hostname: string; agent_id: string; agent_version: string;

@@ -13,7 +13,7 @@
     "inventory": "CI Inventory",
     "vulnerabilities": "Vulnerabilities",
     "map": "Relation Map",
-    "integrations": "Connectors",
+    "integrations": "Security",
     "reports": "Reports",
     "contracts": "Contracts & Addendums",
     "documents": "Document Repository",
@@ -299,14 +299,17 @@
       "status": "Status",
       "description": "Description",
       "source": "Source",
-      "score": "CVSS Score"
+      "score": "CVSS Score",
+      "port": "Port",
+      "family": "Family"
     },
     "status": {
       "NUEVO": "New",
       "ASIGNADO": "Assigned",
       "EN_CURSO": "In progress",
       "PARADO": "On hold",
-      "RESUELTO": "Resolved"
+      "RESUELTO": "Resolved",
+      "REABIERTA": "Reopened"
     },
     "search_ci_placeholder": "Search by CI name…",
     "cve_placeholder": "Search CVE…",
@@ -331,7 +334,14 @@
     "col_ci_affected": "Affected CI",
     "col_imported": "Imported",
     "notifications_region": "Notifications",
-    "close_notification": "Close notification"
+    "close_notification": "Close notification",
+    "severity": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "INFO": "Informational"
+    }
   },
   "contracts": {
     "title": "Contracts & Addendums",
@@ -788,10 +798,11 @@
       "origin_local": "Local",
       "mfa_active": "Active",
       "mfa_inactive": "Inactive",
-      "role_admin": "ADMIN",
-      "role_auditor": "AUDITOR",
-      "role_viewer": "VIEWER",
+      "role_admin": "Administrator",
+      "role_auditor": "Auditor",
+      "role_viewer": "Viewer",
       "role_manager": "Manager",
+      "role_soc": "SOC Analyst",
       "me_label": "(me)",
       "viewer_notice": "You need the {role} role to change settings. Read-only mode.",
       "confirm_activate": "Activate user \"{name}\"?",
@@ -1535,7 +1546,13 @@
     "processing": "Processing…",
     "success": "Import completed",
     "greenbone_subtitle": "Vulnerability Management",
-    "greenbone_desc": "Import a Greenbone scan report. CVEs and their severity will be assigned to each CI found in the inventory.",
+    "greenbone_desc": "Upload a real Greenbone OpenVAS report (allHostSubreportEntries format). This creates a batch pending review — nothing is written to any CI until you accept it on the review screen.",
+    "staging_total": "Total findings",
+    "staging_matched": "Matched CIs",
+    "staging_nueva": "New",
+    "staging_reaparecida": "Reopened",
+    "staging_needs_attention": "need attention (no resolved CI)",
+    "staging_review_cta": "Review and decide →",
     "crowdstrike_subtitle": "Endpoint Security",
     "crowdstrike_desc": "Import the Falcon agent status. Whether the agent is active, its prevention policy and recent detections will be recorded.",
     "how_it_works": "How it works",
@@ -2494,6 +2511,162 @@
       "monthlyNetHours": "Monthly net hours",
       "vacationDays": "Vacation days",
       "healthLeaveDays": "Health leave days"
+    }
+  },
+  "vulnImport": {
+    "title": "Vulnerability Import",
+    "subtitle": "Review and validate Greenbone scans before applying them to the inventory",
+    "batch": {
+      "status": {
+        "PENDING": "Pending",
+        "ACCEPTED": "Accepted",
+        "DISCARDED": "Discarded"
+      },
+      "singular": "batch",
+      "plural": "batches",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
+    },
+    "classification": {
+      "NUEVA": "New",
+      "EXISTENTE_PENDIENTE": "Already exists on this CI",
+      "REAPARECIDA": "Reoccurred"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "Exact IP",
+      "EXACT_NAME": "Exact name",
+      "EXACT_HOSTNAME": "Exact hostname",
+      "EXACT_DNS": "Exact DNS",
+      "FUZZY": "Fuzzy match",
+      "AMBIGUOUS": "Ambiguous",
+      "UNMATCHED": "Unmatched",
+      "MANUAL": "Manually assigned"
+    },
+    "decision": {
+      "INCLUDE": "Will be imported",
+      "EXCLUDE": "Will not be imported"
+    },
+    "actions": {
+      "upload": "Upload report",
+      "accept": "Accept batch",
+      "discard": "Discard batch",
+      "review": "Review",
+      "reassignCi": "Reassign CI",
+      "confirmAccept": "Confirm acceptance",
+      "confirmDiscard": "Confirm discard",
+      "bulkInclude": "Include selected",
+      "bulkExclude": "Exclude selected",
+      "backToList": "Back to list"
+    },
+    "list": {
+      "invalidJson": "The file does not contain valid JSON",
+      "uploadSuccess": "Report uploaded: {count} findings",
+      "discardConfirm": "Discard this batch? This action cannot be undone.",
+      "discardSuccess": "Batch discarded",
+      "filterAll": "All",
+      "noBatches": "No scans imported yet",
+      "colFilename": "File",
+      "colScanDate": "Scan date",
+      "colStatus": "Status",
+      "colEntries": "Findings",
+      "colClassification": "Classification",
+      "colUploadedBy": "Uploaded by",
+      "colUploadedAt": "Uploaded at",
+      "pageInfo": "Page {page} of {totalPages} ({total} batches)",
+      "prevPage": "Previous",
+      "nextPage": "Next"
+    },
+    "severity": {
+      "CRITICAL": "Critical",
+      "HIGH": "High",
+      "MEDIUM": "Medium",
+      "LOW": "Low",
+      "INFO": "Informational"
+    },
+    "tabs": {
+      "all": "All",
+      "actionable": "Actionable",
+      "informational": "Informational",
+      "attention": "Needs attention",
+      "reappeared": "Reappeared"
+    },
+    "detail": {
+      "title": "Batch review",
+      "subtitle": "Review, correct, and decide before applying to the inventory",
+      "notFound": "Batch not found",
+      "notFoundHint": "The requested batch does not exist or was removed.",
+      "metadata": "Batch details",
+      "summary": "Summary",
+      "taskName": "Greenbone task",
+      "scanRange": "Scan period",
+      "uploadedBy": "Uploaded by",
+      "createdAt": "Uploaded at",
+      "resolvedBy": "Resolved by",
+      "entryCount": "Total entries",
+      "readOnlyNotice": "This batch has already been resolved (accepted or discarded) — read only.",
+      "readOnlyNoAdmin": "Only an administrator or a SOC analyst can review and decide on this batch.",
+      "notificationsRegion": "Notifications",
+      "closeNotification": "Close notification"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "No associated CVEs",
+      "noCi": "No matched CI",
+      "candidates": "Suggested candidates",
+      "edited": "Edited",
+      "reassignSuccess": "CI reassigned successfully",
+      "showDetails": "Show details",
+      "hideDetails": "Hide details",
+      "summaryLabel": "Description",
+      "solutionLabel": "Remediation",
+      "familyLabel": "Family",
+      "qodLabel": "QoD",
+      "noDetails": "No description available",
+      "existingPendingHint": "Won't be re-imported; only its data will be refreshed",
+      "exprtRatingLabel": "ExPRT rating",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "CISA due date",
+      "cisaKevWithDue": "CISA KEV — due {date}",
+      "exploitStatusLabel": "Exploitation status",
+      "activeExploitationBadge": "Active exploitation",
+      "daysOpenLabel": "Days open",
+      "productsLabel": "Affected products",
+      "externalStatusLabel": "Source status",
+      "cvssVersionLabel": "CVSS version"
+    },
+    "bulk": {
+      "includeVisible": "Include visible",
+      "excludeVisible": "Exclude visible",
+      "doneToast": "Decision applied to the visible entries",
+      "progress": "{done}/{total} applied"
+    },
+    "accept": {
+      "button": "Accept batch",
+      "confirmTitle": "Confirm batch acceptance",
+      "confirmBody": "All entries marked \"Include\" will be applied to the inventory. This action cannot be undone.",
+      "previewCi": "CIs affected",
+      "previewNew": "New",
+      "previewReopened": "Reopened",
+      "previewIncluded": "Total included",
+      "previewRefreshed": "Metadata refreshed",
+      "successTitle": "Batch accepted successfully",
+      "blockingTitle": "Unresolved entries are blocking acceptance",
+      "blockingBody": "The following included entries do not have an unambiguously resolved CI. Reassign a CI or exclude them before accepting the batch.",
+      "unresolvedWarning": "{count} included entry/entries still have no resolved CI — this will block acceptance."
+    },
+    "discard": {
+      "button": "Discard batch",
+      "confirmTitle": "Confirm batch discard",
+      "confirmBody": "The batch will be marked as discarded. Nothing will be written to any CI. This action cannot be undone.",
+      "successToast": "Batch discarded successfully"
+    },
+    "errors": {
+      "patchFailed": "Could not save the change:",
+      "bulkFailed": "Could not apply the bulk action:",
+      "acceptFailed": "Could not accept the batch:",
+      "discardFailed": "Could not discard the batch:"
     }
   }
 }

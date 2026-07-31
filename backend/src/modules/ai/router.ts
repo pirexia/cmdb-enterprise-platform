@@ -407,9 +407,15 @@ export function createAiRouter(prisma: PrismaClient): Router {
           const arr = Array.isArray(ciRow.vulnerabilities) ? ciRow.vulnerabilities : [];
           for (const v of arr) {
             if (!v || typeof v !== 'object') continue;
-            const cve = (v as { cve?: unknown }).cve;
-            if (typeof cve !== 'string' || cve.length === 0) continue;
-            const vId = vulnUuid(ciRow.id, cve);
+            // Identity per spec D1 is `key` (`${oid}@${port}`), not `cve` —
+            // 96% of real Greenbone findings carry no CVE. Fall back to
+            // `cve` for entries stored before this migration (D1b).
+            const { key: rawKey, cve } = v as { key?: unknown; cve?: unknown };
+            const identity = typeof rawKey === 'string' && rawKey.length > 0
+              ? rawKey
+              : (typeof cve === 'string' && cve.length > 0 ? cve : null);
+            if (!identity) continue;
+            const vId = vulnUuid(ciRow.id, identity);
             await prisma.$executeRaw`
               INSERT INTO "rag_entity_index"(id, entity_type, entity_id, status, created_at, updated_at)
               VALUES(gen_random_uuid(), 'vulnerability', ${vId}::uuid, 'PENDING', now(), now())

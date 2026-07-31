@@ -11,6 +11,9 @@
 5. [Riesgo de certificado self-signed](#5-riesgo-de-certificado-self-signed)
 6. [Endpoints](#6-endpoints)
 7. [Prueba manual contra un vCenter real](#7-prueba-manual-contra-un-vcenter-real)
+8. [LDAP / Active Directory — grupo de acceso y sincronización de usuarios (v3.5.10)](#8-ldap--active-directory--grupo-de-acceso-y-sincronización-de-usuarios-v3510)
+9. [Importación de vulnerabilidades Greenbone — formato real y staging (v3.6.0)](#9-importación-de-vulnerabilidades-greenbone--formato-real-y-staging-v360)
+   - [9.12 Segunda fuente: CrowdStrike Spotlight (mismo staging, sin tag todavía)](#912-segunda-fuente-crowdstrike-spotlight-mismo-staging-sin-tag-todavía)
 
 ---
 
@@ -277,3 +280,159 @@ Sustituye al workflow `LDAP/AD Sync`, que consultaba el directorio con un nodo L
 | `LDAP_SYNC_CRON` | `0 3 * * *` | Cadencia del workflow |
 
 `LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN` quedaron **obsoletas**: alimentaban el workflow retirado.
+
+---
+
+## 9. Importación de vulnerabilidades Greenbone — formato real y staging (v3.6.0)
+
+> **Estado: en `develop`, sin tag ni merge a `main` todavía.** Esta sección documenta el módulo tal y como quedó implementado y verificado en vivo en esta rama; no confirma un release.
+
+Rama: `backend/src/modules/vuln-import/` (`parser.ts`, `matcher.ts`, `classifier.ts`, `service.ts`, `queries.ts`, `audit.ts`, `schemas.ts`, `router.ts`), montado en `/api/vuln-import`. Frontend: `frontend/app/vulnerabilities/imports/` (listado) y `frontend/app/vulnerabilities/imports/[id]/` (revisión).
+
+> **Actualización (misma rama, sin tag todavía):** el módulo ganó una segunda fuente — CrowdStrike Spotlight — sobre el mismo staging. Las secciones 9.1–9.11 de abajo describen el diseño original con Greenbone como única fuente; todo lo que dicen sigue siendo cierto, y sigue aplicando sin cambios a un informe Greenbone. La [§9.12](#912-segunda-fuente-crowdstrike-spotlight-mismo-staging-sin-tag-todavía) documenta específicamente lo que CrowdStrike Spotlight añade y en qué difiere.
+
+### 9.1 Qué sustituye
+
+El conector Greenbone original (`POST /api/integrations/greenbone`, sección "Conectores" de Integraciones) se construyó contra un formato **inventado**, no contra una exportación real de Greenbone/OpenVAS. Comparado directamente con una exportación real (`docs/mocks/greenbone_SRV-MYGESTR01D.json`), el mock antiguo (`docs/mocks/greenbone_sample_LEGACY_INVENTADO.json`, renombrado en este release — ver más abajo) **no comparte ni un solo campo** con el formato real: el importador leía `results[]`, mientras que Greenbone exporta `allHostSubreportEntries[].vulnerabilities[]`. El bug que motivó todo el rediseño: subir un informe real contra el importador antiguo "tenía éxito" en silencio con 0 vulnerabilidades procesadas, porque el campo que el código esperaba sencillamente no existía en el JSON.
+
+Este módulo sustituye por completo la ingesta: parsea el formato real (`GreenboneReportSchema`, Zod, `.passthrough()` en los campos agregados que nunca se leen), rechaza explícitamente el formato antiguo con `400` en vez de "tener éxito" con 0 entradas, y — el cambio de fondo — **nunca escribe directamente sobre un CI**. Toda subida pasa primero por una cola de revisión (staging).
+
+### 9.2 Modelo de identidad: `key = oid@port`, no `cve`
+
+En una exportación real, solo **~4%** de los hallazgos llevan un CVE asociado (2 de 52 en el fixture real de prueba) — el resto son detecciones basadas en el NVT (Network Vulnerability Test) de Greenbone sin CVE público. Usar `cve` como identidad habría descartado o colisionado la inmensa mayoría de los hallazgos reales.
+
+La identidad de una vulnerabilidad Greenbone es ahora:
+
+```
+key = "${oid}@${port}"
+```
+
+`oid` es el identificador único del NVT de Greenbone; `port` participa porque el mismo NVT puede dispararse en más de un puerto del mismo host. `cve` se conserva como **campo de visualización**, compatible hacia atrás: el primer CVE encontrado en el array `cve[]` del hallazgo, o cadena vacía si no hay ninguno — nunca se usa para identidad ni para deduplicar.
+
+`PATCH /api/vulnerabilities` (el endpoint existente de cambio de estado de una vulnerabilidad) acepta ahora un campo opcional `key` y resuelve identidad como `key ?? cve`, para ser compatible tanto con entradas nuevas identificadas por `key` como con entradas legacy que solo tienen `cve`.
+
+### 9.3 Cascada de emparejamiento de CI (5 niveles)
+
+Igual que el conector vCenter (`matchHost()` en `matcher.ts`), la cascada prueba niveles en orden y **se detiene en el primer nivel que devuelve algún resultado** — nunca sigue a un nivel de menor confianza si el actual ya dio candidatos:
+
+| # | Nivel | Contra qué compara | Confianza |
+|---|-------|---------------------|-----------|
+| 1 | IP exacta | `admin_ip` / `mgmt_ip` / `console_ip` | `EXACT_IP` |
+| 2 | Nombre de CI exacto | `name` (case-insensitive) | `EXACT_NAME` |
+| 3 | Hostname exacto | `host_name`, o `host_name` con el sufijo de dominio recortado (`SRV-X.azkar.com` → `SRV-X`) | `EXACT_HOSTNAME` |
+| 4 | DNS exacto | columna `dns` (case-insensitive) | `EXACT_DNS` |
+| 5 | Nombre parcial (fuzzy) | `LIKE '%name%'`, con `%`/`_`/`\` escapados | `FUZZY` |
+
+Dos o más CIs distintos en el mismo nivel → **`AMBIGUOUS`** con la lista completa de candidatos; nunca se elige uno automáticamente. Esto corrige un antipatrón real del importador antiguo (`ORDER BY LENGTH(name) LIMIT 1` en `modules/integrations/router.ts`), que adivinaba en silencio cuál de varios CIs candidatos era el correcto. Ningún nivel devuelve nada → **`UNMATCHED`**.
+
+Igual que en el conector vCenter, la consulta es un único `$queryRaw` con tagged template literals (UNION ALL de los 5 niveles) — nunca `$queryRawUnsafe` ni concatenación de strings; el patrón `LIKE` del nivel 5 se escapa con la misma función `escapeLike()` que ya usa el resto del proyecto.
+
+### 9.4 Flujo de staging (nunca escritura directa)
+
+Subir un informe Greenbone crea un **`VulnImportBatch`** (estado `PENDING`) con una **`VulnImportEntry`** por vulnerabilidad parseada — dos tablas Postgres nuevas, `vuln_import_batches` y `vuln_import_entries`. Ningún CI se modifica en esta fase.
+
+```
+POST /upload  →  parser.ts (valida formato)
+              →  matcher.ts (cascada 5 niveles, por host)
+              →  classifier.ts (NUEVA / EXISTENTE_PENDIENTE / REAPARECIDA, por entrada)
+              →  VulnImportBatch (PENDING) + N × VulnImportEntry
+```
+
+Un operador revisa el lote en `/vulnerabilities/imports/:id` (frontend): puede reasignar el CI emparejado, cambiar la severidad, incluir/excluir hallazgos (individualmente o en bloque por pestaña), y ver la descripción/remediación completa en un panel expandible por entrada. Solo entonces:
+
+- **`POST /batches/:id/accept`** — transaccional: escribe cada entrada `INCLUDE` en la columna `vulnerabilities` (JSON) del CI correspondiente **e** inserta el registro de auditoría `VULN_IMPORT_ACCEPT`, en una única `prisma.$transaction`. Bloquea con `422 UNRESOLVED_MATCHES` (listando las entradas concretas que bloquean) si queda alguna entrada `INCLUDE` sin CI resuelto (`UNMATCHED`/`AMBIGUOUS`). El batch pasa a `ACCEPTED`.
+- **`POST /batches/:id/discard`** — no toca ningún CI; el batch pasa a `DISCARDED`.
+
+Ambas transiciones son terminales: un batch `PENDING` solo puede pasar a `ACCEPTED` o `DISCARDED` una vez (`409 BATCH_NOT_PENDING` en cualquier intento posterior de editar/aceptar/descartar).
+
+### 9.5 Clasificación contra lo ya almacenado en el CI
+
+Cada vulnerabilidad entrante se compara contra lo que ya hay guardado en el CI emparejado (por `key`, o por `cve` para entradas legacy pre-migración):
+
+| Clasificación | Cuándo | Decisión por defecto |
+|---|---|---|
+| **NUEVA** | No existe ninguna entrada con esa identidad en el CI | `INCLUDE` solo si severidad ≥ `MEDIUM`; si no, `EXCLUDE` |
+| **EXISTENTE_PENDIENTE** | Existe y su estado sigue abierto (`NUEVO`/`ASIGNADO`/`EN_CURSO`/`PARADO`) | `EXCLUDE` — nunca se reimporta lo que ya está en curso |
+| **REAPARECIDA** | Existe y su estado era `RESUELTO` | `INCLUDE` — siempre, con independencia de la severidad |
+
+El umbral de severidad para `NUEVA` (`MEDIUM`+) es una constante de módulo (`classifier.ts`), no configurable por variable de entorno. `REAPARECIDA` se pre-marca siempre para inclusión sin importar la severidad: una vulnerabilidad que reaparece tras haberse dado por resuelta es exactamente la señal que un operador necesita ver, con independencia de si es `LOW` o `CRITICAL`.
+
+### 9.6 Estado `REABIERTA` y el escaneo de alertas existente
+
+Al aceptar un batch, una entrada `REAPARECIDA` transiciona el estado almacenado de `RESUELTO` a un estado nuevo: **`REABIERTA`**. El `resolvedAt` previo se conserva (no se borra) y se fija un `reopenedAt` nuevo — la vulnerabilidad conserva su historial de cuándo se dio por resuelta la primera vez, además de cuándo volvió a aparecer.
+
+`REABIERTA` cuenta como **abierta** en todos los sitios donde open-vs-resolved importa, incluido el escaneo existente de alertas de vulnerabilidades (`backend/src/modules/alerts/engine.ts`, lista `open` en la línea ~161). Deliberadamente **no** se creó un mecanismo de alerta nuevo para "reaparición": basta con que `REABIERTA` sea un estado abierto más para que el motor de alertas ya existente (CRITICAL/HIGH abiertos) la recoja sin cambios adicionales — la misma filosofía D4 del conector vCenter (reusar `audit_logs` en vez de una tabla `sync_logs` nueva) aplicada aquí a "reusar el motor de alertas en vez de un mecanismo paralelo".
+
+También se añade la banda de severidad **`INFO`** (CVSS 0.0), inexistente hasta ahora, para las detecciones Greenbone de severidad nula.
+
+### 9.7 Endpoints
+
+| Método | Ruta | Auth | Propósito |
+|---|---|---|---|
+| `POST` | `/api/vuln-import/upload` | JWT, `requireAdmin` | Sube un informe Greenbone real (`allHostSubreportEntries[]`), crea el batch `PENDING` con sus entradas clasificadas. `400` si el body tiene forma del mock antiguo (`results[]`) u otro formato no reconocido. |
+| `GET` | `/api/vuln-import/batches` | JWT, `requireAudit` | Lista paginada de batches, filtrable por `status`. |
+| `GET` | `/api/vuln-import/batches/:id` | JWT, `requireAudit` | Detalle de un batch con sus entradas, filtrable por `classification`/`severity`/`decision`. |
+| `PATCH` | `/api/vuln-import/batches/:id/entries/:entryId` | JWT, `requireAdmin` | Corrige una entrada: reasignar `ciId`, cambiar `severity`, cambiar `decision` (`INCLUDE`/`EXCLUDE`). Solo sobre batches `PENDING`. |
+| `POST` | `/api/vuln-import/batches/:id/entries/bulk-decision` | JWT, `requireAdmin` | Include/exclude en bloque sobre un filtro (`classification`/`severity`/`decision`). |
+| `POST` | `/api/vuln-import/batches/:id/accept` | JWT, `requireAdmin` | Acepta el batch: escritura transaccional en los CIs afectados + `VULN_IMPORT_ACCEPT` en `audit_logs`. `422 UNRESOLVED_MATCHES` si queda algún `INCLUDE` sin CI resuelto. |
+| `POST` | `/api/vuln-import/batches/:id/discard` | JWT, `requireAdmin` | Descarta el batch sin tocar ningún CI. |
+
+El body de `POST /upload` está limitado a **20 MB** (frente al límite global de 2 MB de la aplicación) mediante un `express.json({limit:'20mb'})` de ámbito de ruta, montado en `index.ts` **antes** del parser global de 2 MB — Express despacha el middleware con coincidencia de ruta en orden de registro, así que un parser de ruta más específico registrado después del global nunca llegaría a tiempo.
+
+### 9.8 Compatibilidad hacia atrás
+
+- **`POST /api/integrations/greenbone` (legacy)** sigue existiendo, para cualquier llamador externo que ya lo use, pero ahora es un **shim delgado** que delega en la misma lógica de staging: crea un batch y devuelve `{message, batchId, summary}` en vez de escribir directamente. Un body con la forma del mock antiguo (`{results: [...]}`) devuelve ahora `400` con un mensaje claro, en vez del "éxito" silencioso con 0 vulnerabilidades que motivó este rediseño.
+- **`PATCH /api/vulnerabilities`** resuelve identidad como `key ?? cve` (ver [§9.2](#92-modelo-de-identidad-key--oidport-no-cve)), compatible con entradas nuevas y legacy a la vez.
+- **`backend/scripts/backfill-vuln-keys.js`** — script idempotente que rellena `key = cve` en cualquier entrada de vulnerabilidad almacenada anterior a este release y que aún no tiene `key`. Soporta `--dry-run`. Ver `docs/SYSADMIN_MANUAL.md` para el procedimiento de ejecución.
+
+### 9.9 Bug real encontrado y corregido durante la verificación en vivo
+
+`audit_logs.entity_id` es `varchar(36)` (dimensionado para un UUID desnudo). El insert de auditoría de `PATCH /api/vulnerabilities` construía, sin embargo, un string compuesto `${ciId}:${key}` que desborda esa columna para cualquier `key`/`cve` real — Postgres rechazaba el insert (error `22001`, "value too long for type character varying") y la petición entera devolvía `500`.
+
+Este bug **es anterior a v3.6.0** (existe desde el commit de #172 que envolvió esta escritura en una transacción) pero nunca se disparó en producción porque ningún CI tenía datos reales de vulnerabilidades hasta que este módulo empezó a escribirlos. Corregido: `entity_id` ahora contiene solo el `ciId` desnudo; la identidad de la vulnerabilidad se movió a la columna `details` (jsonb, sin límite de tamaño), que ya existía en `AuditLog` para este propósito.
+
+El test unitario dedicado a este endpoint (`backend/src/__tests__/vulnPatchIdentity.test.ts`) reafirmaba la forma antigua y defectuosa (string compuesto) contra un mock aislado, en vez de ejercitar Postgres real — la brecha ya documentada en este proyecto ("ningún test de este repo toca Postgres real, todo mockea `$executeRaw`") es exactamente lo que dejó pasar este bug sin detectar hasta la verificación en vivo contra la base de datos real.
+
+### 9.10 Verificación en vivo
+
+Verificado contra producción con la exportación real de Greenbone `docs/mocks/greenbone_SRV-MYGESTR01D.json` (CI `SRV-MYGESTR01D`): CI emparejado por `admin_ip` con confianza `EXACT_IP` sin intervención manual; 52 vulnerabilidades parseadas sin ninguna colisión de `key`; una segunda subida del mismo fichero clasificó las 2 ya aceptadas como `EXISTENTE_PENDIENTE` sin duplicarlas; marcar una como `RESUELTO` y volver a subir el fichero produjo `REAPARECIDA`, y aceptarla transicionó a `REABIERTA` con `reopenedAt` fijado y un registro de auditoría `VULN_REOPENED`; un host con IP desconocida produjo `UNMATCHED` y `accept` bloqueó correctamente con `422 UNRESOLVED_MATCHES` nombrando las entradas concretas que bloqueaban.
+
+### 9.11 Limitación conocida
+
+`docs/mocks/greenbone_sample_LEGACY_INVENTADO.json` (el mock antiguo que originó este rediseño, renombrado en este release desde `greenbone_sample.json` precisamente para que nadie vuelva a diseñar contra él por error) sigue existiendo en el repositorio como referencia histórica de qué NO es el formato real. No se ha añadido un README propio a `docs/mocks/` — el sufijo `_LEGACY_INVENTADO` del nombre de fichero se consideró suficientemente autoexplicativo.
+
+Además, los batches `PENDING` abandonados (nunca aceptados ni descartados) **no se purgan automáticamente todavía** — ver `docs/SYSADMIN_MANUAL.md` para el detalle de esta carencia conocida.
+
+### 9.12 Segunda fuente: CrowdStrike Spotlight (mismo staging, sin tag todavía)
+
+> **Estado: sobre la misma rama que la §9, sin tag ni merge a `main` todavía.** Esta subsección documenta trabajo de seguimiento (informalmente "v3.6.1") realizado sobre `feature/v3.6.0-greenbone-real-format` una vez cerrado lo descrito en 9.1–9.11.
+
+**Contexto.** El conector CrowdStrike ya existente (`POST /api/integrations/crowdstrike`) ingiere estado de agente/EDR de Falcon (`{devices:[...]}` → `configuration_items.agent_status`) — funcionalidad real y sin tocar, que alimenta 4 filtros de Inventario, una insignia y un informe de seguridad. **CrowdStrike Spotlight es un producto distinto** dentro de la misma plataforma CrowdStrike: gestión de vulnerabilidades, no estado de agente. Contra una exportación real proporcionada por el usuario (`docs/mocks/crowdstrike_SRV-MYGESTR01D.json`, 841 registros para el CI `SRV-MYGESTR01D`) el formato resultó ser un array JSON plano en el nivel superior — de forma y dominio completamente distintos tanto del mock de agente/EDR como del formato Greenbone. En vez de construir un tercer módulo aislado, se generalizó el staging existente: `crowdstrikeParser.ts` produce el mismo `ParsedVulnEntry` que `parser.ts` ya produce para Greenbone, y todo lo demás del pipeline (matcher, classifier, service, router, UI de revisión) es compartido sin condicionales por fuente.
+
+**Modelo de identidad: `vulnerability_id` solo, no `vulnerability_id + product`.** A diferencia de Greenbone (`key = oid@port`), CrowdStrike emite un registro por cada producto afectado de la misma vulnerabilidad — el fixture real trae 841 registros crudos que colapsan a **635** `vulnerability_id` distintos. Los registros que comparten un mismo ID se fusionan en una sola entrada:
+
+- `products` — unión de producto/versión afectados de todo el grupo.
+- `solution` — unión deduplicada de `recommended_remediations[].detail` de todo el grupo.
+- estado — si **cualquier** registro del grupo tiene `status: "Reopened"`, la entrada fusionada queda `Reopened` ("gana Reopened" en caso de desacuerdo dentro del grupo).
+
+`vulnerability_id` no siempre es un CVE: un registro real del fixture (`CS-V26-A757135`) no tiene `cve_id` en absoluto — es un identificador propio de CrowdStrike, sin CVE público asociado. Fusionar por `vulnerability_id + product` habría tratado cada producto afectado como una vulnerabilidad distinta, inflando el recuento y perdiendo la vista "¿está resuelta esta vulnerabilidad concreta en todos sus productos afectados?" que `vulnerability_id` solo sí da.
+
+**Severidad CVSS vs. `exprtRating` — dos señales distintas, deliberadamente no fusionadas.** La severidad se deriva del `base_score` de CVSS (un string pegado tipo `"7.8 v3.x"`, parseado a número + `cvssVersion`), reutilizando **las mismas bandas** `scoreToSeverity` ya establecidas para Greenbone (0.0=INFO, 0.1-3.9=LOW, 4.0-6.9=MEDIUM, 7.0-8.9=HIGH, 9.0-10.0=CRITICAL) — un HIGH significa lo mismo con independencia de la fuente. CrowdStrike aporta además su **propia** valoración con IA (`exprtRating`, p. ej. "Critical"), que se almacena y se muestra como una señal **separada**, nunca mezclada con la severidad derivada de CVSS: en el fixture real, las dos discrepan en ~65% de los registros. Confundirlas habría ocultado exactamente los casos donde más importa la discrepancia.
+
+**CISA KEV y explotación activa — premarcado forzado con independencia de la banda de severidad.** CrowdStrike Spotlight aporta dos señales que Greenbone no tiene: pertenencia al catálogo CISA KEV (`cisaKev` + `cisaDueDate`, un plazo de remediación oficial del gobierno de EE.UU. para explotación confirmada en el mundo real) y una etiqueta de probabilidad de explotación (`exploitStatus`). Ambas fuerzan inclusión premarcada en la pantalla de revisión **con independencia de la severidad** — una CVE de severidad LOW con explotación activa es más urgente que una HIGH puramente teórica. Los valores exactos de etiqueta que cuentan como "explotación activa" son una allowlist explícita (`ACTIVE_EXPLOITATION_LABELS` en `backend/src/modules/vuln-import/classifier.ts`): `"Actively used (critical)"` y `"Easily Accessible (high)"` cuentan; `"Unproven"` y `"Available (medium)"` no — una distinción deliberada, porque exploit "disponible" no es la misma afirmación que "usado activamente en el mundo real". Verificado contra la distribución completa del fixture real: 794 Unproven / 40 Available (medium) / 6 Actively used (critical) / 1 Easily Accessible (high).
+
+**Nueva ruta de clasificación `REAPARECIDA`: la señal de reapertura del propio sistema externo.** La [§9.5](#95-clasificación-contra-lo-ya-almacenado-en-el-ci) documenta la única ruta original a `REAPARECIDA`: existe una entrada almacenada en el CI y su estado era `RESUELTO`. CrowdStrike añade una **segunda ruta, independiente**: si el `status` del registro entrante es `"Reopened"` (mapeado a `externalStatus`), la entrada se clasifica `REAPARECIDA` **aunque el CMDB no tenga ningún registro de esa vulnerabilidad todavía** — no solo cuando la copia propia del CMDB estaba previamente en `RESUELTO`. CrowdStrike solo informa `"Reopened"` de algo que él mismo ha visto cerrarse antes, así que la señal es suficiente por sí sola; en `classifier.ts` se comprueba **antes** que las ramas de "sin match" / `OPEN_STATUSES`, porque puede prevalecer sobre cualquiera de las dos (incluso sobre un estado propio todavía abierto como `NUEVO`/`ASIGNADO`/`EN_CURSO`/`PARADO`). Al aceptar, si una entrada clasificada `REAPARECIDA` por esta segunda ruta no tiene en realidad ninguna vulnerabilidad almacenada que reabrir (porque el CMDB nunca la había registrado — algo común con CrowdStrike, ya que los formatos de identidad de Greenbone y CrowdStrike son disjuntos y hoy no se cruzan entre sí), el flujo de aceptación cae a almacenarla como entrada nueva en vez de fallar.
+
+**`cisaKev` con semántica sticky-true en el refresco de "reopen".** `cisaKev` es el único de los 8 campos nuevos de CrowdStrike que es un booleano no-nullable (sus 7 hermanos son todos nullable). En la ruta de refresco de una entrada ya almacenada que se reabre, se aplica `entry.cisaKev || existing.cisaKev` en vez de una sobrescritura directa — así una vulnerabilidad marcada alguna vez como CISA KEV nunca pierde esa marca de forma silenciosa por un refresco posterior que no la vuelva a traer (p. ej. si esa carga concreta ya no incluye el campo, o si el registro que ganó la fusión de un grupo no es el mismo que la trajo la vez anterior). Un dato de esta relevancia de seguridad no debe desaparecer sin más.
+
+**`POST /api/integrations/crowdstrike` pasa a ser consciente del formato.** Este endpoint históricamente solo aceptaba la forma agente/EDR. Ahora autodetecta por estructura: un objeto con clave `devices` → el flujo agente/EDR **existente, sin cambios**; un array plano (opcionalmente envuelto en `{filename?, report}`) → enruta al **mismo** pipeline de staging que ya usa Greenbone (crea un batch `PENDING`, nunca escribe directamente sobre un CI); cualquier otra cosa → `400` nombrando explícitamente ambos formatos aceptados. El límite de 20 MB de cuerpo de petición (ya aplicado a `/api/vuln-import/upload` en v3.6.0, porque una exportación Greenbone real de un solo host puede superar el límite global de 2 MB) se aplica ahora **también** a `/api/integrations/crowdstrike` (una exportación Spotlight real de un solo host ronda los 686 KB — una exportación multi-host puede superarlo fácilmente), registrado en `index.ts` antes del parser global — la misma clase de bug histórico (un body parser de ámbito de ruta registrado en la posición relativa equivocada es un no-op silencioso, porque Express despacha middleware coincidente en orden de registro) evitada deliberadamente otra vez.
+
+**Esquema.** `VulnImportEntry` gana 8 columnas nuevas, todas nullable (`products text[]`, `exprt_rating`, `cisa_kev boolean not null default false`, `cisa_due_date`, `exploit_status`, `days_open`, `external_status`, `cvss_version`) para las señales específicas de CrowdStrike; `oid` y `port` (identidad NVT-y-puerto, específica de Greenbone) pasan a ser nullable, ya que una entrada CrowdStrike no tiene ninguno de los dos. El JSON `Vulnerability` persistido en cada CI gana los mismos campos, todos opcionales, más un campo `source` que ahora varía de verdad (`'greenbone'` | `'crowdstrike'`) en vez de ser siempre `'greenbone'`.
+
+**Interfaz.** El listado de lotes muestra una pequeña insignia de fuente (Greenbone/CrowdStrike) por fila. La pantalla de revisión muestra las insignias de CISA KEV y explotación activa **directamente en la fila colapsada** (no ocultas tras un clic de expandir — son las señales de mayor valor de estos datos y deben verse de un vistazo), con la insignia KEV mostrando el plazo de remediación cuando existe; el panel de detalle expandible gana `exprtRating` (distinguido visualmente de la pastilla de severidad CVSS para que no se lean como duplicados), `daysOpen`, la lista de `products` afectados y `cvssVersion`. La tarjeta de CrowdStrike de la página `/integrations` maneja ahora ambas formas de respuesta (staging vs. aplicación directa) exactamente igual que ya hacía la tarjeta de Greenbone, y su JSON de ejemplo se actualizó de la vieja forma de mock de agente a un fragmento mínimo real en formato Spotlight.
+
+**Verificación en vivo contra producción** con el fixture real (`docs/mocks/crowdstrike_SRV-MYGESTR01D.json`): 841 registros crudos fusionados correctamente a 635 entradas; el CI emparejado por IP sin intervención manual; una CVE que abarca 3 productos afectados fusionada en una sola entrada; el ID propio de CrowdStrike sin CVE importado correctamente con lista de CVE vacía; 3 vulnerabilidades CISA KEV reales premarcadas correctamente; 28 vulnerabilidades de estado `Reopened` distintas clasificadas correctamente `REAPARECIDA` incluso sin registro previo en el CMDB (incluido el caso límite "sin match en absoluto + Reopened"); volver a subir el mismo fichero no produjo duplicados; el formato legacy de agente/EDR sigue funcionando sin cambios a través del mismo endpoint; un formato de cuerpo no reconocido se rechaza con `400` nombrando ambas formas aceptadas.
+
+**Fix de UX de la pantalla de revisión, independiente de CrowdStrike.** El control de inclusión/exclusión por entrada era un botón de verbo imperativo ("Excluir"/"Incluir") que mostraba el estado ACTUAL pero se leía como una ORDEN — un usuario viendo "Excluir" en una entrada ya excluida podía razonablemente (pero incorrectamente) concluir que tenía que pulsarlo para excluirla. **El comportamiento del clasificador subyacente se verificó de forma independiente como correcto** contra datos reales de producción (las vulnerabilidades ya existentes/pendientes sí vienen excluidas por defecto) — solo cambió el texto del control de interfaz, ninguna lógica de backend. Ahora es una casilla con etiquetas orientadas al resultado ("Se importará"/"No se importará"), inequívocas sobre lo que hará realmente aceptar el lote. La etiqueta de VISUALIZACIÓN de la clasificación `EXISTENTE_PENDIENTE` (no su valor/clave subyacente, que no cambia) también se reformuló de un término técnico crudo a "Ya existe en este CI", con una explicación de apoyo de que no se reimportará, solo se refrescará.
+
+**Limitación conocida.** La verificación visual en navegador de la UI nueva (insignias, indicador de fuente, casilla reformulada) no pudo realizarse en este entorno (sin Chrome instalable, sin sudo — la misma limitación ya documentada para v3.6.0 y para v3.5.12) — todas las afirmaciones de interfaz de arriba se verificaron por revisión de código y pruebas de API en vivo, no mirando la pantalla renderizada.

@@ -547,6 +547,7 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 | **In Progress** | The technician is working on the resolution |
 | **On Hold** | Blocked by external dependencies |
 | **Resolved** | Vulnerability resolved or mitigated |
+| **Reopened** | Was marked resolved and has been detected again in a later re-scan (see "The 'Reopened' status" below) |
 
 ### Changing the status of a vulnerability (ADMIN only)
 
@@ -565,12 +566,83 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 4. Click **"Import"**.
 5. The platform matches host names from the report against existing assets and adds new vulnerabilities with the status "New".
 
+### Importing and reviewing vulnerabilities from Greenbone OpenVAS (real format, staging)
+
+> This is the recommended path for Greenbone as of v3.6.0. Unlike the direct import described in the previous section, a real Greenbone report is **never applied automatically** to your assets: it first goes through a review screen where you decide, finding by finding or in bulk, what actually gets applied.
+
+**1. Uploading the report**
+
+1. Export the report from Greenbone/OpenVAS in JSON format (the real export format, not a hand-written template).
+2. Go to **Vulnerabilities → Imports** (`/vulnerabilities/imports`).
+3. Click **"Upload report"** and select the JSON file. Only ADMIN can upload.
+4. If the file has the correct format, you're redirected automatically to the review screen for the newly created batch. If the file doesn't match the real expected format (for example, an old hand-written template or an export from a different tool), the upload is rejected with an explicit error message — no batch is created.
+
+**2. The review screen**
+
+Each **batch** groups all the vulnerabilities from one report, one row (an **entry**) per finding. The screen organises entries into four tabs — these are independent filtered views over the same list, not exclusive buckets: the same entry can appear in more than one tab at once.
+
+| Tab | What it shows |
+|---|---|
+| **Actionable** | Findings of MEDIUM severity or higher |
+| **Informational** | Findings of LOW or INFO severity |
+| **Needs attention** | Findings whose match against an existing asset isn't reliable: no match, several candidate assets, or only an approximate name match |
+| **Reappeared** | Findings that had previously been marked resolved and have reappeared in this scan |
+
+Each entry shows a colored pill for its classification (New / Already pending / Reappeared) and another for the asset-match confidence. Clicking **"Show details"** on an entry expands a panel with the full description and Greenbone's recommended remediation — useful for deciding whether an informational finding is still worth including.
+
+**3. Reassigning the asset or fixing a bad match**
+
+The system tries to match each host in the report to an existing asset (CI) by IP, name, hostname, or DNS. When the match is uncertain (the "Needs attention" tab) or outright wrong, use that row's asset selector to assign the correct CI manually. An entry with no asset assigned **cannot be accepted** — it will block the entire batch until you resolve it or exclude it.
+
+**4. Including or excluding findings**
+
+Every entry has an include/exclude checkbox, pre-checked according to sensible defaults:
+
+- A **new** finding of medium severity or higher comes pre-checked for inclusion; a low/informational one comes unchecked (you can still check it if you want to record it).
+- A finding that's **already pending resolution** on the asset (someone is already working on it) always comes unchecked — it's never re-imported on top of work in progress.
+- A **reappeared** finding (previously marked resolved, now back) always comes pre-checked for inclusion, regardless of severity — it's the single most important signal a re-scan can produce.
+
+You can flip any individual checkbox, or use each tab's bulk-selection controls to include/exclude every entry currently visible in that view at once.
+
+**5. Accepting or discarding the batch**
+
+- **"Accept batch"** applies every "include" decision to its corresponding asset in a single operation and writes a record to the Audit Log. **This action is irreversible** for the entries it applies: once merged into the asset, a vulnerability is managed from that asset's normal record, exactly like any other. If any entry marked for inclusion still has no asset assigned, the system refuses to accept the batch and tells you exactly which entries are blocking it.
+- **"Discard"** closes the batch without touching any asset. Useful if you uploaded the wrong file or decide not to bring anything in from this scan.
+
+An accepted or discarded batch is locked in that state — it can't be edited, accepted again, or reopened.
+
+### The "Reopened" status
+
+When a vulnerability that had been marked **Resolved** reappears in a later scan and you accept its "Reappeared" entry, its status in the main Vulnerabilities list changes to **"Reopened"**. It keeps the date it was first resolved and adds the date it was detected again, so the full history stays visible. For every practical purpose (filters, counters, the critical/high unresolved-vulnerability email alerts) a "Reopened" vulnerability counts as open, exactly like "New" or "In Progress".
+
 ### Importing from CrowdStrike Falcon
 
 1. Export the report in JSON format from CrowdStrike.
 2. Go to **Connectors → CrowdStrike Falcon**.
 3. Upload the JSON file.
 4. The platform updates the Falcon agent status on the corresponding assets.
+
+### Importing and reviewing vulnerabilities from CrowdStrike Spotlight
+
+CrowdStrike Spotlight is a different CrowdStrike product from CrowdStrike Falcon: it manages **vulnerabilities**, not EDR agent status. A Spotlight report is uploaded to the same place and goes through the **same review screen** as a Greenbone report — see "Importing and reviewing vulnerabilities from Greenbone OpenVAS (real format, staging)" above for the full flow (upload, tabs, CI reassignment, accept/discard). This section only covers what's specific to CrowdStrike Spotlight.
+
+1. Export the report from CrowdStrike Spotlight in JSON format.
+2. Go to **Vulnerabilities → Imports** (`/vulnerabilities/imports`) and upload the file just like you would for Greenbone. The system automatically detects it's a Spotlight report (as opposed to a Falcon agent-status report) from the shape of the JSON.
+3. The batch list shows a small badge indicating each batch's source (Greenbone or CrowdStrike).
+
+**New signals on the review screen:**
+
+| Signal | What it means | Where it shows |
+|---|---|---|
+| **CISA KEV badge** | The vulnerability is in the official US-government Known Exploited Vulnerabilities catalog — there's confirmation of real-world exploitation, not just a theoretical risk. If CrowdStrike provides a remediation due date, it's shown next to the badge. | Directly in the row, no need to expand — this is one of the most important signals in this data |
+| **Active-exploitation badge** | CrowdStrike assesses that exploit code is either easily accessible or actively used in the wild (not just "available" or "unproven" — those two cases do not show this badge) | Directly in the row, no need to expand |
+| **`exprtRating`** | CrowdStrike's own AI-driven rating, e.g. "Critical". This is a **separate** signal from the CVSS-derived severity shown elsewhere in the application — deliberately not merged, because in practice they often disagree. Treat them as two independent opinions, not the same thing shown twice. | Expandable detail panel |
+
+Both badges (CISA KEV and active exploitation) cause the entry to come **pre-selected for inclusion** on the review screen regardless of its severity — a low-severity vulnerability with confirmed active exploitation is more urgent than a purely theoretical high-severity one.
+
+CrowdStrike also reports whether it considers a vulnerability itself "reopened" (`Reopened`). When it does, the entry is classified and pre-marked as **Reappeared** on the review screen, exactly like a Greenbone vulnerability that had gone through "Resolved" and shows up again — even if the CMDB had no prior record of it at all.
+
+**Note on the review-screen controls:** each entry's decision checkbox now states the outcome, not a command — "Will be imported" means that accepting the batch will apply that vulnerability to the asset; "Will not be imported" means it will be left out. Similarly, when an entry already exists on the asset and is still pending resolution, the label reads "Already exists on this CI" — it won't be re-imported as something new, only refreshed if you upload the same finding again.
 
 ---
 

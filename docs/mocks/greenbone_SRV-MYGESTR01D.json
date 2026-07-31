@@ -1,0 +1,1969 @@
+{
+  "severityDistribution": [
+    {
+      "category": "Verteilung",
+      "series": "Critical",
+      "amount": 0
+    },
+    {
+      "category": "Verteilung",
+      "series": "Medium",
+      "amount": 2
+    },
+    {
+      "category": "Verteilung",
+      "series": "Trivial",
+      "amount": 50
+    }
+  ],
+  "taskName": "800_Madrid - Recheck 02",
+  "greenboneTaskId": "ce3d933a-175b-44c2-a203-4fb3dec1ee20",
+  "progress": 100,
+  "scanStart": "2026-07-29T09:38:15Z",
+  "scanEnd": "2026-07-29T10:18:50Z",
+  "scanDurationInSeconds": 2435,
+  "hostMaxSeverity": [
+    {
+      "host": "10.100.12.61",
+      "highestSeverity": 5.0,
+      "highSeverityCount": 0,
+      "mediumSeverityCount": 2,
+      "lowSeverityCount": 50
+    }
+  ],
+  "top10HostVulnerabilities": [
+    {
+      "host": "10.100.12.61",
+      "criticality": "Critical",
+      "amount": 0
+    },
+    {
+      "host": "10.100.12.61",
+      "criticality": "Medium",
+      "amount": 0
+    },
+    {
+      "host": "10.100.12.61",
+      "criticality": "Trivial",
+      "amount": 0
+    }
+  ],
+  "hostDetail": [
+    {
+      "host": "10.100.12.61",
+      "taskName": "800_Madrid - Recheck 02",
+      "highSeverityNvtNames": {
+        "data": [],
+        "recordCount": 0
+      },
+      "mediumSeverityNvtNames": {
+        "data": [
+          {
+            "severity": 5.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 4.3,
+            "nvtName": "SSL/TLS: Deprecated TLSv1.0 and TLSv1.1 Protocol Detection"
+          }
+        ],
+        "recordCount": 2
+      },
+      "lowSeverityNvtNames": {
+        "data": [
+          {
+            "severity": 2.1,
+            "nvtName": "ICMP Timestamp Reply Information Disclosure"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Services"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Services"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SMB/CIFS Server Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SMB/CIFS Server Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Microsoft Remote Desktop Protocol (RDP) Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Version Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Collect and Report Certificate Details"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Hostname discovery from server certificate"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Web Services Management (WS-Man) / Windows Remote Management (WinRM) Detection (HTTP)"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "OS Detection Consolidation and Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SMB Remote Version Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Traceroute"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Report Supported Cipher Suites"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Certificate - Self-Signed Certificate Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Report Perfect Forward Secrecy (PFS) Cipher Suites"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Report Medium Cipher Suites"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Report Non Weak Cipher Suites"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "SSL/TLS: Safe/Secure Renegotiation Support Status"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server Banner Enumeration"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server Banner Enumeration"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server Banner Enumeration"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server type and version"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server type and version"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Server type and version"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Security Headers Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Security Headers Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "HTTP Security Headers Detection"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Web Application Scanning Consolidation / Info Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Web Application Scanning Consolidation / Info Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Web Application Scanning Consolidation / Info Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Unknown OS and Service Banner Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Unknown OS and Service Banner Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Unknown OS and Service Banner Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Unknown OS and Service Banner Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "CPE Inventory"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Services"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Hostname Determination Reporting"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Services"
+          },
+          {
+            "severity": 0.0,
+            "nvtName": "Services"
+          }
+        ],
+        "recordCount": 50
+      },
+      "severityPieChartData": {
+        "data": [
+          {
+            "category": "Verteilung",
+            "series": "Critical",
+            "amount": 0
+          },
+          {
+            "category": "Verteilung",
+            "series": "Medium",
+            "amount": 0
+          },
+          {
+            "category": "Verteilung",
+            "series": "Trivial",
+            "amount": 0
+          }
+        ],
+        "recordCount": 3
+      },
+      "severityBarChartData": {
+        "data": [
+          {
+            "category": "Verteilung",
+            "series": "Critical",
+            "amount": 0
+          },
+          {
+            "category": "Verteilung",
+            "series": "Medium",
+            "amount": 0
+          },
+          {
+            "category": "Verteilung",
+            "series": "Trivial",
+            "amount": 0
+          }
+        ],
+        "recordCount": 3
+      },
+      "empty": false
+    }
+  ],
+  "allHostSubreportEntries": [
+    {
+      "host": "10.100.12.61",
+      "vulnerabilities": [
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 5.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "135/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "Here is the list of DCE/RPC or MSRPC services running on this host via the TCP protocol:\n\nPort: 49664/tcp\n\n     UUID: d95afe70-a6d5-4259-822e-2c84da1ddb0d, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49664]\n\nPort: 49665/tcp\n\n     UUID: f6beaff7-1e19-4fbb-9f8f-b89e2018337c, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49665]\n     Annotation: Event log TCPIP\n\nPort: 49666/tcp\n\n     UUID: 3a9ef155-691d-4449-8d05-09ad57031823, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49666]\n\n     UUID: 86d35949-83c9-4044-b424-db363231fd0c, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49666]\n\nPort: 49668/tcp\n\n     UUID: 0b1c2170-5732-4e0e-8cd3-d9b16f3b84d7, version 0\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: RemoteAccessCheck\n\n     UUID: 12345778-1234-abcd-ef00-0123456789ac, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Named pipe : lsass\n     Win32 service or process : lsass.exe\n     Description : SAM access\n\n     UUID: 51a227ae-825b-41f2-b4a9-1ac9557a1018, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: Ngc Pop Key Service\n\n     UUID: 8fb74744-b2ff-4c00-be0d-9ef9a191fe1b, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: Ngc Pop Key Service\n\n     UUID: b25a52bf-e5dd-4f4a-aea6-8ca7272a0e86, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: KeyIso\n\nPort: 49685/tcp\n\n     UUID: 0b6edbfa-4a24-4fc6-8a23-942b1eca65d1, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: 12345678-1234-abcd-ef00-0123456789ab, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n     Named pipe : spoolss\n     Win32 service or process : spoolsv.exe\n     Description : Spooler service\n\n     UUID: 4a452661-8290-4b36-8fbe-7f4093a94978, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: 76f03f96-cdfd-44fc-a22c-64950a001209, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: ae33069b-a2a8-46ee-a235-ddfd339be281, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\nPort: 49697/tcp\n\n     UUID: 29770a8f-829b-4158-90a2-78cd488501f7, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49697]\n\nPort: 49704/tcp\n\n     UUID: 367abb81-9844-35f1-ad32-98f038001003, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49704]\n\nPort: 49705/tcp\n\n     UUID: 6b5bdd1e-528c-422c-af8c-a4079be4fe48, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49705]\n     Annotation: Remote Fw APIs\n\nPort: 49720/tcp\n\n     UUID: 12345778-1234-abcd-ef00-0123456789ac, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Named pipe : lsass\n     Win32 service or process : lsass.exe\n     Description : SAM access\n\n     UUID: 51a227ae-825b-41f2-b4a9-1ac9557a1018, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: Ngc Pop Key Service\n\n     UUID: 8fb74744-b2ff-4c00-be0d-9ef9a191fe1b, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: Ngc Pop Key Service\n\n     UUID: b25a52bf-e5dd-4f4a-aea6-8ca7272a0e86, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: KeyIso\n\nNote: DCE/RPC or MSRPC services running on this host locally were identified. Reporting this list is not enabled by default due to the possible large size of this list. See the script preferences to enable this reporting.\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Alarm",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Deprecated TLSv1.0 and TLSv1.1 Protocol Detection",
+          "severity": 4.3,
+          "epss_score": 0.98685,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "It was possible to detect the usage of the deprecated TLSv1.0\n  and/or TLSv1.1 protocol on this system.",
+          "description": [
+            "In addition to TLSv1.2+ the service is also providing the deprecated TLSv1.0 and TLSv1.1 protocols and supports one or more ciphers. Those supported ciphers can be found in the 'SSL/TLS: Report Supported Cipher Suites' (OID: 1.3.6.1.4.1.25623.1.0.802067) VT.\n"
+          ],
+          "solution": "It is recommended to disable the deprecated TLSv1.0 and/or\n  TLSv1.1 protocols in favor of the TLSv1.2+ protocols.\n\n  Please see the references for more resources supporting you with this task.",
+          "solutionType": "Mitigation",
+          "affected": "- All services providing an encrypted communication using the\n  TLSv1.0 and/or TLSv1.1 protocols\n\n  - CVE-2023-41928: Kiloview P1 4G and P2 4G Video Encoder\n\n  - CVE-2024-41270: Gorush v1.18.4\n\n  - CVE-2025-3200: Multiple products from Wiesemann & Theis",
+          "insight": "The TLSv1.0 and TLSv1.1 protocols contain known cryptographic\n  flaws like:\n\n  - CVE-2011-3389: Browser Exploit Against SSL/TLS (BEAST)\n\n  - CVE-2015-0204: Factoring Attack on RSA-EXPORT Keys Padding Oracle On Downgraded Legacy\n  Encryption (FREAK)",
+          "cve": [
+            "CVE-2011-3389",
+            "CVE-2015-0204",
+            "CVE-2023-41928",
+            "CVE-2024-41270",
+            "CVE-2025-3200"
+          ],
+          "bid": [],
+          "cert": [
+            "WID-SEC-2026-0180",
+            "WID-SEC-2023-1435",
+            "CB-K18/0799",
+            "CB-K16/1289",
+            "CB-K16/1096",
+            "CB-K15/1751",
+            "CB-K15/1266",
+            "CB-K15/0850",
+            "CB-K15/0764",
+            "CB-K15/0720",
+            "CB-K15/0548",
+            "CB-K15/0526",
+            "CB-K15/0509",
+            "CB-K15/0493",
+            "CB-K15/0384",
+            "CB-K15/0365",
+            "CB-K15/0364",
+            "CB-K15/0302",
+            "CB-K15/0192",
+            "CB-K15/0079",
+            "CB-K15/0016",
+            "CB-K14/1342",
+            "CB-K14/0231",
+            "CB-K13/0845",
+            "CB-K13/0796",
+            "CB-K13/0790",
+            "DFN-CERT-2020-0177",
+            "DFN-CERT-2020-0111",
+            "DFN-CERT-2019-0068",
+            "DFN-CERT-2018-1441",
+            "DFN-CERT-2018-1408",
+            "DFN-CERT-2016-1372",
+            "DFN-CERT-2016-1164",
+            "DFN-CERT-2016-0388",
+            "DFN-CERT-2015-1853",
+            "DFN-CERT-2015-1332",
+            "DFN-CERT-2015-0884",
+            "DFN-CERT-2015-0800",
+            "DFN-CERT-2015-0758",
+            "DFN-CERT-2015-0567",
+            "DFN-CERT-2015-0544",
+            "DFN-CERT-2015-0530",
+            "DFN-CERT-2015-0396",
+            "DFN-CERT-2015-0375",
+            "DFN-CERT-2015-0374",
+            "DFN-CERT-2015-0305",
+            "DFN-CERT-2015-0199",
+            "DFN-CERT-2015-0079",
+            "DFN-CERT-2015-0021",
+            "DFN-CERT-2014-1414",
+            "DFN-CERT-2013-1847",
+            "DFN-CERT-2013-1792",
+            "DFN-CERT-2012-1979",
+            "DFN-CERT-2012-1829",
+            "DFN-CERT-2012-1530",
+            "DFN-CERT-2012-1380",
+            "DFN-CERT-2012-1377",
+            "DFN-CERT-2012-1292",
+            "DFN-CERT-2012-1214",
+            "DFN-CERT-2012-1213",
+            "DFN-CERT-2012-1180",
+            "DFN-CERT-2012-1156",
+            "DFN-CERT-2012-1155",
+            "DFN-CERT-2012-1039",
+            "DFN-CERT-2012-0956",
+            "DFN-CERT-2012-0908",
+            "DFN-CERT-2012-0868",
+            "DFN-CERT-2012-0867",
+            "DFN-CERT-2012-0848",
+            "DFN-CERT-2012-0838",
+            "DFN-CERT-2012-0776",
+            "DFN-CERT-2012-0722",
+            "DFN-CERT-2012-0638",
+            "DFN-CERT-2012-0627",
+            "DFN-CERT-2012-0451",
+            "DFN-CERT-2012-0418",
+            "DFN-CERT-2012-0354",
+            "DFN-CERT-2012-0234",
+            "DFN-CERT-2012-0221",
+            "DFN-CERT-2012-0177",
+            "DFN-CERT-2012-0170",
+            "DFN-CERT-2012-0146",
+            "DFN-CERT-2012-0142",
+            "DFN-CERT-2012-0126",
+            "DFN-CERT-2012-0123",
+            "DFN-CERT-2012-0095",
+            "DFN-CERT-2012-0051",
+            "DFN-CERT-2012-0047",
+            "DFN-CERT-2012-0021",
+            "DFN-CERT-2011-1953",
+            "DFN-CERT-2011-1946",
+            "DFN-CERT-2011-1844",
+            "DFN-CERT-2011-1826",
+            "DFN-CERT-2011-1774",
+            "DFN-CERT-2011-1743",
+            "DFN-CERT-2011-1738",
+            "DFN-CERT-2011-1706",
+            "DFN-CERT-2011-1628",
+            "DFN-CERT-2011-1627",
+            "DFN-CERT-2011-1619",
+            "DFN-CERT-2011-1482"
+          ],
+          "xref": [
+            "https://configurator.tlsref.org/",
+            "https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/Publications/TechGuidelines/TG02102/BSI-TR-02102-1.html",
+            "https://www.bsi.bund.de/EN/Themen/Oeffentliche-Verwaltung/Mindeststandards/TLS-Protokoll/TLS-Protokoll_node.html",
+            "https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Publikationen/TechnischeRichtlinien/TR03116/BSI-TR-03116-4.html",
+            "https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/Mindeststandards/Mindeststandard_BSI_TLS_Version_2_4.html",
+            "https://web.archive.org/web/20240113175943/https://www.bettercrypto.org",
+            "https://www.enisa.europa.eu/publications/algorithms-key-size-and-parameters-report-2014",
+            "https://datatracker.ietf.org/doc/rfc8996/",
+            "https://vnhacker.blogspot.com/2011/09/beast.html",
+            "https://web.archive.org/web/20201108095603/https://censys.io/blog/freak",
+            "https://certvde.com/en/advisories/VDE-2025-031/",
+            "https://gist.github.com/nyxfqq/cfae38fada582a0f576d154be1aeb1fc",
+            "https://advisories.ncsc.nl/advisory?id=NCSC-2024-0273"
+          ],
+          "thread": "Alarm",
+          "oid": "1.3.6.1.4.1.25623.1.0.117274",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Deprecated TLSv1.0 and TLSv1.1 Protocol Detection",
+          "impact": "An attacker might be able to use the known cryptographic flaws to\n  eavesdrop the connection between clients and the service to get access to sensitive data\n  transferred within the secured connection.\n\n  Furthermore newly uncovered vulnerabilities in this protocols won't receive security updates\n  anymore.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "ICMP Timestamp Reply Information Disclosure",
+          "severity": 2.1,
+          "epss_score": 0.31586,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "general/icmp",
+          "summary": "The remote host responded to an ICMP timestamp request.",
+          "description": [
+            "The following response / ICMP packet has been received:\n- ICMP Type: 14\n- ICMP Code: 0\n"
+          ],
+          "solution": "Various mitigations are possible:\n\n  - Disable the support for ICMP timestamp on the remote host completely\n\n  - Protect the remote host by a firewall, and block ICMP packets passing through the firewall in\n  either direction (either completely or only for untrusted networks)",
+          "solutionType": "Mitigation",
+          "affected": "",
+          "insight": "The Timestamp Reply is an ICMP message which replies to a\n  Timestamp message. It consists of the originating timestamp sent by the sender of the Timestamp as\n  well as a receive timestamp and a transmit timestamp.",
+          "cve": [
+            "CVE-1999-0524"
+          ],
+          "bid": [],
+          "cert": [
+            "CB-K15/1514",
+            "CB-K14/0632",
+            "DFN-CERT-2014-0658"
+          ],
+          "xref": [
+            "https://datatracker.ietf.org/doc/html/rfc792",
+            "https://datatracker.ietf.org/doc/html/rfc2780"
+          ],
+          "thread": "Alarm",
+          "oid": "1.3.6.1.4.1.25623.1.0.103190",
+          "family": "General",
+          "nvtName": "ICMP Timestamp Reply Information Disclosure",
+          "impact": "This information could theoretically be used to exploit weak\n  time-based random number generators in other services.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Services",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3387/tcp",
+          "summary": "This plugin performs service detection.",
+          "description": [
+            "A web server is running on this port\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "This plugin attempts to guess which service is running on the\n  remote port(s). For instance, it searches for a web server which could listen on another port than\n  80 or 443 and makes this information available for other check routines.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10330",
+          "family": "Service detection",
+          "nvtName": "Services",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Services",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5666/tcp",
+          "summary": "This plugin performs service detection.",
+          "description": [
+            "The service closed the connection after 0 seconds without sending any data\nIt might be protected by some TCP wrapper\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "This plugin attempts to guess which service is running on the\n  remote port(s). For instance, it searches for a web server which could listen on another port than\n  80 or 443 and makes this information available for other check routines.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10330",
+          "family": "Service detection",
+          "nvtName": "Services",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "135/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration.",
+          "description": [
+            "A DCE endpoint resolution service seems to be running on this port.\n"
+          ],
+          "solution": "Filter incoming traffic to this port.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.\n\n  The actual reporting takes place in the VT 'DCE/RPC and MSRPC Services Enumeration Reporting'\n  (OID: 1.3.6.1.4.1.25623.1.0.10736)",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108044",
+          "family": "Service detection",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SMB/CIFS Server Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "445/tcp",
+          "summary": "This script detects whether port 445 and 139 are open and\n  if they are running a CIFS/SMB server.",
+          "description": [
+            "A CIFS server is running on this port\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.11011",
+          "family": "Service detection",
+          "nvtName": "SMB/CIFS Server Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SMB/CIFS Server Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "139/tcp",
+          "summary": "This script detects whether port 445 and 139 are open and\n  if they are running a CIFS/SMB server.",
+          "description": [
+            "A SMB server is running on this port\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.11011",
+          "family": "Service detection",
+          "nvtName": "SMB/CIFS Server Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Microsoft Remote Desktop Protocol (RDP) Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "A service supporting the Microsoft Remote Desktop Protocol (RDP)\n  is running at this host.",
+          "description": [
+            ""
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "Remote Desktop Services, formerly known as Terminal Services, is\n  one of the components of Microsoft Windows (both server and client versions) that allows a user to\n  access applications and data on a remote computer over a network.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.100062",
+          "family": "Service detection",
+          "nvtName": "Microsoft Remote Desktop Protocol (RDP) Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Version Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "Enumeration and reporting of SSL/TLS protocol versions supported\n  by a remote service.",
+          "description": [
+            "The remote SSL/TLS service supports the following SSL/TLS protocol version(s):\n\nTLSv1.0\nTLSv1.1\nTLSv1.2\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.105782",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Version Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Collect and Report Certificate Details",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This script collects and reports the details of all SSL/TLS\n  certificates.\n\n  This data will be used by other tests to verify server certificates.",
+          "description": [
+            "The following certificate details of the remote service were collected.\n\nCertificate details:\nfingerprint (SHA-1)             | AED2509B6E6184B120B8226486F283EF4C8AAE19\nfingerprint (SHA-256)           | 0D48802AE231F041927FD4FEEF0E9BC157C14940D1DD2CBF03A277BCBB79DBC3\nissued by                       | CN=SRV-MYGESTR01D.azkar.com\npublic key algorithm            | RSA\npublic key size (bits)          | 2048\nserial                          | 1F5856849C33A2BC48AD75ABE245A978\nsignature algorithm             | sha256WithRSAEncryption\nsubject                         | CN=SRV-MYGESTR01D.azkar.com\nsubject alternative names (SAN) | None\nvalid from                      | 2026-05-22 08:48:17 UTC\nvalid until                     | 2026-11-21 08:48:17 UTC\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.103692",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Collect and Report Certificate Details",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Hostname discovery from server certificate",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "general/tcp",
+          "summary": "It was possible to discover an additional hostname\n  of this server from its certificate Common or Subject Alt Name.",
+          "description": [
+            "The following additional but not resolvable hostnames were detected:\n\nSRV-MYGESTR01D.azkar.com\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.111010",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Hostname discovery from server certificate",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Web Services Management (WS-Man) / Windows Remote Management (WinRM) Detection (HTTP)",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "HTTP based detection of Web Services Management (WS-Man) /\n  Windows Remote Management (WinRM).",
+          "description": [
+            "A WS-Man service is running at this port.\n\nThe service supports Windows Remote Management (WinRM).\n\nThe following information was extracted:\n  Product Vendor: Microsoft Corporation\n  Product Version: OS: 0.0.0 SP: 0.0 Stack: 3.0\n\nThe following information was extracted from the NTLM challenge:\n  OS Version: 10.0.25413\n\nConcluded from version/product identification location: http://10.100.12.61:5985/wsman\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://www.dmtf.org/standards/ws-man",
+            "https://learn.microsoft.com/en-us/windows/win32/winrm/portal"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.103923",
+          "family": "Service detection",
+          "nvtName": "Web Services Management (WS-Man) / Windows Remote Management (WinRM) Detection (HTTP)",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "OS Detection Consolidation and Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "general/tcp",
+          "summary": "This script consolidates the OS information detected by several\n  VTs and tries to find the best matching OS.\n\n  Furthermore it reports all previously collected information leading to this best matching OS. It\n  also reports possible additional information which might help to improve the OS detection.\n\n  If any of this information is wrong or could be improved please consider to report these to the\n  referenced community forum.",
+          "description": [
+            "Best matching OS:\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows\nFound by VT:  1.3.6.1.4.1.25623.1.0.111067 (Operating System (OS) Detection (HTTP))\nConcluded from HTTP Server banner on port 5985/tcp: Server: Microsoft-HTTPAPI/2.0\nSetting key \"Host/runs_windows\" based on this information\n\nOther OS detections (in order of reliability):\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows\nFound by VT:  1.3.6.1.4.1.25623.1.0.111067 (Operating System (OS) Detection (HTTP))\nConcluded from HTTP Server banner on port 47001/tcp: Server: Microsoft-HTTPAPI/2.0\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows\nFound by VT:  1.3.6.1.4.1.25623.1.0.111067 (Operating System (OS) Detection (HTTP))\nConcluded from HTTP Server banner on port 3387/tcp: Server: Microsoft-HTTPAPI/2.0\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows\nFound by VT:  1.3.6.1.4.1.25623.1.0.100062 (Microsoft Remote Desktop Protocol (RDP) Detection)\nConcluded from Microsoft Remote Desktop Protocol (RDP) on port 3389/tcp: Windows, possible Windows 10 or Server 2016 based on binary response fingerprinting: 030000130ed00000123400021f080002000000\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows\nFound by VT:  1.3.6.1.4.1.25623.1.0.108044 (DCE/RPC and MSRPC Services Enumeration)\nConcluded from DCE/RPC and MSRPC Services Enumeration on port 135/tcp\n\nOS:           Microsoft Windows\nCPE:          cpe:/o:microsoft:windows:10.0.25413\nFound by VT:  1.3.6.1.4.1.25623.1.0.103923 (Web Services Management (WS-Man) / Windows Remote Management (WinRM) Detection (HTTP))\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.105937",
+          "family": "Product detection",
+          "nvtName": "OS Detection Consolidation and Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SMB Remote Version Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "445/tcp",
+          "summary": "Detection of Server Message Block(SMB).\n\n  This script sends SMB Negotiation request and try to get the version from the\n  response.",
+          "description": [
+            "SMBv2 and SMBv3 are enabled on remote target\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.807830",
+          "family": "Service detection",
+          "nvtName": "SMB Remote Version Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Traceroute",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "general/tcp",
+          "summary": "Collect information about the network route and\n  network distance between the scanner host and the target host.",
+          "description": [
+            "Network route from scanner (10.100.8.66) to target (10.100.12.61):\n\n10.100.8.66\n10.100.12.61\n\nNetwork distance between scanner and target: 2\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "For internal networks, the distances are usually\n  small, often less than 4 hosts between scanner and target. For public targets the\n  distance is greater and might be 10 hosts or more.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.51662",
+          "family": "General",
+          "nvtName": "Traceroute",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Report Supported Cipher Suites",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This routine reports all SSL/TLS cipher suites accepted by a\n  service.",
+          "description": [
+            "No 'Strong' cipher suites accepted by this service via the TLSv1.0 protocol.\n\n'Medium' cipher suites accepted by this service via the TLSv1.0 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\nNo 'Weak' cipher suites accepted by this service via the TLSv1.0 protocol.\n\nNo 'Null' cipher suites accepted by this service via the TLSv1.0 protocol.\n\nNo 'Anonymous' cipher suites accepted by this service via the TLSv1.0 protocol.\n\nNo 'Strong' cipher suites accepted by this service via the TLSv1.1 protocol.\n\n'Medium' cipher suites accepted by this service via the TLSv1.1 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\nNo 'Weak' cipher suites accepted by this service via the TLSv1.1 protocol.\n\nNo 'Null' cipher suites accepted by this service via the TLSv1.1 protocol.\n\nNo 'Anonymous' cipher suites accepted by this service via the TLSv1.1 protocol.\n\nNo 'Strong' cipher suites accepted by this service via the TLSv1.2 protocol.\n\n'Medium' cipher suites accepted by this service via the TLSv1.2 protocol:\n\nTLS_DHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_DHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256\nTLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384\nTLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA256\nTLS_RSA_WITH_AES_128_GCM_SHA256\nTLS_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA256\nTLS_RSA_WITH_AES_256_GCM_SHA384\n\nNo 'Weak' cipher suites accepted by this service via the TLSv1.2 protocol.\n\nNo 'Null' cipher suites accepted by this service via the TLSv1.2 protocol.\n\nNo 'Anonymous' cipher suites accepted by this service via the TLSv1.2 protocol.\n\nServer Key Exchange Group(s):\nTLSv1.2  128 bits  secp256r1 (NIST P-256)\nTLSv1.2  192 bits  secp384r1 (NIST P-384)\nTLSv1.2  128 bits  x25519\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "Notes:\n\n  - As the VT 'SSL/TLS: Check Supported Cipher Suites' (OID: 1.3.6.1.4.1.25623.1.0.900234) might run\n  into a timeout the actual reporting of all accepted cipher suites takes place in this VT instead.\n\n  - SSLv2 ciphers are not getting reported as the protocol itself is deprecated, needs to be\n  considered as weak and is reported separately as deprecated.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.802067",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Report Supported Cipher Suites",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Certificate - Self-Signed Certificate Detection",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "The SSL/TLS certificate on this port is self-signed.",
+          "description": [
+            "The certificate of the remote service is self signed.\n\nCertificate details:\nfingerprint (SHA-1)             | AED2509B6E6184B120B8226486F283EF4C8AAE19\nfingerprint (SHA-256)           | 0D48802AE231F041927FD4FEEF0E9BC157C14940D1DD2CBF03A277BCBB79DBC3\nissued by                       | CN=SRV-MYGESTR01D.azkar.com\npublic key algorithm            | RSA\npublic key size (bits)          | 2048\nserial                          | 1F5856849C33A2BC48AD75ABE245A978\nsignature algorithm             | sha256WithRSAEncryption\nsubject                         | CN=SRV-MYGESTR01D.azkar.com\nsubject alternative names (SAN) | None\nvalid from                      | 2026-05-22 08:48:17 UTC\nvalid until                     | 2026-11-21 08:48:17 UTC\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "http://en.wikipedia.org/wiki/Self-signed_certificate",
+            "https://datatracker.ietf.org/doc/html/rfc5280#appendix-C.1"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.103140",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Certificate - Self-Signed Certificate Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Report Perfect Forward Secrecy (PFS) Cipher Suites",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This routine reports all SSL/TLS cipher suites accepted by a\n  service which are supporting Perfect Forward Secrecy (PFS).",
+          "description": [
+            "Cipher suites supporting Perfect Forward Secrecy (PFS) are accepted by this service via the TLSv1.0 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\n\nCipher suites supporting Perfect Forward Secrecy (PFS) are accepted by this service via the TLSv1.1 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\n\nCipher suites supporting Perfect Forward Secrecy (PFS) are accepted by this service via the TLSv1.2 protocol:\n\nTLS_DHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_DHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256\nTLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384\nTLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.105018",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Report Perfect Forward Secrecy (PFS) Cipher Suites",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Report Medium Cipher Suites",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This routine reports all Medium SSL/TLS cipher suites accepted\n  by a service.",
+          "description": [
+            "'Medium' cipher suites accepted by this service via the TLSv1.0 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\n'Medium' cipher suites accepted by this service via the TLSv1.1 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\n'Medium' cipher suites accepted by this service via the TLSv1.2 protocol:\n\nTLS_DHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_DHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256\nTLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384\nTLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA256\nTLS_RSA_WITH_AES_128_GCM_SHA256\nTLS_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA256\nTLS_RSA_WITH_AES_256_GCM_SHA384\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "Any cipher suite considered to be secure for only the next 10\n  years is considered as medium.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.902816",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Report Medium Cipher Suites",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Report Non Weak Cipher Suites",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This routine reports all Non Weak SSL/TLS cipher suites\n  accepted by a service.",
+          "description": [
+            "'Non Weak' cipher suites accepted by this service via the TLSv1.0 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\n'Non Weak' cipher suites accepted by this service via the TLSv1.1 protocol:\n\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA\n\n'Non Weak' cipher suites accepted by this service via the TLSv1.2 protocol:\n\nTLS_DHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_DHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256\nTLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA\nTLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384\nTLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\nTLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA\nTLS_RSA_WITH_AES_128_CBC_SHA256\nTLS_RSA_WITH_AES_128_GCM_SHA256\nTLS_RSA_WITH_AES_256_CBC_SHA\nTLS_RSA_WITH_AES_256_CBC_SHA256\nTLS_RSA_WITH_AES_256_GCM_SHA384\n\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.103441",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Report Non Weak Cipher Suites",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "SSL/TLS: Safe/Secure Renegotiation Support Status",
+          "severity": 0.0,
+          "qod": 98,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "Checks and reports if a remote SSL/TLS service supports\n  safe/secure renegotiation.",
+          "description": [
+            "Protocol Version | Safe/Secure Renegotiation Support Status\n---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\nSSLv3            | Unknown, Reason: Scanner failed to negotiate an SSL/TLS connection (Either the scanner or the remote host is probably not supporting / accepting this SSL/TLS protocol version).\nTLSv1.0          | Enabled, Note: While the remote service announces the support of safe/secure renegotiation it still might not support / accept renegotiation at all.\nTLSv1.1          | Enabled, Note: While the remote service announces the support of safe/secure renegotiation it still might not support / accept renegotiation at all.\nTLSv1.2          | Enabled, Note: While the remote service announces the support of safe/secure renegotiation it still might not support / accept renegotiation at all.\nTLSv1.3          | Unknown, Reason: Scanner failed to negotiate an SSL/TLS connection (Either the scanner or the remote host is probably not supporting / accepting this SSL/TLS protocol version).\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://www.gnutls.org/manual/html_node/Safe-renegotiation.html",
+            "https://wiki.openssl.org/index.php/TLS1.3#Renegotiation",
+            "https://datatracker.ietf.org/doc/html/rfc5746"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.117757",
+          "family": "SSL and TLS",
+          "nvtName": "SSL/TLS: Safe/Secure Renegotiation Support Status",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server Banner Enumeration",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3387/tcp",
+          "summary": "This script tries to detect / enumerate different HTTP server\n  banner (e.g. from a frontend, backend or proxy server) by sending various different HTTP requests\n  (valid and invalid ones).",
+          "description": [
+            "It was possible to enumerate the following HTTP server banner(s):\n\nServer banner                 | Enumeration technique\n------------------------------------------------------------------------------------------------\nServer: Microsoft-HTTPAPI/2.0 | Invalid HTTP 00.5 GET request (non-existent HTTP version) to '/'\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108708",
+          "family": "Service detection",
+          "nvtName": "HTTP Server Banner Enumeration",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server Banner Enumeration",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "This script tries to detect / enumerate different HTTP server\n  banner (e.g. from a frontend, backend or proxy server) by sending various different HTTP requests\n  (valid and invalid ones).",
+          "description": [
+            "It was possible to enumerate the following HTTP server banner(s):\n\nServer banner                 | Enumeration technique\n------------------------------------------------------------------------------------------------\nServer: Microsoft-HTTPAPI/2.0 | Invalid HTTP 00.5 GET request (non-existent HTTP version) to '/'\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108708",
+          "family": "Service detection",
+          "nvtName": "HTTP Server Banner Enumeration",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server Banner Enumeration",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "47001/tcp",
+          "summary": "This script tries to detect / enumerate different HTTP server\n  banner (e.g. from a frontend, backend or proxy server) by sending various different HTTP requests\n  (valid and invalid ones).",
+          "description": [
+            "It was possible to enumerate the following HTTP server banner(s):\n\nServer banner                 | Enumeration technique\n------------------------------------------------------------------------------------------------\nServer: Microsoft-HTTPAPI/2.0 | Invalid HTTP 00.5 GET request (non-existent HTTP version) to '/'\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108708",
+          "family": "Service detection",
+          "nvtName": "HTTP Server Banner Enumeration",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server type and version",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3387/tcp",
+          "summary": "This script detects and reports the HTTP Server's banner\n  which might provide the type and version of it.",
+          "description": [
+            "The remote HTTP Server banner is:\n\nServer: Microsoft-HTTPAPI/2.0\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10107",
+          "family": "Service detection",
+          "nvtName": "HTTP Server type and version",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server type and version",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "This script detects and reports the HTTP Server's banner\n  which might provide the type and version of it.",
+          "description": [
+            "The remote HTTP Server banner is:\n\nServer: Microsoft-HTTPAPI/2.0\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10107",
+          "family": "Service detection",
+          "nvtName": "HTTP Server type and version",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Server type and version",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "47001/tcp",
+          "summary": "This script detects and reports the HTTP Server's banner\n  which might provide the type and version of it.",
+          "description": [
+            "The remote HTTP Server banner is:\n\nServer: Microsoft-HTTPAPI/2.0\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10107",
+          "family": "Service detection",
+          "nvtName": "HTTP Server type and version",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Security Headers Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3387/tcp",
+          "summary": "All known security headers are being checked on the remote web\n  server.\n\n  On completion a report will hand back whether a specific security header has been implemented\n  (including its value and if it is deprecated) or is missing on the target.",
+          "description": [
+            "Missing Headers                   | More Information\n--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\nContent-Security-Policy           | https://owasp.org/www-project-secure-headers/#content-security-policy\nCross-Origin-Embedder-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Opener-Policy        | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Resource-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nDocument-Policy                   | https://w3c.github.io/webappsec-feature-policy/document-policy#document-policy-http-header\nFeature-Policy                    | https://owasp.org/www-project-secure-headers/#feature-policy, Note: The Feature Policy header has been renamed to Permissions Policy\nPermissions-Policy                | https://w3c.github.io/webappsec-feature-policy/#permissions-policy-http-header-field\nReferrer-Policy                   | https://owasp.org/www-project-secure-headers/#referrer-policy\nSec-Fetch-Dest                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Mode                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Site                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-User                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nX-Content-Type-Options            | https://owasp.org/www-project-secure-headers/#x-content-type-options\nX-Frame-Options                   | https://owasp.org/www-project-secure-headers/#x-frame-options\nX-Permitted-Cross-Domain-Policies | https://owasp.org/www-project-secure-headers/#x-permitted-cross-domain-policies\nX-XSS-Protection                  | https://owasp.org/www-project-secure-headers/#x-xss-protection, Note: Most major browsers have dropped / deprecated support for this header in 2020.\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://owasp.org/www-project-secure-headers/",
+            "https://owasp.org/www-project-secure-headers/#div-headers",
+            "https://securityheaders.com/"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.112081",
+          "family": "Web application abuses",
+          "nvtName": "HTTP Security Headers Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Security Headers Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "All known security headers are being checked on the remote web\n  server.\n\n  On completion a report will hand back whether a specific security header has been implemented\n  (including its value and if it is deprecated) or is missing on the target.",
+          "description": [
+            "Missing Headers                   | More Information\n--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\nContent-Security-Policy           | https://owasp.org/www-project-secure-headers/#content-security-policy\nCross-Origin-Embedder-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Opener-Policy        | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Resource-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nDocument-Policy                   | https://w3c.github.io/webappsec-feature-policy/document-policy#document-policy-http-header\nFeature-Policy                    | https://owasp.org/www-project-secure-headers/#feature-policy, Note: The Feature Policy header has been renamed to Permissions Policy\nPermissions-Policy                | https://w3c.github.io/webappsec-feature-policy/#permissions-policy-http-header-field\nReferrer-Policy                   | https://owasp.org/www-project-secure-headers/#referrer-policy\nSec-Fetch-Dest                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Mode                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Site                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-User                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nX-Content-Type-Options            | https://owasp.org/www-project-secure-headers/#x-content-type-options\nX-Frame-Options                   | https://owasp.org/www-project-secure-headers/#x-frame-options\nX-Permitted-Cross-Domain-Policies | https://owasp.org/www-project-secure-headers/#x-permitted-cross-domain-policies\nX-XSS-Protection                  | https://owasp.org/www-project-secure-headers/#x-xss-protection, Note: Most major browsers have dropped / deprecated support for this header in 2020.\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://owasp.org/www-project-secure-headers/",
+            "https://owasp.org/www-project-secure-headers/#div-headers",
+            "https://securityheaders.com/"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.112081",
+          "family": "Web application abuses",
+          "nvtName": "HTTP Security Headers Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "HTTP Security Headers Detection",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "47001/tcp",
+          "summary": "All known security headers are being checked on the remote web\n  server.\n\n  On completion a report will hand back whether a specific security header has been implemented\n  (including its value and if it is deprecated) or is missing on the target.",
+          "description": [
+            "Missing Headers                   | More Information\n--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------\nContent-Security-Policy           | https://owasp.org/www-project-secure-headers/#content-security-policy\nCross-Origin-Embedder-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Opener-Policy        | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nCross-Origin-Resource-Policy      | https://scotthelme.co.uk/coop-and-coep/, Note: This is an upcoming header\nDocument-Policy                   | https://w3c.github.io/webappsec-feature-policy/document-policy#document-policy-http-header\nFeature-Policy                    | https://owasp.org/www-project-secure-headers/#feature-policy, Note: The Feature Policy header has been renamed to Permissions Policy\nPermissions-Policy                | https://w3c.github.io/webappsec-feature-policy/#permissions-policy-http-header-field\nReferrer-Policy                   | https://owasp.org/www-project-secure-headers/#referrer-policy\nSec-Fetch-Dest                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Mode                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-Site                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nSec-Fetch-User                    | https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers#fetch_metadata_request_headers, Note: This is a new header supported only in newer browsers like e.g. Firefox 90\nX-Content-Type-Options            | https://owasp.org/www-project-secure-headers/#x-content-type-options\nX-Frame-Options                   | https://owasp.org/www-project-secure-headers/#x-frame-options\nX-Permitted-Cross-Domain-Policies | https://owasp.org/www-project-secure-headers/#x-permitted-cross-domain-policies\nX-XSS-Protection                  | https://owasp.org/www-project-secure-headers/#x-xss-protection, Note: Most major browsers have dropped / deprecated support for this header in 2020.\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://owasp.org/www-project-secure-headers/",
+            "https://owasp.org/www-project-secure-headers/#div-headers",
+            "https://securityheaders.com/"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.112081",
+          "family": "Web application abuses",
+          "nvtName": "HTTP Security Headers Detection",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Web Application Scanning Consolidation / Info Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3387/tcp",
+          "summary": "The script consolidates and reports various information for web\n  application (formerly called 'CGI') scanning.\n\n  This information is based on the following scripts / settings:\n\n  - HTTP-Version Detection (OID: 1.3.6.1.4.1.25623.1.0.100034)\n\n  - No 404 check (OID: 1.3.6.1.4.1.25623.1.0.10386)\n\n  - Web mirroring / webmirror.nasl (OID: 1.3.6.1.4.1.25623.1.0.10662)\n\n  - Directory Scanner / DDI_Directory_Scanner.nasl (OID: 1.3.6.1.4.1.25623.1.0.11032)\n\n  - The configured 'cgi_path' within the 'Scanner Preferences' of the scan config in use\n\n  - The configured 'Enable CGI scanning', 'Enable generic web application scanning' and\n  'Add historic /scripts and /cgi-bin to directories for CGI scanning' within the\n  'Global variable settings' of the scan config in use\n\n  If you think any of this information is wrong please report it to the referenced community\n  forum.",
+          "description": [
+            "The Hostname/IP \"10.100.12.61\" was used to access the remote host.\n\nGeneric web application scanning is disabled for this host via the \"Enable generic web application scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nRequests to this service are done via HTTP/1.1.\n\nThis service seems to be able to host PHP scripts.\n\nThis service seems to be able to host ASP scripts.\n\nThe User-Agent \"Mozilla/5.0 [en] (X11, U; Greenbone OS <version replaced>)\" was used to access the remote host.\n\nHistoric /scripts and /cgi-bin are not added to the directories used for web application scanning. You can enable this again with the \"Add historic /scripts and /cgi-bin to directories for CGI scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nThe following directories were used for web application scanning:\n\nhttp://10.100.12.61:3387/\n\nWhile this is not, in and of itself, a bug, you should manually inspect these directories to ensure that they are in compliance with company security standards\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.111038",
+          "family": "Web application abuses",
+          "nvtName": "Web Application Scanning Consolidation / Info Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Web Application Scanning Consolidation / Info Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "The script consolidates and reports various information for web\n  application (formerly called 'CGI') scanning.\n\n  This information is based on the following scripts / settings:\n\n  - HTTP-Version Detection (OID: 1.3.6.1.4.1.25623.1.0.100034)\n\n  - No 404 check (OID: 1.3.6.1.4.1.25623.1.0.10386)\n\n  - Web mirroring / webmirror.nasl (OID: 1.3.6.1.4.1.25623.1.0.10662)\n\n  - Directory Scanner / DDI_Directory_Scanner.nasl (OID: 1.3.6.1.4.1.25623.1.0.11032)\n\n  - The configured 'cgi_path' within the 'Scanner Preferences' of the scan config in use\n\n  - The configured 'Enable CGI scanning', 'Enable generic web application scanning' and\n  'Add historic /scripts and /cgi-bin to directories for CGI scanning' within the\n  'Global variable settings' of the scan config in use\n\n  If you think any of this information is wrong please report it to the referenced community\n  forum.",
+          "description": [
+            "The Hostname/IP \"10.100.12.61\" was used to access the remote host.\n\nGeneric web application scanning is disabled for this host via the \"Enable generic web application scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nRequests to this service are done via HTTP/1.1.\n\nThis service seems to be able to host PHP scripts.\n\nThis service seems to be able to host ASP scripts.\n\nThe User-Agent \"Mozilla/5.0 [en] (X11, U; Greenbone OS <version replaced>)\" was used to access the remote host.\n\nHistoric /scripts and /cgi-bin are not added to the directories used for web application scanning. You can enable this again with the \"Add historic /scripts and /cgi-bin to directories for CGI scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nThe following directories were used for web application scanning:\n\nhttp://10.100.12.61:5985/\n\nWhile this is not, in and of itself, a bug, you should manually inspect these directories to ensure that they are in compliance with company security standards\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.111038",
+          "family": "Web application abuses",
+          "nvtName": "Web Application Scanning Consolidation / Info Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Web Application Scanning Consolidation / Info Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "47001/tcp",
+          "summary": "The script consolidates and reports various information for web\n  application (formerly called 'CGI') scanning.\n\n  This information is based on the following scripts / settings:\n\n  - HTTP-Version Detection (OID: 1.3.6.1.4.1.25623.1.0.100034)\n\n  - No 404 check (OID: 1.3.6.1.4.1.25623.1.0.10386)\n\n  - Web mirroring / webmirror.nasl (OID: 1.3.6.1.4.1.25623.1.0.10662)\n\n  - Directory Scanner / DDI_Directory_Scanner.nasl (OID: 1.3.6.1.4.1.25623.1.0.11032)\n\n  - The configured 'cgi_path' within the 'Scanner Preferences' of the scan config in use\n\n  - The configured 'Enable CGI scanning', 'Enable generic web application scanning' and\n  'Add historic /scripts and /cgi-bin to directories for CGI scanning' within the\n  'Global variable settings' of the scan config in use\n\n  If you think any of this information is wrong please report it to the referenced community\n  forum.",
+          "description": [
+            "The Hostname/IP \"10.100.12.61\" was used to access the remote host.\n\nGeneric web application scanning is disabled for this host via the \"Enable generic web application scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nRequests to this service are done via HTTP/1.1.\n\nThis service seems to be able to host PHP scripts.\n\nThis service seems to be able to host ASP scripts.\n\nThe User-Agent \"Mozilla/5.0 [en] (X11, U; Greenbone OS <version replaced>)\" was used to access the remote host.\n\nHistoric /scripts and /cgi-bin are not added to the directories used for web application scanning. You can enable this again with the \"Add historic /scripts and /cgi-bin to directories for CGI scanning\" option within the \"Global variable settings\" of the scan config in use.\n\nThe following directories were used for web application scanning:\n\nhttp://10.100.12.61:47001/\n\nWhile this is not, in and of itself, a bug, you should manually inspect these directories to ensure that they are in compliance with company security standards\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.111038",
+          "family": "Web application abuses",
+          "nvtName": "Web Application Scanning Consolidation / Info Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49664/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: d95afe70-a6d5-4259-822e-2c84da1ddb0d, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49664]\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49665/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: f6beaff7-1e19-4fbb-9f8f-b89e2018337c, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49665]\n     Annotation: Event log TCPIP\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49666/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 3a9ef155-691d-4449-8d05-09ad57031823, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49666]\n\n     UUID: 86d35949-83c9-4044-b424-db363231fd0c, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49666]\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49668/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 0b1c2170-5732-4e0e-8cd3-d9b16f3b84d7, version 0\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: RemoteAccessCheck\n\n     UUID: 12345778-1234-abcd-ef00-0123456789ac, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Named pipe : lsass\n     Win32 service or process : lsass.exe\n     Description : SAM access\n\n     UUID: 51a227ae-825b-41f2-b4a9-1ac9557a1018, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: Ngc Pop Key Service\n\n     UUID: 8fb74744-b2ff-4c00-be0d-9ef9a191fe1b, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: Ngc Pop Key Service\n\n     UUID: b25a52bf-e5dd-4f4a-aea6-8ca7272a0e86, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49668]\n     Annotation: KeyIso\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49685/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 0b6edbfa-4a24-4fc6-8a23-942b1eca65d1, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: 12345678-1234-abcd-ef00-0123456789ab, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n     Named pipe : spoolss\n     Win32 service or process : spoolsv.exe\n     Description : Spooler service\n\n     UUID: 4a452661-8290-4b36-8fbe-7f4093a94978, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: 76f03f96-cdfd-44fc-a22c-64950a001209, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n     UUID: ae33069b-a2a8-46ee-a235-ddfd339be281, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49685]\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49697/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 29770a8f-829b-4158-90a2-78cd488501f7, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49697]\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49704/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 367abb81-9844-35f1-ad32-98f038001003, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49704]\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49705/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 6b5bdd1e-528c-422c-af8c-a4079be4fe48, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49705]\n     Annotation: Remote Fw APIs\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "49720/tcp",
+          "summary": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting.",
+          "description": [
+            "The following DCE/RPC or MSRPC services are running on this port:\n\n     UUID: 12345778-1234-abcd-ef00-0123456789ac, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Named pipe : lsass\n     Win32 service or process : lsass.exe\n     Description : SAM access\n\n     UUID: 51a227ae-825b-41f2-b4a9-1ac9557a1018, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: Ngc Pop Key Service\n\n     UUID: 8fb74744-b2ff-4c00-be0d-9ef9a191fe1b, version 1\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: Ngc Pop Key Service\n\n     UUID: b25a52bf-e5dd-4f4a-aea6-8ca7272a0e86, version 2\n     Endpoint: ncacn_ip_tcp:10.100.12.61[49720]\n     Annotation: KeyIso\n\n\n"
+          ],
+          "solution": "Filter incoming traffic to this ports.",
+          "solutionType": "Mitigation",
+          "affected": "All systems exposing / disclosing information via DCE/RPC or\n  MSRPC services.",
+          "insight": "DCE/RPC or MSRPC services running on the remote host can be\n  enumerated by connecting on port 135 and doing the appropriate queries.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10736",
+          "family": "Windows",
+          "nvtName": "DCE/RPC and MSRPC Services Enumeration Reporting",
+          "impact": "An attacker may use this information to gain more knowledge about\n  the remote host and to conduct further attacks based on it.",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Unknown OS and Service Banner Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5666/tcp",
+          "summary": "This VT consolidates and reports the information collected by\n  the following VTs:\n\n  - Collect banner of unknown services (OID: 1.3.6.1.4.1.25623.1.0.11154)\n\n  - Service Detection (unknown) with nmap (OID: 1.3.6.1.4.1.25623.1.0.66286)\n\n  - Service Detection (wrapped) with nmap (OID: 1.3.6.1.4.1.25623.1.0.108525)\n\n  - OS Detection Consolidation and Reporting (OID: 1.3.6.1.4.1.25623.1.0.105937)\n\n  If you know any of the information reported here, please send the full output to\n  the referenced community forum.",
+          "description": [
+            "Nmap service detection (wrapped) result for this port: tcpwrapped\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108441",
+          "family": "Service detection",
+          "nvtName": "Unknown OS and Service Banner Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Unknown OS and Service Banner Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "54570/tcp",
+          "summary": "This VT consolidates and reports the information collected by\n  the following VTs:\n\n  - Collect banner of unknown services (OID: 1.3.6.1.4.1.25623.1.0.11154)\n\n  - Service Detection (unknown) with nmap (OID: 1.3.6.1.4.1.25623.1.0.66286)\n\n  - Service Detection (wrapped) with nmap (OID: 1.3.6.1.4.1.25623.1.0.108525)\n\n  - OS Detection Consolidation and Reporting (OID: 1.3.6.1.4.1.25623.1.0.105937)\n\n  If you know any of the information reported here, please send the full output to\n  the referenced community forum.",
+          "description": [
+            "Nmap service detection (unknown) result for this port: msrpc\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108441",
+          "family": "Service detection",
+          "nvtName": "Unknown OS and Service Banner Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Unknown OS and Service Banner Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "6001/tcp",
+          "summary": "This VT consolidates and reports the information collected by\n  the following VTs:\n\n  - Collect banner of unknown services (OID: 1.3.6.1.4.1.25623.1.0.11154)\n\n  - Service Detection (unknown) with nmap (OID: 1.3.6.1.4.1.25623.1.0.66286)\n\n  - Service Detection (wrapped) with nmap (OID: 1.3.6.1.4.1.25623.1.0.108525)\n\n  - OS Detection Consolidation and Reporting (OID: 1.3.6.1.4.1.25623.1.0.105937)\n\n  If you know any of the information reported here, please send the full output to\n  the referenced community forum.",
+          "description": [
+            "Nmap service detection (unknown) result for this port: X11:1\n\nThis is a guess. A confident identification of the service was not possible.\n\nHint: If you're running a recent nmap version try to run nmap with the following command: 'nmap -sV -Pn -p 6001 10.100.12.61' and submit a possible collected fingerprint to the nmap database.\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108441",
+          "family": "Service detection",
+          "nvtName": "Unknown OS and Service Banner Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Unknown OS and Service Banner Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "6000/tcp",
+          "summary": "This VT consolidates and reports the information collected by\n  the following VTs:\n\n  - Collect banner of unknown services (OID: 1.3.6.1.4.1.25623.1.0.11154)\n\n  - Service Detection (unknown) with nmap (OID: 1.3.6.1.4.1.25623.1.0.66286)\n\n  - Service Detection (wrapped) with nmap (OID: 1.3.6.1.4.1.25623.1.0.108525)\n\n  - OS Detection Consolidation and Reporting (OID: 1.3.6.1.4.1.25623.1.0.105937)\n\n  If you know any of the information reported here, please send the full output to\n  the referenced community forum.",
+          "description": [
+            "Nmap service detection (unknown) result for this port: X11\n\nThis is a guess. A confident identification of the service was not possible.\n\nHint: If you're running a recent nmap version try to run nmap with the following command: 'nmap -sV -Pn -p 6000 10.100.12.61' and submit a possible collected fingerprint to the nmap database.\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://forum.greenbone.net/c/vulnerability-tests/7"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108441",
+          "family": "Service detection",
+          "nvtName": "Unknown OS and Service Banner Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "CPE Inventory",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "general/CPE-T",
+          "summary": "This routine uses information collected by other routines about\n  CPE identities of operating systems, services and applications detected during the scan.\n\n  Note: Some CPEs for specific products might show up twice or more in the output. Background:\n\n  After a product got renamed or a specific vendor was acquired by another one it might happen that\n  a product gets a new CPE within the NVD CPE Dictionary but older entries are kept with the older\n  CPE.",
+          "description": [
+            "10.100.12.61|cpe:/a:ietf:transport_layer_security:1.0\n10.100.12.61|cpe:/a:ietf:transport_layer_security:1.1\n10.100.12.61|cpe:/a:ietf:transport_layer_security:1.2\n10.100.12.61|cpe:/o:microsoft:windows\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [
+            "https://nvd.nist.gov/products/cpe"
+          ],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.810002",
+          "family": "Service detection",
+          "nvtName": "CPE Inventory",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Services",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "47001/tcp",
+          "summary": "This plugin performs service detection.",
+          "description": [
+            "A web server is running on this port\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "This plugin attempts to guess which service is running on the\n  remote port(s). For instance, it searches for a web server which could listen on another port than\n  80 or 443 and makes this information available for other check routines.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10330",
+          "family": "Service detection",
+          "nvtName": "Services",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Hostname Determination Reporting",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "general/tcp",
+          "summary": "The script reports information on how the hostname of the target\n  was determined.",
+          "description": [
+            "Hostname determination for IP 10.100.12.61:\n\nHostname|Source\n10.100.12.61|IP-address\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.108449",
+          "family": "Service detection",
+          "nvtName": "Hostname Determination Reporting",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Services",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "5985/tcp",
+          "summary": "This plugin performs service detection.",
+          "description": [
+            "A web server is running on this port\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "This plugin attempts to guess which service is running on the\n  remote port(s). For instance, it searches for a web server which could listen on another port than\n  80 or 443 and makes this information available for other check routines.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10330",
+          "family": "Service detection",
+          "nvtName": "Services",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        },
+        {
+          "name": "Services",
+          "severity": 0.0,
+          "qod": 80,
+          "host": "10.100.12.61",
+          "port": "3389/tcp",
+          "summary": "This plugin performs service detection.",
+          "description": [
+            "A TLScustom server answered on this port\n\n"
+          ],
+          "solution": "",
+          "solutionType": "",
+          "affected": "",
+          "insight": "This plugin attempts to guess which service is running on the\n  remote port(s). For instance, it searches for a web server which could listen on another port than\n  80 or 443 and makes this information available for other check routines.",
+          "cve": [],
+          "bid": [],
+          "cert": [],
+          "xref": [],
+          "thread": "Log",
+          "oid": "1.3.6.1.4.1.25623.1.0.10330",
+          "family": "Service detection",
+          "nvtName": "Services",
+          "impact": "",
+          "qodType": "",
+          "hostname": "",
+          "operatingSystem": "Microsoft Windows"
+        }
+      ]
+    }
+  ],
+  "top10Crititcal": [],
+  "top10Medium": [
+    {
+      "nvtNr": "10736",
+      "amount": 1,
+      "nvtName": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting."
+    },
+    {
+      "nvtNr": "117274",
+      "amount": 1,
+      "nvtName": "It was possible to detect the usage of the deprecated TLSv1.0\n  and/or TLSv1.1 protocol on this system."
+    }
+  ],
+  "top10Low": [
+    {
+      "nvtNr": "10736",
+      "amount": 9,
+      "nvtName": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration reporting."
+    },
+    {
+      "nvtNr": "10330",
+      "amount": 5,
+      "nvtName": "This plugin performs service detection."
+    },
+    {
+      "nvtNr": "108441",
+      "amount": 4,
+      "nvtName": "This VT consolidates and reports the information collected by\n  the following VTs:\n\n  - Collect banner of unknown services (OID: 1.3.6.1.4.1.25623.1.0.11154)\n\n  - Service Detection (unknown) with nmap (OID: 1.3.6.1.4.1.25623.1.0.66286)\n\n  - Service Detection (wrapped) with nmap (OID: 1.3.6.1.4.1.25623.1.0.108525)\n\n  - OS Detection Consolidation and Reporting (OID: 1.3.6.1.4.1.25623.1.0.105937)\n\n  If you know any of the information reported here, please send the full output to\n  the referenced community forum."
+    },
+    {
+      "nvtNr": "108708",
+      "amount": 3,
+      "nvtName": "This script tries to detect / enumerate different HTTP server\n  banner (e.g. from a frontend, backend or proxy server) by sending various different HTTP requests\n  (valid and invalid ones)."
+    },
+    {
+      "nvtNr": "10107",
+      "amount": 3,
+      "nvtName": "This script detects and reports the HTTP Server's banner\n  which might provide the type and version of it."
+    },
+    {
+      "nvtNr": "112081",
+      "amount": 3,
+      "nvtName": "All known security headers are being checked on the remote web\n  server.\n\n  On completion a report will hand back whether a specific security header has been implemented\n  (including its value and if it is deprecated) or is missing on the target."
+    },
+    {
+      "nvtNr": "111038",
+      "amount": 3,
+      "nvtName": "The script consolidates and reports various information for web\n  application (formerly called 'CGI') scanning.\n\n  This information is based on the following scripts / settings:\n\n  - HTTP-Version Detection (OID: 1.3.6.1.4.1.25623.1.0.100034)\n\n  - No 404 check (OID: 1.3.6.1.4.1.25623.1.0.10386)\n\n  - Web mirroring / webmirror.nasl (OID: 1.3.6.1.4.1.25623.1.0.10662)\n\n  - Directory Scanner / DDI_Directory_Scanner.nasl (OID: 1.3.6.1.4.1.25623.1.0.11032)\n\n  - The configured 'cgi_path' within the 'Scanner Preferences' of the scan config in use\n\n  - The configured 'Enable CGI scanning', 'Enable generic web application scanning' and\n  'Add historic /scripts and /cgi-bin to directories for CGI scanning' within the\n  'Global variable settings' of the scan config in use\n\n  If you think any of this information is wrong please report it to the referenced community\n  forum."
+    },
+    {
+      "nvtNr": "11011",
+      "amount": 2,
+      "nvtName": "This script detects whether port 445 and 139 are open and\n  if they are running a CIFS/SMB server."
+    },
+    {
+      "nvtNr": "103190",
+      "amount": 1,
+      "nvtName": "The remote host responded to an ICMP timestamp request."
+    },
+    {
+      "nvtNr": "108044",
+      "amount": 1,
+      "nvtName": "Distributed Computing Environment / Remote Procedure Calls\n  (DCE/RPC) or MSRPC based service enumeration."
+    }
+  ]
+}

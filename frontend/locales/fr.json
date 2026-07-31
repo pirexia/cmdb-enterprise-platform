@@ -13,7 +13,7 @@
     "inventory": "Inventaire des CI",
     "vulnerabilities": "Vulnérabilités",
     "map": "Carte des relations",
-    "integrations": "Connecteurs",
+    "integrations": "Sécurité",
     "reports": "Rapports",
     "contracts": "Contrats et avenants",
     "documents": "Dépôt documentaire",
@@ -299,14 +299,17 @@
       "status": "Statut",
       "description": "Description",
       "source": "Source",
-      "score": "Score CVSS"
+      "score": "Score CVSS",
+      "port": "Port",
+      "family": "Famille"
     },
     "status": {
       "NUEVO": "Nouveau",
       "ASIGNADO": "Assigné",
       "EN_CURSO": "En cours",
       "PARADO": "Arrêté",
-      "RESUELTO": "Résolu"
+      "RESUELTO": "Résolu",
+      "REABIERTA": "Rouverte"
     },
     "search_ci_placeholder": "Rechercher par nom de CI…",
     "cve_placeholder": "Rechercher CVE…",
@@ -323,7 +326,14 @@
     "download_csv": "CSV",
     "footer_showing": "Affichage de {filtered} sur {total} vulnérabilités",
     "active_filter": "{count} filtre actif",
-    "active_filter_plural": "{count} filtres actifs"
+    "active_filter_plural": "{count} filtres actifs",
+    "severity": {
+      "CRITICAL": "Critique",
+      "HIGH": "Élevée",
+      "MEDIUM": "Moyenne",
+      "LOW": "Faible",
+      "INFO": "Informative"
+    }
   },
   "contracts": {
     "title": "Contrats et avenants",
@@ -743,10 +753,11 @@
       "origin_local": "Local",
       "mfa_active": "Actif",
       "mfa_inactive": "Inactif",
-      "role_admin": "ADMIN",
-      "role_auditor": "AUDITOR",
-      "role_viewer": "VIEWER",
+      "role_admin": "Administrateur",
+      "role_auditor": "Auditeur",
+      "role_viewer": "Lecteur",
       "role_manager": "Gestionnaire",
+      "role_soc": "Analyste SOC",
       "me_label": "(moi)",
       "viewer_notice": "Vous avez besoin du rôle {role} pour modifier la configuration. Mode lecture seule.",
       "confirm_activate": "Activer l'utilisateur \"{name}\" ?",
@@ -1488,7 +1499,13 @@
     "processing": "Traitement…",
     "success": "Importation terminée",
     "greenbone_subtitle": "Gestion des vulnérabilités",
-    "greenbone_desc": "Importez le rapport JSON Greenbone OpenVAS/GVM pour enregistrer des vulnérabilités dans vos CI.",
+    "greenbone_desc": "Téléversez un rapport Greenbone OpenVAS réel (format allHostSubreportEntries). Cela crée un lot en attente de révision — rien n'est écrit sur un CI tant que vous ne l'acceptez pas sur l'écran de révision.",
+    "staging_total": "Total des résultats",
+    "staging_matched": "CI correspondants",
+    "staging_nueva": "Nouvelles",
+    "staging_reaparecida": "Réapparues",
+    "staging_needs_attention": "nécessitent une attention (aucun CI résolu)",
+    "staging_review_cta": "Réviser et décider →",
     "crowdstrike_subtitle": "Sécurité des points de terminaison",
     "crowdstrike_desc": "Importez le rapport d'agents CrowdStrike pour mettre à jour le statut de protection des CI.",
     "how_it_works": "Comment ça fonctionne",
@@ -2375,6 +2392,162 @@
       "monthlyNetHours": "Heures nettes du mois",
       "vacationDays": "Jours de congés",
       "healthLeaveDays": "Jours de congé maladie"
+    }
+  },
+  "vulnImport": {
+    "title": "Importation des vulnérabilités",
+    "subtitle": "Vérification et validation des scans Greenbone avant application à l'inventaire",
+    "batch": {
+      "status": {
+        "PENDING": "En attente",
+        "ACCEPTED": "Accepté",
+        "DISCARDED": "Rejeté"
+      },
+      "singular": "lot",
+      "plural": "lots",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
+    },
+    "classification": {
+      "NUEVA": "Nouvelle",
+      "EXISTENTE_PENDIENTE": "Existe déjà sur ce CI",
+      "REAPARECIDA": "Réapparue"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "IP exacte",
+      "EXACT_NAME": "Nom exact",
+      "EXACT_HOSTNAME": "Hostname exact",
+      "EXACT_DNS": "DNS exact",
+      "FUZZY": "Correspondance approximative",
+      "AMBIGUOUS": "Ambigu",
+      "UNMATCHED": "Aucune correspondance",
+      "MANUAL": "Assigné manuellement"
+    },
+    "decision": {
+      "INCLUDE": "Sera importé",
+      "EXCLUDE": "Ne sera pas importé"
+    },
+    "actions": {
+      "upload": "Téléverser le rapport",
+      "accept": "Accepter le lot",
+      "discard": "Rejeter le lot",
+      "review": "Examiner",
+      "reassignCi": "Réassigner le CI",
+      "confirmAccept": "Confirmer l'acceptation",
+      "confirmDiscard": "Confirmer le rejet",
+      "bulkInclude": "Inclure la sélection",
+      "bulkExclude": "Exclure la sélection",
+      "backToList": "Retour à la liste"
+    },
+    "list": {
+      "invalidJson": "Le fichier ne contient pas de JSON valide",
+      "uploadSuccess": "Rapport téléversé : {count} résultats",
+      "discardConfirm": "Rejeter ce lot ? Cette action est irréversible.",
+      "discardSuccess": "Lot rejeté",
+      "filterAll": "Tous",
+      "noBatches": "Aucun scan importé pour le moment",
+      "colFilename": "Fichier",
+      "colScanDate": "Date du scan",
+      "colStatus": "Statut",
+      "colEntries": "Résultats",
+      "colClassification": "Classification",
+      "colUploadedBy": "Téléversé par",
+      "colUploadedAt": "Téléversé le",
+      "pageInfo": "Page {page} sur {totalPages} ({total} lots)",
+      "prevPage": "Précédent",
+      "nextPage": "Suivant"
+    },
+    "severity": {
+      "CRITICAL": "Critique",
+      "HIGH": "Élevée",
+      "MEDIUM": "Moyenne",
+      "LOW": "Faible",
+      "INFO": "Informative"
+    },
+    "tabs": {
+      "all": "Toutes",
+      "actionable": "Exploitables",
+      "informational": "Informatives",
+      "attention": "Nécessitent une attention",
+      "reappeared": "Réapparues"
+    },
+    "detail": {
+      "title": "Révision du lot",
+      "subtitle": "Vérifiez, corrigez et décidez avant l'application à l'inventaire",
+      "notFound": "Lot introuvable",
+      "notFoundHint": "Le lot demandé n'existe pas ou a été supprimé.",
+      "metadata": "Détails du lot",
+      "summary": "Résumé",
+      "taskName": "Tâche Greenbone",
+      "scanRange": "Période du scan",
+      "uploadedBy": "Envoyé par",
+      "createdAt": "Envoyé le",
+      "resolvedBy": "Résolu par",
+      "entryCount": "Entrées totales",
+      "readOnlyNotice": "Ce lot a déjà été résolu (accepté ou rejeté) — lecture seule.",
+      "readOnlyNoAdmin": "Seul un administrateur ou un analyste SOC peut réviser et décider de ce lot.",
+      "notificationsRegion": "Notifications",
+      "closeNotification": "Fermer la notification"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "Aucun CVE associé",
+      "noCi": "Aucun CI associé",
+      "candidates": "Candidats suggérés",
+      "edited": "Modifié",
+      "reassignSuccess": "CI réattribué avec succès",
+      "showDetails": "Afficher les détails",
+      "hideDetails": "Masquer les détails",
+      "summaryLabel": "Description",
+      "solutionLabel": "Remédiation",
+      "familyLabel": "Famille",
+      "qodLabel": "QoD",
+      "noDetails": "Aucune description disponible",
+      "existingPendingHint": "Ne sera pas réimporté ; seules ses données seront actualisées",
+      "exprtRatingLabel": "Évaluation ExPRT",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "Date limite CISA",
+      "cisaKevWithDue": "CISA KEV — échéance {date}",
+      "exploitStatusLabel": "Statut d'exploitation",
+      "activeExploitationBadge": "Exploitation active",
+      "daysOpenLabel": "Jours ouverts",
+      "productsLabel": "Produits concernés",
+      "externalStatusLabel": "Statut à la source",
+      "cvssVersionLabel": "Version CVSS"
+    },
+    "bulk": {
+      "includeVisible": "Inclure les visibles",
+      "excludeVisible": "Exclure les visibles",
+      "doneToast": "Décision appliquée aux entrées visibles",
+      "progress": "{done}/{total} appliqué"
+    },
+    "accept": {
+      "button": "Accepter le lot",
+      "confirmTitle": "Confirmer l'acceptation du lot",
+      "confirmBody": "Toutes les entrées marquées \"Inclure\" seront appliquées à l'inventaire. Cette action est irréversible.",
+      "previewCi": "CI concernés",
+      "previewNew": "Nouvelles",
+      "previewReopened": "Rouvertes",
+      "previewIncluded": "Total incluses",
+      "previewRefreshed": "Métadonnées actualisées",
+      "successTitle": "Lot accepté avec succès",
+      "blockingTitle": "Des entrées non résolues bloquent l'acceptation",
+      "blockingBody": "Les entrées incluses suivantes n'ont pas de CI résolu sans ambiguïté. Réattribuez un CI ou excluez-les avant d'accepter le lot.",
+      "unresolvedWarning": "{count} entrée(s) incluse(s) n'ont toujours pas de CI résolu — cela bloquera l'acceptation."
+    },
+    "discard": {
+      "button": "Rejeter le lot",
+      "confirmTitle": "Confirmer le rejet du lot",
+      "confirmBody": "Le lot sera marqué comme rejeté. Rien ne sera écrit dans aucun CI. Cette action est irréversible.",
+      "successToast": "Lot rejeté avec succès"
+    },
+    "errors": {
+      "patchFailed": "Impossible d'enregistrer la modification :",
+      "bulkFailed": "Impossible d'appliquer l'action groupée :",
+      "acceptFailed": "Impossible d'accepter le lot :",
+      "discardFailed": "Impossible de rejeter le lot :"
     }
   }
 }

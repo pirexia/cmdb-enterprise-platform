@@ -13,7 +13,7 @@
     "inventory": "CI-Inventar",
     "vulnerabilities": "Schwachstellen",
     "map": "Beziehungskarte",
-    "integrations": "Konnektoren",
+    "integrations": "Sicherheit",
     "reports": "Berichte",
     "contracts": "Verträge & Zusätze",
     "documents": "Dokumentenablage",
@@ -299,14 +299,17 @@
       "status": "Status",
       "description": "Beschreibung",
       "source": "Quelle",
-      "score": "CVSS-Bewertung"
+      "score": "CVSS-Bewertung",
+      "port": "Port",
+      "family": "Familie"
     },
     "status": {
       "NUEVO": "Neu",
       "ASIGNADO": "Zugewiesen",
       "EN_CURSO": "In Bearbeitung",
       "PARADO": "Angehalten",
-      "RESUELTO": "Behoben"
+      "RESUELTO": "Behoben",
+      "REABIERTA": "Wiedereröffnet"
     },
     "search_ci_placeholder": "Nach CI-Name suchen…",
     "cve_placeholder": "CVE suchen…",
@@ -323,7 +326,14 @@
     "download_csv": "CSV",
     "footer_showing": "Zeige {filtered} von {total} Schwachstellen",
     "active_filter": "{count} aktiver Filter",
-    "active_filter_plural": "{count} aktive Filter"
+    "active_filter_plural": "{count} aktive Filter",
+    "severity": {
+      "CRITICAL": "Kritisch",
+      "HIGH": "Hoch",
+      "MEDIUM": "Mittel",
+      "LOW": "Niedrig",
+      "INFO": "Informativ"
+    }
   },
   "contracts": {
     "title": "Verträge & Zusätze",
@@ -743,10 +753,11 @@
       "origin_local": "Lokal",
       "mfa_active": "Aktiv",
       "mfa_inactive": "Inaktiv",
-      "role_admin": "ADMIN",
-      "role_auditor": "AUDITOR",
-      "role_viewer": "VIEWER",
+      "role_admin": "Administrator",
+      "role_auditor": "Auditor",
+      "role_viewer": "Betrachter",
       "role_manager": "Manager",
+      "role_soc": "SOC-Analyst",
       "me_label": "(ich)",
       "viewer_notice": "Sie benötigen die Rolle {role} um die Konfiguration zu ändern. Nur-Lese-Modus.",
       "confirm_activate": "Benutzer \"{name}\" aktivieren?",
@@ -1488,7 +1499,13 @@
     "processing": "Verarbeitung…",
     "success": "Import abgeschlossen",
     "greenbone_subtitle": "Schwachstellenmanagement",
-    "greenbone_desc": "Importieren Sie den Greenbone OpenVAS/GVM JSON-Bericht, um Schwachstellen in Ihren CIs zu erfassen.",
+    "greenbone_desc": "Laden Sie einen echten Greenbone-OpenVAS-Bericht hoch (allHostSubreportEntries-Format). Es wird ein Batch zur Überprüfung erstellt — nichts wird in einen CI geschrieben, bis Sie ihn auf dem Prüfbildschirm annehmen.",
+    "staging_total": "Gesamtzahl Funde",
+    "staging_matched": "Zugeordnete CIs",
+    "staging_nueva": "Neu",
+    "staging_reaparecida": "Wieder aufgetreten",
+    "staging_needs_attention": "benötigen Aufmerksamkeit (kein aufgelöster CI)",
+    "staging_review_cta": "Prüfen und entscheiden →",
     "crowdstrike_subtitle": "Endpunktsicherheit",
     "crowdstrike_desc": "Importieren Sie den CrowdStrike-Agentenbericht, um den Schutzstatus der CIs zu aktualisieren.",
     "how_it_works": "So funktioniert es",
@@ -2375,6 +2392,162 @@
       "monthlyNetHours": "Monatliche Nettostunden",
       "vacationDays": "Urlaubstage",
       "healthLeaveDays": "Krankheitstage"
+    }
+  },
+  "vulnImport": {
+    "title": "Schwachstellen-Import",
+    "subtitle": "Greenbone-Scans vor der Übernahme ins Inventar prüfen und validieren",
+    "batch": {
+      "status": {
+        "PENDING": "Ausstehend",
+        "ACCEPTED": "Akzeptiert",
+        "DISCARDED": "Verworfen"
+      },
+      "singular": "Charge",
+      "plural": "Chargen",
+      "source": {
+        "greenbone": "Greenbone",
+        "crowdstrike": "CrowdStrike"
+      }
+    },
+    "classification": {
+      "NUEVA": "Neu",
+      "EXISTENTE_PENDIENTE": "Existiert bereits auf diesem CI",
+      "REAPARECIDA": "Wieder aufgetreten"
+    },
+    "matchConfidence": {
+      "EXACT_IP": "Exakte IP",
+      "EXACT_NAME": "Exakter Name",
+      "EXACT_HOSTNAME": "Exakter Hostname",
+      "EXACT_DNS": "Exakter DNS",
+      "FUZZY": "Unscharfe Übereinstimmung",
+      "AMBIGUOUS": "Mehrdeutig",
+      "UNMATCHED": "Keine Übereinstimmung",
+      "MANUAL": "Manuell zugewiesen"
+    },
+    "decision": {
+      "INCLUDE": "Wird importiert",
+      "EXCLUDE": "Wird nicht importiert"
+    },
+    "actions": {
+      "upload": "Bericht hochladen",
+      "accept": "Charge akzeptieren",
+      "discard": "Charge verwerfen",
+      "review": "Prüfen",
+      "reassignCi": "CI neu zuweisen",
+      "confirmAccept": "Annahme bestätigen",
+      "confirmDiscard": "Verwerfen bestätigen",
+      "bulkInclude": "Auswahl einschließen",
+      "bulkExclude": "Auswahl ausschließen",
+      "backToList": "Zurück zur Liste"
+    },
+    "list": {
+      "invalidJson": "Die Datei enthält kein gültiges JSON",
+      "uploadSuccess": "Bericht hochgeladen: {count} Funde",
+      "discardConfirm": "Diesen Stapel verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.",
+      "discardSuccess": "Stapel verworfen",
+      "filterAll": "Alle",
+      "noBatches": "Noch keine Scans importiert",
+      "colFilename": "Datei",
+      "colScanDate": "Scandatum",
+      "colStatus": "Status",
+      "colEntries": "Funde",
+      "colClassification": "Klassifizierung",
+      "colUploadedBy": "Hochgeladen von",
+      "colUploadedAt": "Hochgeladen am",
+      "pageInfo": "Seite {page} von {totalPages} ({total} Stapel)",
+      "prevPage": "Zurück",
+      "nextPage": "Weiter"
+    },
+    "severity": {
+      "CRITICAL": "Kritisch",
+      "HIGH": "Hoch",
+      "MEDIUM": "Mittel",
+      "LOW": "Niedrig",
+      "INFO": "Informativ"
+    },
+    "tabs": {
+      "all": "Alle",
+      "actionable": "Handlungsbedarf",
+      "informational": "Informativ",
+      "attention": "Erfordert Aufmerksamkeit",
+      "reappeared": "Wieder aufgetreten"
+    },
+    "detail": {
+      "title": "Batch-Überprüfung",
+      "subtitle": "Prüfen, korrigieren und entscheiden, bevor es auf das Inventar angewendet wird",
+      "notFound": "Batch nicht gefunden",
+      "notFoundHint": "Der angeforderte Batch existiert nicht oder wurde entfernt.",
+      "metadata": "Batch-Daten",
+      "summary": "Zusammenfassung",
+      "taskName": "Greenbone-Aufgabe",
+      "scanRange": "Scan-Zeitraum",
+      "uploadedBy": "Hochgeladen von",
+      "createdAt": "Hochgeladen am",
+      "resolvedBy": "Bearbeitet von",
+      "entryCount": "Einträge insgesamt",
+      "readOnlyNotice": "Dieser Batch wurde bereits abgeschlossen (angenommen oder verworfen) — nur Lesezugriff.",
+      "readOnlyNoAdmin": "Nur ein Administrator oder SOC-Analyst kann diesen Batch überprüfen und entscheiden.",
+      "notificationsRegion": "Benachrichtigungen",
+      "closeNotification": "Benachrichtigung schließen"
+    },
+    "entry": {
+      "port": "Port",
+      "noCves": "Keine zugehörigen CVEs",
+      "noCi": "Kein zugeordnetes CI",
+      "candidates": "Vorgeschlagene Kandidaten",
+      "edited": "Bearbeitet",
+      "reassignSuccess": "CI erfolgreich neu zugewiesen",
+      "showDetails": "Details anzeigen",
+      "hideDetails": "Details ausblenden",
+      "summaryLabel": "Beschreibung",
+      "solutionLabel": "Abhilfe",
+      "familyLabel": "Familie",
+      "qodLabel": "QoD",
+      "noDetails": "Keine Beschreibung verfügbar",
+      "existingPendingHint": "Wird nicht erneut importiert; nur die Daten werden aktualisiert",
+      "exprtRatingLabel": "ExPRT-Bewertung",
+      "cisaKevLabel": "CISA KEV",
+      "cisaDueDateLabel": "CISA-Fälligkeitsdatum",
+      "cisaKevWithDue": "CISA KEV — fällig am {date}",
+      "exploitStatusLabel": "Exploit-Status",
+      "activeExploitationBadge": "Aktive Ausnutzung",
+      "daysOpenLabel": "Tage offen",
+      "productsLabel": "Betroffene Produkte",
+      "externalStatusLabel": "Status im Quellsystem",
+      "cvssVersionLabel": "CVSS-Version"
+    },
+    "bulk": {
+      "includeVisible": "Sichtbare einschließen",
+      "excludeVisible": "Sichtbare ausschließen",
+      "doneToast": "Entscheidung auf sichtbare Einträge angewendet",
+      "progress": "{done}/{total} angewendet"
+    },
+    "accept": {
+      "button": "Batch übernehmen",
+      "confirmTitle": "Übernahme des Batches bestätigen",
+      "confirmBody": "Alle als \"Einschließen\" markierten Einträge werden auf das Inventar angewendet. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "previewCi": "Betroffene CIs",
+      "previewNew": "Neu",
+      "previewReopened": "Wiedereröffnet",
+      "previewIncluded": "Insgesamt eingeschlossen",
+      "previewRefreshed": "Metadaten aktualisiert",
+      "successTitle": "Batch erfolgreich übernommen",
+      "blockingTitle": "Ungelöste Einträge blockieren die Übernahme",
+      "blockingBody": "Die folgenden eingeschlossenen Einträge haben kein eindeutig aufgelöstes CI. Weisen Sie ein CI zu oder schließen Sie sie aus, bevor Sie den Batch übernehmen.",
+      "unresolvedWarning": "{count} eingeschlossene(r) Eintrag/Einträge haben noch kein aufgelöstes CI — dies blockiert die Übernahme."
+    },
+    "discard": {
+      "button": "Batch verwerfen",
+      "confirmTitle": "Verwerfen des Batches bestätigen",
+      "confirmBody": "Der Batch wird als verworfen markiert. Es wird nichts in ein CI geschrieben. Diese Aktion kann nicht rückgängig gemacht werden.",
+      "successToast": "Batch erfolgreich verworfen"
+    },
+    "errors": {
+      "patchFailed": "Änderung konnte nicht gespeichert werden:",
+      "bulkFailed": "Massenaktion konnte nicht angewendet werden:",
+      "acceptFailed": "Batch konnte nicht übernommen werden:",
+      "discardFailed": "Batch konnte nicht verworfen werden:"
     }
   }
 }

@@ -1,5 +1,11 @@
 // Red Hat Insights Vulnerability API client. Read-only — no write-back to
 // Red Hat (no opt_out/business_risk/status PATCH calls; out of scope, spec §2).
+//
+// Response envelope confirmed against a real service account (live
+// verification, not the public docs this was originally inferred from):
+// both /systems and /systems/{id}/cves wrap each record in a JSON:API-style
+// `{id, type, attributes: {...}}` object — the fields this module cares
+// about live under `attributes`, not at the top level.
 
 export interface LightspeedSystem {
   inventory_id: string;
@@ -18,7 +24,8 @@ export interface LightspeedCve {
   description?: string;
 }
 
-interface PagedResponse<T> { data: T[]; meta?: { count?: number } }
+interface JsonApiRecord<T> { id: string; type: string; attributes: T }
+interface PagedResponse<T> { data: JsonApiRecord<T>[] }
 
 // Every outbound Red Hat call gets a hard timeout (see redhatLightspeed
 // tokenClient.ts's FETCH_TIMEOUT_MS comment for the reasoning).
@@ -44,7 +51,7 @@ async function getPaged<T>(url: string, token: string): Promise<T[]> {
     if (!Array.isArray(body?.data)) {
       throw new Error(`Red Hat Insights Vulnerability API returned an unexpected response shape (no "data" array) for ${pageUrl}`);
     }
-    results.push(...body.data);
+    results.push(...body.data.map((r) => r.attributes));
     if (body.data.length < limit) break;
     if (page === 49) {
       console.warn(`[vulnClient] Hit the 50-page pagination cap for ${url} — results may be truncated.`);

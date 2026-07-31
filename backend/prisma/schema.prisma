@@ -1133,6 +1133,11 @@ model VulnImportEntry {
   daysOpen         Int?            @map("days_open")
   externalStatus   String?         @map("external_status") @db.VarChar(30)
   cvssVersion      String?         @map("cvss_version") @db.VarChar(20)
+  // Red Hat Lightspeed fields (v3.7.0) — all nullable; empty/null for
+  // Greenbone- and CrowdStrike-sourced entries, which never set these.
+  redhatImpact     String?         @map("redhat_impact") @db.VarChar(20)
+  knownExploit     Boolean?        @map("known_exploit")
+  publicDate       DateTime?       @map("public_date")
   raw              Json
   existingStatus   String?         @map("existing_status") @db.VarChar(30)
   classification   String          @db.VarChar(30)

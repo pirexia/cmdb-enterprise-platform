@@ -188,3 +188,11 @@ graphify-out/
 # working history for whoever is developing this repo, not a shipped
 # deliverable — kept on disk locally, excluded from origin.
 docs/internal/
+
+# Symlinked node_modules in git worktrees (not matched by node_modules/ pattern
+# since git's directory-only gitignore patterns don't follow symlinks)
+/backend/node_modules
+/frontend/node_modules
+
+# subagent-driven-development scratch ledger/briefs — not part of the repo
+/.superpowers/

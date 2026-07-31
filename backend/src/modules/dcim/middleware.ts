@@ -19,9 +19,14 @@ export function requireUuidParam(paramName: string) {
 // equivalente a AUDITOR fuera del módulo de horarios (D3) y por tanto tiene
 // acceso aquí; lo que NO gana es el acceso a los registros de auditoría
 // (requireAudit y la denylist de informes lo siguen excluyendo).
+//
+// v3.6.0 (follow-up) — SOC también queda excluido: es un rol acotado
+// deliberadamente al área de Seguridad (Greenbone/CrowdStrike + staging de
+// vulnerabilidades), sin relación con DCIM. Sin esta exclusión explícita,
+// el patrón "bloquea solo VIEWER" le habría dado acceso por defecto.
 export function requireDcimAccess(req: Request, res: Response, next: NextFunction): void {
   const role = (req as any).user?.role;
-  if (!role || role === 'VIEWER') {
+  if (!role || role === 'VIEWER' || role === 'SOC') {
     res.status(403).json({ error: 'Forbidden' });
     return;
   }

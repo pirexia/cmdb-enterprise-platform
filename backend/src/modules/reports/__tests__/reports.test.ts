@@ -126,6 +126,18 @@ describe('reports/registry', () => {
     expect(hasRoleAccess('AUDITOR', 'ADMIN')).toBe(false);
   });
 
+  // v3.6.0 (follow-up) — SOC is scoped to the Security area only (see
+  // shared/middleware/requireSecurity.ts), not a general-purpose report
+  // reader. It must rank with VIEWER, never with AUDITOR/MANAGER/ADMIN —
+  // pinning this in a real assertion, not just relying on TypeScript's
+  // Record<UserRole, number> to force SOC's presence in ROLE_RANK (that
+  // only guarantees SOC has *some* rank, not that it's the *right* one).
+  test('hasRoleAccess: SOC ranks with VIEWER, not AUDITOR/ADMIN reports', () => {
+    expect(hasRoleAccess('SOC', 'VIEWER')).toBe(true);
+    expect(hasRoleAccess('SOC', 'AUDITOR')).toBe(false);
+    expect(hasRoleAccess('SOC', 'ADMIN')).toBe(false);
+  });
+
   test('hasRoleAccess: ADMIN can access all reports', () => {
     expect(hasRoleAccess('ADMIN', 'VIEWER')).toBe(true);
     expect(hasRoleAccess('ADMIN', 'AUDITOR')).toBe(true);

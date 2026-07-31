@@ -1,4 +1,5 @@
 {
+  "_note": "Represents the CrowdStrike Falcon agent/EDR status flow (POST /api/integrations/crowdstrike with a top-level 'devices' key) — this flow is live and unchanged. It is a SEPARATE product/domain from CrowdStrike Spotlight (vulnerability management), which as of v3.6.1 has been validated against a real fixture: docs/mocks/crowdstrike_SRV-MYGESTR01D.json. Unlike the old Greenbone mock, this file has NOT been proven to diverge from a real Falcon export — it just has never been checked against one either. See docs/INTEGRATIONS.md §9.12 and docs/SYSADMIN_MANUAL.md for detail.",
   "platform": "CrowdStrike Falcon",
   "export_date": "2026-03-13T19:00:00Z",
   "organization": "CMDB Corp",

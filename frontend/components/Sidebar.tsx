@@ -38,7 +38,7 @@ const NAV_ITEMS: NavEntry[] = [
   { type: "link", labelKey: "sidebar.staffSchedule",    href: "/staff-schedule", icon: CalendarDays, roles: ["ADMIN","AUDITOR","MANAGER","VIEWER"]  },
   { type: "link", labelKey: "sidebar.dcim",             href: "/dcim",           icon: Server,       roles: ["ADMIN","AUDITOR"]  },
   { type: "link", labelKey: "sidebar.decommission",     href: "/decommission",   icon: PowerOff,     roles: ["ADMIN","AUDITOR"]  },
-  { type: "link", labelKey: "sidebar.integrations",    href: "/integrations",   icon: Plug,         roles: ["ADMIN"]            },
+  { type: "link", labelKey: "sidebar.integrations",    href: "/integrations",   icon: Plug,         roles: ["ADMIN","SOC"]       },
   { type: "link", labelKey: "sidebar.masters",         href: "/admin/masters",  icon: Building2,    roles: ["ADMIN"]            },
   { type: "link", labelKey: "sidebar.audit",           href: "/audit",          icon: ClipboardList, roles: ["ADMIN","AUDITOR"] },
   { type: "link", labelKey: "sidebar.settings",        href: "/settings",       icon: Settings,     roles: ["ADMIN"]            },

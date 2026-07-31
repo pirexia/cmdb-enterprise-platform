@@ -7,12 +7,26 @@
 const mockQueryRaw   = jest.fn();
 const mockExecuteRaw = jest.fn();
 const mockVulnUuid   = jest.fn().mockReturnValue('aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee');
+const mockBatchCreate = jest.fn();
+const mockTransaction = jest.fn();
 
+// POST /api/integrations/greenbone (v3.6.0 B6) now delegates to the
+// vuln-import staging module's `uploadReport()` — the mocked Prisma client
+// must therefore also support the calls that flow makes ($transaction +
+// vulnImportBatch.create), mirroring
+// modules/vuln-import/__tests__/router.test.ts's mock shape.
 jest.mock('@prisma/client', () => ({
-  PrismaClient: jest.fn().mockImplementation(() => ({
-    $queryRaw:   mockQueryRaw,
-    $executeRaw: mockExecuteRaw,
-  })),
+  PrismaClient: jest.fn().mockImplementation(() => {
+    const instance: Record<string, unknown> = {
+      $queryRaw:   mockQueryRaw,
+      $executeRaw: mockExecuteRaw,
+      $transaction: mockTransaction,
+      vulnImportBatch: { create: mockBatchCreate },
+    };
+    mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(instance));
+    return instance;
+  }),
+  Prisma: { JsonNull: null },
 }));
 
 // entitySerializer creates a PrismaClient at module level — mock the whole module
@@ -50,7 +64,28 @@ function buildApp() {
   return supertest(app);
 }
 
+// Real Greenbone export shape (v3.6.0) — the legacy `/api/integrations/greenbone`
+// endpoint now delegates to modules/vuln-import/service.ts's uploadReport(),
+// so its request body is a raw Greenbone report (or an {filename?, report}
+// envelope), not the old invented `results[]` mock shape (see LEGACY_MOCK_BODY
+// below for that regression case).
 const GB_BODY = {
+  allHostSubreportEntries: [{
+    host: '10.0.0.5',
+    vulnerabilities: [{
+      name: 'Test Vuln', severity: 7.5, qod: 80, host: '10.0.0.5', port: '443/tcp',
+      summary: 'A test vulnerability', description: ['line1'], solution: 'Patch it',
+      solutionType: 'VendorFix', affected: 'affected', insight: 'insight',
+      cve: ['CVE-2024-0001'], thread: 'high', oid: '1.3.6.1.4.1.25623.1.0.100001',
+      family: 'Web application abuses', nvtName: 'Test Vuln', impact: 'impact',
+    }],
+  }],
+};
+
+// The old, invented mock shape this endpoint used to (silently) accept —
+// `POST /api/integrations/greenbone` must now reject this with 400, not
+// succeed with 0 processed entries (the exact regression B6 fixes).
+const LEGACY_MOCK_BODY = {
   results: [{
     host: { hostname: 'server01' },
     vulnerabilities: [{ cve: 'CVE-2024-0001', severity: 'high', name: 'Test Vuln', description: 'A test vuln', cvss_score: 7.5 }],
@@ -64,6 +99,17 @@ const CS_BODY = {
     detections: [],
   }],
 };
+
+// Real CrowdStrike Spotlight export shape (v3.6.1 B4) — a flat top-level
+// array of vulnerability records, structurally nothing like CS_BODY above
+// (the old/invented device mock). Minimal but schema-valid record.
+const CS_SPOTLIGHT_BODY = [{
+  hostname: 'workstation01', local_ip: '10.0.0.9', vulnerability_id: 'CVE-2024-9999',
+  cve_id: 'CVE-2024-9999', base_score: '7.8 v3.x', exploit_status: { label: 'Unproven' },
+  cisa_info: { is_cisa_kev: false, due_date: '' }, status: 'Open', days_open: 5,
+  products: [{ product_name: 'JRE', product_name_version: 'JRE 1.8.0' }],
+  recommended_remediations: [{ detail: 'Patch it' }],
+}];
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -99,12 +145,13 @@ describe('POST /api/integrations/greenbone — RBAC', () => {
 
 // ── Greenbone happy path ──────────────────────────────────────────────────────
 
-describe('POST /api/integrations/greenbone — processing', () => {
-  it('matches CI, updates vulnerabilities, queues for RAG, inserts audit log', async () => {
+describe('POST /api/integrations/greenbone — processing (delegates to vuln-import staging, v3.6.0 B6)', () => {
+  it('happy path: matched CI creates a PENDING staging batch via uploadReport()', async () => {
     mockQueryRaw
-      .mockResolvedValueOnce([{ active: true }])              // auth
-      .mockResolvedValueOnce([{ id: CI_ID, name: 'server01' }]) // CI lookup
-      .mockResolvedValueOnce([{ vulnerabilities: [] }]);      // existing vulns
+      .mockResolvedValueOnce([{ active: true }])                       // auth
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost (EXACT_IP)
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);                // getCiVulnerabilities
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -112,21 +159,23 @@ describe('POST /api/integrations/greenbone — processing', () => {
       .send(GB_BODY);
 
     expect(res.status).toBe(200);
-    expect(res.body.message).toBe('Greenbone report processed');
-    expect(res.body.totalMatched).toBe(1);
-    expect(res.body.totalUnmatched).toBe(0);
-    expect(res.body.processed[0]).toMatchObject({ ci: 'server01', matched: true, vulnCount: 1 });
-    // UPDATE vulns + INSERT audit = 2 execute calls
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
-    // queueForIndexing called for each vuln + the CI itself
-    expect(mockQueue).toHaveBeenCalledWith('vulnerability', expect.any(String));
-    expect(mockQueue).toHaveBeenCalledWith('ci', CI_ID);
+    expect(res.body.message).toBe('Greenbone report processed via staging');
+    expect(res.body.batchId).toBe('cccccccc-dddd-eeee-ffff-000000000000');
+    expect(res.body.summary).toMatchObject({ totalEntries: 1, matched: 1, unmatched: 0, nueva: 1 });
+    // The batch is created via the SAME code path as /api/vuln-import/upload
+    // — no direct CI mutation from this legacy route (A04 — staging first).
+    expect(mockBatchCreate).toHaveBeenCalledTimes(1);
+    // Audit insert for the upload (VULN_IMPORT_UPLOAD), inside the transaction.
+    expect(mockExecuteRaw).toHaveBeenCalledWith(
+      expect.anything(), 'VULN_IMPORT_UPLOAD', 'VulnImportBatch', expect.anything(), 'admin@test.local', expect.anything(),
+    );
   });
 
-  it('returns matched:false when no CI found, still inserts audit log', async () => {
+  it('unmatched host still creates a batch (entry left for manual resolution)', async () => {
     mockQueryRaw
       .mockResolvedValueOnce([{ active: true }]) // auth
-      .mockResolvedValueOnce([]);                // no CI match
+      .mockResolvedValueOnce([]);                // matchHost → UNMATCHED, no CI vuln lookup follows
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -134,47 +183,38 @@ describe('POST /api/integrations/greenbone — processing', () => {
       .send(GB_BODY);
 
     expect(res.status).toBe(200);
-    expect(res.body.totalMatched).toBe(0);
-    expect(res.body.totalUnmatched).toBe(1);
-    expect(res.body.processed[0]).toMatchObject({ ci: 'server01', matched: false });
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // only audit log
-    expect(mockQueue).not.toHaveBeenCalled();
+    expect(res.body.summary).toMatchObject({ totalEntries: 1, matched: 0, unmatched: 1 });
+    expect(mockBatchCreate).toHaveBeenCalledTimes(1);
   });
 
-  it('preserves analyst-set vuln status on re-import (merge logic)', async () => {
-    const existingVulns = [{
-      cve: 'CVE-2024-0001', severity: 'HIGH', status: 'RESUELTO',
-      description: 'Old desc', importedAt: '2024-01-01T00:00:00.000Z',
-    }];
-    mockQueryRaw
-      .mockResolvedValueOnce([{ active: true }])
-      .mockResolvedValueOnce([{ id: CI_ID, name: 'server01' }])
-      .mockResolvedValueOnce([{ vulnerabilities: existingVulns }]);
+  // Regression fix (spec §1/D9, v3.6.0 B6): the OLD importer read
+  // `req.body.results`, a field that does not exist in a real Greenbone
+  // export — it silently matched 0 hosts and returned 200. Posting that
+  // same old mock shape today must be REJECTED with 400, not silently
+  // succeed, and it must NOT create a staging batch.
+  it('400s on the legacy invented results[] mock shape — does not silently succeed, no batch created', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]); // auth only — parsing fails before any CI lookup
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
-      .send(GB_BODY);
+      .send(LEGACY_MOCK_BODY);
 
-    expect(res.status).toBe(200);
-    // 1 re-reported vuln — merged result keeps it (count stays 1, not 2)
-    expect(res.body.processed[0].vulnCount).toBe(1);
-    // UPDATE + audit
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(2);
-    // vulnUuid called for the merged vuln
-    expect(mockVulnUuid).toHaveBeenCalledWith(CI_ID, 'CVE-2024-0001');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/real Greenbone export format/);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
   });
 
-  it('handles empty results array gracefully', async () => {
+  it('400s on a structurally invalid report body (Zod)', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
     const res = await buildApp()
       .post('/api/integrations/greenbone')
       .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
-      .send({ results: [] });
+      .send({ allHostSubreportEntries: [{ host: '1.2.3.4', vulnerabilities: [{}] }] });
 
-    expect(res.status).toBe(200);
-    expect(res.body.totalMatched).toBe(0);
-    expect(res.body.totalUnmatched).toBe(0);
-    expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // only audit log
+    expect(res.status).toBe(400);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
   });
 });
 
@@ -243,6 +283,112 @@ describe('POST /api/integrations/crowdstrike — processing', () => {
     expect(res.status).toBe(200);
     expect(res.body.totalMatched).toBe(0);
     expect(mockExecuteRaw).toHaveBeenCalledTimes(1); // only audit log
+  });
+});
+
+// ── CrowdStrike Spotlight — format autodetection (B4, v3.6.1, spec D1) ─────
+//
+// The SAME route now also accepts a real CrowdStrike Spotlight vulnerability
+// export (a flat top-level array) and delegates to the vuln-import staging
+// pipeline — mirroring exactly how /api/integrations/greenbone delegates to
+// uploadReport(). The device/agent-status branch above is completely
+// unaffected (proved by the untouched tests above still passing unmodified).
+
+describe('POST /api/integrations/crowdstrike — Spotlight format autodetection (B4)', () => {
+  it('a flat-array Spotlight body creates a PENDING staging batch, source "crowdstrike"', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])                          // auth
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost (EXACT_IP)
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send(CS_SPOTLIGHT_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('CrowdStrike Spotlight report processed via staging');
+    expect(res.body.batchId).toBe('cccccccc-dddd-eeee-ffff-000000000000');
+    expect(res.body.summary).toMatchObject({ totalEntries: 1, matched: 1, nueva: 1 });
+    expect(mockBatchCreate).toHaveBeenCalledTimes(1);
+    expect(mockBatchCreate.mock.calls[0][0].data.source).toBe('crowdstrike');
+  });
+
+  it('a flat-array Spotlight body wrapped in the {filename?, report} envelope is also accepted', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }])
+      .mockResolvedValueOnce([{ vulnerabilities: [] }]);
+    mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ filename: 'spotlight-export.json', report: CS_SPOTLIGHT_BODY });
+
+    expect(res.status).toBe(200);
+    expect(res.body.batchId).toBe('cccccccc-dddd-eeee-ffff-000000000000');
+  });
+
+  it('device/agent-status body ({devices: [...]}) still takes the OLD, unchanged path — not routed to staging', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ id: CI_ID, name: 'workstation01' }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send(CS_BODY);
+
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('CrowdStrike report processed'); // old message, not the staging one
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  it('an unrecognized shape (neither devices[] nor a flat array) is rejected with 400 naming both formats', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ someOtherKey: 'value' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/devices/);
+    expect(res.body.error).toMatch(/Spotlight/);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  // Regression guard: a legacy Greenbone `{results: [...]}` mock body posted
+  // to the WRONG endpoint must fail sensibly (400), never crash (500) or
+  // silently succeed.
+  it('a legacy Greenbone results[]-shaped body (wrong format, wrong endpoint) 400s, does not crash', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+
+    const res = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({
+        results: [{
+          host: { hostname: 'server01' },
+          vulnerabilities: [{ cve: 'CVE-2024-0001', severity: 'high', name: 'Test Vuln', description: 'A test vuln', cvss_score: 7.5 }],
+        }],
+      });
+
+    expect(res.status).toBe(400);
+    expect(mockBatchCreate).not.toHaveBeenCalled();
+  });
+
+  it('RBAC: 401 without token, 403 for AUDITOR, on the Spotlight-shaped body too', async () => {
+    const res401 = await buildApp().post('/api/integrations/crowdstrike').send(CS_SPOTLIGHT_BODY);
+    expect(res401.status).toBe(401);
+
+    const res403 = await buildApp()
+      .post('/api/integrations/crowdstrike')
+      .set('Authorization', `Bearer ${makeToken('AUDITOR')}`)
+      .send(CS_SPOTLIGHT_BODY);
+    expect(res403.status).toBe(403);
   });
 });
 

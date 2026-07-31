@@ -6,7 +6,11 @@ import type { ReportDefinition, ReportMeta, UserRole } from './types.js';
 // expresamente. De ahí la denylist: es la excepción que el rango no puede
 // expresar. requireAudit (GET /api/audit-logs) sigue admitiendo solo
 // ADMIN y AUDITOR.
-const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, MANAGER: 2, AUDITOR: 2, ADMIN: 3 };
+// SOC ranks with VIEWER — its scope is deliberately limited to the Security
+// area (Greenbone/CrowdStrike + vuln-import staging, see requireSecurity.ts),
+// not a general-purpose read tier. It gets whatever the lowest report tier
+// already grants VIEWER, nothing elevated.
+const ROLE_RANK: Record<UserRole, number> = { VIEWER: 1, SOC: 1, MANAGER: 2, AUDITOR: 2, ADMIN: 3 };
 
 /** Informes vetados a MANAGER pese a cumplir el rango. */
 const MANAGER_DENIED_REPORTS = new Set(['audit-trail']);

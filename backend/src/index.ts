@@ -61,6 +61,7 @@ import { emitHook, initializePluginEngine } from './modules/plugins/index';
 import { createSettingsRouter } from './modules/settings/router';
 import { createVendorsRouter }        from './modules/vendors/router';
 import { createIntegrationsRouter }   from './modules/integrations/router';
+import { createVulnImportRouter }     from './modules/vuln-import/router';
 import { createLicensesRouter }       from './modules/licenses/router';
 import { createContractsRouter }      from './modules/contracts/router';
 import { createMastersRouter }        from './modules/masters/router';
@@ -168,6 +169,26 @@ app.use(cors({
   credentials: true,
 }));
 
+// ── Raised body-size limit for the Greenbone upload route (spec D10) ─────────
+// A multi-host Greenbone scan export can exceed the app-wide 2MB JSON limit
+// below; nginx already allows up to 50MB. Express matches middleware in
+// registration order, so a path-scoped parser registered here — ahead of the
+// blanket `express.json({limit:'2mb'})` — gets first crack at this one route
+// and parses (or 413s) against the 20MB ceiling before the global 2MB parser
+// ever sees the request. For every other path this middleware simply does
+// not match, so the global 2MB limit still applies unchanged everywhere
+// else. (Registering the raised limit only inside the vuln-import router
+// does NOT work: that router is mounted after this global parser below, so
+// the global 2MB parser would already have rejected — or already parsed —
+// the body by the time the router's own middleware runs.)
+app.use('/api/vuln-import/upload', express.json({ limit: '20mb' }));
+// Same ceiling, same reasoning, for POST /api/integrations/crowdstrike
+// (v3.6.1): a real CrowdStrike Spotlight export is ~686KB for a SINGLE
+// host (docs/mocks/crowdstrike_SRV-MYGESTR01D.json) — a multi-host export
+// easily exceeds the 2MB global limit. Must stay registered here, ahead of
+// the blanket parser below, for the identical reason as the vuln-import
+// route above.
+app.use('/api/integrations/crowdstrike', express.json({ limit: '20mb' }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
@@ -274,6 +295,14 @@ app.use('/api/integrations', createIntegrationsRouter(
   prisma,
   (t, id) => queueEntityForIndexing(t as RagEntityType, id),
 ));
+
+// Vuln-import module (v3.6.0) — Greenbone real-format staging/review workflow;
+// its own module per spec D9, not grown onto the legacy /api/integrations/greenbone
+// endpoint (left untouched). Writes require ADMIN, reads require ADMIN/AUDITOR
+// (enforced per-route in the router).
+app.use('/api/vuln-import', createVulnImportRouter(prisma, {
+  queueEntity: (t, id) => queueEntityForIndexing(t as RagEntityType, id),
+}));
 
 // Contracts module — CRUD, doc/CI associations; writes require ADMIN (enforced in router)
 app.use('/api/contracts', createContractsRouter(
@@ -627,6 +656,10 @@ type VulnStatus   = 'NUEVO' | 'ASIGNADO' | 'EN_CURSO' | 'PARADO' | 'RESUELTO';
 
 interface Vulnerability {
   cve:         string;
+  // Identity per spec D1 (v3.6.0 B6): `${oid}@${port}` for entries from the
+  // new Greenbone staging module; absent on entries stored before this
+  // migration, which fall back to `cve` as their identity (D1b).
+  key?:        string;
   severity:    VulnSeverity;
   description: string;
   source?:     string;
@@ -1256,8 +1289,8 @@ app.get('/api/users', authenticateToken, async (_req: Request, res: Response) =>
 app.patch('/api/users/:id/role', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { role } = req.body as { role?: string };
-  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'MANAGER'] as string[]).includes(role)) {
-    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER" or "MANAGER"' });
+  if (!role || !(['ADMIN', 'AUDITOR', 'VIEWER', 'MANAGER', 'SOC'] as string[]).includes(role)) {
+    res.status(400).json({ error: 'role must be "ADMIN", "AUDITOR", "VIEWER", "MANAGER" or "SOC"' });
     return;
   }
   try {
@@ -2081,19 +2114,29 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id
  * PATCH /api/vulnerabilities
  * Updates the status of a single vulnerability within a CI's JSON array.
  *
- * Body: { ciId: string, cve: string, status: VulnStatus }
+ * Body: { ciId: string, key?: string, cve: string, status: VulnStatus }
+ *
+ * Identity (spec D1/D1b, v3.6.0 B6): a vulnerability's real identity is
+ * `key` (`${oid}@${port}`), not `cve` — 96% of real Greenbone findings carry
+ * no CVE. `key` is optional here and preferred when present; `cve` is kept
+ * as the deprecated fallback so an unmigrated client (or a stored entry that
+ * predates this migration and never got a `key`) still resolves correctly.
  */
 app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: Response) => {
-  const { ciId, cve, status } = req.body as {
+  const { ciId, key, cve, status } = req.body as {
     ciId:   string;
+    key?:   string;
     cve:    string;
     status: VulnStatus;
   };
 
-  if (!ciId || !cve || !status) {
+  if (!ciId || !(key || cve) || !status) {
     res.status(400).json({ error: 'Missing required fields: ciId, cve, status' });
     return;
   }
+
+  // The identity to match against: prefer the caller's `key`, fall back to `cve`.
+  const targetKey = key ?? cve;
 
   const validStatuses: VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'RESUELTO'];
   if (!validStatuses.includes(status)) {
@@ -2114,21 +2157,26 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
     }
 
     const currentVulns = (rows[0].vulnerabilities ?? []) as Vulnerability[];
-    const vuln = currentVulns.find((v) => v.cve === cve);
+    const vuln = currentVulns.find((v) => (v.key ?? v.cve) === targetKey);
 
     if (!vuln) {
-      res.status(404).json({ error: `Vulnerability ${cve} not found in CI ${ciId}` });
+      res.status(404).json({ error: `Vulnerability ${targetKey} not found in CI ${ciId}` });
       return;
     }
 
     const updated = currentVulns.map((v) =>
-      v.cve === cve ? { ...v, status, updatedAt: new Date().toISOString() } : v
+      (v.key ?? v.cve) === targetKey ? { ...v, status, updatedAt: new Date().toISOString() } : v
     );
 
     // Issue #172: wrap the vulnerabilities-column update + audit insert in one
     // transaction so the audit is never missing when the status change persists.
-    const entityId = `${ciId}:${cve}`;
-    const action   = `UPDATE_VULN_STATUS:${status}`;
+    //
+    // entity_id is `varchar(36)` — sized for a bare UUID — so it must hold
+    // just the CI id, never a composite `${ciId}:${targetKey}` string: a
+    // real vulnKey (e.g. an OID@port identity) overflows 36 chars and the
+    // raw INSERT fails with Postgres error 22001. The vulnerability's own
+    // identity goes in `details` instead, which already exists for this.
+    const action = `UPDATE_VULN_STATUS:${status}`;
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "configuration_items"
@@ -2138,13 +2186,13 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
 
       // Audit log (raw — Prisma client types regenerate after migrate)
       await tx.$executeRaw`
-        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, created_at)
-        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${entityId}, ${req.user!.email}, now())
+        INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
+        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${ciId}, ${req.user!.email}, ${JSON.stringify({ vulnKey: targetKey })}::jsonb, now())
       `;
     });
 
     // Re-index the vulnerability + its parent CI (whose summary line changed)
-    void queueEntityForIndexing('vulnerability', vulnUuid(ciId, cve));
+    void queueEntityForIndexing('vulnerability', vulnUuid(ciId, targetKey));
     void queueEntityForIndexing('ci', ciId);
 
     res.json({ ciId, cve, status, message: `Status updated to ${status}` });

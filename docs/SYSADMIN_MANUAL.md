@@ -2645,3 +2645,49 @@ podman exec cmdb-postgres-prod psql -U admin -d cmdb_db -c \
 ### Variables obsoletas
 
 `LDAP_SYNC_GROUP_DN` y `LDAP_SYNC_DOMAIN` ya no se usan: alimentaban el workflow anterior, que consultaba el directorio desde n8n. Pueden eliminarse del `.env`.
+
+---
+
+## Importación de vulnerabilidades Greenbone — staging y revisión (v3.6.0)
+
+> **Estado en el momento de escribir esta sección: rama `develop`, sin tag ni merge a `main`.** No la trate como release en producción hasta que la entrada correspondiente de "Plan Activo" en `CLAUDE.md` diga lo contrario.
+
+Ver `docs/INTEGRATIONS.md` § 9 para la arquitectura completa (modelo de identidad, cascada de emparejamiento de CI, flujo de staging). Esta sección cubre solo lo operativo/sysadmin.
+
+### Tablas nuevas y backups
+
+El módulo añade dos tablas a la base de datos: `vuln_import_batches` y `vuln_import_entries`. **No requieren ningún procedimiento de backup nuevo** — quedan cubiertas por el volcado `pg_dump` habitual descrito en la [§6](#6-backups-y-restauración-de-la-base-de-datos), igual que cualquier otra tabla de `cmdb_db`. No es necesario ajustar `db-backup.sh` ni ningún script de retención.
+
+### Backfill de `key` en vulnerabilidades preexistentes
+
+Toda entrada de vulnerabilidad almacenada **antes** de este release solo tiene `cve` (nunca `key`, un campo que no existía todavía). `PATCH /api/vulnerabilities` ya resuelve identidad como `key ?? cve`, así que el sistema funciona sin backfill — pero para que las entradas antiguas tengan `key` poblado de forma consistente con las nuevas, existe `backend/scripts/backfill-vuln-keys.js`: rellena `key = cve` en cualquier entrada que aún no tenga `key`. Es **idempotente** (ejecutarlo dos veces no duplica ni corrompe nada) y soporta `--dry-run` para ver qué tocaría sin escribir.
+
+Sigue el mismo patrón ya documentado en este manual para ejecutar un script Node.js dentro del contenedor backend (necesita Prisma en scope):
+
+```bash
+# Modo de prueba — solo informa, no escribe
+podman cp backend/scripts/backfill-vuln-keys.js cmdb-backend-prod:/app/backfill-vuln-keys.js \
+  && podman exec -w /app cmdb-backend-prod node backfill-vuln-keys.js --dry-run \
+  && podman exec cmdb-backend-prod rm /app/backfill-vuln-keys.js
+
+# Aplicar de verdad
+podman cp backend/scripts/backfill-vuln-keys.js cmdb-backend-prod:/app/backfill-vuln-keys.js \
+  && podman exec -w /app cmdb-backend-prod node backfill-vuln-keys.js \
+  && podman exec cmdb-backend-prod rm /app/backfill-vuln-keys.js
+```
+
+No es necesario ejecutarlo antes de habilitar el módulo — es una limpieza de consistencia, no un requisito funcional. Ejecútelo una vez tras desplegar esta versión si quiere que las vulnerabilidades antiguas tengan `key` poblado explícitamente en vez de depender del fallback `?? cve` en cada lectura.
+
+### Carencia conocida: batches `PENDING` sin purgar
+
+Un lote de importación (`VulnImportBatch`) que se sube y **nunca se acepta ni se descarta** queda indefinidamente en estado `PENDING`. La especificación de este release proponía incorporar la purga de batches `PENDING` abandonados al cron de mantenimiento ya existente (el mismo que limpia dispositivos de confianza expirados y el almacén de estado SSO), pero **no se implementó en esta versión** — no dé por hecho que existe. Un batch `PENDING` antiguo no supone un riesgo de datos (no ha tocado ningún CI), solo acumula filas en `vuln_import_batches`/`vuln_import_entries` y aparece en el listado `/vulnerabilities/imports` hasta que alguien lo acepte o lo descarte manualmente.
+
+### Segunda fuente: CrowdStrike Spotlight (sobre la misma rama, sin tag todavía)
+
+> Ver `docs/INTEGRATIONS.md` § 9.12 para la arquitectura completa (modelo de identidad, fusión por `vulnerability_id`, premarcado CISA KEV/explotación activa, ruta de reapertura del propio CrowdStrike). Esta sección cubre solo lo operativo/sysadmin.
+
+**Columnas nuevas, sin procedimiento nuevo de backup.** `vuln_import_entries` gana 8 columnas nullable (`products`, `exprt_rating`, `cisa_kev`, `cisa_due_date`, `exploit_status`, `days_open`, `external_status`, `cvss_version`) para las señales específicas de CrowdStrike Spotlight. Igual que con las columnas de Greenbone de v3.6.0, **no requieren ningún procedimiento de backup nuevo** — quedan cubiertas por el volcado `pg_dump` habitual descrito en la [§6](#6-backups-y-restauración-de-la-base-de-datos).
+
+**Cambio de nulabilidad en `oid`/`port`.** Estas dos columnas, hasta ahora implícitamente siempre pobladas (identidad NVT-y-puerto de Greenbone), pasan a ser nullable: una entrada de CrowdStrike no tiene ni NVT ni puerto, así que ambas quedan `NULL` en esas filas. Si tiene consultas SQL ad-hoc o herramientas de reporting propias contra `vuln_import_entries` que asuman `oid`/`port` siempre pobladas, revíselas — cualquier fila con `source='crowdstrike'` las tendrá a `NULL`.
+
+**Límite de 20 MB también en `/api/integrations/crowdstrike`.** El override de tamaño de cuerpo a 20 MB (frente al límite global de 2 MB), ya aplicado a `/api/vuln-import/upload` en v3.6.0, se aplica ahora también al endpoint legacy `/api/integrations/crowdstrike`, que a partir de este release también puede recibir una exportación Spotlight real (además de la forma agente/EDR original, que sigue funcionando sin cambios). Una exportación Spotlight real de un solo host ronda los 686 KB en el fixture de prueba — una exportación multi-host puede acercarse o superar el límite anterior de 2 MB con facilidad. No requiere ninguna acción de configuración: el override ya está registrado en `index.ts` en el orden correcto (antes del parser global) para ambas rutas.

@@ -11,7 +11,7 @@ import { apiFetch } from "@/lib/apiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER";
+export type UserRole = "ADMIN" | "AUDITOR" | "VIEWER" | "MANAGER" | "SOC";
 
 export interface AuthUser {
   id:          string;
@@ -32,6 +32,9 @@ interface AuthContextType {
   user:         AuthUser | null;
   loading:      boolean;
   isAdmin:      boolean;
+  isSoc:        boolean;
+  /** SOC has ADMIN-equivalent authority within the Security area (Greenbone/CrowdStrike + vuln-import staging) — nowhere else. */
+  canManageSecurity: boolean;
   login:        (email: string, password: string, options?: LoginOptions) => Promise<void>;
   logout:       () => void;
   applySession: (token: string | null, user: AuthUser, deviceToken?: string) => void;
@@ -184,6 +187,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       loading,
       isAdmin: user?.role === "ADMIN",
+      isSoc: user?.role === "SOC",
+      canManageSecurity: user?.role === "ADMIN" || user?.role === "SOC",
       login,
       logout,
       applySession,

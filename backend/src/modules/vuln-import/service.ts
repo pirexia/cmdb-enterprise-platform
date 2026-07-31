@@ -6,10 +6,10 @@ import { matchHost, type MatchResult } from './matcher.js';
 import { classifyVulnerability } from './classifier.js';
 import { vulnImportAudit } from './audit.js';
 import {
-  createBatchWithEntries, listBatches as queryListBatches, getBatchWithEntries,
+  createBatchShell, writeBatchEntries, finalizeBatch, listBatches as queryListBatches, getBatchWithEntries,
   getBatch, getEntry, getAllEntriesForBatch, updateEntry, bulkUpdateDecision,
   markBatchStatus, ciExists, getCiVulnerabilities, updateCiVulnerabilities,
-  type NewBatchInput, type NewEntryInput, type EntryFilter,
+  type NewBatchMeta, type NewEntryInput, type EntryFilter,
 } from './queries.js';
 import type { UploadRequestBody, PatchEntryBody, BulkDecisionBody } from './schemas.js';
 import { getRhelLifecycleDates } from '../integrations/connectors/redhatLightspeed/lifecycleClient.js';
@@ -239,7 +239,7 @@ export async function uploadReport(
   const scanStart = greenboneMeta ? safeDate(greenboneMeta.scanStart) : null;
   const scanEnd = greenboneMeta ? safeDate(greenboneMeta.scanEnd) : null;
 
-  const batchInput: NewBatchInput = {
+  const batchMeta: NewBatchMeta = {
     source,
     filename,
     taskName,
@@ -248,16 +248,28 @@ export async function uploadReport(
     scanEnd,
     uploadedBy: userEmail,
     rawMeta,
-    entries: newEntries,
   };
 
-  const batch = await prisma.$transaction(async (tx) => {
-    const created = await createBatchWithEntries(tx, batchInput);
-    await vulnImportAudit(tx, 'VULN_IMPORT_UPLOAD', 'VulnImportBatch', created.id, userEmail, {
-      filename, hostCount: hostAddresses.length, ...summary,
+  // Split create→write→finalize sequence (Task 2/3) — see queries.ts's
+  // doc comments on createBatchShell/writeBatchEntries/finalizeBatch for why
+  // the old single-transaction createBatchWithEntries hit both a V8 string
+  // length limit and Prisma's interactive-transaction timeout on large
+  // reports. writeBatchEntries runs outside any transaction; a failure there
+  // is caught and recorded via finalizeBatch(..., 'FAILED', ...) rather than
+  // left as a stuck RUNNING batch.
+  const batch = await prisma.$transaction(async (tx) => createBatchShell(tx, batchMeta));
+
+  try {
+    await writeBatchEntries(prisma, batch.id, newEntries);
+    await prisma.$transaction(async (tx) => {
+      await finalizeBatch(tx, batch.id, 'PENDING');
     });
-    return created;
-  });
+  } catch (err) {
+    await prisma.$transaction(async (tx) => {
+      await finalizeBatch(tx, batch.id, 'FAILED', err instanceof Error ? err.message : String(err));
+    });
+    throw err;
+  }
 
   return { batchId: batch.id, summary };
 }

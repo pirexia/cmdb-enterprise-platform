@@ -184,6 +184,7 @@ describe('POST /api/vuln-import/upload', () => {
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -214,6 +215,7 @@ describe('POST /api/vuln-import/upload', () => {
         { level: 2, id: 'ci-b', name: 'dup' },
       ]); // matchHost → AMBIGUOUS, no getCiVulnerabilities call follows
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -236,6 +238,7 @@ describe('POST /api/vuln-import/upload', () => {
       .mockResolvedValueOnce([{ active: true }])
       .mockResolvedValueOnce([]); // matchHost → UNMATCHED
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -272,6 +275,7 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                       // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -316,6 +320,7 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
   it('201: an empty flat array is a structurally valid (if empty) CrowdStrike export, not rejected', async () => {
     mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')

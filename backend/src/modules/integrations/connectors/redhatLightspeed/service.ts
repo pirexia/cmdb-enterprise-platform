@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import type { Vulnerability } from '../../types.js';
 import { loadRedHatLightspeedConfig, isConfigured } from './config.js';
 import { fetchAccessToken } from './tokenClient.js';
@@ -7,8 +7,7 @@ import { getHostIdentity } from './inventoryClient.js';
 import { mapSystemToEntries } from './mapper.js';
 import { matchHost, type MatchResult } from '../../../vuln-import/matcher.js';
 import { classifyVulnerability } from '../../../vuln-import/classifier.js';
-import { vulnImportAudit } from '../../../vuln-import/audit.js';
-import { createBatchWithEntries, getCiVulnerabilities, type NewEntryInput } from '../../../vuln-import/queries.js';
+import { createBatchShell, writeBatchEntries, finalizeBatch, getCiVulnerabilities, type NewEntryInput } from '../../../vuln-import/queries.js';
 import type { UploadSummary } from '../../../vuln-import/service.js';
 
 // Live-pull orchestration for Red Hat Lightspeed — mirrors uploadReport()'s
@@ -129,15 +128,31 @@ export async function runRedHatLightspeedImport(
     summary.totalEntries = newEntries.length;
 
     const filename = `redhat-lightspeed-import-${Date.now()}.json`;
-    const batch = await prisma.$transaction(async (tx) => {
-      const created = await createBatchWithEntries(tx as unknown as Prisma.TransactionClient, {
-        source: 'redhat-lightspeed', filename, uploadedBy: userEmail, entries: newEntries,
+
+    // Split create→write→finalize sequence (Task 2/3) — see
+    // vuln-import/queries.ts's doc comments on createBatchShell/
+    // writeBatchEntries/finalizeBatch. This is the batch that motivated the
+    // split: a real org's pull (13,868 entries) hit both a V8 string length
+    // limit and Prisma's interactive-transaction timeout under the old
+    // single-transaction createBatchWithEntries. writeBatchEntries runs
+    // outside any transaction; a failure there is caught below and recorded
+    // via finalizeBatch(..., 'FAILED', ...) instead of leaving the batch
+    // stuck in RUNNING.
+    const batch = await prisma.$transaction(async (tx) =>
+      createBatchShell(tx, { source: 'redhat-lightspeed', filename, uploadedBy: userEmail }),
+    );
+
+    try {
+      await writeBatchEntries(prisma, batch.id, newEntries);
+      await prisma.$transaction(async (tx) => {
+        await finalizeBatch(tx, batch.id, 'PENDING');
       });
-      await vulnImportAudit(tx as unknown as Prisma.TransactionClient, 'VULN_IMPORT_UPLOAD', 'VulnImportBatch', created.id, userEmail, {
-        filename, systemCount: systems.length, ...summary,
+    } catch (err) {
+      await prisma.$transaction(async (tx) => {
+        await finalizeBatch(tx, batch.id, 'FAILED', err instanceof Error ? err.message : String(err));
       });
-      return created;
-    });
+      throw err;
+    }
 
     return { batchId: batch.id, summary };
   } finally {

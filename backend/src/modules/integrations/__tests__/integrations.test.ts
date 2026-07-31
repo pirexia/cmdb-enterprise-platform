@@ -8,6 +8,7 @@ const mockQueryRaw   = jest.fn();
 const mockExecuteRaw = jest.fn();
 const mockVulnUuid   = jest.fn().mockReturnValue('aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee');
 const mockBatchCreate = jest.fn();
+const mockBatchUpdate = jest.fn();
 const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 const mockTransaction = jest.fn();
 
@@ -24,7 +25,7 @@ jest.mock('@prisma/client', () => ({
       $queryRaw:   mockQueryRaw,
       $executeRaw: mockExecuteRaw,
       $transaction: mockTransaction,
-      vulnImportBatch: { create: mockBatchCreate },
+      vulnImportBatch: { create: mockBatchCreate, update: mockBatchUpdate },
       vulnImportEntry: { createMany: mockEntryCreateMany },
     };
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(instance));
@@ -156,6 +157,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -180,6 +182,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ active: true }]) // auth
       .mockResolvedValueOnce([]);                // matchHost → UNMATCHED, no CI vuln lookup follows
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -305,6 +308,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')
@@ -325,6 +329,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }])
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')

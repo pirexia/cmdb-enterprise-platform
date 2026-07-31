@@ -16,7 +16,10 @@ describe('runRedHatLightspeedImport', () => {
     $transaction: jest.fn((fn) => fn(prisma)),
     $queryRaw: jest.fn().mockResolvedValue([]),
     $executeRaw: jest.fn().mockResolvedValue(1),
-    vulnImportBatch: { create: jest.fn().mockResolvedValue({ id: 'batch-1' }) },
+    vulnImportBatch: {
+      create: jest.fn().mockResolvedValue({ id: 'batch-1', uploadedBy: 'tester@cmdb.local' }),
+      update: jest.fn().mockResolvedValue({ id: 'batch-1', uploadedBy: 'tester@cmdb.local' }),
+    },
     vulnImportEntry: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
   } as unknown as PrismaClient;
 

@@ -202,6 +202,13 @@ export interface VulnImportEntry {
    *  from it. */
   externalStatus: string | null;
   cvssVersion: string | null;
+  /** Red Hat Lightspeed's own severity rating (Low/Moderate/Important/
+   *  Critical) — a distinct signal from `severity`, never conflated with it. */
+  redhatImpact?: string | null;
+  /** Red Hat Lightspeed's own "known exploit" flag. */
+  knownExploit?: boolean | null;
+  /** CVE disclosure date (ISO string), informational. */
+  publicDate?: string | null;
   /** Raw per-vulnerability Greenbone/CrowdStrike JSON as originally parsed —
    *  shape not contractually fixed here (parser.ts / crowdstrikeParser.ts
    *  own it); treat as opaque. */

@@ -481,6 +481,8 @@ export default function VulnerabilitiesPage() {
                         <option value="">{t("vulnerabilities.all_sources")}</option>
                         <option value="manual">Manual</option>
                         <option value="greenbone">Greenbone</option>
+                        <option value="crowdstrike">CrowdStrike</option>
+                        <option value="redhat-lightspeed">Red Hat Lightspeed</option>
                       </select>
                     </td>
                     {/* Status */}

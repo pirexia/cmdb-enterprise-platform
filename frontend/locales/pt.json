@@ -2484,7 +2484,8 @@
       "actionable": "Acionáveis",
       "informational": "Informativas",
       "attention": "Requerem atenção",
-      "reappeared": "Reaparecidas"
+      "reappeared": "Reaparecidas",
+      "closing": "Serão marcadas como resolvidas"
     },
     "detail": {
       "title": "Revisão do lote",

@@ -60,7 +60,7 @@ interface Toast {
 }
 let _toastId = 0;
 
-type TabKey = "all" | "actionable" | "informational" | "attention" | "reappeared";
+type TabKey = "all" | "actionable" | "informational" | "attention" | "reappeared" | "closing";
 
 // ─── Style maps ───────────────────────────────────────────────────────────
 
@@ -139,6 +139,9 @@ function buildTabEntryParams(tab: TabKey): URLSearchParams {
       break;
     case "reappeared":
       params.set("classification", "REAPARECIDA");
+      break;
+    case "closing":
+      params.set("classification", "RESUELTA_AUSENTE");
       break;
     default:
       break;
@@ -740,7 +743,7 @@ export default function VulnImportBatchDetailPage() {
   const totalPages = Math.max(1, Math.ceil(entriesTotal / ENTRIES_PAGE_SIZE));
 
   const tabCounts = useMemo(() => {
-    if (!globalStats) return { all: 0, actionable: 0, informational: 0, attention: 0, reappeared: 0 };
+    if (!globalStats) return { all: 0, actionable: 0, informational: 0, attention: 0, reappeared: 0, closing: 0 };
     const { bySeverity, byMatchConfidence, byClassification } = globalStats;
     return {
       all: globalStats.total,
@@ -748,6 +751,7 @@ export default function VulnImportBatchDetailPage() {
       informational: (bySeverity.LOW ?? 0) + (bySeverity.INFO ?? 0),
       attention: (byMatchConfidence.UNMATCHED ?? 0) + (byMatchConfidence.AMBIGUOUS ?? 0) + (byMatchConfidence.FUZZY ?? 0),
       reappeared: byClassification.REAPARECIDA ?? 0,
+      closing: byClassification.RESUELTA_AUSENTE ?? 0,
     };
   }, [globalStats]);
 
@@ -835,6 +839,8 @@ export default function VulnImportBatchDetailPage() {
     try {
       if (activeTab === "reappeared") {
         await postBulk({ classification: "REAPARECIDA" }, decision);
+      } else if (activeTab === "closing") {
+        await postBulk({ classification: "RESUELTA_AUSENTE" }, decision);
       } else if (activeTab === "actionable") {
         for (const sev of ACTIONABLE_SEVERITIES) await postBulk({ severity: sev }, decision);
       } else if (activeTab === "informational") {
@@ -979,6 +985,7 @@ export default function VulnImportBatchDetailPage() {
     { key: "informational", label: t("vulnImport.tabs.informational") },
     { key: "attention", label: t("vulnImport.tabs.attention") },
     { key: "reappeared", label: t("vulnImport.tabs.reappeared") },
+    { key: "closing", label: t("vulnImport.tabs.closing") },
   ];
 
   return (

@@ -2484,7 +2484,8 @@
       "actionable": "Exploitables",
       "informational": "Informatives",
       "attention": "Nécessitent une attention",
-      "reappeared": "Réapparues"
+      "reappeared": "Réapparues",
+      "closing": "Seront marquées comme résolues"
     },
     "detail": {
       "title": "Révision du lot",

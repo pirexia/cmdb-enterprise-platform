@@ -2484,7 +2484,8 @@
       "actionable": "Handlungsbedarf",
       "informational": "Informativ",
       "attention": "Erfordert Aufmerksamkeit",
-      "reappeared": "Wieder aufgetreten"
+      "reappeared": "Wieder aufgetreten",
+      "closing": "Wird als behoben markiert"
     },
     "detail": {
       "title": "Batch-Überprüfung",

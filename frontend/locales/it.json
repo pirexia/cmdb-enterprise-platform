@@ -2484,7 +2484,8 @@
       "actionable": "Attuabili",
       "informational": "Informative",
       "attention": "Richiedono attenzione",
-      "reappeared": "Ricomparse"
+      "reappeared": "Ricomparse",
+      "closing": "Verranno contrassegnate come risolte"
     },
     "detail": {
       "title": "Revisione del lotto",

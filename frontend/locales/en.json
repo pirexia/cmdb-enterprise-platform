@@ -2603,7 +2603,8 @@
       "actionable": "Actionable",
       "informational": "Informational",
       "attention": "Needs attention",
-      "reappeared": "Reappeared"
+      "reappeared": "Reappeared",
+      "closing": "Will be marked resolved"
     },
     "detail": {
       "title": "Batch review",

@@ -39,6 +39,19 @@ jest.mock('../../../services/entitySerializer', () => ({
   vulnUuid: mockVulnUuid,
 }));
 
+// runRedHatLightspeedImport (Task 4) now kicks off a background pull and
+// returns {batchId} immediately — wrap it in a jest.fn() so the happy-path
+// (202) test can stub it directly instead of driving the real token/vuln/
+// inventory HTTP clients, while every other test keeps the real
+// implementation (and the real error classes, via requireActual, so the
+// router's `instanceof` checks on the 503/409 branches stay meaningful).
+const mockRunRedHatLightspeedImport = jest.fn();
+jest.mock('../connectors/redhatLightspeed/service.js', () => {
+  const actual = jest.requireActual('../connectors/redhatLightspeed/service.js');
+  mockRunRedHatLightspeedImport.mockImplementation(actual.runRedHatLightspeedImport);
+  return { ...actual, runRedHatLightspeedImport: mockRunRedHatLightspeedImport };
+});
+
 process.env.JWT_SECRET = 'test-secret-32-chars-minimum-len!!';
 
 import express        from 'express';
@@ -487,6 +500,15 @@ describe('Red Hat Lightspeed connector routes', () => {
         .post('/api/integrations/redhat-lightspeed/import')
         .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
       expect(res.status).toBe(403);
+    });
+
+    it('returns 202 with the batchId once the background pull has been queued (Task 5)', async () => {
+      mockRunRedHatLightspeedImport.mockResolvedValueOnce({ batchId: 'batch-xyz-123' });
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ batchId: 'batch-xyz-123' });
     });
   });
 });

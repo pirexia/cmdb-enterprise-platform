@@ -374,7 +374,7 @@ export function createIntegrationsRouter(
   router.post('/redhat-lightspeed/import', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
     try {
       const result = await runRedHatLightspeedImport(prisma, req.user!.email);
-      res.status(201).json(result);
+      res.status(202).json({ batchId: result.batchId });
     } catch (err) {
       if (err instanceof RedHatLightspeedNotConfiguredError) { res.status(503).json({ error: 'NOT_CONFIGURED' }); return; }
       if (err instanceof RedHatLightspeedSyncInProgressError) { res.status(409).json({ error: 'IMPORT_IN_PROGRESS' }); return; }

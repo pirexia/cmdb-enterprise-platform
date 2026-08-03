@@ -2495,7 +2495,10 @@
       "readOnlyNotice": "Dieser Batch wurde bereits abgeschlossen (angenommen oder verworfen) — nur Lesezugriff.",
       "readOnlyNoAdmin": "Nur ein Administrator oder SOC-Analyst kann diesen Batch überprüfen und entscheiden.",
       "notificationsRegion": "Benachrichtigungen",
-      "closeNotification": "Benachrichtigung schließen"
+      "closeNotification": "Benachrichtigung schließen",
+      "entriesPageInfo": "Seite {page} von {totalPages} ({total} Einträge)",
+      "prevPage": "Zurück",
+      "nextPage": "Weiter"
     },
     "entry": {
       "port": "Port",

@@ -2614,7 +2614,10 @@
       "readOnlyNotice": "This batch has already been resolved (accepted or discarded) — read only.",
       "readOnlyNoAdmin": "Only an administrator or a SOC analyst can review and decide on this batch.",
       "notificationsRegion": "Notifications",
-      "closeNotification": "Close notification"
+      "closeNotification": "Close notification",
+      "entriesPageInfo": "Page {page} of {totalPages} ({total} entries)",
+      "prevPage": "Previous",
+      "nextPage": "Next"
     },
     "entry": {
       "port": "Port",

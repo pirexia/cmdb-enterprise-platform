@@ -2614,7 +2614,10 @@
       "readOnlyNotice": "Este lote ya fue resuelto (aceptado o descartado) — solo lectura.",
       "readOnlyNoAdmin": "Solo un administrador o un analista SOC puede revisar y decidir sobre este lote.",
       "notificationsRegion": "Notificaciones",
-      "closeNotification": "Cerrar notificación"
+      "closeNotification": "Cerrar notificación",
+      "entriesPageInfo": "Página {page} de {totalPages} ({total} entradas)",
+      "prevPage": "Anterior",
+      "nextPage": "Siguiente"
     },
     "entry": {
       "port": "Puerto",

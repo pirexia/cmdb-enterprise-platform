@@ -2495,7 +2495,10 @@
       "readOnlyNotice": "Ce lot a déjà été résolu (accepté ou rejeté) — lecture seule.",
       "readOnlyNoAdmin": "Seul un administrateur ou un analyste SOC peut réviser et décider de ce lot.",
       "notificationsRegion": "Notifications",
-      "closeNotification": "Fermer la notification"
+      "closeNotification": "Fermer la notification",
+      "entriesPageInfo": "Page {page} sur {totalPages} ({total} entrées)",
+      "prevPage": "Précédent",
+      "nextPage": "Suivant"
     },
     "entry": {
       "port": "Port",

@@ -317,6 +317,15 @@ export interface GetBatchDetailResponse {
    *  (see `NO_MATCH_CONFIDENCE_KEY` in queries.ts) — not narrowed to
    *  `MatchConfidence` here for that reason. */
   byMatchConfidence: Record<string, number>;
+  /** Task 10 (v3.7.0) — number of DISTINCT non-null `ciId` values among the
+   *  entries matching this request's filter (queries.ts `getBatchWithEntries`,
+   *  a 4th `groupBy(['ciId'])` alongside the three above, `ciGroups.length`).
+   *  An entry with no CI match (UNMATCHED/AMBIGUOUS, `ciId: null`) never
+   *  contributes to this count. Powers the "Aceptar" confirmation dialog's
+   *  "N CIs affected" figure (fetched via `?decision=INCLUDE`) — NOT derived
+   *  from `entries.length` or any client-side `Set`, since `entries` here is
+   *  only the current page. */
+  ciCount: number;
 }
 
 /** PATCH .../entries/:entryId → 200, res.json(updated) where updated is the

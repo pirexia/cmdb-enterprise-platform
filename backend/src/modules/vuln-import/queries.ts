@@ -2,6 +2,14 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import type { VulnImportBatch } from '@prisma/client';
 import type { Vulnerability } from '../integrations/types.js';
 import { vulnImportAudit } from './audit.js';
+// Reused rather than replicated — `modules/plugins/engine.ts` already
+// imports from `../reports/registry.js`, so a cross-module import inside
+// `modules/` is an established pattern in this repo, not a new precedent.
+// `asArray` normalises both `?severity=A` (string) and `?severity=A&severity=B`
+// (array) to a string[] so `{ in: asArray(v) }` is always a valid Prisma
+// filter — see its doc comment in filterUtils.ts for the P2 root cause this
+// avoids (`{ in: 'A' }` throws).
+import { asArray } from '../reports/filterUtils.js';
 
 // DB access layer for the vuln-import staging module. Business logic
 // (parsing/matching/classification orchestration, the accept transaction)
@@ -287,10 +295,15 @@ export async function listBatches(prisma: PrismaOrTx, filter: BatchListFilter) {
 }
 
 export interface EntryFilter {
-  classification?: string;
-  severity?: string;
+  // classification/severity/matchConfidence accept either a single value
+  // (unchanged behaviour) or an array — the review screen's tabs are unions
+  // of several values (e.g. "Accionables" = severity MEDIUM+HIGH+CRITICAL)
+  // and need "page N of the union" in one query (task-8c brief). `decision`
+  // stays single-value on purpose: no tab is a union of decisions.
+  classification?: string | string[];
+  severity?: string | string[];
   decision?: string;
-  matchConfidence?: string;
+  matchConfidence?: string | string[];
   page?: number;
   pageSize?: number;
 }
@@ -320,10 +333,13 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
   if (!batch) return null;
 
   const where: Prisma.VulnImportEntryWhereInput = { batchId };
-  if (filter.classification) where.classification = filter.classification;
-  if (filter.severity) where.severity = filter.severity;
+  const classificationValues = asArray(filter.classification);
+  if (classificationValues) where.classification = { in: classificationValues };
+  const severityValues = asArray(filter.severity);
+  if (severityValues) where.severity = { in: severityValues };
   if (filter.decision) where.decision = filter.decision;
-  if (filter.matchConfidence) where.matchConfidence = filter.matchConfidence;
+  const matchConfidenceValues = asArray(filter.matchConfidence);
+  if (matchConfidenceValues) where.matchConfidence = { in: matchConfidenceValues };
 
   const page = Math.max(1, filter.page ?? 1);
   const pageSize = Math.min(MAX_ENTRY_PAGE_SIZE, Math.max(1, filter.pageSize ?? 50));
@@ -408,10 +424,23 @@ export async function updateEntry(
   });
 }
 
+// bulkUpdateDecision intentionally does NOT accept the multi-value EntryFilter
+// (task-8c brief — out of scope: the frontend already resolves severity
+// unions here by calling once per value, the existing pattern for
+// "Accionables"). Its only caller (service.ts's bulkDecision) passes
+// BulkDecisionBody['filter'], whose fields are single Zod-enum strings, so
+// this narrower type is exactly what already flows through in practice.
+interface SingleValueEntryFilter {
+  classification?: string;
+  severity?: string;
+  decision?: string;
+  matchConfidence?: string;
+}
+
 export async function bulkUpdateDecision(
   tx: Prisma.TransactionClient,
   batchId: string,
-  filter: EntryFilter,
+  filter: SingleValueEntryFilter,
   decision: string,
 ) {
   const where: Prisma.VulnImportEntryWhereInput = { batchId };

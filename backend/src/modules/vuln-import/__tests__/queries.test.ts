@@ -221,13 +221,21 @@ describe('getBatchWithEntries', () => {
   }));
 
   type Row = (typeof ROWS)[number];
-  type FakeWhere = { classification?: string; severity?: string; matchConfidence?: string };
+  // getBatchWithEntries now builds classification/severity/matchConfidence
+  // as `{ in: string[] }` (task-8c, to support the review screen's union
+  // tabs), never a bare string — mirror that shape here rather than the
+  // plain-string one bulkUpdateDecision's fake below still uses.
+  type FakeWhere = {
+    classification?: { in: string[] };
+    severity?: { in: string[] };
+    matchConfidence?: { in: string[] };
+  };
 
   function applyWhere(rows: Row[], where: FakeWhere) {
     return rows.filter((r) =>
-      (where.classification === undefined || r.classification === where.classification)
-      && (where.severity === undefined || r.severity === where.severity)
-      && (where.matchConfidence === undefined || r.matchConfidence === where.matchConfidence));
+      (where.classification === undefined || where.classification.in.includes(r.classification))
+      && (where.severity === undefined || where.severity.in.includes(r.severity))
+      && (where.matchConfidence === undefined || (r.matchConfidence !== null && where.matchConfidence.in.includes(r.matchConfidence))));
   }
 
   function buildPrisma(rows: Row[]) {
@@ -373,6 +381,71 @@ describe('getBatchWithEntries', () => {
     expect(result!.byClassification).toEqual({ NUEVA: 65 });
     expect(result!.bySeverity).toEqual({ CRITICAL: 35, HIGH: 30 });
     expect(result!.entries.every((e) => e.matchConfidence === 'EXACT_IP')).toBe(true);
+  });
+
+  // Task 8c: the review screen's union tabs (e.g. "Accionables" = severity
+  // MEDIUM+HIGH+CRITICAL) need "page N of the union of several values" in a
+  // single query — a single-value filter can't express that.
+  it('accepts an array of severities and returns entries matching ANY of them, across the whole paginated batch — not just the first value', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    // CRITICAL (i<40, 40 rows) + LOW (i>=100, 30 rows) = 70 rows, deliberately
+    // skipping the HIGH middle band so an implementation that collapsed the
+    // array to its first element (`severity: 'CRITICAL'`) would under-count
+    // to 40 rather than the true union of 70.
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      severity: ['CRITICAL', 'LOW'], page: 1, pageSize: 50,
+    });
+
+    expect(result!.total).toBe(70);
+    expect(result!.entries).toHaveLength(50);
+    expect(result!.entries.every((e) => e.severity === 'CRITICAL' || e.severity === 'LOW')).toBe(true);
+    expect(result!.bySeverity).toEqual({ CRITICAL: 40, LOW: 30 });
+
+    // Page 2 must carry the remaining 20 of the same 70-row union, not
+    // silently reset to a single-value filter's page 2.
+    const page2 = await getBatchWithEntries(prisma, 'batch-1', {
+      severity: ['CRITICAL', 'LOW'], page: 2, pageSize: 50,
+    });
+    expect(page2!.entries).toHaveLength(20);
+    expect(page2!.total).toBe(70);
+  });
+
+  it('still applies a single string value exactly as before (regression) — matchConfidence and classification too', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const bySeverity = await getBatchWithEntries(prisma, 'batch-1', { severity: 'CRITICAL', page: 1, pageSize: 50 });
+    expect(bySeverity!.total).toBe(40);
+    expect(bySeverity!.entries.every((e) => e.severity === 'CRITICAL')).toBe(true);
+
+    const byMatchConfidence = await getBatchWithEntries(prisma, 'batch-1', { matchConfidence: 'EXACT_IP', page: 1, pageSize: 50 });
+    expect(byMatchConfidence!.total).toBe(65);
+
+    const byClassification = await getBatchWithEntries(prisma, 'batch-1', { classification: 'NUEVA', page: 1, pageSize: 50 });
+    expect(byClassification!.total).toBe(90);
+  });
+
+  it('accepts an array of matchConfidence values and unions them (UNMATCHED + AMBIGUOUS "Requiere atención" style)', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    // EXACT_IP (i in [5,70), 65 rows) + UNMATCHED (i in [70,130), 60 rows) = 125.
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      matchConfidence: ['EXACT_IP', 'UNMATCHED'], page: 1, pageSize: 50,
+    });
+
+    expect(result!.total).toBe(125);
+    expect(result!.byMatchConfidence).toEqual({ EXACT_IP: 65, UNMATCHED: 60 });
+  });
+
+  it('accepts an array of classification values and unions them', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      classification: ['NUEVA', 'EXISTENTE_PENDIENTE'], page: 1, pageSize: 50,
+    });
+
+    // The full batch — every row is one of these two classifications.
+    expect(result!.total).toBe(130);
   });
 });
 

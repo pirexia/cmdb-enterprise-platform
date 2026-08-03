@@ -22,6 +22,7 @@ const mockBatchUpdate     = jest.fn();
 
 const mockEntryGroupBy    = jest.fn();
 const mockEntryFindMany   = jest.fn();
+const mockEntryCount      = jest.fn();
 const mockEntryFindFirst  = jest.fn();
 const mockEntryUpdate     = jest.fn();
 const mockEntryUpdateMany = jest.fn();
@@ -40,7 +41,7 @@ jest.mock('@prisma/client', () => ({
         findUnique: mockBatchFindUnique, update: mockBatchUpdate,
       },
       vulnImportEntry: {
-        groupBy: mockEntryGroupBy, findMany: mockEntryFindMany, findFirst: mockEntryFindFirst,
+        groupBy: mockEntryGroupBy, findMany: mockEntryFindMany, count: mockEntryCount, findFirst: mockEntryFindFirst,
         update: mockEntryUpdate, updateMany: mockEntryUpdateMany, createMany: mockEntryCreateMany,
       },
     };
@@ -369,15 +370,42 @@ describe('GET /api/vuln-import/batches/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('200 returns the batch and its entries', async () => {
+  it('200 returns the batch, its (paginated) entries, total, and aggregated classification counts', async () => {
     mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([{ id: ENTRY_ID, batchId: BATCH_ID, classification: 'NUEVA' }]);
+    mockEntryCount.mockResolvedValueOnce(137);
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { classification: 'NUEVA', _count: { _all: 90 } },
+      { classification: 'EXISTENTE_PENDIENTE', _count: { _all: 47 } },
+    ]);
 
     const res = await buildApp().get(`/api/vuln-import/batches/${BATCH_ID}`).set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
     expect(res.status).toBe(200);
     expect(res.body.batch.id).toBe(BATCH_ID);
     expect(res.body.entries).toHaveLength(1);
+    // total/byClassification come from count()/groupBy(), not from counting
+    // the (possibly single-page) entries array — 137/90/47 here deliberately
+    // don't match the 1-row `entries` array above.
+    expect(res.body.total).toBe(137);
+    expect(res.body.byClassification).toEqual({ NUEVA: 90, EXISTENTE_PENDIENTE: 47 });
+  });
+
+  it('propagates page/pageSize query params into the findMany skip/take', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+    mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
+    mockEntryFindMany.mockResolvedValueOnce([]);
+    mockEntryCount.mockResolvedValueOnce(0);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+
+    const res = await buildApp()
+      .get(`/api/vuln-import/batches/${BATCH_ID}?page=3&pageSize=25`)
+      .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+
+    expect(res.status).toBe(200);
+    const findManyArg = mockEntryFindMany.mock.calls.at(-1)?.[0];
+    expect(findManyArg.skip).toBe(50); // (page 3 - 1) * pageSize 25
+    expect(findManyArg.take).toBe(25);
   });
 });
 

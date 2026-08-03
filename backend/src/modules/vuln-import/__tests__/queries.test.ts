@@ -4,8 +4,11 @@ import {
   writeBatchEntries,
   finalizeBatch,
   recoverOrphanedRunningBatches,
+  getBatchWithEntries,
+  MAX_ENTRY_PAGE_SIZE,
   type NewBatchMeta,
   type NewEntryInput,
+  type PrismaOrTx,
 } from '../queries.js';
 
 // Real bug caught during live verification (Red Hat Lightspeed connector,
@@ -189,5 +192,119 @@ describe('recoverOrphanedRunningBatches', () => {
     const affected = await recoverOrphanedRunningBatches(prisma);
 
     expect(affected).toBe(0);
+  });
+});
+
+describe('getBatchWithEntries', () => {
+  // Task 8 (v3.7.0): a real Red Hat Lightspeed pull lands ~13,868 entries in
+  // one batch, each with its full `raw` jsonb blob — the original
+  // unpaginated `findMany` returned all of them in a single response. This
+  // builds an in-memory fake of 130 rows (>MAX_ENTRY_PAGE_SIZE) split across
+  // two classifications, and drives fake `findMany`/`count`/`groupBy` calls
+  // off it so the test exercises the same skip/take/where the real Prisma
+  // client would see, without touching a real database.
+  const ROWS = Array.from({ length: 130 }, (_, i) => ({
+    id: `entry-${i}`,
+    name: `CVE-2024-${String(i).padStart(4, '0')}`,
+    classification: i < 90 ? 'NUEVA' : 'EXISTENTE_PENDIENTE',
+  }));
+
+  function buildPrisma(rows: typeof ROWS) {
+    const findUnique = jest.fn().mockResolvedValue({ id: 'batch-1' });
+    const findMany = jest.fn(async ({ where, skip = 0, take }: {
+      where: { classification?: string }; skip?: number; take?: number;
+    }) => {
+      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
+      const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+      return sorted.slice(skip, take !== undefined ? skip + take : undefined);
+    });
+    const count = jest.fn(async ({ where }: { where: { classification?: string } }) => {
+      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
+      return filtered.length;
+    });
+    const groupBy = jest.fn(async ({ where }: { where: { classification?: string } }) => {
+      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
+      const counts = new Map<string, number>();
+      for (const r of filtered) counts.set(r.classification, (counts.get(r.classification) ?? 0) + 1);
+      return [...counts.entries()].map(([classification, count]) => ({ classification, _count: { _all: count } }));
+    });
+    const prisma = {
+      vulnImportBatch: { findUnique },
+      vulnImportEntry: { findMany, count, groupBy },
+    } as unknown as PrismaOrTx;
+    return { prisma, findMany, count, groupBy };
+  }
+
+  it('returns exactly pageSize entries, the correct total, and classification counts over the WHOLE batch (not just the loaded page)', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', { page: 1, pageSize: 50 });
+
+    expect(result).not.toBeNull();
+    expect(result!.entries).toHaveLength(50);
+    expect(result!.total).toBe(130);
+    // If this were counting the loaded 50-row page instead of using
+    // groupBy over the full 130-row where-clause, NUEVA would read <=50
+    // instead of the true 90.
+    expect(result!.byClassification).toEqual({ NUEVA: 90, EXISTENTE_PENDIENTE: 40 });
+  });
+
+  it('returns the second page with the remaining entries', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', { page: 3, pageSize: 50 });
+
+    // 130 entries at 50/page = pages of 50, 50, 30.
+    expect(result!.entries).toHaveLength(30);
+    expect(result!.total).toBe(130);
+  });
+
+  it('clamps an oversized pageSize to MAX_ENTRY_PAGE_SIZE', async () => {
+    const { prisma, findMany } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', { page: 1, pageSize: 999999 });
+
+    expect(result!.entries).toHaveLength(MAX_ENTRY_PAGE_SIZE);
+    expect(findMany.mock.calls[0][0].take).toBe(MAX_ENTRY_PAGE_SIZE);
+  });
+
+  it('defaults to page 1 / a sane pageSize when neither is supplied', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', {});
+
+    expect(result!.page).toBe(1);
+    expect(result!.pageSize).toBeGreaterThan(0);
+    expect(result!.pageSize).toBeLessThanOrEqual(MAX_ENTRY_PAGE_SIZE);
+  });
+
+  it('returns null without querying entries when the batch does not exist', async () => {
+    const findUnique = jest.fn().mockResolvedValue(null);
+    const findMany = jest.fn();
+    const count = jest.fn();
+    const groupBy = jest.fn();
+    const prisma = {
+      vulnImportBatch: { findUnique },
+      vulnImportEntry: { findMany, count, groupBy },
+    } as unknown as PrismaOrTx;
+
+    const result = await getBatchWithEntries(prisma, 'missing-batch', { page: 1, pageSize: 50 });
+
+    expect(result).toBeNull();
+    expect(findMany).not.toHaveBeenCalled();
+    expect(count).not.toHaveBeenCalled();
+    expect(groupBy).not.toHaveBeenCalled();
+  });
+
+  it('applies the classification filter to entries, count, AND groupBy consistently', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      classification: 'NUEVA', page: 1, pageSize: 50,
+    });
+
+    expect(result!.total).toBe(90);
+    expect(result!.byClassification).toEqual({ NUEVA: 90 });
+    expect(result!.entries.every((e) => e.classification === 'NUEVA')).toBe(true);
   });
 });

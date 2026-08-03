@@ -84,7 +84,9 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
       const classification = typeof req.query.classification === 'string' ? req.query.classification : undefined;
       const severity = typeof req.query.severity === 'string' ? req.query.severity : undefined;
       const decision = typeof req.query.decision === 'string' ? req.query.decision : undefined;
-      const result = await getBatchDetail(prisma, req.params.id as string, { classification, severity, decision });
+      const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+      const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
+      const result = await getBatchDetail(prisma, req.params.id as string, { classification, severity, decision, page, pageSize });
       res.json(result);
     } catch (err) {
       if (err instanceof BatchNotFoundError) { res.status(404).json({ error: 'BATCH_NOT_FOUND' }); return; }

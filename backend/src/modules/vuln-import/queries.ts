@@ -290,7 +290,18 @@ export interface EntryFilter {
   classification?: string;
   severity?: string;
   decision?: string;
+  page?: number;
+  pageSize?: number;
 }
+
+// A real Red Hat Lightspeed pull lands ~13,868 entries in a single batch,
+// each carrying its full `raw` jsonb blob — an unpaginated `findMany` here
+// is tens of MB in one response (see writeBatchEntries's comment for the
+// same order-of-magnitude problem on the write side). 100 mirrors the same
+// ceiling `listBatches`'s caller (service.ts's `listBatches`) already
+// applies to batch listing, so both paginated endpoints in this module
+// share one page-size cap instead of drifting apart.
+export const MAX_ENTRY_PAGE_SIZE = 100;
 
 export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, filter: EntryFilter) {
   const batch = await prisma.vulnImportBatch.findUnique({ where: { id: batchId } });
@@ -301,8 +312,35 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
   if (filter.severity) where.severity = filter.severity;
   if (filter.decision) where.decision = filter.decision;
 
-  const entries = await prisma.vulnImportEntry.findMany({ where, orderBy: { name: 'asc' } });
-  return { batch, entries };
+  const page = Math.max(1, filter.page ?? 1);
+  const pageSize = Math.min(MAX_ENTRY_PAGE_SIZE, Math.max(1, filter.pageSize ?? 50));
+
+  const [entries, total, byClassificationRaw] = await Promise.all([
+    prisma.vulnImportEntry.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.vulnImportEntry.count({ where }),
+    // Classification counts for the review screen's tabs must reflect the
+    // WHOLE batch (minus severity/decision filters, same `where` as above),
+    // not just the current page — aggregated via groupBy rather than
+    // counting the loaded page in memory, same pattern as listBatches'
+    // `byClassification` above.
+    prisma.vulnImportEntry.groupBy({
+      by: ['classification'],
+      where,
+      _count: { _all: true },
+    }),
+  ]);
+
+  const byClassification: Record<string, number> = {};
+  for (const row of byClassificationRaw) {
+    byClassification[row.classification] = row._count._all;
+  }
+
+  return { batch, entries, total, page, pageSize, byClassification };
 }
 
 export async function getBatch(prisma: PrismaOrTx, batchId: string) {

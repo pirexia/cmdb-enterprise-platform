@@ -37,6 +37,11 @@ interface Vulnerability {
   family?:     string;
   solution?:   string;
   epssScore?:  number;
+  // Vulnerability owner assignment (v3.7.0 responsable phase) — optional so
+  // legacy stored vulnerabilities (no assignment yet) remain valid.
+  assignedTo?: string;  // user id
+  assignedAt?: string;  // ISO date
+  assignedBy?: string;  // user id of whoever made the assignment
 }
 
 interface CI {

@@ -39,4 +39,10 @@ export interface Vulnerability {
   redhatImpact?: string;
   knownExploit?: boolean;
   publicDate?: string;
+  // Vulnerability owner assignment (v3.7.0 responsable phase) — all optional,
+  // so any previously stored vulnerability (no assignment yet) remains valid
+  // against this type unmodified. No schema migration: still JSON-in-CI.
+  assignedTo?: string;   // user id
+  assignedAt?: string;   // ISO date
+  assignedBy?: string;   // user id of whoever made the assignment
 }

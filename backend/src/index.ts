@@ -77,7 +77,7 @@ import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authen
 import { requireAdmin }     from './shared/middleware/requireAdmin';
 import { requireAudit }     from './shared/middleware/requireAudit';
 import { requireUuidParam } from './shared/middleware/requireUuidParam';
-import { requireSecurityRead, requireSecurityWrite } from './shared/middleware/requireSecurity';
+import { requireSecurityWrite } from './shared/middleware/requireSecurity';
 import { escapeLike }       from './shared/utils/likeEscape';
 import { buildAuditDetails } from './shared/utils/audit';
 

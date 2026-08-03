@@ -498,30 +498,14 @@ function findOsHint(entries: { raw: unknown }[]): { os_name?: string; os_major?:
   return entries.map((e) => e.raw as { os_name?: string; os_major?: number; os_minor?: number }).find((r) => r?.os_name);
 }
 
-/** Closes any `redhat-lightspeed`-sourced, still-open vulnerability on
- *  `byIdentity` that is not in `stillReportedKeys` — the closure sweep
- *  (spec §8), factored out so it runs identically whether or not this CI
- *  had an INCLUDEd entry in this batch. Mutates `byIdentity` in place;
- *  returns whether anything changed. */
-async function sweepLightspeedClosures(
-  tx: Prisma.TransactionClient,
-  ciId: string,
-  byIdentity: Map<string, Vulnerability>,
-  stillReportedKeys: Set<string>,
-  now: string,
-  userEmail: string,
-): Promise<boolean> {
-  let changed = false;
-  for (const [key, v] of byIdentity) {
-    if (v.source === 'redhat-lightspeed' && !stillReportedKeys.has(key)
-        && ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'].includes(v.status)) {
-      byIdentity.set(key, { ...v, status: 'RESUELTO', resolvedAt: now });
-      await vulnImportAudit(tx, 'VULN_AUTO_RESOLVED', 'CI', ciId, userEmail, { vulnKey: key });
-      changed = true;
-    }
-  }
-  return changed;
-}
+// Same "still open" list `computeAbsentClosures` (classifier.ts) uses to
+// decide whether a stored vulnerability's absence from a batch is eligible
+// for a RESUELTA_AUSENTE closure entry in the first place. Kept as a literal
+// here (not imported) deliberately — see classifier.ts's long comment on
+// `ABSENT_CLOSURE_OPEN_STATUSES` for why this exact list (including
+// REABIERTA) is the one that must never drift from this one.
+const RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES: readonly string[] =
+  ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'];
 
 export async function acceptBatch(
   prisma: PrismaClient,
@@ -626,6 +610,23 @@ export async function acceptBatch(
           });
           reopenedCount++;
           await vulnImportAudit(tx, 'VULN_REOPENED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
+        } else if (entry.classification === 'RESUELTA_AUSENTE') {
+          // Closure entry generated at upload time by computeAbsentClosures
+          // (task 15) — the operator did not uncheck it in review. Mandatory
+          // re-verification (task 16 brief, non-negotiable): the stored
+          // vulnerability may have changed between upload and accept (e.g. a
+          // manual PATCH resolved or reopened it in the meantime), so its
+          // CURRENT status is re-read from `byIdentity` (itself just loaded
+          // from the DB above, inside this same transaction) rather than
+          // trusting the snapshot the classifier saw at upload time. Only
+          // close if still open; if it's no longer open (already resolved)
+          // or no longer exists at all (some other concurrent edit removed
+          // it), this entry is simply stale — skip silently, not an error.
+          const existing = byIdentity.get(entry.vulnKey);
+          if (existing && RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES.includes(existing.status)) {
+            byIdentity.set(entry.vulnKey, { ...existing, status: 'RESUELTO', resolvedAt: now });
+            await vulnImportAudit(tx, 'VULN_AUTO_RESOLVED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
+          }
         } else {
           // EXISTENTE_PENDIENTE, decision manually flipped to INCLUDE by an
           // operator: metadata refresh only, status is explicitly untouched.
@@ -649,30 +650,28 @@ export async function acceptBatch(
       if (batch.source === 'redhat-lightspeed') {
         const osHint = findOsHint(entries);
         if (osHint) await correctOperatingSystem(tx, ciId, osHint);
-
-        // Closure sweep: this batch gives a COMPLETE picture of every CVE
-        // Lightspeed currently sees on this CI (spec §8) — ALL entries for
-        // this CI in this batch (not just INCLUDEd ones; an EXCLUDEd entry
-        // still means "Lightspeed still reports this as open"), scoped
-        // strictly to source='redhat-lightspeed' so Greenbone/CrowdStrike
-        // vulns on the same CI are never touched.
-        const allBatchEntriesForCi = allEntries.filter((e) => e.ciId === ciId);
-        const stillReportedKeys = new Set(allBatchEntriesForCi.map((e) => e.vulnKey));
-        await sweepLightspeedClosures(tx, ciId, byIdentity, stillReportedKeys, now, userEmail);
       }
 
       await updateCiVulnerabilities(tx, ciId, [...byIdentity.values()]);
       touched.push({ ciId, vulnKeys: vulnKeysTouched });
     }
 
-    // Steady-state case (Important finding from the final branch review):
-    // a re-import where every entry for a CI classifies EXISTENTE_PENDIENTE
-    // (decision EXCLUDE by default) never puts that CI in `byCi` above — but
-    // OS correction and the closure sweep must still run for it; skipping
-    // them here would mean the sweep (the main point of this connector,
-    // spec §8) only ever fires on a CI's FIRST accept, never subsequent
-    // ones. Only for redhat-lightspeed batches; only for CIs with a
-    // resolved (non-blocking) match not already processed above.
+    // Steady-state case: a re-import where every entry for a CI classifies
+    // EXISTENTE_PENDIENTE (decision EXCLUDE by default) never puts that CI in
+    // `byCi` above. This used to also carry the closure sweep for such CIs,
+    // but that's no longer needed here (task 16): a CI with at least one
+    // pending closure (RESUELTA_AUSENTE, decision INCLUDE by default — see
+    // computeAbsentClosures) already lands in `byCi` naturally, same as any
+    // other INCLUDEd entry, and is handled by the main loop above. What's
+    // left here is OS correction alone — it must still run for a CI whose
+    // batch entries are ALL EXISTENTE_PENDIENTE/EXCLUDE (nothing to close,
+    // nothing new to review, but Lightspeed's OS report for it may still
+    // have changed since the last accept). correctOperatingSystem writes
+    // CI.operatingSystemId directly (tx.cI.update) — it never touches the
+    // `vulnerabilities` JSON column, so there is nothing to fetch from
+    // getCiVulnerabilities or write back via updateCiVulnerabilities here.
+    // Only for redhat-lightspeed batches; only for CIs with a resolved
+    // (non-blocking) match not already processed above.
     if (batch.source === 'redhat-lightspeed') {
       const remainingCiIds = new Set(
         allEntries
@@ -680,20 +679,10 @@ export async function acceptBatch(
           .map((e) => e.ciId as string),
       );
       for (const ciId of remainingCiIds) {
-        const stored = await getCiVulnerabilities(tx, ciId);
-        const now = new Date().toISOString();
-        const byIdentity = new Map<string, Vulnerability>();
-        for (const v of stored) byIdentity.set(v.key ?? v.cve, v);
-
         const entriesForCi = allEntries.filter((e) => e.ciId === ciId);
         const osHint = findOsHint(entriesForCi);
-        if (osHint) await correctOperatingSystem(tx, ciId, osHint);
-
-        const stillReportedKeys = new Set(entriesForCi.map((e) => e.vulnKey));
-        const sweepChanged = await sweepLightspeedClosures(tx, ciId, byIdentity, stillReportedKeys, now, userEmail);
-
-        if (osHint || sweepChanged) {
-          await updateCiVulnerabilities(tx, ciId, [...byIdentity.values()]);
+        if (osHint) {
+          await correctOperatingSystem(tx, ciId, osHint);
           touched.push({ ciId, vulnKeys: [] });
         }
       }

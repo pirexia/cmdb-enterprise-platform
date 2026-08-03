@@ -228,17 +228,19 @@ export function classifyVulnerability(
 //
 // `computeAbsentClosures` answers a different question — "is a stored
 // vulnerability still open enough that its absence from a complete, current
-// report should count as a resolution". That is exactly the question
-// `sweepLightspeedClosures` (service.ts, currently only wired for
-// batch.source === 'redhat-lightspeed', run at ACCEPT time) already answers
-// today, and its inline literal there
-// (`['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA']`) DOES include
+// report should count as a resolution". That is exactly the question the
+// accept-time re-verification in `acceptBatch` (service.ts, the
+// `RESUELTA_AUSENTE` branch — formerly a Lightspeed-only sweep called
+// `sweepLightspeedClosures`, generalized to all 3 sources by task 16) answers
+// when it re-checks a stored vulnerability's CURRENT status before actually
+// closing it. Its literal there
+// (`RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES`, service.ts) DOES include
 // REABIERTA — a reopened vulnerability is still an open one, and a report
 // that no longer sees it is exactly the "reopened, then actually fixed"
 // case this whole mechanism exists to catch. This function replicates that
-// list verbatim so the new upload-time staging path (this task) and the
-// existing accept-time sweep (Lightspeed only, until task 16 generalizes it)
-// never disagree about what "still open" means for the same status value.
+// list verbatim so the upload-time staging path (this function) and the
+// accept-time re-verification (service.ts) never disagree about what "still
+// open" means for the same status value.
 //
 // NOTE ON A NAMING COLLISION IN THIS CODEBASE: `REAPARECIDA` (a
 // `VulnClassification` value, "reappeared" — a transient upload-time
@@ -249,11 +251,11 @@ export function classifyVulnerability(
 // `VulnStatus` at all (see `../integrations/types.ts`: `VulnStatus =
 // 'NUEVO' | 'ASIGNADO' | 'EN_CURSO' | 'PARADO' | 'RESUELTO' | 'REABIERTA'`),
 // so a status list built around it would never match anything reopened.
-// The list below uses `REABIERTA`, matching both the actual source at
-// service.ts's `sweepLightspeedClosures` and the original task-15 design
-// brief (`.superpowers/sdd/task-15-brief.md` line 19) — verified directly
-// against both before writing this function; see task-15-report.md for the
-// full verification trail.
+// The list below uses `REABIERTA`, matching both
+// `RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES` in service.ts and the original
+// task-15 design brief (`.superpowers/sdd/task-15-brief.md` line 19) —
+// verified directly against both before writing this function; see
+// task-15-report.md for the full verification trail.
 const ABSENT_CLOSURE_OPEN_STATUSES: readonly VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'];
 
 /**

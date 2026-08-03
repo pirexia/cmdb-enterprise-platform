@@ -2215,8 +2215,9 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
  * follows the precedent set by the staff-schedule worker selector
  * (`GET /api/staff-schedule/users`, `searchScheduleUsers` in
  * modules/staff-schedule/queries.ts): `{ id, displayName }`, falling back to
- * `username` when `displayName` is null (see service.ts sortByDisplayName:
- * `a.displayName ?? a.username`).
+ * `username` when `displayName` is null (see staff-schedule/service.ts's
+ * `sortRowManagerFirst` comparator, which uses the same `a.displayName ??
+ * a.username` fallback expression).
  *
  * Registered before the `?` param-less legacy PATCH route above on the same
  * path prefix is not a concern here (this is GET on a distinct sub-path,

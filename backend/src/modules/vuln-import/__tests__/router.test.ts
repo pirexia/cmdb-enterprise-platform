@@ -335,6 +335,81 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
   });
 });
 
+// ── POST /upload — absent-closure staging (task 15, v3.7.0 prep) ───────────
+//
+// `computeAbsentClosures`'s pure-function cases (same-source close, other-
+// source no-close, RESUELTO no-close, REABIERTA closes) are covered in
+// classifier.test.ts. The one case that can only be verified at this
+// integration level is "a CI absent from the batch entirely never gets a
+// closure" — `storedVulnsByCi` (uploadReport's cache) is only ever populated
+// for hosts matched in the CURRENT report, so a stored open vulnerability on
+// some other CI is never even fetched, let alone closed.
+
+describe('POST /api/vuln-import/upload — absent-closure staging (task 15)', () => {
+  it('201: a stored, same-source, open vulnerability absent from this report becomes a RESUELTA_AUSENTE/INCLUDE closure entry alongside the normal NUEVA entry', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
+      .mockResolvedValueOnce([{
+        vulnerabilities: [{
+          key: 'stale-oid@22/tcp', cve: 'CVE-2020-0001', severity: 'HIGH',
+          description: 'stale vuln', source: 'greenbone', status: 'NUEVO',
+          importedAt: '2026-01-01T00:00:00Z',
+        }],
+      }]); // getCiVulnerabilities — one stale open greenbone vuln, not in this report
+
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: buildReport() }); // buildReport()'s only vuln has CVE-2024-0001, a different key
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary.totalEntries).toBe(2); // 1 NUEVA + 1 RESUELTA_AUSENTE closure
+
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0].data as Array<Record<string, unknown>>;
+    expect(entriesArg).toHaveLength(2);
+    const closure = entriesArg.find((e) => e.classification === 'RESUELTA_AUSENTE');
+    expect(closure).toMatchObject({
+      ciId: CI_ID, vulnKey: 'stale-oid@22/tcp', decision: 'INCLUDE', existingStatus: 'NUEVO',
+    });
+
+    // Only the matched CI is ever fetched — no other CI's vulnerabilities
+    // are queried, so no other CI could possibly get a closure entry.
+    expect(mockQueryRaw).toHaveBeenCalledTimes(3);
+    expect(entriesArg.every((e) => e.ciId === CI_ID)).toBe(true);
+  });
+
+  it('201: a stored open vulnerability from a DIFFERENT source than this batch is left untouched (no closure)', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
+      .mockResolvedValueOnce([{
+        vulnerabilities: [{
+          key: 'cs-key-1', cve: 'CVE-2020-0002', severity: 'HIGH',
+          description: 'crowdstrike-sourced vuln', source: 'crowdstrike', status: 'NUEVO',
+          importedAt: '2026-01-01T00:00:00Z',
+        }],
+      }]); // getCiVulnerabilities — open, but sourced from crowdstrike, not this greenbone batch
+
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: buildReport() });
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary.totalEntries).toBe(1); // only the NUEVA entry, no closure
+
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0].data as Array<Record<string, unknown>>;
+    expect(entriesArg.some((e) => e.classification === 'RESUELTA_AUSENTE')).toBe(false);
+  });
+});
+
 // ── GET /batches ─────────────────────────────────────────────────────────────
 
 describe('GET /api/vuln-import/batches', () => {

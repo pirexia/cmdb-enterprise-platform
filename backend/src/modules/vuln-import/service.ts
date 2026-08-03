@@ -3,7 +3,7 @@ import type { Vulnerability, VulnSeverity } from '../integrations/types.js';
 import { parseGreenboneReport, type ParsedGreenboneScan } from './parser.js';
 import { parseCrowdStrikeReport } from './crowdstrikeParser.js';
 import { matchHost, type MatchResult } from './matcher.js';
-import { classifyVulnerability } from './classifier.js';
+import { classifyVulnerability, computeAbsentClosures } from './classifier.js';
 import { vulnImportAudit } from './audit.js';
 import {
   createBatchShell, writeBatchEntries, finalizeBatch, listBatches as queryListBatches, getBatchWithEntries,
@@ -209,6 +209,23 @@ export async function uploadReport(
       knownExploit: entry.knownExploit ?? null,
       publicDate: safeDate(entry.publicDate),
     });
+  }
+
+  // Absence-closure staging (task 15, v3.7.0 prep): `storedVulnsByCi` was
+  // populated above ONLY for hosts matched in THIS batch (see the loop
+  // above), so iterating its keys is exactly the "CIs present in the
+  // current batch" population the design requires — a CI with old open
+  // vulnerabilities that never appeared in this report is never in this
+  // map, and therefore never gets a closure entry. For each such CI,
+  // `reportedKeys` is this batch's own identity set for that CI (the
+  // `vulnKey` of every normal entry already pushed above with that ciId) —
+  // computeAbsentClosures closes anything from the same `source` that's
+  // open but missing from that set.
+  for (const [ciId, storedVulns] of storedVulnsByCi) {
+    const reportedKeys = new Set(
+      newEntries.filter((e) => e.ciId === ciId).map((e) => e.vulnKey),
+    );
+    newEntries.push(...computeAbsentClosures(ciId, source, storedVulns, reportedKeys));
   }
   summary.totalEntries = newEntries.length;
 

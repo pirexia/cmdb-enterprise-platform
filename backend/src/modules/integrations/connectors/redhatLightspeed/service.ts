@@ -6,7 +6,7 @@ import { listSystems, listSystemCves, type LightspeedSystem } from './vulnClient
 import { getHostIdentity } from './inventoryClient.js';
 import { mapSystemToEntries } from './mapper.js';
 import { matchHost, type MatchResult } from '../../../vuln-import/matcher.js';
-import { classifyVulnerability } from '../../../vuln-import/classifier.js';
+import { classifyVulnerability, computeAbsentClosures } from '../../../vuln-import/classifier.js';
 import { createBatchShell, writeBatchEntries, finalizeBatch, getCiVulnerabilities, type NewEntryInput } from '../../../vuln-import/queries.js';
 
 // Live-pull orchestration for Red Hat Lightspeed — mirrors uploadReport()'s
@@ -187,6 +187,21 @@ async function runImportBackground(
         where: { id: batchId },
         data: { progressCurrent: processed },
       });
+    }
+
+    // Absence-closure staging (task 15, v3.7.0 prep): `storedVulnsByCi` was
+    // populated above ONLY for systems matched to a CI in THIS run (see the
+    // loop above) — iterating its keys is exactly the "CIs present in the
+    // current batch" population the design requires, so a CI with old open
+    // Lightspeed vulnerabilities that this run never reported on again is
+    // never in this map and never gets a closure entry. `reportedKeys` is
+    // this run's own identity set for that CI (the `vulnKey` of every
+    // normal entry already pushed above with that ciId).
+    for (const [ciId, storedVulns] of storedVulnsByCi) {
+      const reportedKeys = new Set(
+        newEntries.filter((e) => e.ciId === ciId).map((e) => e.vulnKey),
+      );
+      newEntries.push(...computeAbsentClosures(ciId, 'redhat-lightspeed', storedVulns, reportedKeys));
     }
 
     await prisma.vulnImportBatch.update({

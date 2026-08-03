@@ -101,12 +101,21 @@ export const PatchEntrySchema = z.object({
 });
 export type PatchEntryBody = z.infer<typeof PatchEntrySchema>;
 
+// matchConfidence is a free VarChar(30) column (schema.prisma ~line 1115),
+// not a Postgres/Zod enum elsewhere in this module (queries.ts's EntryFilter
+// types it as `string`) — kept as a plain non-empty string here rather than
+// an enum so a future matcher cascade label (matcher.ts) doesn't require a
+// schema change to filter on, same reasoning as `VulnImportSource` on the
+// frontend side.
+const MatchConfidenceFilter = z.string().min(1);
+
 /** POST /batches/:id/entries/bulk-decision — include/exclude in bulk over a filter. */
 export const BulkDecisionSchema = z.object({
   filter: z.object({
     classification: ClassificationEnum.optional(),
     severity: SeverityEnum.optional(),
     decision: DecisionEnum.optional(),
+    matchConfidence: MatchConfidenceFilter.optional(),
   }).strict().default({}),
   decision: DecisionEnum,
 }).strict();

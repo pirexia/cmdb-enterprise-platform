@@ -290,9 +290,21 @@ export interface EntryFilter {
   classification?: string;
   severity?: string;
   decision?: string;
+  matchConfidence?: string;
   page?: number;
   pageSize?: number;
 }
+
+// Representation for VulnImportEntry.matchConfidence rows where the DB
+// column is null (schema.prisma ~line 1115: `String? @db.VarChar(30)`) — in
+// practice this never happens post-upload (service.ts always assigns one of
+// the matcher cascade labels or 'AMBIGUOUS'/'UNMATCHED'/'MANUAL'), but the
+// groupBy aggregate below must still give a defined key for any row that
+// somehow has a null value, rather than silently dropping its count or
+// producing an object key of the literal string "null". Chosen to read
+// clearly in the "Requiere atención" tab's counts alongside the other
+// match-confidence labels.
+export const NO_MATCH_CONFIDENCE_KEY = 'NONE';
 
 // A real Red Hat Lightspeed pull lands ~13,868 entries in a single batch,
 // each carrying its full `raw` jsonb blob — an unpaginated `findMany` here
@@ -311,11 +323,12 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
   if (filter.classification) where.classification = filter.classification;
   if (filter.severity) where.severity = filter.severity;
   if (filter.decision) where.decision = filter.decision;
+  if (filter.matchConfidence) where.matchConfidence = filter.matchConfidence;
 
   const page = Math.max(1, filter.page ?? 1);
   const pageSize = Math.min(MAX_ENTRY_PAGE_SIZE, Math.max(1, filter.pageSize ?? 50));
 
-  const [entries, total, byClassificationRaw] = await Promise.all([
+  const [entries, total, byClassificationRaw, bySeverityRaw, byMatchConfidenceRaw] = await Promise.all([
     prisma.vulnImportEntry.findMany({
       where,
       orderBy: { name: 'asc' },
@@ -323,13 +336,27 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
       take: pageSize,
     }),
     prisma.vulnImportEntry.count({ where }),
-    // Classification counts for the review screen's tabs must reflect the
-    // WHOLE batch (minus severity/decision filters, same `where` as above),
+    // Classification/severity/matchConfidence counts for the review screen's
+    // tabs ("Accionables"/"Informativas" by severity, "Requieren atención" by
+    // matchConfidence, "Reaparecidas" by classification — task-8b brief) must
+    // reflect the WHOLE batch (minus whatever filter narrowed `where` above),
     // not just the current page — aggregated via groupBy rather than
     // counting the loaded page in memory, same pattern as listBatches'
-    // `byClassification` above.
+    // `byClassification` above. All three share the exact same `where` as
+    // `findMany`/`count` so a filtered request's counts stay consistent with
+    // its page.
     prisma.vulnImportEntry.groupBy({
       by: ['classification'],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.vulnImportEntry.groupBy({
+      by: ['severity'],
+      where,
+      _count: { _all: true },
+    }),
+    prisma.vulnImportEntry.groupBy({
+      by: ['matchConfidence'],
       where,
       _count: { _all: true },
     }),
@@ -340,7 +367,22 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
     byClassification[row.classification] = row._count._all;
   }
 
-  return { batch, entries, total, page, pageSize, byClassification };
+  const bySeverity: Record<string, number> = {};
+  for (const row of bySeverityRaw) {
+    bySeverity[row.severity] = row._count._all;
+  }
+
+  // matchConfidence is nullable in the DB (see NO_MATCH_CONFIDENCE_KEY's
+  // comment) — groupBy returns a row with matchConfidence: null for those,
+  // which we fold into the NO_MATCH_CONFIDENCE_KEY bucket rather than a
+  // key literally named "null".
+  const byMatchConfidence: Record<string, number> = {};
+  for (const row of byMatchConfidenceRaw) {
+    const key = row.matchConfidence ?? NO_MATCH_CONFIDENCE_KEY;
+    byMatchConfidence[key] = row._count._all;
+  }
+
+  return { batch, entries, total, page, pageSize, byClassification, bySeverity, byMatchConfidence };
 }
 
 export async function getBatch(prisma: PrismaOrTx, batchId: string) {
@@ -376,6 +418,7 @@ export async function bulkUpdateDecision(
   if (filter.classification) where.classification = filter.classification;
   if (filter.severity) where.severity = filter.severity;
   if (filter.decision) where.decision = filter.decision;
+  if (filter.matchConfidence) where.matchConfidence = filter.matchConfidence;
 
   return tx.vulnImportEntry.updateMany({ where, data: { decision, edited: true } });
 }

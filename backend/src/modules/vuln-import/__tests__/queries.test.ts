@@ -7,6 +7,7 @@ import {
   getBatchWithEntries,
   bulkUpdateDecision,
   MAX_ENTRY_PAGE_SIZE,
+  NO_MATCH_CONFIDENCE_KEY,
   type NewBatchMeta,
   type NewEntryInput,
   type PrismaOrTx,
@@ -204,30 +205,54 @@ describe('getBatchWithEntries', () => {
   // two classifications, and drives fake `findMany`/`count`/`groupBy` calls
   // off it so the test exercises the same skip/take/where the real Prisma
   // client would see, without touching a real database.
+  // Deliberately sized/split so the classification/severity/matchConfidence
+  // splits don't line up with each other or with any single page boundary —
+  // if `getBatchWithEntries` ever counted the loaded page instead of the
+  // groupBy'd whole batch, at least one of these counts would come out
+  // wrong for a 50-row page.
   const ROWS = Array.from({ length: 130 }, (_, i) => ({
     id: `entry-${i}`,
     name: `CVE-2024-${String(i).padStart(4, '0')}`,
     classification: i < 90 ? 'NUEVA' : 'EXISTENTE_PENDIENTE',
+    severity: i < 40 ? 'CRITICAL' : i < 100 ? 'HIGH' : 'LOW',
+    // 5 rows have a null matchConfidence (never happens post-upload in
+    // practice, but the DB column is nullable — see NO_MATCH_CONFIDENCE_KEY).
+    matchConfidence: i < 5 ? null : i < 70 ? 'EXACT_IP' : 'UNMATCHED',
   }));
 
-  function buildPrisma(rows: typeof ROWS) {
+  type Row = (typeof ROWS)[number];
+  type FakeWhere = { classification?: string; severity?: string; matchConfidence?: string };
+
+  function applyWhere(rows: Row[], where: FakeWhere) {
+    return rows.filter((r) =>
+      (where.classification === undefined || r.classification === where.classification)
+      && (where.severity === undefined || r.severity === where.severity)
+      && (where.matchConfidence === undefined || r.matchConfidence === where.matchConfidence));
+  }
+
+  function buildPrisma(rows: Row[]) {
     const findUnique = jest.fn().mockResolvedValue({ id: 'batch-1' });
     const findMany = jest.fn(async ({ where, skip = 0, take }: {
-      where: { classification?: string }; skip?: number; take?: number;
+      where: FakeWhere; skip?: number; take?: number;
     }) => {
-      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
+      const filtered = applyWhere(rows, where);
       const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
       return sorted.slice(skip, take !== undefined ? skip + take : undefined);
     });
-    const count = jest.fn(async ({ where }: { where: { classification?: string } }) => {
-      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
-      return filtered.length;
-    });
-    const groupBy = jest.fn(async ({ where }: { where: { classification?: string } }) => {
-      const filtered = where.classification ? rows.filter((r) => r.classification === where.classification) : rows;
-      const counts = new Map<string, number>();
-      for (const r of filtered) counts.set(r.classification, (counts.get(r.classification) ?? 0) + 1);
-      return [...counts.entries()].map(([classification, count]) => ({ classification, _count: { _all: count } }));
+    const count = jest.fn(async ({ where }: { where: FakeWhere }) => applyWhere(rows, where).length);
+    // Generic across the three distinct `by` fields getBatchWithEntries
+    // groups on (classification/severity/matchConfidence) — mirrors real
+    // Prisma groupBy: aggregates over the WHOLE where-filtered set, not any
+    // page slice.
+    const groupBy = jest.fn(async ({ by, where }: { by: (keyof Row)[]; where: FakeWhere }) => {
+      const field = by[0];
+      const filtered = applyWhere(rows, where);
+      const counts = new Map<string | null, number>();
+      for (const r of filtered) {
+        const key = r[field] as string | null;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([value, count]) => ({ [field]: value, _count: { _all: count } }));
     });
     const prisma = {
       vulnImportBatch: { findUnique },
@@ -308,6 +333,47 @@ describe('getBatchWithEntries', () => {
     expect(result!.byClassification).toEqual({ NUEVA: 90 });
     expect(result!.entries.every((e) => e.classification === 'NUEVA')).toBe(true);
   });
+
+  // Task 8b: bySeverity/byMatchConfidence power the review screen's
+  // "Accionables"/"Informativas" (severity) and "Requieren atención"
+  // (matchConfidence) tabs. Loading a 50-row page (< the 130-row batch, and
+  // in particular < the 120 non-null-matchConfidence rows) must not change
+  // these totals — if the implementation ever counted the loaded page array
+  // instead of using groupBy, CRITICAL/EXACT_IP/etc. counts here would come
+  // out far smaller than asserted.
+  it('returns severity and matchConfidence counts over the WHOLE batch, not just the loaded page', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', { page: 1, pageSize: 50 });
+
+    expect(result!.entries).toHaveLength(50);
+    expect(result!.total).toBe(130);
+    expect(result!.bySeverity).toEqual({ CRITICAL: 40, HIGH: 60, LOW: 30 });
+    // 5 rows have a null matchConfidence in the DB — folded into
+    // NO_MATCH_CONFIDENCE_KEY rather than dropped or keyed as "null".
+    expect(result!.byMatchConfidence).toEqual({
+      [NO_MATCH_CONFIDENCE_KEY]: 5,
+      EXACT_IP: 65,
+      UNMATCHED: 60,
+    });
+  });
+
+  it('applies the matchConfidence filter to entries, count, AND all three groupBy aggregates consistently', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      matchConfidence: 'EXACT_IP', page: 1, pageSize: 50,
+    });
+
+    // Rows 5-69 are EXACT_IP (65 rows): classification NUEVA for i<90 (all
+    // of 5-69), severity CRITICAL for i<40 (35 of them: 5-39) and HIGH for
+    // 40<=i<70 (30 of them: 40-69).
+    expect(result!.total).toBe(65);
+    expect(result!.byMatchConfidence).toEqual({ EXACT_IP: 65 });
+    expect(result!.byClassification).toEqual({ NUEVA: 65 });
+    expect(result!.bySeverity).toEqual({ CRITICAL: 35, HIGH: 30 });
+    expect(result!.entries.every((e) => e.matchConfidence === 'EXACT_IP')).toBe(true);
+  });
 });
 
 describe('bulkUpdateDecision', () => {
@@ -327,6 +393,10 @@ describe('bulkUpdateDecision', () => {
     classification: 'NUEVA',
     severity: i < 120 ? 'CRITICAL' : 'LOW',
     decision: 'EXCLUDE',
+    // 45 UNMATCHED (0-44), 105 EXACT_IP (45-149) — deliberately not aligned
+    // with the severity split above, so a filter on one field can't
+    // accidentally pass by coincidentally matching the other.
+    matchConfidence: i < 45 ? 'UNMATCHED' : 'EXACT_IP',
   }));
 
   function buildTx(rows: typeof ROWS) {
@@ -338,7 +408,8 @@ describe('bulkUpdateDecision', () => {
         r.batchId === where.batchId
         && (where.classification === undefined || r.classification === where.classification)
         && (where.severity === undefined || r.severity === where.severity)
-        && (where.decision === undefined || r.decision === where.decision));
+        && (where.decision === undefined || r.decision === where.decision)
+        && (where.matchConfidence === undefined || r.matchConfidence === where.matchConfidence));
       for (const r of matches) { r.decision = data.decision; }
       return { count: matches.length };
     });
@@ -368,6 +439,7 @@ describe('bulkUpdateDecision', () => {
       ...ROWS.map((r) => ({ ...r })),
       ...Array.from({ length: 20 }, (_, i) => ({
         id: `other-entry-${i}`, batchId: 'batch-2', classification: 'NUEVA', severity: 'CRITICAL', decision: 'EXCLUDE',
+        matchConfidence: 'EXACT_IP',
       })),
     ];
     const { tx } = buildTx(rows);
@@ -386,5 +458,21 @@ describe('bulkUpdateDecision', () => {
 
     expect(result.count).toBe(150);
     expect(rows.every((r) => r.decision === 'EXCLUDE')).toBe(true);
+  });
+
+  // Task 8b: matchConfidence as a bulk-decision filter — e.g. "exclude all
+  // UNMATCHED entries" on the "Requiere atención" tab. Must affect only the
+  // 45 UNMATCHED rows across the WHOLE 150-row batch, not the 105 EXACT_IP
+  // rows and not scoped to any single page.
+  it('flips ALL 45 UNMATCHED entries in a 150-row batch when filtered by matchConfidence, leaving EXACT_IP rows untouched', async () => {
+    const rows = ROWS.map((r) => ({ ...r }));
+    const { tx, updateMany } = buildTx(rows);
+
+    const result = await bulkUpdateDecision(tx, 'batch-1', { matchConfidence: 'UNMATCHED' }, 'INCLUDE');
+
+    expect(result.count).toBe(45);
+    expect(rows.filter((r) => r.matchConfidence === 'UNMATCHED' && r.decision === 'INCLUDE')).toHaveLength(45);
+    expect(rows.filter((r) => r.matchConfidence === 'EXACT_IP' && r.decision === 'INCLUDE')).toHaveLength(0);
+    expect(updateMany.mock.calls[0][0].where).toEqual({ batchId: 'batch-1', matchConfidence: 'UNMATCHED' });
   });
 });

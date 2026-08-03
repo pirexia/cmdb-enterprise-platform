@@ -375,9 +375,19 @@ describe('GET /api/vuln-import/batches/:id', () => {
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([{ id: ENTRY_ID, batchId: BATCH_ID, classification: 'NUEVA' }]);
     mockEntryCount.mockResolvedValueOnce(137);
+    // getBatchWithEntries issues 3 groupBy calls (classification, severity,
+    // matchConfidence, in that order) — one mockResolvedValueOnce per call.
     mockEntryGroupBy.mockResolvedValueOnce([
       { classification: 'NUEVA', _count: { _all: 90 } },
       { classification: 'EXISTENTE_PENDIENTE', _count: { _all: 47 } },
+    ]);
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { severity: 'CRITICAL', _count: { _all: 100 } },
+      { severity: 'LOW', _count: { _all: 37 } },
+    ]);
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { matchConfidence: 'EXACT_IP', _count: { _all: 130 } },
+      { matchConfidence: null, _count: { _all: 7 } },
     ]);
 
     const res = await buildApp().get(`/api/vuln-import/batches/${BATCH_ID}`).set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
@@ -389,6 +399,9 @@ describe('GET /api/vuln-import/batches/:id', () => {
     // don't match the 1-row `entries` array above.
     expect(res.body.total).toBe(137);
     expect(res.body.byClassification).toEqual({ NUEVA: 90, EXISTENTE_PENDIENTE: 47 });
+    expect(res.body.bySeverity).toEqual({ CRITICAL: 100, LOW: 37 });
+    // Null matchConfidence rows fold into the NO_MATCH_CONFIDENCE_KEY bucket.
+    expect(res.body.byMatchConfidence).toEqual({ EXACT_IP: 130, NONE: 7 });
   });
 
   it('propagates page/pageSize query params into the findMany skip/take', async () => {
@@ -396,6 +409,8 @@ describe('GET /api/vuln-import/batches/:id', () => {
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([]);
     mockEntryCount.mockResolvedValueOnce(0);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
     mockEntryGroupBy.mockResolvedValueOnce([]);
 
     const res = await buildApp()

@@ -247,6 +247,10 @@ export interface BulkDecisionBody {
     classification?: VulnImportClassification;
     severity?: VulnImportSeverity;
     decision?: VulnImportDecision;
+    /** schemas.ts `MatchConfidenceFilter` (task 8b) — a plain non-empty
+     *  string, not narrowed to `MatchConfidence` here, since the backend
+     *  validates it the same way (free VarChar column, no enum). */
+    matchConfidence?: string;
   };
   decision: VulnImportDecision;
 }
@@ -284,12 +288,35 @@ export interface ListBatchesResponse {
 }
 
 /** GET /batches/:id → 200, res.json(result) where result = getBatchDetail()
- *  return = getBatchWithEntries() return (queries.ts line 162:
- *  { batch, entries }). `batch` here will NOT have entryCount/byClassification
- *  populated (see VulnImportBatch's comment above) — they are `undefined`. */
+ *  return = getBatchWithEntries() return (queries.ts `getBatchWithEntries`,
+ *  re-verified for task 8b: `{ batch, entries, total, page, pageSize,
+ *  byClassification, bySeverity, byMatchConfidence }`). `batch` here will NOT
+ *  have entryCount/byClassification populated (see VulnImportBatch's comment
+ *  above) — they are `undefined`; the top-level `byClassification` /
+ *  `bySeverity` / `byMatchConfidence` fields below are the ones that matter
+ *  for this endpoint. `entries` is only the CURRENT PAGE (Task 8 pagination,
+ *  `pageSize` capped server-side by `MAX_ENTRY_PAGE_SIZE`) — the three
+ *  `by*` count maps are aggregated over the WHOLE filtered batch via
+ *  `groupBy`, not the loaded page, which is exactly what the review screen's
+ *  tab counts need (task-8b brief). Each map's keys are whatever values
+ *  exist in the batch for that column; a value with 0 matching entries is
+ *  simply absent (groupBy semantics), same convention as
+ *  `VulnImportBatch.byClassification`. `byMatchConfidence` additionally uses
+ *  the `NO_MATCH_CONFIDENCE_KEY` ('NONE') convention (queries.ts) for any
+ *  entry whose `matchConfidence` column is null — in practice this should
+ *  never happen post-upload, but the type doesn't assume it can't. */
 export interface GetBatchDetailResponse {
   batch: VulnImportBatch;
   entries: VulnImportEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  byClassification: Partial<Record<VulnImportClassification, number>>;
+  bySeverity: Partial<Record<VulnImportSeverity, number>>;
+  /** Keys are `MatchConfidence` values, plus `'NONE'` for a null DB row
+   *  (see `NO_MATCH_CONFIDENCE_KEY` in queries.ts) — not narrowed to
+   *  `MatchConfidence` here for that reason. */
+  byMatchConfidence: Record<string, number>;
 }
 
 /** PATCH .../entries/:entryId → 200, res.json(updated) where updated is the

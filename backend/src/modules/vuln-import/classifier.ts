@@ -35,7 +35,13 @@ export interface IncomingVulnerability {
   knownExploit?: boolean;
 }
 
-export type VulnClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA';
+// RESUELTA_AUSENTE added (task 14, v3.7.0 prep) — a fourth classification for
+// a stored, still-open vulnerability that a fresh scan no longer reports at
+// all (i.e. absent from the incoming set, not matched/reopened). The type is
+// added here, along with its direct style/label consumers, ahead of the
+// actual classification logic that decides when to use it (task 15) —
+// `classifyVulnerability` below never returns this value yet.
+export type VulnClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA' | 'RESUELTA_AUSENTE';
 export type VulnDecision = 'INCLUDE' | 'EXCLUDE';
 
 export interface ClassificationResult {

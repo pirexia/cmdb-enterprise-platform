@@ -87,7 +87,7 @@ export type UploadRequestBody = z.infer<typeof UploadRequestSchema>;
 
 const SeverityEnum = z.enum(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO']);
 const DecisionEnum = z.enum(['INCLUDE', 'EXCLUDE']);
-const ClassificationEnum = z.enum(['NUEVA', 'EXISTENTE_PENDIENTE', 'REAPARECIDA']);
+const ClassificationEnum = z.enum(['NUEVA', 'EXISTENTE_PENDIENTE', 'REAPARECIDA', 'RESUELTA_AUSENTE']);
 const UuidSchema = z.string().uuid();
 
 /** PATCH /batches/:id/entries/:entryId — operator correction of one entry.

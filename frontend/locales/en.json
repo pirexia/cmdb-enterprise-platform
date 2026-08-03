@@ -2540,7 +2540,8 @@
     "classification": {
       "NUEVA": "New",
       "EXISTENTE_PENDIENTE": "Already exists on this CI",
-      "REAPARECIDA": "Reoccurred"
+      "REAPARECIDA": "Reoccurred",
+      "RESUELTA_AUSENTE": "Resolved (no longer reported)"
     },
     "matchConfidence": {
       "EXACT_IP": "Exact IP",

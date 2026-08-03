@@ -89,8 +89,10 @@ export interface VulnImportCiCandidate {
   name: string;
 }
 
-/** classifier.ts `VulnClassification` (line 16). */
-export type VulnImportClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA';
+/** classifier.ts `VulnClassification` (line 16). RESUELTA_AUSENTE added task
+ *  14 (v3.7.0 prep) — type + style/label consumers only; the classifier
+ *  doesn't produce this value yet (task 15). */
+export type VulnImportClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA' | 'RESUELTA_AUSENTE';
 
 /** classifier.ts `VulnDecision` (line 17); also schemas.ts `DecisionEnum` (line 89). */
 export type VulnImportDecision = 'INCLUDE' | 'EXCLUDE';

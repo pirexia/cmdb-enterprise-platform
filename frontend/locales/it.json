@@ -2421,7 +2421,8 @@
     "classification": {
       "NUEVA": "Nuova",
       "EXISTENTE_PENDIENTE": "Esiste già su questo CI",
-      "REAPARECIDA": "Riapparsa"
+      "REAPARECIDA": "Riapparsa",
+      "RESUELTA_AUSENTE": "Risolta (non più segnalata)"
     },
     "matchConfidence": {
       "EXACT_IP": "IP esatto",

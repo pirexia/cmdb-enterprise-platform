@@ -36,11 +36,12 @@ const STATUS_PILL: Record<VulnImportBatchStatus, string> = {
   FAILED:    "bg-red-100 text-red-700",
 };
 
-const CLASSIFICATION_ORDER: VulnImportClassification[] = ["NUEVA", "EXISTENTE_PENDIENTE", "REAPARECIDA"];
+const CLASSIFICATION_ORDER: VulnImportClassification[] = ["NUEVA", "EXISTENTE_PENDIENTE", "REAPARECIDA", "RESUELTA_AUSENTE"];
 const CLASSIFICATION_DOT: Record<VulnImportClassification, string> = {
   NUEVA:               "bg-red-400",
   EXISTENTE_PENDIENTE: "bg-amber-400",
   REAPARECIDA:         "bg-purple-400",
+  RESUELTA_AUSENTE:    "bg-emerald-400",
 };
 
 const STATUS_FILTERS: (VulnImportBatchStatus | "ALL")[] = ["ALL", "PENDING", "ACCEPTED", "DISCARDED", "RUNNING", "FAILED"];

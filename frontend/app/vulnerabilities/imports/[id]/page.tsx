@@ -76,6 +76,9 @@ const CLASSIFICATION_STYLES: Record<VulnImportClassification, string> = {
   NUEVA: "bg-emerald-100 text-emerald-700 ring-emerald-200",
   EXISTENTE_PENDIENTE: "bg-slate-100 text-slate-600 ring-slate-200",
   REAPARECIDA: "bg-purple-100 text-purple-700 ring-purple-200",
+  // Distinct from NUEVA (emerald) and EXISTENTE_PENDIENTE (slate) already
+  // used in this file's palette — teal, conveying "closing/resolving".
+  RESUELTA_AUSENTE: "bg-teal-100 text-teal-700 ring-teal-200",
 };
 
 const CONFIDENCE_STYLES: Record<string, string> = {

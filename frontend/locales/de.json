@@ -2421,7 +2421,8 @@
     "classification": {
       "NUEVA": "Neu",
       "EXISTENTE_PENDIENTE": "Existiert bereits auf diesem CI",
-      "REAPARECIDA": "Wieder aufgetreten"
+      "REAPARECIDA": "Wieder aufgetreten",
+      "RESUELTA_AUSENTE": "Behoben (nicht mehr gemeldet)"
     },
     "matchConfidence": {
       "EXACT_IP": "Exakte IP",

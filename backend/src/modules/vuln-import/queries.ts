@@ -247,12 +247,15 @@ export async function recoverOrphanedRunningBatches(prisma: PrismaClient): Promi
 
 export interface BatchListFilter {
   status?: string;
+  source?: string;
   page: number;
   pageSize: number;
 }
 
 export async function listBatches(prisma: PrismaOrTx, filter: BatchListFilter) {
-  const where = filter.status ? { status: filter.status } : {};
+  const where: Prisma.VulnImportBatchWhereInput = {};
+  if (filter.status) where.status = filter.status;
+  if (filter.source) where.source = filter.source;
   const [batches, total] = await Promise.all([
     prisma.vulnImportBatch.findMany({
       where,

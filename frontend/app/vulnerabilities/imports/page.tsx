@@ -12,6 +12,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import type {
   VulnImportBatch,
   VulnImportBatchStatus,
+  VulnImportSource,
   VulnImportClassification,
   ListBatchesResponse,
   UploadRequestBody,
@@ -21,10 +22,18 @@ import type {
 
 // ─── Style maps ───────────────────────────────────────────────────────────────
 
+// RUNNING/FAILED added v3.7.0 (task 11, Red Hat Lightspeed connector) — the
+// only two statuses a batch can be in before the pre-existing PENDING/
+// ACCEPTED/DISCARDED trio, now that a batch can take long enough to fill
+// (~13,868 entries for a real Lightspeed pull) that the upload response
+// returns before the entries finish writing (see VulnImportBatchStatus's
+// doc comment in lib/types/vulnImport.ts for the full state machine).
 const STATUS_PILL: Record<VulnImportBatchStatus, string> = {
   PENDING:   "bg-blue-100 text-blue-700",
   ACCEPTED:  "bg-emerald-100 text-emerald-700",
   DISCARDED: "bg-slate-100 text-slate-500",
+  RUNNING:   "bg-indigo-100 text-indigo-700",
+  FAILED:    "bg-red-100 text-red-700",
 };
 
 const CLASSIFICATION_ORDER: VulnImportClassification[] = ["NUEVA", "EXISTENTE_PENDIENTE", "REAPARECIDA"];
@@ -34,7 +43,20 @@ const CLASSIFICATION_DOT: Record<VulnImportClassification, string> = {
   REAPARECIDA:         "bg-purple-400",
 };
 
-const STATUS_FILTERS: (VulnImportBatchStatus | "ALL")[] = ["ALL", "PENDING", "ACCEPTED", "DISCARDED"];
+const STATUS_FILTERS: (VulnImportBatchStatus | "ALL")[] = ["ALL", "PENDING", "ACCEPTED", "DISCARDED", "RUNNING", "FAILED"];
+
+// Second, independent filter row (task 11) — combines with STATUS_FILTERS
+// via AND on the backend (both params accepted together by GET /batches).
+// Deliberately NOT including 'manual': that value only exists on the
+// separate `Vulnerability.source` field for a stored vulnerability with no
+// recorded source — a VulnImportBatch is never created for a manual entry
+// (see VulnImportSource's doc comment).
+const SOURCE_FILTERS: (VulnImportSource | "ALL")[] = ["ALL", "greenbone", "crowdstrike", "redhat-lightspeed"];
+
+// Polling interval (task 11) while at least one listed batch is RUNNING —
+// 5s balances "review screen feels responsive" against hammering the API
+// during a ~13,868-entry Lightspeed pull that can run for minutes.
+const RUNNING_POLL_MS = 5000;
 
 const PAGE_SIZE = 20;
 
@@ -60,10 +82,12 @@ export default function VulnImportListPage() {
   const [total, setTotal]       = useState(0);
   const [page, setPage]         = useState(1);
   const [statusFilter, setStatusFilter] = useState<VulnImportBatchStatus | "ALL">("ALL");
+  const [sourceFilter, setSourceFilter] = useState<VulnImportSource | "ALL">("ALL");
   const [loading, setLoading]   = useState(true);
   const [uploading, setUploading] = useState(false);
   const [discarding, setDiscarding] = useState<string | null>(null);
   const [toasts, setToasts]     = useState<Toast[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const addToast = useCallback((type: Toast["type"], message: string) => {
     const id = ++_toastId;
@@ -75,11 +99,12 @@ export default function VulnImportListPage() {
     setToasts((prev) => prev.filter((tt) => tt.id !== id));
   }, []);
 
-  const fetchBatches = useCallback(async () => {
-    setLoading(true);
+  const fetchBatches = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     try {
       const params = new URLSearchParams();
       if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (sourceFilter !== "ALL") params.set("source", sourceFilter);
       params.set("page", String(page));
       params.set("pageSize", String(PAGE_SIZE));
       const res = await apiFetch(`/api/vuln-import/batches?${params.toString()}`);
@@ -90,14 +115,46 @@ export default function VulnImportListPage() {
     } catch (err) {
       addToast("error", err instanceof Error ? err.message : t("common.unknown_error"));
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  }, [statusFilter, page, addToast, t]);
+  }, [statusFilter, sourceFilter, page, addToast, t]);
 
   useEffect(() => { fetchBatches(); }, [fetchBatches]);
 
-  // Reset to page 1 whenever the status filter changes.
-  useEffect(() => { setPage(1); }, [statusFilter]);
+  // Reset to page 1 whenever either filter changes.
+  useEffect(() => { setPage(1); }, [statusFilter, sourceFilter]);
+
+  // Auto-refresh (task 11) while at least one batch on the current page is
+  // RUNNING (Red Hat Lightspeed pulls can take minutes to finish writing
+  // entries). Two effects, deliberately split:
+  //  1. Whenever `fetchBatches`'s identity changes (any filter/page change),
+  //     clear any interval that's still running — it would otherwise keep
+  //     polling with a STALE closure over the old filter/page values.
+  //  2. Whenever the fetched `batches` (or `fetchBatches` itself) changes,
+  //     decide fresh whether a poll is needed and start/stop accordingly.
+  // This never lets two intervals coexist: effect 1 always clears before
+  // effect 2 conditionally creates a new one.
+  useEffect(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, [fetchBatches]);
+
+  useEffect(() => {
+    const hasRunning = batches.some((b) => b.status === "RUNNING");
+    if (hasRunning && !pollRef.current) {
+      pollRef.current = setInterval(() => { fetchBatches({ silent: true }); }, RUNNING_POLL_MS);
+    } else if (!hasRunning && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, [batches, fetchBatches]);
+
+  // Stop polling on unmount.
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+  }, []);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -206,7 +263,7 @@ export default function VulnImportListPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={fetchBatches}
+              onClick={() => fetchBatches()}
               className="flex items-center gap-2 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -236,20 +293,49 @@ export default function VulnImportListPage() {
 
       <div className="px-8 py-8 space-y-6 w-full">
         {/* Status filter tabs */}
-        <div className="flex gap-1">
-          {STATUS_FILTERS.map((s) => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                statusFilter === s
-                  ? "bg-[var(--accent)] text-white"
-                  : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {s === "ALL" ? t("vulnImport.list.filterAll") : t(`vulnImport.batch.status.${s}`)}
-            </button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-14 flex-shrink-0">
+              {t("vulnImport.list.filterByStatus")}
+            </span>
+            <div className="flex gap-1">
+              {STATUS_FILTERS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    statusFilter === s
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {s === "ALL" ? t("vulnImport.list.filterAll") : t(`vulnImport.batch.status.${s}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Source filter tabs (task 11) — combines with the status filter
+              above via AND (both query params sent together). */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 w-14 flex-shrink-0">
+              {t("vulnImport.list.filterBySource")}
+            </span>
+            <div className="flex gap-1">
+              {SOURCE_FILTERS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setSourceFilter(s)}
+                  className={`px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                    sourceFilter === s
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
+                  }`}
+                >
+                  {s === "ALL" ? t("vulnImport.list.filterAll") : t(`vulnImport.batch.source.${s}`)}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {loading ? (
@@ -298,11 +384,23 @@ export default function VulnImportListPage() {
                         {formatDate(b.scanStart)} {b.scanEnd ? `– ${formatDate(b.scanEnd)}` : ""}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-block px-2 py-0.5 text-xs font-semibold rounded-full ${STATUS_PILL[b.status]}`}>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full ${STATUS_PILL[b.status]}`}
+                          title={b.status === "FAILED" ? (b.errorMessage ?? undefined) : undefined}
+                        >
+                          {b.status === "RUNNING" && <RefreshCw className="h-3 w-3 animate-spin" />}
                           {t(`vulnImport.batch.status.${b.status}`)}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{b.entryCount ?? "—"}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        {b.status === "RUNNING"
+                          ? t("vulnImport.list.progress", {
+                              current: b.progressCurrent ?? 0,
+                              total: b.progressTotal ?? "?",
+                              phase: b.progressPhase ?? "—",
+                            })
+                          : (b.entryCount ?? "—")}
+                      </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           {CLASSIFICATION_ORDER.map((c) => {

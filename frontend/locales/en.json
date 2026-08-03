@@ -2525,13 +2525,16 @@
       "status": {
         "PENDING": "Pending",
         "ACCEPTED": "Accepted",
-        "DISCARDED": "Discarded"
+        "DISCARDED": "Discarded",
+        "RUNNING": "Processing",
+        "FAILED": "Failed"
       },
       "singular": "batch",
       "plural": "batches",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
@@ -2572,6 +2575,8 @@
       "discardConfirm": "Discard this batch? This action cannot be undone.",
       "discardSuccess": "Batch discarded",
       "filterAll": "All",
+      "filterByStatus": "Status",
+      "filterBySource": "Source",
       "noBatches": "No scans imported yet",
       "colFilename": "File",
       "colScanDate": "Scan date",
@@ -2582,7 +2587,8 @@
       "colUploadedAt": "Uploaded at",
       "pageInfo": "Page {page} of {totalPages} ({total} batches)",
       "prevPage": "Previous",
-      "nextPage": "Next"
+      "nextPage": "Next",
+      "progress": "Processing {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Critical",

@@ -54,9 +54,14 @@ export type VulnStatus =
 // ─── Core staging-workflow enums ────────────────────────────────────────────
 
 /** VulnImportBatch.status (schema.prisma ~line 1092: plain VarChar, business
- *  values assigned by service.ts: 'PENDING' on create, 'ACCEPTED'/'DISCARDED'
- *  via markBatchStatus in acceptBatch/discardBatch). */
-export type VulnImportBatchStatus = 'PENDING' | 'ACCEPTED' | 'DISCARDED';
+ *  values assigned by service.ts/queries.ts: 'RUNNING' on create
+ *  (createBatchShell, queries.ts line 150 — the batch isn't ready for review
+ *  until its entries have finished writing), 'PENDING'/'FAILED' via
+ *  finalizeBatch once the entry write completes or errors (queries.ts
+ *  ~line 204; 'FAILED' also set by recoverOrphanedRunningBatches, queries.ts
+ *  ~line 242, for a batch left RUNNING across a server restart), then
+ *  'ACCEPTED'/'DISCARDED' via markBatchStatus in acceptBatch/discardBatch. */
+export type VulnImportBatchStatus = 'PENDING' | 'ACCEPTED' | 'DISCARDED' | 'RUNNING' | 'FAILED';
 
 /** VulnImportEntry.matchConfidence (schema.prisma ~line 1110: nullable
  *  VarChar(30)). The 5-level cascade labels (matcher.ts `MatchConfidence`,
@@ -98,16 +103,22 @@ export type VulnImportDecision = 'INCLUDE' | 'EXCLUDE';
 export type VulnImportSeverity = VulnSeverity;
 
 /** VulnImportBatch.source (schema.prisma ~line 1087: plain `VarChar(50)`,
- *  no DB enum/check constraint — genuinely a free string column). The only
- *  two values any backend code path currently writes are 'greenbone'
- *  (service.ts lines 173/314, hardcoded) and 'crowdstrike' (assigned by the
- *  v3.6.1 CrowdStrike Spotlight upload path, parallel task B2/B3 — not yet
- *  landed as of this file). Modeled as a union for autocomplete/documentation
- *  on the two known values; `VulnImportBatch.source` itself stays typed as
- *  plain `string` (see below) so a future third source, or any value that
- *  slips past this narrower alias, doesn't fail to typecheck against a
- *  genuinely unconstrained DB column. */
-export type VulnImportSource = 'greenbone' | 'crowdstrike';
+ *  no DB enum/check constraint — genuinely a free string column). Values any
+ *  backend code path currently writes: 'greenbone' (service.ts, hardcoded),
+ *  'crowdstrike' (CrowdStrike Spotlight upload path, v3.6.1), and
+ *  'redhat-lightspeed' (Red Hat Lightspeed connector, v3.7.0 — service.ts
+ *  passes `source` explicitly from the connector rather than relying on
+ *  `detectSource(body.report)`). Modeled as a union for autocomplete/
+ *  documentation on the known values; `VulnImportBatch.source` itself stays
+ *  typed as plain `string` (see below) so a future fourth source, or any
+ *  value that slips past this narrower alias, doesn't fail to typecheck
+ *  against a genuinely unconstrained DB column. Note: this is distinct from
+ *  `Vulnerability.source` (backend/src/modules/integrations/types.ts),
+ *  which additionally has a 'manual' fallback for a stored vulnerability
+ *  with no recorded source — a VulnImportBatch is never created for a
+ *  manual entry (it only exists for connector-originated staging), so
+ *  'manual' is intentionally NOT part of this alias. */
+export type VulnImportSource = 'greenbone' | 'crowdstrike' | 'redhat-lightspeed';
 
 // ─── VulnImportBatch (schema.prisma model VulnImportBatch, ~line 1084) ─────
 //
@@ -139,6 +150,16 @@ export interface VulnImportBatch {
   resolvedAt: string | null;
   resolvedBy: string | null;
   rawMeta: unknown | null;
+  /** schema.prisma ~line 1099-1102, populated only while/after `status` is
+   *  'RUNNING'/'FAILED' (Red Hat Lightspeed connector, v3.7.0 task 1/4) —
+   *  null for every batch created by the older Greenbone/CrowdStrike
+   *  synchronous upload path, which never goes through a RUNNING state. */
+  progressPhase: string | null;
+  progressCurrent: number | null;
+  progressTotal: number | null;
+  /** Populated only when `status === 'FAILED'` (queries.ts `finalizeBatch` /
+   *  `recoverOrphanedRunningBatches`); null otherwise. */
+  errorMessage: string | null;
   /** Only present on batches returned by GET /api/vuln-import/batches (list). */
   entryCount?: number;
   /** Only present on batches returned by GET /api/vuln-import/batches (list).

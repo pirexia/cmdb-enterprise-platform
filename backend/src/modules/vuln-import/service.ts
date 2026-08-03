@@ -276,12 +276,12 @@ export async function uploadReport(
 
 // ─── List / get ─────────────────────────────────────────────────────────────
 
-export interface ListBatchesParams { status?: string; page?: number; pageSize?: number }
+export interface ListBatchesParams { status?: string; source?: string; page?: number; pageSize?: number }
 
 export async function listBatches(prisma: PrismaClient, params: ListBatchesParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
-  const { batches, total } = await queryListBatches(prisma, { status: params.status, page, pageSize });
+  const { batches, total } = await queryListBatches(prisma, { status: params.status, source: params.source, page, pageSize });
   return { batches, total, page, pageSize };
 }
 

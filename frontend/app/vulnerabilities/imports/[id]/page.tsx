@@ -89,10 +89,16 @@ const CONFIDENCE_STYLES: Record<string, string> = {
   MANUAL: "bg-indigo-50 text-indigo-700 ring-indigo-200",
 };
 
+// RUNNING/FAILED added v3.7.0 (task 11) — this batch-detail page can be
+// reached for a still-processing or failed Red Hat Lightspeed batch (e.g. a
+// direct link, or navigating here before the list's own polling redirects
+// away); keep in sync with STATUS_PILL in ../page.tsx.
 const BATCH_STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-blue-100 text-blue-700",
   ACCEPTED: "bg-emerald-100 text-emerald-700",
   DISCARDED: "bg-slate-200 text-slate-600",
+  RUNNING: "bg-indigo-100 text-indigo-700",
+  FAILED: "bg-red-100 text-red-700",
 };
 
 const ACTIONABLE_SEVERITIES: VulnImportSeverity[] = ["MEDIUM", "HIGH", "CRITICAL"];

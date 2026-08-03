@@ -2406,13 +2406,16 @@
       "status": {
         "PENDING": "In attesa",
         "ACCEPTED": "Accettato",
-        "DISCARDED": "Scartato"
+        "DISCARDED": "Scartato",
+        "RUNNING": "In elaborazione",
+        "FAILED": "Non riuscito"
       },
       "singular": "lotto",
       "plural": "lotti",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
@@ -2453,6 +2456,8 @@
       "discardConfirm": "Scartare questo lotto? Questa azione non può essere annullata.",
       "discardSuccess": "Lotto scartato",
       "filterAll": "Tutti",
+      "filterByStatus": "Stato",
+      "filterBySource": "Fonte",
       "noBatches": "Nessuna scansione importata finora",
       "colFilename": "File",
       "colScanDate": "Data scansione",
@@ -2463,7 +2468,8 @@
       "colUploadedAt": "Caricato il",
       "pageInfo": "Pagina {page} di {totalPages} ({total} lotti)",
       "prevPage": "Precedente",
-      "nextPage": "Successivo"
+      "nextPage": "Successivo",
+      "progress": "Elaborazione {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Critica",

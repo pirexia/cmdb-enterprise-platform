@@ -2525,13 +2525,16 @@
       "status": {
         "PENDING": "Pendiente",
         "ACCEPTED": "Aceptado",
-        "DISCARDED": "Descartado"
+        "DISCARDED": "Descartado",
+        "RUNNING": "Procesando",
+        "FAILED": "Fallido"
       },
       "singular": "lote",
       "plural": "lotes",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
@@ -2572,6 +2575,8 @@
       "discardConfirm": "¿Descartar este lote? Esta acción no se puede deshacer.",
       "discardSuccess": "Lote descartado",
       "filterAll": "Todos",
+      "filterByStatus": "Estado",
+      "filterBySource": "Fuente",
       "noBatches": "Todavía no hay escaneos importados",
       "colFilename": "Archivo",
       "colScanDate": "Fecha de escaneo",
@@ -2582,7 +2587,8 @@
       "colUploadedAt": "Fecha de subida",
       "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
       "prevPage": "Anterior",
-      "nextPage": "Siguiente"
+      "nextPage": "Siguiente",
+      "progress": "Procesando {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Crítica",

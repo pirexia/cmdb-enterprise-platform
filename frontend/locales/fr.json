@@ -2406,13 +2406,16 @@
       "status": {
         "PENDING": "En attente",
         "ACCEPTED": "Accepté",
-        "DISCARDED": "Rejeté"
+        "DISCARDED": "Rejeté",
+        "RUNNING": "En cours de traitement",
+        "FAILED": "Échec"
       },
       "singular": "lot",
       "plural": "lots",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
@@ -2453,6 +2456,8 @@
       "discardConfirm": "Rejeter ce lot ? Cette action est irréversible.",
       "discardSuccess": "Lot rejeté",
       "filterAll": "Tous",
+      "filterByStatus": "Statut",
+      "filterBySource": "Source",
       "noBatches": "Aucun scan importé pour le moment",
       "colFilename": "Fichier",
       "colScanDate": "Date du scan",
@@ -2463,7 +2468,8 @@
       "colUploadedAt": "Téléversé le",
       "pageInfo": "Page {page} sur {totalPages} ({total} lots)",
       "prevPage": "Précédent",
-      "nextPage": "Suivant"
+      "nextPage": "Suivant",
+      "progress": "Traitement {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Critique",

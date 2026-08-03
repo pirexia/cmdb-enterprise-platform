@@ -2406,13 +2406,16 @@
       "status": {
         "PENDING": "Ausstehend",
         "ACCEPTED": "Akzeptiert",
-        "DISCARDED": "Verworfen"
+        "DISCARDED": "Verworfen",
+        "RUNNING": "Wird verarbeitet",
+        "FAILED": "Fehlgeschlagen"
       },
       "singular": "Charge",
       "plural": "Chargen",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
@@ -2453,6 +2456,8 @@
       "discardConfirm": "Diesen Stapel verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.",
       "discardSuccess": "Stapel verworfen",
       "filterAll": "Alle",
+      "filterByStatus": "Status",
+      "filterBySource": "Quelle",
       "noBatches": "Noch keine Scans importiert",
       "colFilename": "Datei",
       "colScanDate": "Scandatum",
@@ -2463,7 +2468,8 @@
       "colUploadedAt": "Hochgeladen am",
       "pageInfo": "Seite {page} von {totalPages} ({total} Stapel)",
       "prevPage": "Zurück",
-      "nextPage": "Weiter"
+      "nextPage": "Weiter",
+      "progress": "Verarbeite {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Kritisch",

@@ -78,9 +78,10 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   router.get('/batches', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const source = typeof req.query.source === 'string' ? req.query.source : undefined;
       const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
       const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
-      const result = await listBatches(prisma, { status, page, pageSize });
+      const result = await listBatches(prisma, { status, source, page, pageSize });
       res.json(result);
     } catch (err) {
       console.error('[GET /api/vuln-import/batches] Error:', err);

@@ -6,6 +6,7 @@ import {
   recoverOrphanedRunningBatches,
   getBatchWithEntries,
   bulkUpdateDecision,
+  listBatches,
   MAX_ENTRY_PAGE_SIZE,
   NO_MATCH_CONFIDENCE_KEY,
   type NewBatchMeta,
@@ -598,5 +599,64 @@ describe('bulkUpdateDecision', () => {
     expect(rows.filter((r) => r.matchConfidence === 'UNMATCHED' && r.decision === 'INCLUDE')).toHaveLength(45);
     expect(rows.filter((r) => r.matchConfidence === 'EXACT_IP' && r.decision === 'INCLUDE')).toHaveLength(0);
     expect(updateMany.mock.calls[0][0].where).toEqual({ batchId: 'batch-1', matchConfidence: 'UNMATCHED' });
+  });
+});
+
+// Task 11 (v3.7.0): `source` added as a second, independent filter on
+// GET /api/vuln-import/batches (frontend gained a source-filter tab
+// alongside the pre-existing status-filter tabs, for the Red Hat Lightspeed
+// connector's 'redhat-lightspeed' source value). Mirrors the pre-existing
+// `status` filter's `where`-building — both are optional and must combine
+// with AND, never override one another.
+describe('listBatches', () => {
+  const BATCHES = [
+    { id: 'b1', status: 'PENDING', source: 'greenbone', createdAt: new Date('2026-01-01'), _count: { entries: 1 } },
+    { id: 'b2', status: 'PENDING', source: 'redhat-lightspeed', createdAt: new Date('2026-01-02'), _count: { entries: 2 } },
+    { id: 'b3', status: 'RUNNING', source: 'redhat-lightspeed', createdAt: new Date('2026-01-03'), _count: { entries: 0 } },
+    { id: 'b4', status: 'ACCEPTED', source: 'crowdstrike', createdAt: new Date('2026-01-04'), _count: { entries: 5 } },
+  ];
+
+  function matches(b: (typeof BATCHES)[number], where: { status?: string; source?: string }) {
+    return (where.status === undefined || b.status === where.status)
+      && (where.source === undefined || b.source === where.source);
+  }
+
+  function buildPrisma() {
+    const findMany = jest.fn(async ({ where }: { where: { status?: string; source?: string } }) =>
+      BATCHES.filter((b) => matches(b, where)));
+    const count = jest.fn(async ({ where }: { where: { status?: string; source?: string } }) =>
+      BATCHES.filter((b) => matches(b, where)).length);
+    const groupBy = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      vulnImportBatch: { findMany, count },
+      vulnImportEntry: { groupBy },
+    } as unknown as PrismaOrTx;
+    return { prisma, findMany, count };
+  }
+
+  it('filters by source alone, leaving other sources out regardless of status', async () => {
+    const { prisma } = buildPrisma();
+
+    const { batches, total } = await listBatches(prisma, { source: 'redhat-lightspeed', page: 1, pageSize: 20 });
+
+    expect(total).toBe(2);
+    expect(batches.map((b) => b.id).sort()).toEqual(['b2', 'b3']);
+  });
+
+  it('combines status and source filters with AND, not OR', async () => {
+    const { prisma } = buildPrisma();
+
+    const { batches, total } = await listBatches(prisma, { status: 'PENDING', source: 'redhat-lightspeed', page: 1, pageSize: 20 });
+
+    expect(total).toBe(1);
+    expect(batches[0].id).toBe('b2');
+  });
+
+  it('omits the source key entirely from `where` when no source filter is given (matches the pre-existing status behaviour)', async () => {
+    const { prisma, findMany } = buildPrisma();
+
+    await listBatches(prisma, { page: 1, pageSize: 20 });
+
+    expect(findMany.mock.calls[0][0].where).toEqual({});
   });
 });

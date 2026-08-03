@@ -62,6 +62,7 @@ import { createSettingsRouter } from './modules/settings/router';
 import { createVendorsRouter }        from './modules/vendors/router';
 import { createIntegrationsRouter }   from './modules/integrations/router';
 import { createVulnImportRouter }     from './modules/vuln-import/router';
+import { recoverOrphanedRunningBatches } from './modules/vuln-import/queries';
 import { createLicensesRouter }       from './modules/licenses/router';
 import { createContractsRouter }      from './modules/contracts/router';
 import { createMastersRouter }        from './modules/masters/router';
@@ -4403,6 +4404,17 @@ if (process.env.RAG_ENABLED === 'true') {
 (async () => {
   // Mount plugin router and re-activate ACTIVE plugins before accepting traffic.
   await initializePluginEngine(app, prisma, authenticateToken);
+
+  // Recover vuln-import batches orphaned by a restart mid-async-import (Task
+  // 4 made Red Hat Lightspeed pulls run as a background job — see
+  // recoverOrphanedRunningBatches's comment in modules/vuln-import/queries.ts).
+  // Single UPDATE statement, fast — awaited before app.listen so recovery is
+  // guaranteed to have run before any new import request can be accepted,
+  // rather than raced fire-and-forget like provisionOnBoot below.
+  const recoveredBatches = await recoverOrphanedRunningBatches(prisma);
+  if (recoveredBatches > 0) {
+    console.log(`[vuln-import] Recovered ${recoveredBatches} orphaned RUNNING batch(es) as FAILED on startup.`);
+  }
 
   app.listen(PORT, () => {
     console.log(`🚀 CMDB API running at http://localhost:${PORT} (internal — TLS via nginx)`);

@@ -211,6 +211,32 @@ export async function finalizeBatch(
   });
 }
 
+/** Recovers batches orphaned by a backend restart mid-import (Task 4 made
+ *  Red Hat Lightspeed pulls run as a background async job — see
+ *  `writeBatchEntries`'s comment for why the entry-write loop deliberately
+ *  runs outside a transaction and can take a while for a large pull). If the
+ *  process dies (crash, redeploy, `SIGTERM` before an in-flight import
+ *  finishes) while a batch's status is still `RUNNING`, no code path is ever
+ *  going to move it to `PENDING`/`FAILED` again — the request that would
+ *  have called `finalizeBatch` is gone. Only one backend process writes
+ *  these rows today, so any `RUNNING` batch found here, at the moment the
+ *  process is starting up, is necessarily such an orphan, not a
+ *  concurrently-running import from another process.
+ *
+ *  Single `$executeRaw` UPDATE, no transaction needed (one statement), no
+ *  per-row `AuditLog` entry — unlike `finalizeBatch`, which audits
+ *  operator-triggered transitions, this is a startup-recovery sweep with no
+ *  responsible user to attribute it to; the batch's own `status`/
+ *  `errorMessage` already records what happened. */
+export async function recoverOrphanedRunningBatches(prisma: PrismaClient): Promise<number> {
+  const affected = await prisma.$executeRaw`
+    UPDATE "vuln_import_batches"
+    SET "status" = 'FAILED', "error_message" = 'Interrumpido por reinicio del servidor'
+    WHERE "status" = 'RUNNING'
+  `;
+  return affected;
+}
+
 export interface BatchListFilter {
   status?: string;
   page: number;

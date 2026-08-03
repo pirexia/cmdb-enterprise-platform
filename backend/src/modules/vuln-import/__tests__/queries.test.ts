@@ -3,6 +3,7 @@ import {
   createBatchShell,
   writeBatchEntries,
   finalizeBatch,
+  recoverOrphanedRunningBatches,
   type NewBatchMeta,
   type NewEntryInput,
 } from '../queries.js';
@@ -150,5 +151,43 @@ describe('finalizeBatch', () => {
     const [, ...values] = executeRaw.mock.calls[0];
     expect(values).toContain('VULN_IMPORT_FAILED');
     expect(values).toContain('VulnImportBatch');
+  });
+});
+
+describe('recoverOrphanedRunningBatches', () => {
+  // Task 6 (v3.7.0): Task 4 made Red Hat Lightspeed pulls run as a
+  // background async job, so a backend restart mid-import can leave a
+  // VulnImportBatch stuck in RUNNING forever — no request is ever coming
+  // back to call finalizeBatch on it. This sweep runs once at startup and
+  // fails those rows out explicitly.
+  it('issues a single UPDATE that only targets RUNNING rows, setting FAILED + the restart message', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(1);
+    const prisma = { $executeRaw: executeRaw } as unknown as PrismaClient;
+
+    const affected = await recoverOrphanedRunningBatches(prisma);
+
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const [strings, ...values] = executeRaw.mock.calls[0];
+    const sql = strings.join('');
+    expect(sql).toContain('UPDATE "vuln_import_batches"');
+    // Selective WHERE — a batch in any other status (PENDING, ACCEPTED,
+    // DISCARDED, already-FAILED) is never matched by this statement, so it
+    // is left untouched.
+    expect(sql).toContain(`WHERE "status" = 'RUNNING'`);
+    expect(sql).toContain("SET \"status\" = 'FAILED'");
+    expect(sql).toContain("\"error_message\" = 'Interrumpido por reinicio del servidor'");
+    // No interpolated values — the whole statement is a static literal, not
+    // built from caller input, so there is nothing to bind.
+    expect(values).toHaveLength(0);
+    expect(affected).toBe(1);
+  });
+
+  it('returns 0 when no batch is RUNNING (nothing to recover)', async () => {
+    const executeRaw = jest.fn().mockResolvedValue(0);
+    const prisma = { $executeRaw: executeRaw } as unknown as PrismaClient;
+
+    const affected = await recoverOrphanedRunningBatches(prisma);
+
+    expect(affected).toBe(0);
   });
 });

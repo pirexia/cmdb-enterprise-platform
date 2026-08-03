@@ -77,7 +77,7 @@ import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authen
 import { requireAdmin }     from './shared/middleware/requireAdmin';
 import { requireAudit }     from './shared/middleware/requireAudit';
 import { requireUuidParam } from './shared/middleware/requireUuidParam';
-import { requireSecurityRead } from './shared/middleware/requireSecurity';
+import { requireSecurityRead, requireSecurityWrite } from './shared/middleware/requireSecurity';
 import { escapeLike }       from './shared/utils/likeEscape';
 import { buildAuditDetails } from './shared/utils/audit';
 
@@ -668,6 +668,13 @@ interface Vulnerability {
   cvss_score?: number | null;
   status:      VulnStatus;
   importedAt:  string;
+  // Vulnerability owner assignment (Task 20, v3.7.0 responsable phase) —
+  // optional so legacy stored vulnerabilities (assigned before this feature,
+  // or never assigned) remain valid. Mirrors the frontend's own
+  // `Vulnerability` interface in frontend/app/vulnerabilities/page.tsx.
+  assignedTo?: string;  // user id
+  assignedAt?: string;  // ISO date
+  assignedBy?: string;  // user id of whoever made the assignment
 }
 
 // ─── Public routes ────────────────────────────────────────────────────────────
@@ -2114,26 +2121,45 @@ app.delete('/api/cis/:id', authenticateToken, requireAdmin, requireUuidParam('id
 
 /**
  * PATCH /api/vulnerabilities
- * Updates the status of a single vulnerability within a CI's JSON array.
+ * Updates the status and/or owner assignment of a single vulnerability
+ * within a CI's JSON array.
  *
- * Body: { ciId: string, key?: string, cve: string, status: VulnStatus }
+ * Body: { ciId: string, key?: string, cve: string, status?: VulnStatus, assignedTo?: string | null }
  *
  * Identity (spec D1/D1b, v3.6.0 B6): a vulnerability's real identity is
  * `key` (`${oid}@${port}`), not `cve` — 96% of real Greenbone findings carry
  * no CVE. `key` is optional here and preferred when present; `cve` is kept
  * as the deprecated fallback so an unmigrated client (or a stored entry that
  * predates this migration and never got a `key`) still resolves correctly.
+ *
+ * Access (Task 20 — closes an A01 gap): this endpoint previously only
+ * required `authenticateToken`, so ANY authenticated user (including
+ * VIEWER) could change a vulnerability's status. It now requires
+ * `requireSecurityWrite` (ADMIN/SOC), same gate as the rest of the Security
+ * area (Greenbone/CrowdStrike upload, vuln-import staging review) — this
+ * restricts both the pre-existing status-change behaviour AND the new
+ * assignment behaviour below, not just the new part.
+ *
+ * Assignment (Task 20, v3.7.0 responsable phase): `assignedTo` is optional.
+ *   - Present as a string  → assign. Server-side validated against the DB
+ *     (never trust the client) to be an active ADMIN/SOC user; anything
+ *     else is a 422, and nothing is written.
+ *   - Explicitly `null`    → unassign. Clears assignedTo/assignedAt/assignedBy.
+ *   - Omitted entirely     → assignment untouched (status-only PATCH, as before).
  */
-app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: Response) => {
-  const { ciId, key, cve, status } = req.body as {
-    ciId:   string;
-    key?:   string;
-    cve:    string;
-    status: VulnStatus;
+app.patch('/api/vulnerabilities', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
+  const { ciId, key, cve, status, assignedTo } = req.body as {
+    ciId:        string;
+    key?:        string;
+    cve:         string;
+    status?:     VulnStatus;
+    assignedTo?: string | null;
   };
 
-  if (!ciId || !(key || cve) || !status) {
-    res.status(400).json({ error: 'Missing required fields: ciId, cve, status' });
+  const hasAssignmentChange = Object.prototype.hasOwnProperty.call(req.body ?? {}, 'assignedTo');
+
+  if (!ciId || !(key || cve) || (!status && !hasAssignmentChange)) {
+    res.status(400).json({ error: 'Missing required fields: ciId, cve, and at least one of status or assignedTo' });
     return;
   }
 
@@ -2141,12 +2167,27 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
   const targetKey = key ?? cve;
 
   const validStatuses: VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'RESUELTO'];
-  if (!validStatuses.includes(status)) {
+  if (status && !validStatuses.includes(status)) {
     res.status(400).json({ error: `Invalid status: ${status}. Must be one of ${validStatuses.join(', ')}` });
     return;
   }
 
   try {
+    // Server-side validation of the assignee — never trust the client's
+    // claim that a given user id is a valid ADMIN/SOC account. Runs before
+    // any read/write of the CI so an invalid assignee never touches data.
+    let assigneeCheck: { id: string } | null = null;
+    if (hasAssignmentChange && typeof assignedTo === 'string' && assignedTo.length > 0) {
+      assigneeCheck = await prisma.user.findFirst({
+        where: { id: assignedTo, active: true, role: { in: ['ADMIN', 'SOC'] } },
+        select: { id: true },
+      });
+      if (!assigneeCheck) {
+        res.status(422).json({ error: 'Invalid assignee: must be an active ADMIN or SOC user' });
+        return;
+      }
+    }
+
     // Fetch current vulnerabilities
     type VulnRow = { id: string; vulnerabilities: unknown };
     const rows = await prisma.$queryRaw<VulnRow[]>`
@@ -2166,19 +2207,62 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       return;
     }
 
-    const updated = currentVulns.map((v) =>
-      (v.key ?? v.cve) === targetKey ? { ...v, status, updatedAt: new Date().toISOString() } : v
-    );
+    const nowIso = new Date().toISOString();
+    const isUnassigning = hasAssignmentChange && assignedTo === null;
+    const isAssigning    = hasAssignmentChange && typeof assignedTo === 'string' && assignedTo.length > 0;
+
+    // Resolve the effective status for this write:
+    //   - An explicit `status` in the body always wins.
+    //   - Otherwise, assigning auto-transitions to ASIGNADO — UNLESS the
+    //     vulnerability is already RESUELTO (assigning a resolved
+    //     vulnerability must not silently reopen it).
+    //   - Unassigning never changes status on its own (documented decision:
+    //     a vulnerability can be visibly ASIGNADO with no one assigned; that
+    //     is a visible-but-not-broken state, not one we auto-correct here).
+    let effectiveStatus = vuln.status;
+    if (status) {
+      effectiveStatus = status;
+    } else if (isAssigning && vuln.status !== 'RESUELTO') {
+      effectiveStatus = 'ASIGNADO';
+    }
+
+    const updated = currentVulns.map((v) => {
+      if ((v.key ?? v.cve) !== targetKey) return v;
+
+      const next: Vulnerability = { ...v, status: effectiveStatus, updatedAt: nowIso } as Vulnerability;
+
+      if (isAssigning) {
+        next.assignedTo = assignedTo as string;
+        next.assignedAt = nowIso;
+        next.assignedBy = req.user!.id;
+      } else if (isUnassigning) {
+        delete next.assignedTo;
+        delete next.assignedAt;
+        delete next.assignedBy;
+      }
+      // Omitted `assignedTo` (status-only PATCH): assignment fields carry
+      // over untouched via the `{ ...v }` spread above.
+
+      return next;
+    });
 
     // Issue #172: wrap the vulnerabilities-column update + audit insert in one
-    // transaction so the audit is never missing when the status change persists.
+    // transaction so the audit is never missing when the change persists.
     //
     // entity_id is `varchar(36)` — sized for a bare UUID — so it must hold
     // just the CI id, never a composite `${ciId}:${targetKey}` string: a
     // real vulnKey (e.g. an OID@port identity) overflows 36 chars and the
     // raw INSERT fails with Postgres error 22001. The vulnerability's own
     // identity goes in `details` instead, which already exists for this.
-    const action = `UPDATE_VULN_STATUS:${status}`;
+    const action = isAssigning
+      ? 'VULN_ASSIGNED'
+      : isUnassigning
+        ? 'VULN_UNASSIGNED'
+        : `UPDATE_VULN_STATUS:${effectiveStatus}`;
+    const details: Record<string, unknown> = { vulnKey: targetKey };
+    if (isAssigning)   details.assignedTo = assignedTo;
+    if (status)        details.status = status;
+
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "configuration_items"
@@ -2189,7 +2273,7 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
       // Audit log (raw — Prisma client types regenerate after migrate)
       await tx.$executeRaw`
         INSERT INTO "audit_logs" (id, action, entity, entity_id, user_email, details, created_at)
-        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${ciId}, ${req.user!.email}, ${JSON.stringify({ vulnKey: targetKey })}::jsonb, now())
+        VALUES (gen_random_uuid(), ${action}, 'VULNERABILITY', ${ciId}, ${req.user!.email}, ${JSON.stringify(details)}::jsonb, now())
       `;
     });
 
@@ -2197,7 +2281,7 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
     void queueEntityForIndexing('vulnerability', vulnUuid(ciId, targetKey));
     void queueEntityForIndexing('ci', ciId);
 
-    res.json({ ciId, cve, status, message: `Status updated to ${status}` });
+    res.json({ ciId, cve, status: effectiveStatus, assignedTo: isUnassigning ? null : (isAssigning ? assignedTo : vuln.assignedTo ?? null), message: `Vulnerability updated` });
   } catch (error) {
     console.error('[PATCH /api/vulnerabilities] Error:', error);
     res.status(500).json({ error: 'Internal server error' });

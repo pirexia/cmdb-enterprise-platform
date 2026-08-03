@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle, Upload } from "lucide-react";
 import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { VulnSeverity, VulnStatus } from "@/lib/types/vulnImport";
 
@@ -113,6 +114,12 @@ let _toastId = 0;
 
 export default function VulnerabilitiesPage() {
   const { t } = useLanguage();
+  // Task 20: PATCH /api/vulnerabilities is now gated server-side to
+  // ADMIN/SOC (requireSecurityWrite) — the per-row status <select> must not
+  // let anyone else attempt a change the API will now 403 anyway. Same
+  // flag already used to gate write actions in the sibling
+  // vulnerabilities/imports pages of this module.
+  const { canManageSecurity } = useAuth();
 
   const [allRows, setAllRows] = useState<VulnRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -575,27 +582,33 @@ export default function VulnerabilitiesPage() {
                               <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${pillClass}`}>
                                 {t(`vulnerabilities.status.${row.status}`)}
                               </span>
-                              <div className="relative flex items-center">
-                                <select
-                                  value={row.status}
-                                  disabled={isUpdating}
-                                  onChange={(e) => handleStatusChange(row, e.target.value as VulnStatus)}
-                                  className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
-                                >
-                                  {/* REABIERTA excluded — system-computed only, see EDITABLE_STATUSES comment above.
-                                      If the row is currently REABIERTA (not in this list), the <select> still shows
-                                      it correctly via `value={row.status}` even though it's not a selectable option. */}
-                                  {EDITABLE_STATUSES.map((s) => (
-                                    <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
-                                  ))}
-                                </select>
-                                {isUpdating && (
-                                  <RefreshCw
-                                    className="absolute -right-5 h-3.5 w-3.5 animate-spin text-[var(--accent)]"
-                                    aria-label={t("common.saving")}
-                                  />
-                                )}
-                              </div>
+                              {/* Task 20: PATCH /api/vulnerabilities now requires ADMIN/SOC
+                                  (requireSecurityWrite) server-side — a VIEWER/AUDITOR/etc. would
+                                  just get a 403 from this <select>, so it isn't offered at all;
+                                  the pill above already shows the current status read-only. */}
+                              {canManageSecurity ? (
+                                <div className="relative flex items-center">
+                                  <select
+                                    value={row.status}
+                                    disabled={isUpdating}
+                                    onChange={(e) => handleStatusChange(row, e.target.value as VulnStatus)}
+                                    className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
+                                  >
+                                    {/* REABIERTA excluded — system-computed only, see EDITABLE_STATUSES comment above.
+                                        If the row is currently REABIERTA (not in this list), the <select> still shows
+                                        it correctly via `value={row.status}` even though it's not a selectable option. */}
+                                    {EDITABLE_STATUSES.map((s) => (
+                                      <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
+                                    ))}
+                                  </select>
+                                  {isUpdating && (
+                                    <RefreshCw
+                                      className="absolute -right-5 h-3.5 w-3.5 animate-spin text-[var(--accent)]"
+                                      aria-label={t("common.saving")}
+                                    />
+                                  )}
+                                </div>
+                              ) : null}
                             </div>
                           </td>
 

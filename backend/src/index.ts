@@ -77,6 +77,7 @@ import { createAuthenticateToken, COOKIE_NAME } from './shared/middleware/authen
 import { requireAdmin }     from './shared/middleware/requireAdmin';
 import { requireAudit }     from './shared/middleware/requireAudit';
 import { requireUuidParam } from './shared/middleware/requireUuidParam';
+import { requireSecurityRead } from './shared/middleware/requireSecurity';
 import { escapeLike }       from './shared/utils/likeEscape';
 import { buildAuditDetails } from './shared/utils/audit';
 
@@ -2199,6 +2200,44 @@ app.patch('/api/vulnerabilities', authenticateToken, async (req: Request, res: R
     res.json({ ciId, cve, status, message: `Status updated to ${status}` });
   } catch (error) {
     console.error('[PATCH /api/vulnerabilities] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/vulnerabilities/assignable-users
+ * Lists the users a vulnerability can be assigned to: active ADMIN/SOC
+ * accounts. ADMIN/AUDITOR/SOC may all read this list (requireSecurityRead —
+ * same read gate as the rest of the Security area), even though only
+ * ADMIN/SOC would actually perform the assignment.
+ *
+ * Never returns `email` — GDPR Art. 5.1.c data minimisation. Field shape
+ * follows the precedent set by the staff-schedule worker selector
+ * (`GET /api/staff-schedule/users`, `searchScheduleUsers` in
+ * modules/staff-schedule/queries.ts): `{ id, displayName }`, falling back to
+ * `username` when `displayName` is null (see service.ts sortByDisplayName:
+ * `a.displayName ?? a.username`).
+ *
+ * Registered before the `?` param-less legacy PATCH route above on the same
+ * path prefix is not a concern here (this is GET on a distinct sub-path,
+ * `/api/vulnerabilities/assignable-users`, not `/api/vulnerabilities/:id`).
+ */
+app.get('/api/vulnerabilities/assignable-users', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { active: true, role: { in: ['ADMIN', 'SOC'] } },
+      select: { id: true, username: true, displayName: true },
+      orderBy: { username: 'asc' },
+    });
+
+    const assignable = users.map((u) => ({
+      id: u.id,
+      displayName: u.displayName ?? u.username,
+    }));
+
+    res.json(assignable);
+  } catch (error) {
+    console.error('[GET /api/vulnerabilities/assignable-users] Error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

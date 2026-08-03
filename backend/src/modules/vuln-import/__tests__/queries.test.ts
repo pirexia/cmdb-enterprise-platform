@@ -5,6 +5,7 @@ import {
   finalizeBatch,
   recoverOrphanedRunningBatches,
   getBatchWithEntries,
+  bulkUpdateDecision,
   MAX_ENTRY_PAGE_SIZE,
   type NewBatchMeta,
   type NewEntryInput,
@@ -306,5 +307,84 @@ describe('getBatchWithEntries', () => {
     expect(result!.total).toBe(90);
     expect(result!.byClassification).toEqual({ NUEVA: 90 });
     expect(result!.entries.every((e) => e.classification === 'NUEVA')).toBe(true);
+  });
+});
+
+describe('bulkUpdateDecision', () => {
+  // Task 9 (v3.7.0): the review screen now paginates (Task 8), but
+  // bulk-decision must NOT inherit that page-scoping — "mark all CRITICAL as
+  // included" has to hit every matching row in the batch regardless of what
+  // page the operator has loaded in the browser. `bulkUpdateDecision` takes
+  // no entry-id list at all; it builds a Prisma `where` from the batch id +
+  // filter and calls `updateMany`, which Prisma/Postgres evaluates against
+  // the whole table, not a client-supplied subset. This fake `updateMany`
+  // mirrors that: it filters the FULL in-memory batch (>MAX_ENTRY_PAGE_SIZE
+  // rows, i.e. more than one logical "page") the same way Postgres would,
+  // proving the update isn't silently bounded to a page's worth of rows.
+  const ROWS = Array.from({ length: 150 }, (_, i) => ({
+    id: `entry-${i}`,
+    batchId: 'batch-1',
+    classification: 'NUEVA',
+    severity: i < 120 ? 'CRITICAL' : 'LOW',
+    decision: 'EXCLUDE',
+  }));
+
+  function buildTx(rows: typeof ROWS) {
+    const updateMany = jest.fn(async ({ where, data }: {
+      where: Prisma.VulnImportEntryWhereInput;
+      data: { decision: string; edited: boolean };
+    }) => {
+      const matches = rows.filter((r) =>
+        r.batchId === where.batchId
+        && (where.classification === undefined || r.classification === where.classification)
+        && (where.severity === undefined || r.severity === where.severity)
+        && (where.decision === undefined || r.decision === where.decision));
+      for (const r of matches) { r.decision = data.decision; }
+      return { count: matches.length };
+    });
+    const tx = { vulnImportEntry: { updateMany } } as unknown as Prisma.TransactionClient;
+    return { tx, updateMany };
+  }
+
+  it('flips ALL 120 CRITICAL entries in a 150-row batch, not just the first page worth', async () => {
+    const rows = ROWS.map((r) => ({ ...r })); // fresh copy per test
+    const { tx, updateMany } = buildTx(rows);
+
+    const result = await bulkUpdateDecision(tx, 'batch-1', { severity: 'CRITICAL' }, 'INCLUDE');
+
+    // 120 > MAX_ENTRY_PAGE_SIZE-sized single page (Task 8 caps a page at
+    // 100) — a page-scoped implementation could only ever have touched 100.
+    expect(result.count).toBe(120);
+    expect(rows.filter((r) => r.severity === 'CRITICAL' && r.decision === 'INCLUDE')).toHaveLength(120);
+    // The 30 non-matching (LOW) rows are untouched.
+    expect(rows.filter((r) => r.severity === 'LOW' && r.decision === 'INCLUDE')).toHaveLength(0);
+    // No client-supplied id list is involved anywhere in the call.
+    expect(updateMany.mock.calls[0][0]).not.toHaveProperty('where.id');
+    expect(updateMany.mock.calls[0][0].where).toEqual({ batchId: 'batch-1', severity: 'CRITICAL' });
+  });
+
+  it('scopes strictly to the given batchId even when other batches share matching rows', async () => {
+    const rows = [
+      ...ROWS.map((r) => ({ ...r })),
+      ...Array.from({ length: 20 }, (_, i) => ({
+        id: `other-entry-${i}`, batchId: 'batch-2', classification: 'NUEVA', severity: 'CRITICAL', decision: 'EXCLUDE',
+      })),
+    ];
+    const { tx } = buildTx(rows);
+
+    const result = await bulkUpdateDecision(tx, 'batch-1', { severity: 'CRITICAL' }, 'INCLUDE');
+
+    expect(result.count).toBe(120);
+    expect(rows.filter((r) => r.batchId === 'batch-2' && r.decision === 'INCLUDE')).toHaveLength(0);
+  });
+
+  it('applies no severity/classification/decision constraint when the filter is empty — every row in the batch flips', async () => {
+    const rows = ROWS.map((r) => ({ ...r }));
+    const { tx } = buildTx(rows);
+
+    const result = await bulkUpdateDecision(tx, 'batch-1', {}, 'EXCLUDE');
+
+    expect(result.count).toBe(150);
+    expect(rows.every((r) => r.decision === 'EXCLUDE')).toBe(true);
   });
 });

@@ -2291,9 +2291,19 @@ app.patch('/api/vulnerabilities', authenticateToken, requireSecurityWrite, async
 /**
  * GET /api/vulnerabilities/assignable-users
  * Lists the users a vulnerability can be assigned to: active ADMIN/SOC
- * accounts. ADMIN/AUDITOR/SOC may all read this list (requireSecurityRead —
- * same read gate as the rest of the Security area), even though only
- * ADMIN/SOC would actually perform the assignment.
+ * accounts.
+ *
+ * Read access is intentionally NOT gated by requireSecurityRead — this
+ * endpoint now serves a dual purpose: (a) populating the assignment selector,
+ * which only ADMIN/SOC ever see because the selector itself is gated by
+ * `canManageSecurity` in the frontend, and (b) resolving the display name of
+ * an already-assigned vulnerability's owner for the "Responsable" column in
+ * `/vulnerabilities`, which is visible to ANY authenticated role (VIEWER,
+ * WORKER, MANAGER included — most of this app's read-only roles). Gating (b)
+ * behind requireSecurityRead caused those roles to get a 403 here, fall back
+ * to the raw assignee UUID in the table, and defeat the whole point of the
+ * lookup. Writing an assignment is still fully protected — see
+ * `requireSecurityWrite` on `PATCH /api/vulnerabilities` above.
  *
  * Never returns `email` — GDPR Art. 5.1.c data minimisation. Field shape
  * follows the precedent set by the staff-schedule worker selector
@@ -2307,7 +2317,7 @@ app.patch('/api/vulnerabilities', authenticateToken, requireSecurityWrite, async
  * path prefix is not a concern here (this is GET on a distinct sub-path,
  * `/api/vulnerabilities/assignable-users`, not `/api/vulnerabilities/:id`).
  */
-app.get('/api/vulnerabilities/assignable-users', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
+app.get('/api/vulnerabilities/assignable-users', authenticateToken, async (req: Request, res: Response) => {
   try {
     const users = await prisma.user.findMany({
       where: { active: true, role: { in: ['ADMIN', 'SOC'] } },

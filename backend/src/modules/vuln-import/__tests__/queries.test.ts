@@ -218,6 +218,13 @@ describe('getBatchWithEntries', () => {
     // 5 rows have a null matchConfidence (never happens post-upload in
     // practice, but the DB column is nullable — see NO_MATCH_CONFIDENCE_KEY).
     matchConfidence: i < 5 ? null : i < 70 ? 'EXACT_IP' : 'UNMATCHED',
+    // Task 10 (ciCount): only the EXACT_IP rows (i in [5,70)) are matched to
+    // a CI — 10 distinct CI ids, reused across those 65 rows (i % 10) so a
+    // naive "count non-null ciId rows" implementation (65) is visibly wrong
+    // against the correct "count DISTINCT ciId" answer (10). The null/UNMATCHED
+    // rows deliberately have no CI, mirroring real matcher.ts semantics (an
+    // UNMATCHED entry never gets a ciId).
+    ciId: (i >= 5 && i < 70) ? `ci-${i % 10}` : null,
   }));
 
   type Row = (typeof ROWS)[number];
@@ -229,13 +236,15 @@ describe('getBatchWithEntries', () => {
     classification?: { in: string[] };
     severity?: { in: string[] };
     matchConfidence?: { in: string[] };
+    ciId?: { not: null };
   };
 
   function applyWhere(rows: Row[], where: FakeWhere) {
     return rows.filter((r) =>
       (where.classification === undefined || where.classification.in.includes(r.classification))
       && (where.severity === undefined || where.severity.in.includes(r.severity))
-      && (where.matchConfidence === undefined || (r.matchConfidence !== null && where.matchConfidence.in.includes(r.matchConfidence))));
+      && (where.matchConfidence === undefined || (r.matchConfidence !== null && where.matchConfidence.in.includes(r.matchConfidence)))
+      && (where.ciId === undefined || r.ciId !== null));
   }
 
   function buildPrisma(rows: Row[]) {
@@ -446,6 +455,48 @@ describe('getBatchWithEntries', () => {
 
     // The full batch — every row is one of these two classifications.
     expect(result!.total).toBe(130);
+  });
+
+  // Task 10 (v3.7.0): the "Aceptar" confirmation dialog's `ciCount` — number
+  // of DISTINCT CIs the accept would touch, not the number of entries that
+  // happen to carry a non-null ciId. Same pattern as byClassification/
+  // bySeverity/byMatchConfidence above: aggregated via a fourth groupBy over
+  // the WHOLE where-filtered batch, not the loaded page.
+  it('returns ciCount as the number of DISTINCT non-null ciId values over the whole filtered batch', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    const result = await getBatchWithEntries(prisma, 'batch-1', { page: 1, pageSize: 50 });
+
+    // 65 rows (i in [5,70)) carry a non-null ciId, but only 10 distinct
+    // values (`ci-${i % 10}`) among them — if the implementation counted
+    // non-null rows instead of grouping, this would read 65, not 10.
+    expect(result!.ciCount).toBe(10);
+  });
+
+  it('excludes null-ciId rows from ciCount entirely (an UNMATCHED entry has no CI)', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    // Every LOW-severity row (i >= 100) is UNMATCHED with ciId: null.
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      severity: 'LOW', page: 1, pageSize: 50,
+    });
+
+    expect(result!.total).toBe(30);
+    expect(result!.ciCount).toBe(0);
+  });
+
+  it('scopes ciCount to the same filter as entries/total (accept-preview\'s ?decision=INCLUDE use case)', async () => {
+    const { prisma } = buildPrisma(ROWS);
+
+    // matchConfidence=EXACT_IP is exactly the 65 rows that carry a ciId —
+    // ciCount should still read 10 (the distinct count), not 65, confirming
+    // the aggregate isn't accidentally just `total` under a narrower filter.
+    const result = await getBatchWithEntries(prisma, 'batch-1', {
+      matchConfidence: 'EXACT_IP', page: 1, pageSize: 50,
+    });
+
+    expect(result!.total).toBe(65);
+    expect(result!.ciCount).toBe(10);
   });
 });
 

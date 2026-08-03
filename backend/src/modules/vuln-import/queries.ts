@@ -344,7 +344,7 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
   const page = Math.max(1, filter.page ?? 1);
   const pageSize = Math.min(MAX_ENTRY_PAGE_SIZE, Math.max(1, filter.pageSize ?? 50));
 
-  const [entries, total, byClassificationRaw, bySeverityRaw, byMatchConfidenceRaw] = await Promise.all([
+  const [entries, total, byClassificationRaw, bySeverityRaw, byMatchConfidenceRaw, ciGroups] = await Promise.all([
     prisma.vulnImportEntry.findMany({
       where,
       orderBy: { name: 'asc' },
@@ -376,6 +376,21 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
       where,
       _count: { _all: true },
     }),
+    // Distinct-CI count (task 10, v3.7.0): the "Aceptar" confirmation dialog
+    // needs "how many distinct CIs will be touched", which none of the three
+    // groupBys above can answer — they group on a column with a fixed small
+    // set of values, not on ciId. One extra groupBy on ciId, same shared
+    // `where` (so it respects whatever filter narrowed the request, e.g.
+    // `?decision=INCLUDE` for the accept preview), excluding null ciId rows
+    // (an UNMATCHED/AMBIGUOUS entry has no CI yet and must not count as one).
+    // `ciGroups.length` = number of distinct non-null ciId values in the
+    // filtered set — this is the whole point of grouping rather than
+    // counting rows.
+    prisma.vulnImportEntry.groupBy({
+      by: ['ciId'],
+      where: { ...where, ciId: { not: null } },
+      _count: true,
+    }),
   ]);
 
   const byClassification: Record<string, number> = {};
@@ -398,7 +413,9 @@ export async function getBatchWithEntries(prisma: PrismaOrTx, batchId: string, f
     byMatchConfidence[key] = row._count._all;
   }
 
-  return { batch, entries, total, page, pageSize, byClassification, bySeverity, byMatchConfidence };
+  const ciCount = ciGroups.length;
+
+  return { batch, entries, total, page, pageSize, byClassification, bySeverity, byMatchConfidence, ciCount };
 }
 
 export async function getBatch(prisma: PrismaOrTx, batchId: string) {

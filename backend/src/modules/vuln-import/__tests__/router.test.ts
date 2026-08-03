@@ -375,8 +375,9 @@ describe('GET /api/vuln-import/batches/:id', () => {
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([{ id: ENTRY_ID, batchId: BATCH_ID, classification: 'NUEVA' }]);
     mockEntryCount.mockResolvedValueOnce(137);
-    // getBatchWithEntries issues 3 groupBy calls (classification, severity,
-    // matchConfidence, in that order) — one mockResolvedValueOnce per call.
+    // getBatchWithEntries issues 4 groupBy calls (classification, severity,
+    // matchConfidence, ciId — in that order, task 10 added the 4th) — one
+    // mockResolvedValueOnce per call.
     mockEntryGroupBy.mockResolvedValueOnce([
       { classification: 'NUEVA', _count: { _all: 90 } },
       { classification: 'EXISTENTE_PENDIENTE', _count: { _all: 47 } },
@@ -388,6 +389,14 @@ describe('GET /api/vuln-import/batches/:id', () => {
     mockEntryGroupBy.mockResolvedValueOnce([
       { matchConfidence: 'EXACT_IP', _count: { _all: 130 } },
       { matchConfidence: null, _count: { _all: 7 } },
+    ]);
+    // ciId groupBy — 5 distinct CIs among the matched entries.
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { ciId: 'ci-1', _count: 30 },
+      { ciId: 'ci-2', _count: 25 },
+      { ciId: 'ci-3', _count: 20 },
+      { ciId: 'ci-4', _count: 15 },
+      { ciId: 'ci-5', _count: 10 },
     ]);
 
     const res = await buildApp().get(`/api/vuln-import/batches/${BATCH_ID}`).set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
@@ -402,6 +411,8 @@ describe('GET /api/vuln-import/batches/:id', () => {
     expect(res.body.bySeverity).toEqual({ CRITICAL: 100, LOW: 37 });
     // Null matchConfidence rows fold into the NO_MATCH_CONFIDENCE_KEY bucket.
     expect(res.body.byMatchConfidence).toEqual({ EXACT_IP: 130, NONE: 7 });
+    // ciCount = number of DISTINCT ciId groups (5 here), not any entry count.
+    expect(res.body.ciCount).toBe(5);
   });
 
   it('propagates page/pageSize query params into the findMany skip/take', async () => {
@@ -409,6 +420,7 @@ describe('GET /api/vuln-import/batches/:id', () => {
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([]);
     mockEntryCount.mockResolvedValueOnce(0);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
     mockEntryGroupBy.mockResolvedValueOnce([]);
     mockEntryGroupBy.mockResolvedValueOnce([]);
     mockEntryGroupBy.mockResolvedValueOnce([]);

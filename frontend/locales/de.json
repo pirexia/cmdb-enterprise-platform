@@ -2529,10 +2529,9 @@
       "cvssVersionLabel": "CVSS-Version"
     },
     "bulk": {
-      "includeVisible": "Sichtbare einschließen",
-      "excludeVisible": "Sichtbare ausschließen",
-      "doneToast": "Entscheidung auf sichtbare Einträge angewendet",
-      "progress": "{done}/{total} angewendet"
+      "includeVisible": "Alle in diesem Tab einschließen",
+      "excludeVisible": "Alle in diesem Tab ausschließen",
+      "doneToast": "Entscheidung auf alle Einträge dieses Tabs im gesamten Batch angewendet, nicht nur auf die geladene Seite"
     },
     "accept": {
       "button": "Batch übernehmen",

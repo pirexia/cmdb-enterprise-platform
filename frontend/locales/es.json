@@ -2648,10 +2648,9 @@
       "cvssVersionLabel": "Versión CVSS"
     },
     "bulk": {
-      "includeVisible": "Incluir visibles",
-      "excludeVisible": "Excluir visibles",
-      "doneToast": "Decisión aplicada a las entradas visibles",
-      "progress": "{done}/{total} aplicado"
+      "includeVisible": "Incluir todas (pestaña)",
+      "excludeVisible": "Excluir todas (pestaña)",
+      "doneToast": "Decisión aplicada a todas las entradas de esta pestaña en el lote completo, no solo a las de esta página"
     },
     "accept": {
       "button": "Aceptar lote",

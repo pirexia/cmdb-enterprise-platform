@@ -301,7 +301,8 @@
       "source": "Source",
       "score": "CVSS Score",
       "port": "Port",
-      "family": "Family"
+      "family": "Family",
+      "assignee": "Assignee"
     },
     "status": {
       "NUEVO": "New",
@@ -341,7 +342,13 @@
       "MEDIUM": "Medium",
       "LOW": "Low",
       "INFO": "Informational"
-    }
+    },
+    "unassigned": "Unassigned",
+    "assigned_to_me": "Assigned to me",
+    "all_assignees": "All assignees",
+    "assignment_updated": "Assigned to",
+    "assignment_cleared": "Assignment cleared",
+    "assignment_update_failed": "Could not update assignment:"
   },
   "contracts": {
     "title": "Contracts & Addendums",

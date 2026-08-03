@@ -301,7 +301,8 @@
       "source": "Fuente",
       "score": "Puntuación CVSS",
       "port": "Puerto",
-      "family": "Familia"
+      "family": "Familia",
+      "assignee": "Responsable"
     },
     "status": {
       "NUEVO": "Nuevo",
@@ -341,7 +342,13 @@
       "MEDIUM": "Media",
       "LOW": "Baja",
       "INFO": "Informativa"
-    }
+    },
+    "unassigned": "Sin asignar",
+    "assigned_to_me": "Asignadas a mí",
+    "all_assignees": "Todos los responsables",
+    "assignment_updated": "Asignado a",
+    "assignment_cleared": "Asignación eliminada",
+    "assignment_update_failed": "No se pudo actualizar la asignación:"
   },
   "contracts": {
     "title": "Contratos y Adendas",

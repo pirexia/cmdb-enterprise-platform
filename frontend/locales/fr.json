@@ -301,7 +301,8 @@
       "source": "Source",
       "score": "Score CVSS",
       "port": "Port",
-      "family": "Famille"
+      "family": "Famille",
+      "assignee": "Responsable"
     },
     "status": {
       "NUEVO": "Nouveau",
@@ -333,7 +334,13 @@
       "MEDIUM": "Moyenne",
       "LOW": "Faible",
       "INFO": "Informative"
-    }
+    },
+    "unassigned": "Non assigné",
+    "assigned_to_me": "Assignées à moi",
+    "all_assignees": "Tous les responsables",
+    "assignment_updated": "Assigné à",
+    "assignment_cleared": "Assignation supprimée",
+    "assignment_update_failed": "Impossible de mettre à jour l'assignation :"
   },
   "contracts": {
     "title": "Contrats et avenants",

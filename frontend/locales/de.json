@@ -301,7 +301,8 @@
       "source": "Quelle",
       "score": "CVSS-Bewertung",
       "port": "Port",
-      "family": "Familie"
+      "family": "Familie",
+      "assignee": "Verantwortlicher"
     },
     "status": {
       "NUEVO": "Neu",
@@ -333,7 +334,13 @@
       "MEDIUM": "Mittel",
       "LOW": "Niedrig",
       "INFO": "Informativ"
-    }
+    },
+    "unassigned": "Nicht zugewiesen",
+    "assigned_to_me": "Mir zugewiesen",
+    "all_assignees": "Alle Verantwortlichen",
+    "assignment_updated": "Zugewiesen an",
+    "assignment_cleared": "Zuweisung entfernt",
+    "assignment_update_failed": "Zuweisung konnte nicht aktualisiert werden:"
   },
   "contracts": {
     "title": "Verträge & Zusätze",

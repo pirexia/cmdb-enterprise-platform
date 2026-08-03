@@ -301,7 +301,8 @@
       "source": "Fonte",
       "score": "Punteggio CVSS",
       "port": "Porta",
-      "family": "Famiglia"
+      "family": "Famiglia",
+      "assignee": "Responsabile"
     },
     "status": {
       "NUEVO": "Nuovo",
@@ -333,7 +334,13 @@
       "MEDIUM": "Media",
       "LOW": "Bassa",
       "INFO": "Informativa"
-    }
+    },
+    "unassigned": "Non assegnato",
+    "assigned_to_me": "Assegnate a me",
+    "all_assignees": "Tutti i responsabili",
+    "assignment_updated": "Assegnato a",
+    "assignment_cleared": "Assegnazione rimossa",
+    "assignment_update_failed": "Impossibile aggiornare l'assegnazione:"
   },
   "contracts": {
     "title": "Contratti e allegati",
@@ -2406,19 +2413,23 @@
       "status": {
         "PENDING": "In attesa",
         "ACCEPTED": "Accettato",
-        "DISCARDED": "Scartato"
+        "DISCARDED": "Scartato",
+        "RUNNING": "In elaborazione",
+        "FAILED": "Non riuscito"
       },
       "singular": "lotto",
       "plural": "lotti",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "Nuova",
       "EXISTENTE_PENDIENTE": "Esiste già su questo CI",
-      "REAPARECIDA": "Riapparsa"
+      "REAPARECIDA": "Riapparsa",
+      "RESUELTA_AUSENTE": "Risolta (non più segnalata)"
     },
     "matchConfidence": {
       "EXACT_IP": "IP esatto",
@@ -2453,6 +2464,8 @@
       "discardConfirm": "Scartare questo lotto? Questa azione non può essere annullata.",
       "discardSuccess": "Lotto scartato",
       "filterAll": "Tutti",
+      "filterByStatus": "Stato",
+      "filterBySource": "Fonte",
       "noBatches": "Nessuna scansione importata finora",
       "colFilename": "File",
       "colScanDate": "Data scansione",
@@ -2463,7 +2476,8 @@
       "colUploadedAt": "Caricato il",
       "pageInfo": "Pagina {page} di {totalPages} ({total} lotti)",
       "prevPage": "Precedente",
-      "nextPage": "Successivo"
+      "nextPage": "Successivo",
+      "progress": "Elaborazione {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Critica",
@@ -2477,7 +2491,8 @@
       "actionable": "Attuabili",
       "informational": "Informative",
       "attention": "Richiedono attenzione",
-      "reappeared": "Ricomparse"
+      "reappeared": "Ricomparse",
+      "closing": "Verranno contrassegnate come risolte"
     },
     "detail": {
       "title": "Revisione del lotto",
@@ -2495,7 +2510,10 @@
       "readOnlyNotice": "Questo lotto è già stato risolto (accettato o scartato) — sola lettura.",
       "readOnlyNoAdmin": "Solo un amministratore o un analista SOC può rivedere e decidere su questo lotto.",
       "notificationsRegion": "Notifiche",
-      "closeNotification": "Chiudi notifica"
+      "closeNotification": "Chiudi notifica",
+      "entriesPageInfo": "Pagina {page} di {totalPages} ({total} voci)",
+      "prevPage": "Precedente",
+      "nextPage": "Successivo"
     },
     "entry": {
       "port": "Porta",
@@ -2526,10 +2544,9 @@
       "cvssVersionLabel": "Versione CVSS"
     },
     "bulk": {
-      "includeVisible": "Includi visibili",
-      "excludeVisible": "Escludi visibili",
-      "doneToast": "Decisione applicata alle voci visibili",
-      "progress": "{done}/{total} applicato"
+      "includeVisible": "Includi tutte (scheda)",
+      "excludeVisible": "Escludi tutte (scheda)",
+      "doneToast": "Decisione applicata a tutte le voci di questa scheda nell'intero lotto, non solo alla pagina caricata"
     },
     "accept": {
       "button": "Accetta lotto",

@@ -549,7 +549,7 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 | **Resuelto** | Vulnerabilidad resuelta o mitigada |
 | **Reabierta** | Se había marcado como resuelta y ha vuelto a detectarse en un reescaneo posterior (ver "El estado 'Reabierta'" más abajo) |
 
-### Cambiar el estado de una vulnerabilidad (solo ADMIN)
+### Cambiar el estado de una vulnerabilidad (ADMIN y SOC)
 
 1. Localiza el CVE en el panel.
 2. Usa el selector de estado en la columna "Estado".
@@ -557,6 +557,16 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 4. Si el guardado se confirma en el servidor, aparece una notificación verde en la esquina de la pantalla.
 5. Si el guardado falla (error de red o servidor), el estado se revierte automáticamente al valor anterior y aparece una notificación roja. No es necesaria ninguna acción manual.
 6. El cambio exitoso queda reflejado en el Registro de Auditoría.
+
+### Asignar un responsable a una vulnerabilidad (ADMIN y SOC)
+
+Cada vulnerabilidad puede asignarse a un usuario concreto como responsable de resolverla.
+
+1. Localiza la vulnerabilidad en el panel.
+2. Usa el selector de responsable de esa fila para elegir a quién asignarla. Solo aparecen usuarios con rol ADMIN o SOC que estén activos.
+3. Asignar una vulnerabilidad sin estado explícito la pasa automáticamente a "Asignado" (salvo que ya estuviera "Resuelto"). El responsable se conserva aunque el estado cambie después a "En Curso" o "Parado" — son dos datos independientes.
+4. Para desasignar, selecciona la opción vacía del mismo desplegable.
+5. El nombre del responsable asignado es visible para cualquier usuario que consulte la tabla de vulnerabilidades (incluidos AUDITOR/VIEWER), aunque solo ADMIN y SOC pueden cambiarlo.
 
 ### Importar vulnerabilidades desde Greenbone OpenVAS
 
@@ -579,7 +589,7 @@ Haz clic en **"Vulnerabilidades"** en el menú lateral para ver la lista de todo
 
 **2. La pantalla de revisión**
 
-Cada lote (**batch**) agrupa todas las vulnerabilidades de un informe, cada una en su propia fila (**entrada**). La pantalla organiza las entradas en cuatro pestañas — son vistas filtradas independientes sobre la misma lista, no compartimentos exclusivos: una misma entrada puede aparecer en más de una pestaña a la vez.
+Cada lote (**batch**) agrupa todas las vulnerabilidades de un informe, cada una en su propia fila (**entrada**). La pantalla organiza las entradas en pestañas — son vistas filtradas independientes sobre la misma lista, no compartimentos exclusivos: una misma entrada puede aparecer en más de una pestaña a la vez.
 
 | Pestaña | Qué muestra |
 |---|---|
@@ -587,6 +597,9 @@ Cada lote (**batch**) agrupa todas las vulnerabilidades de un informe, cada una 
 | **Informativas** | Hallazgos de severidad BAJA o INFO |
 | **Requieren atención** | Hallazgos cuyo cruce con un activo existente no es fiable: sin coincidencia, con varios activos candidatos, o solo coincidencia aproximada por nombre |
 | **Reaparecidas** | Hallazgos que ya se habían marcado como resueltos en el pasado y han vuelto a aparecer en este escaneo |
+| **Se marcarán como resueltas** | Vulnerabilidades que ya tenías registradas para ese mismo activo y esa misma fuente, y que ya no aparecen en este informe/pull — el sistema entiende que se han corregido y las incluye premarcadas para cerrarlas automáticamente al aceptar el lote. Puedes desmarcar cualquiera antes de aceptar si crees que es un error. Esta pestaña aplica por igual a Greenbone, CrowdStrike y Red Hat Lightspeed — antes solo existía para Lightspeed y se aplicaba sin posibilidad de revisión. |
+
+Con lotes muy grandes (por ejemplo, un pull de Red Hat Lightspeed con miles de CVEs) las entradas de cada pestaña se cargan por páginas — usa los controles de paginación al pie de la tabla para avanzar. Los contadores de cada pestaña reflejan siempre el total real, no solo lo cargado en pantalla, y las acciones en bloque (incluir/excluir todo lo visible en una pestaña) actúan sobre ese total, no solo sobre la página cargada.
 
 Cada entrada muestra una pastilla de color con su clasificación (Nueva / Ya existente pendiente / Reaparecida) y otra con la confianza del cruce de activo. Haciendo clic en **"Ver detalles"** de una entrada se despliega un panel con la descripción completa y la remediación recomendada por Greenbone — útil para decidir si algo informativo merece incluirse igualmente.
 
@@ -649,8 +662,8 @@ CrowdStrike también informa sobre si él mismo considera una vulnerabilidad "re
 A diferencia de Greenbone y CrowdStrike, este conector **no requiere subir ningún fichero**: se conecta directamente a la API de Red Hat Insights y trae todas las CVE abiertas de tus servidores RHEL con un solo clic.
 
 1. Ve a **Conectores** y localiza la tarjeta **Red Hat Lightspeed**. Si el botón "Importar" aparece deshabilitado, pide a tu administrador que configure la cuenta de servicio (ver el manual de administración de sistemas).
-2. Pulsa **Importar**. El sistema consulta todos los sistemas RHEL visibles para la cuenta de servicio configurada y crea un lote de revisión, exactamente como con Greenbone/CrowdStrike.
-3. Serás redirigido a la pantalla de revisión habitual — mismas pestañas, misma casilla de decisión, mismo botón de aceptar/descartar.
+2. Pulsa **Importar**. El sistema responde de inmediato — **ya no bloquea la pantalla mientras dura el pull**. El nuevo lote aparece enseguida en **Vulnerabilidades → Importaciones** con estado "En curso" y una barra de progreso (sistema X de Y), mientras la consulta a Red Hat sigue en segundo plano; el listado se actualiza solo cada pocos segundos mientras haya algún lote en curso, sin que tengas que recargar la página. Un pull con muchos sistemas (cientos de servidores RHEL, miles de CVEs) puede tardar varios minutos en completarse — puedes navegar a otra pantalla mientras tanto y volver más tarde.
+3. Cuando el pull termina, el lote pasa a estado "Pendiente" y puedes abrirlo para revisarlo — misma pantalla de revisión habitual, mismas pestañas, misma casilla de decisión, mismo botón de aceptar/descartar. Si el pull falla a mitad de camino (por ejemplo, un fallo de red o una credencial que dejó de ser válida), el lote pasa a estado "Fallido" con un mensaje de error visible en el listado; no queda ningún dato a medio importar que revisar.
 
 **Señales propias de Lightspeed en la pantalla de revisión:**
 
@@ -659,10 +672,9 @@ A diferencia de Greenbone y CrowdStrike, este conector **no requiere subir ning�
 | **Impacto Red Hat** | La valoración propia de Red Hat (Low/Moderate/Important/Critical), independiente de la severidad CVSS que ya conoces del resto de la aplicación — trátalas como dos opiniones distintas. |
 | **Explotación conocida** | Red Hat marca la vulnerabilidad como de explotación conocida — al igual que CISA KEV, esto premarca la entrada para incluir con independencia de su severidad. |
 
-**Al aceptar un lote de Lightspeed ocurren dos cosas que no pasan con las otras fuentes:**
+**Al aceptar un lote de Lightspeed ocurre algo que no pasa con las otras fuentes:** si Red Hat reporta una versión de RHEL distinta a la que tenía registrado el activo, se corrige automáticamente — y si es la primera vez que se ve esa versión de RHEL en el sistema, se rellenan también sus fechas oficiales de fin de soporte y fin de vida.
 
-- Si Red Hat reporta una versión de RHEL distinta a la que tenía registrado el activo, se corrige automáticamente — y si es la primera vez que se ve esa versión de RHEL en el sistema, se rellenan también sus fechas oficiales de fin de soporte y fin de vida.
-- Cualquier vulnerabilidad de Lightspeed que el activo tuviera abierta y que **ya no aparezca** en esta importación se marca automáticamente como resuelta — Red Hat te da una foto completa de lo que sigue abierto en cada sistema, así que si algo desaparece es porque ya se corrigió. Las vulnerabilidades de Greenbone o CrowdStrike del mismo activo nunca se ven afectadas por este cierre automático.
+El cierre automático de vulnerabilidades que ya no aparecen en el informe (pestaña **"Se marcarán como resueltas"**) ya no es exclusivo de Lightspeed — funciona igual para Greenbone y CrowdStrike, ver la sección de revisión más arriba.
 
 **Si Lightspeed reporta un servidor que no existe en el CMDB:** la entrada aparece como "sin activo asociado". Junto al buscador de reasignación manual verás una opción **Crear CI**, que abre el formulario de alta con el nombre, la IP y el hostname ya rellenados a partir de los datos de Red Hat.
 

@@ -1096,6 +1096,10 @@ model VulnImportBatch {
   resolvedAt       DateTime?          @map("resolved_at")
   resolvedBy       String?            @map("resolved_by") @db.VarChar(255)
   rawMeta          Json?              @map("raw_meta")
+  progressPhase    String?            @map("progress_phase") @db.VarChar(30)
+  progressCurrent  Int?               @map("progress_current")
+  progressTotal    Int?               @map("progress_total")
+  errorMessage     String?            @map("error_message")
 
   entries          VulnImportEntry[]
 

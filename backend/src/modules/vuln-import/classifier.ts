@@ -6,6 +6,14 @@
 // premarking threshold).
 
 import type { Vulnerability, VulnSeverity, VulnStatus } from '../integrations/types.js';
+// Type-only import — queries.ts never imports from this file, so this stays
+// a one-way dependency (no cycle). NewEntryInput is the shape uploadReport()
+// (vuln-import/service.ts) and runImportBackground() (Red Hat Lightspeed
+// connector service.ts) both push onto their `newEntries` array before
+// writeBatchEntries persists it — computeAbsentClosures below needs to
+// produce entries in that exact shape so its output can be pushed onto the
+// same array with no adapter step at the call site.
+import type { NewEntryInput } from './queries.js';
 
 /** Minimal shape required of an incoming, freshly-parsed vulnerability. */
 export interface IncomingVulnerability {
@@ -35,7 +43,13 @@ export interface IncomingVulnerability {
   knownExploit?: boolean;
 }
 
-export type VulnClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA';
+// RESUELTA_AUSENTE added (task 14, v3.7.0 prep) — a fourth classification for
+// a stored, still-open vulnerability that a fresh scan no longer reports at
+// all (i.e. absent from the incoming set, not matched/reopened). The type is
+// added here, along with its direct style/label consumers, ahead of the
+// actual classification logic that decides when to use it (task 15) —
+// `classifyVulnerability` below never returns this value yet.
+export type VulnClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA' | 'RESUELTA_AUSENTE';
 export type VulnDecision = 'INCLUDE' | 'EXCLUDE';
 
 export interface ClassificationResult {
@@ -199,4 +213,158 @@ export function classifyVulnerability(
     decision: 'EXCLUDE',
     existingStatus: match.status,
   };
+}
+
+// ─── computeAbsentClosures (task 15, v3.7.0 prep) ───────────────────────────
+//
+// Deliberately a SEPARATE list from `OPEN_STATUSES` above (do not merge
+// them). `OPEN_STATUSES` above answers a different question — "is a
+// STORED entry that an INCOMING key just matched still pending" (used by
+// `classifyVulnerability` to decide EXISTENTE_PENDIENTE vs. re-treating it as
+// new) — and it deliberately excludes `REABIERTA` (spec D5's classification
+// outcomes only ever reference RESUELTO/OPEN_STATUSES/"anything else" for
+// that decision, and REABIERTA already falls into the "anything else ->
+// EXISTENTE_PENDIENTE" branch a few lines up).
+//
+// `computeAbsentClosures` answers a different question — "is a stored
+// vulnerability still open enough that its absence from a complete, current
+// report should count as a resolution". That is exactly the question the
+// accept-time re-verification in `acceptBatch` (service.ts, the
+// `RESUELTA_AUSENTE` branch — formerly a Lightspeed-only sweep called
+// `sweepLightspeedClosures`, generalized to all 3 sources by task 16) answers
+// when it re-checks a stored vulnerability's CURRENT status before actually
+// closing it. Its literal there
+// (`RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES`, service.ts) DOES include
+// REABIERTA — a reopened vulnerability is still an open one, and a report
+// that no longer sees it is exactly the "reopened, then actually fixed"
+// case this whole mechanism exists to catch. This function replicates that
+// list verbatim so the upload-time staging path (this function) and the
+// accept-time re-verification (service.ts) never disagree about what "still
+// open" means for the same status value.
+//
+// NOTE ON A NAMING COLLISION IN THIS CODEBASE: `REAPARECIDA` (a
+// `VulnClassification` value, "reappeared" — a transient upload-time
+// classification of an INCOMING key) and `REABIERTA` (a `VulnStatus` value,
+// "reopened" — a persisted status on a STORED entry, set by acceptBatch when
+// a REAPARECIDA-classified entry is accepted) are two different enums that
+// happen to be near-homonyms in Spanish. `REAPARECIDA` is NOT a valid
+// `VulnStatus` at all (see `../integrations/types.ts`: `VulnStatus =
+// 'NUEVO' | 'ASIGNADO' | 'EN_CURSO' | 'PARADO' | 'RESUELTO' | 'REABIERTA'`),
+// so a status list built around it would never match anything reopened.
+// The list below uses `REABIERTA`, matching both
+// `RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES` in service.ts and the original
+// task-15 design brief (`.superpowers/sdd/task-15-brief.md` line 19) —
+// verified directly against both before writing this function; see
+// task-15-report.md for the full verification trail.
+const ABSENT_CLOSURE_OPEN_STATUSES: readonly VulnStatus[] = ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'];
+
+/**
+ * Computes `RESUELTA_AUSENTE` closure entries for one CI, per the v3.7.0
+ * design's four non-negotiable rules (see task-15-brief.md):
+ *
+ * 1. Only ever called for a CI known to be present in the current batch —
+ *    enforced by the CALLER (both call sites iterate `storedVulnsByCi`,
+ *    which by construction only ever contains CIs matched from an entry in
+ *    THIS batch — see `uploadReport`'s and `runImportBackground`'s doc
+ *    comments at their call sites). This function itself has no way to
+ *    detect "CI absent from the batch" — it only ever sees the CI it's
+ *    told to look at.
+ * 2. `source` must match EXACTLY — a Greenbone-only stored vulnerability is
+ *    never closed by a CrowdStrike or Lightspeed batch simply not
+ *    mentioning it, and vice versa.
+ * 3. Only vulnerabilities in `ABSENT_CLOSURE_OPEN_STATUSES` are eligible —
+ *    an already-`RESUELTO` entry is not "closed again", and an entry with
+ *    an unidentifiable stored key (neither `key` nor `cve` set — see
+ *    `resolveStoredIdentity`'s doc comment) can never be reasoned about, so
+ *    it is skipped rather than guessed at.
+ * 4. Every eligible entry not present in `reportedKeys` (this batch's
+ *    identity set for this CI, `key ?? cve` — same criterion as
+ *    `resolveStoredIdentity`) becomes one `RESUELTA_AUSENTE` /
+ *    `decision: 'INCLUDE'` entry, `null` (default) rather than `EXCLUDE` —
+ *    reappearing/absence detection is deliberately noisy-by-default (D7's
+ *    mirror image): the operator reviews and can uncheck it, but the
+ *    default position is "surface it", not "silently ignore it".
+ *
+ * Field-population notes for the synthetic `NewEntryInput` this returns —
+ * there is no incoming report row backing it, only the CI's own stored
+ * `Vulnerability` record, so several `VulnImportEntry` columns that
+ * normally come from a scanner payload have no natural source value:
+ * - `hostAddress`: `Vulnerability` carries no host-address field at all
+ *   (see `../integrations/types.ts`) — an empty string is used rather than
+ *   a synthetic placeholder string, matching how the review UI already
+ *   treats a falsy `hostAddress` (`frontend/app/vulnerabilities/imports/
+ *   [id]/page.tsx` line 384: `entry.hostAddress ? ... : ""`).
+ * - `matchConfidence: 'MANUAL'` — not literally an operator edit, but the
+ *   existing convention this codebase already uses for "this entry's CI
+ *   assignment is not the result of the matcher cascade, and is not
+ *   ambiguous/unmatched either" (see `patchEntry`'s doc comment in
+ *   service.ts); `ciId` here is the CI this stored vulnerability already
+ *   lives on, which is as undisputed as a CI assignment gets.
+ * - `raw: {}` — the `raw` column is NOT NULL; there is no scanner payload to
+ *   preserve, so an empty object is stored rather than fabricating one.
+ * - `existingStatus`: the stored entry's status BEFORE this closure is
+ *   applied (its current open status) — mirrors what `existingStatus`
+ *   already records elsewhere in this module (the matched stored entry's
+ *   status at classification time), not the `RESUELTO` it is about to
+ *   become on accept.
+ * - All other CrowdStrike/Lightspeed-only fields (`products`, `exprtRating`,
+ *   `cisaKev`, etc.) are carried over from the stored entry's own values
+ *   when present, `null`/`false`/`[]` otherwise — same fallback pattern
+ *   `uploadReport` and `runImportBackground` already use when normalizing a
+ *   real parsed entry.
+ */
+export function computeAbsentClosures(
+  ciId: string,
+  source: string,
+  storedVulns: Vulnerability[],
+  reportedKeys: Set<string>,
+): NewEntryInput[] {
+  const closures: NewEntryInput[] = [];
+
+  for (const v of storedVulns) {
+    if (v.source !== source) continue;
+
+    const identity = resolveStoredIdentity(v);
+    if (!identity) continue; // unidentifiable stored entry — see resolveStoredIdentity's doc comment
+
+    if (!ABSENT_CLOSURE_OPEN_STATUSES.includes(v.status)) continue; // not "open" — nothing to close
+    if (reportedKeys.has(identity)) continue; // still reported this batch — not absent
+
+    closures.push({
+      hostAddress: '',
+      ciId,
+      matchConfidence: 'MANUAL',
+      matchCandidates: null,
+      vulnKey: identity,
+      oid: v.oid ?? null,
+      port: v.port ?? null,
+      cves: v.cves ?? (v.cve ? [v.cve] : []),
+      severityScore: v.cvss_score ?? 0,
+      severity: v.severity,
+      name: v.description,
+      summary: null,
+      solution: v.solution ?? null,
+      family: v.family ?? null,
+      thread: null,
+      qod: v.qod ?? null,
+      epssScore: v.epssScore ?? null,
+      raw: {},
+      existingStatus: v.status,
+      classification: 'RESUELTA_AUSENTE',
+      decision: 'INCLUDE',
+      products: v.products ?? [],
+      exprtRating: v.exprtRating ?? null,
+      cisaKev: v.cisaKev ?? false,
+      cisaDueDate: v.cisaDueDate ? new Date(v.cisaDueDate) : null,
+      exploitStatus: v.exploitStatus ?? null,
+      daysOpen: v.daysOpen ?? null,
+      externalStatus: v.externalStatus ?? null,
+      cvssVersion: v.cvssVersion ?? null,
+      redhatImpact: v.redhatImpact ?? null,
+      knownExploit: v.knownExploit ?? null,
+      publicDate: v.publicDate ? new Date(v.publicDate) : null,
+    });
+  }
+
+  return closures;
 }

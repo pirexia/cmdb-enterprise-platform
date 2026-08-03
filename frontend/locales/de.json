@@ -301,7 +301,8 @@
       "source": "Quelle",
       "score": "CVSS-Bewertung",
       "port": "Port",
-      "family": "Familie"
+      "family": "Familie",
+      "assignee": "Verantwortlicher"
     },
     "status": {
       "NUEVO": "Neu",
@@ -333,7 +334,13 @@
       "MEDIUM": "Mittel",
       "LOW": "Niedrig",
       "INFO": "Informativ"
-    }
+    },
+    "unassigned": "Nicht zugewiesen",
+    "assigned_to_me": "Mir zugewiesen",
+    "all_assignees": "Alle Verantwortlichen",
+    "assignment_updated": "Zugewiesen an",
+    "assignment_cleared": "Zuweisung entfernt",
+    "assignment_update_failed": "Zuweisung konnte nicht aktualisiert werden:"
   },
   "contracts": {
     "title": "Verträge & Zusätze",
@@ -2406,19 +2413,23 @@
       "status": {
         "PENDING": "Ausstehend",
         "ACCEPTED": "Akzeptiert",
-        "DISCARDED": "Verworfen"
+        "DISCARDED": "Verworfen",
+        "RUNNING": "Wird verarbeitet",
+        "FAILED": "Fehlgeschlagen"
       },
       "singular": "Charge",
       "plural": "Chargen",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "Neu",
       "EXISTENTE_PENDIENTE": "Existiert bereits auf diesem CI",
-      "REAPARECIDA": "Wieder aufgetreten"
+      "REAPARECIDA": "Wieder aufgetreten",
+      "RESUELTA_AUSENTE": "Behoben (nicht mehr gemeldet)"
     },
     "matchConfidence": {
       "EXACT_IP": "Exakte IP",
@@ -2453,6 +2464,8 @@
       "discardConfirm": "Diesen Stapel verwerfen? Diese Aktion kann nicht rückgängig gemacht werden.",
       "discardSuccess": "Stapel verworfen",
       "filterAll": "Alle",
+      "filterByStatus": "Status",
+      "filterBySource": "Quelle",
       "noBatches": "Noch keine Scans importiert",
       "colFilename": "Datei",
       "colScanDate": "Scandatum",
@@ -2463,7 +2476,8 @@
       "colUploadedAt": "Hochgeladen am",
       "pageInfo": "Seite {page} von {totalPages} ({total} Stapel)",
       "prevPage": "Zurück",
-      "nextPage": "Weiter"
+      "nextPage": "Weiter",
+      "progress": "Verarbeite {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Kritisch",
@@ -2477,7 +2491,8 @@
       "actionable": "Handlungsbedarf",
       "informational": "Informativ",
       "attention": "Erfordert Aufmerksamkeit",
-      "reappeared": "Wieder aufgetreten"
+      "reappeared": "Wieder aufgetreten",
+      "closing": "Wird als behoben markiert"
     },
     "detail": {
       "title": "Batch-Überprüfung",
@@ -2495,7 +2510,10 @@
       "readOnlyNotice": "Dieser Batch wurde bereits abgeschlossen (angenommen oder verworfen) — nur Lesezugriff.",
       "readOnlyNoAdmin": "Nur ein Administrator oder SOC-Analyst kann diesen Batch überprüfen und entscheiden.",
       "notificationsRegion": "Benachrichtigungen",
-      "closeNotification": "Benachrichtigung schließen"
+      "closeNotification": "Benachrichtigung schließen",
+      "entriesPageInfo": "Seite {page} von {totalPages} ({total} Einträge)",
+      "prevPage": "Zurück",
+      "nextPage": "Weiter"
     },
     "entry": {
       "port": "Port",
@@ -2526,10 +2544,9 @@
       "cvssVersionLabel": "CVSS-Version"
     },
     "bulk": {
-      "includeVisible": "Sichtbare einschließen",
-      "excludeVisible": "Sichtbare ausschließen",
-      "doneToast": "Entscheidung auf sichtbare Einträge angewendet",
-      "progress": "{done}/{total} angewendet"
+      "includeVisible": "Alle in diesem Tab einschließen",
+      "excludeVisible": "Alle in diesem Tab ausschließen",
+      "doneToast": "Entscheidung auf alle Einträge dieses Tabs im gesamten Batch angewendet, nicht nur auf die geladene Seite"
     },
     "accept": {
       "button": "Batch übernehmen",

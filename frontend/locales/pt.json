@@ -301,7 +301,8 @@
       "source": "Fonte",
       "score": "Pontuação CVSS",
       "port": "Porta",
-      "family": "Família"
+      "family": "Família",
+      "assignee": "Responsável"
     },
     "status": {
       "NUEVO": "Novo",
@@ -333,7 +334,13 @@
       "MEDIUM": "Média",
       "LOW": "Baixa",
       "INFO": "Informativa"
-    }
+    },
+    "unassigned": "Não atribuído",
+    "assigned_to_me": "Atribuídas a mim",
+    "all_assignees": "Todos os responsáveis",
+    "assignment_updated": "Atribuído a",
+    "assignment_cleared": "Atribuição removida",
+    "assignment_update_failed": "Não foi possível atualizar a atribuição:"
   },
   "contracts": {
     "title": "Contratos e Adendos",
@@ -2406,19 +2413,23 @@
       "status": {
         "PENDING": "Pendente",
         "ACCEPTED": "Aceito",
-        "DISCARDED": "Descartado"
+        "DISCARDED": "Descartado",
+        "RUNNING": "Processando",
+        "FAILED": "Falhou"
       },
       "singular": "lote",
       "plural": "lotes",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "Nova",
       "EXISTENTE_PENDIENTE": "Já existe neste CI",
-      "REAPARECIDA": "Reaparecida"
+      "REAPARECIDA": "Reaparecida",
+      "RESUELTA_AUSENTE": "Resolvida (já não é reportada)"
     },
     "matchConfidence": {
       "EXACT_IP": "IP exato",
@@ -2453,6 +2464,8 @@
       "discardConfirm": "Descartar este lote? Esta ação não pode ser desfeita.",
       "discardSuccess": "Lote descartado",
       "filterAll": "Todos",
+      "filterByStatus": "Status",
+      "filterBySource": "Fonte",
       "noBatches": "Ainda não há varreduras importadas",
       "colFilename": "Arquivo",
       "colScanDate": "Data da varredura",
@@ -2463,7 +2476,8 @@
       "colUploadedAt": "Enviado em",
       "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
       "prevPage": "Anterior",
-      "nextPage": "Próxima"
+      "nextPage": "Próxima",
+      "progress": "Processando {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Crítica",
@@ -2477,7 +2491,8 @@
       "actionable": "Acionáveis",
       "informational": "Informativas",
       "attention": "Requerem atenção",
-      "reappeared": "Reaparecidas"
+      "reappeared": "Reaparecidas",
+      "closing": "Serão marcadas como resolvidas"
     },
     "detail": {
       "title": "Revisão do lote",
@@ -2495,7 +2510,10 @@
       "readOnlyNotice": "Este lote já foi resolvido (aceite ou descartado) — apenas leitura.",
       "readOnlyNoAdmin": "Apenas um administrador ou analista SOC pode rever e decidir sobre este lote.",
       "notificationsRegion": "Notificações",
-      "closeNotification": "Fechar notificação"
+      "closeNotification": "Fechar notificação",
+      "entriesPageInfo": "Página {page} de {totalPages} ({total} entradas)",
+      "prevPage": "Anterior",
+      "nextPage": "Seguinte"
     },
     "entry": {
       "port": "Porta",
@@ -2526,10 +2544,9 @@
       "cvssVersionLabel": "Versão CVSS"
     },
     "bulk": {
-      "includeVisible": "Incluir visíveis",
-      "excludeVisible": "Excluir visíveis",
-      "doneToast": "Decisão aplicada às entradas visíveis",
-      "progress": "{done}/{total} aplicado"
+      "includeVisible": "Incluir todas (aba)",
+      "excludeVisible": "Excluir todas (aba)",
+      "doneToast": "Decisão aplicada a todas as entradas desta aba no lote inteiro, não apenas à página carregada"
     },
     "accept": {
       "button": "Aceitar lote",

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle, Upload } from "lucide-react";
 import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
 import { exportToCSV } from "@/lib/csvExport";
+import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { VulnSeverity, VulnStatus } from "@/lib/types/vulnImport";
 
@@ -37,6 +38,11 @@ interface Vulnerability {
   family?:     string;
   solution?:   string;
   epssScore?:  number;
+  // Vulnerability owner assignment (v3.7.0 responsable phase) — optional so
+  // legacy stored vulnerabilities (no assignment yet) remain valid.
+  assignedTo?: string;  // user id
+  assignedAt?: string;  // ISO date
+  assignedBy?: string;  // user id of whoever made the assignment
 }
 
 interface CI {
@@ -44,6 +50,14 @@ interface CI {
   name:            string;
   apiSlug:         string;
   vulnerabilities: Vulnerability[] | null;
+}
+
+// GET /api/vulnerabilities/assignable-users (Task 19) — ADMIN/SOC accounts
+// only, no email (minimisation), `{ id, displayName }` per shared/queries
+// pattern (see staff-schedule/queries.ts).
+interface AssignableUser {
+  id:          string;
+  displayName: string;
 }
 
 interface VulnRow extends Vulnerability {
@@ -108,11 +122,23 @@ let _toastId = 0;
 
 export default function VulnerabilitiesPage() {
   const { t } = useLanguage();
+  // Task 20: PATCH /api/vulnerabilities is now gated server-side to
+  // ADMIN/SOC (requireSecurityWrite) — the per-row status <select> must not
+  // let anyone else attempt a change the API will now 403 anyway. Same
+  // flag already used to gate write actions in the sibling
+  // vulnerabilities/imports pages of this module.
+  const { user, canManageSecurity } = useAuth();
 
   const [allRows, setAllRows] = useState<VulnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
-  const [filters, setFilters] = useState({ search: "", cve: "", severity: "ALL", status: "ALL", source: "" });
+  const [filters, setFilters] = useState({ search: "", cve: "", severity: "ALL", status: "ALL", source: "", assignedTo: "" });
+  // Task 21: assignable users for the owner picker/column/filter (Task 19's
+  // GET /api/vulnerabilities/assignable-users — ADMIN/AUDITOR/SOC readable).
+  // Fetched once on mount; a non-privileged VIEWER simply gets a 403 here,
+  // swallowed silently, leaving the list empty (its column/filter fall back
+  // to raw ids rather than crashing — see resolveAssignee below).
+  const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [updating, setUpdating] = useState<Set<string>>(new Set());
   const [toasts, setToasts]   = useState<Toast[]>([]);
 
@@ -130,7 +156,7 @@ export default function VulnerabilitiesPage() {
   const setFilter = (key: keyof typeof filters, val: string) =>
     setFilters((prev) => ({ ...prev, [key]: val }));
   const clearFilters = () =>
-    setFilters({ search: "", cve: "", severity: "ALL", status: "ALL", source: "" });
+    setFilters({ search: "", cve: "", severity: "ALL", status: "ALL", source: "", assignedTo: "" });
 
   const fetchAll = async () => {
     setLoading(true); setError(null);
@@ -149,6 +175,32 @@ export default function VulnerabilitiesPage() {
   };
 
   useEffect(() => { fetchAll(); }, []);
+
+  // Task 21: load the assignable-users list once. Only ADMIN/SOC can act on
+  // it (the picker below is gated by canManageSecurity), but ADMIN/AUDITOR/SOC
+  // can all read it (requireSecurityRead) — fetching unconditionally lets a
+  // read-only AUDITOR still see resolved assignee names in the table/filter,
+  // not just a raw id. A VIEWER without security-read access gets a 403,
+  // swallowed here — the list simply stays empty for them.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiFetch("/api/vulnerabilities/assignable-users");
+        if (res.ok) setAssignableUsers(await res.json());
+      } catch {
+        // Not privileged to read this list — leave it empty.
+      }
+    })();
+  }, []);
+
+  // Resolves an `assignedTo` user id to its display name using the list
+  // above. Returns `null` when there is no assignment at all (distinct from
+  // an assignment that couldn't be resolved, e.g. list not loaded for this
+  // viewer's role — falls back to the raw id so it's never silently wrong).
+  const resolveAssignee = useCallback((id?: string | null): string | null => {
+    if (!id) return null;
+    return assignableUsers.find((u) => u.id === id)?.displayName ?? id;
+  }, [assignableUsers]);
 
   // RAG chat deep-link: ?cve=<cve-id> pre-fills the CVE filter once rows are loaded.
   const searchParams = useSearchParams();
@@ -220,6 +272,65 @@ export default function VulnerabilitiesPage() {
     }
   };
 
+  // Task 21: assign/reassign/unassign a vulnerability's owner. Same
+  // optimistic-update/rollback/toast shape as handleStatusChange above —
+  // `newAssignee === null` unassigns (backend's `hasAssignmentChange` +
+  // `assignedTo === null` branch, Task 20).
+  const handleAssigneeChange = async (row: VulnRow, newAssignee: string | null) => {
+    const identity  = vulnIdentity(row);
+    const updateKey = `${row.ciId}:${identity}`;
+
+    const previousAssignee = allRows.find(
+      (r) => r.ciId === row.ciId && vulnIdentity(r) === identity
+    )?.assignedTo;
+
+    setAllRows((prev) =>
+      prev.map((r) =>
+        r.ciId === row.ciId && vulnIdentity(r) === identity
+          ? { ...r, assignedTo: newAssignee ?? undefined }
+          : r
+      )
+    );
+    setUpdating((prev) => new Set(prev).add(updateKey));
+
+    try {
+      const res = await apiFetch("/api/vulnerabilities", {
+        method: "PATCH",
+        body:   JSON.stringify({ ciId: row.ciId, key: row.key, cve: row.cve, assignedTo: newAssignee }),
+      });
+
+      if (!res.ok) {
+        const ct = res.headers.get("content-type") ?? "";
+        const msg = ct.includes("application/json")
+          ? (await res.json()).error
+          : `Error ${res.status}`;
+        throw new Error(msg);
+      }
+
+      addToast(
+        "success",
+        newAssignee
+          ? `${t("vulnerabilities.assignment_updated")} "${resolveAssignee(newAssignee)}"`
+          : t("vulnerabilities.assignment_cleared")
+      );
+    } catch (err) {
+      console.error("Failed to update assignee:", err);
+
+      setAllRows((prev) =>
+        prev.map((r) =>
+          r.ciId === row.ciId && vulnIdentity(r) === identity
+            ? { ...r, assignedTo: previousAssignee }
+            : r
+        )
+      );
+
+      const errMsg = err instanceof Error ? err.message : t("common.unknown_error");
+      addToast("error", `${t("vulnerabilities.assignment_update_failed")} ${errMsg}`);
+    } finally {
+      setUpdating((prev) => { const n = new Set(prev); n.delete(updateKey); return n; });
+    }
+  };
+
   // ── Filtered rows ──────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     return allRows.filter((r) => {
@@ -228,9 +339,12 @@ export default function VulnerabilitiesPage() {
       if (filters.search && !r.ciName.toLowerCase().includes(filters.search.toLowerCase())) return false;
       if (filters.cve && !r.cve.toLowerCase().includes(filters.cve.toLowerCase())) return false;
       if (filters.source && (r.source ?? "manual") !== filters.source) return false;
+      if (filters.assignedTo === "__unassigned__" && r.assignedTo) return false;
+      if (filters.assignedTo === "__me__" && r.assignedTo !== user?.id) return false;
+      if (filters.assignedTo && filters.assignedTo !== "__unassigned__" && filters.assignedTo !== "__me__" && r.assignedTo !== filters.assignedTo) return false;
       return true;
     });
-  }, [allRows, filters]);
+  }, [allRows, filters, user]);
 
   const handleExportCSV = () => {
     exportToCSV(
@@ -416,6 +530,7 @@ export default function VulnerabilitiesPage() {
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 max-w-xs">{t("vulnerabilities.columns.description")}</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.source")}</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.status")}</th>
+                    <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.columns.assignee")}</th>
                     <th className="px-6 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{t("vulnerabilities.col_imported")}</th>
                   </tr>
                   {/* Inline filter row */}
@@ -481,6 +596,8 @@ export default function VulnerabilitiesPage() {
                         <option value="">{t("vulnerabilities.all_sources")}</option>
                         <option value="manual">Manual</option>
                         <option value="greenbone">Greenbone</option>
+                        <option value="crowdstrike">CrowdStrike</option>
+                        <option value="redhat-lightspeed">Red Hat Lightspeed</option>
                       </select>
                     </td>
                     {/* Status */}
@@ -500,6 +617,27 @@ export default function VulnerabilitiesPage() {
                         ))}
                       </select>
                     </td>
+                    {/* Assignee */}
+                    <td className="px-3 py-2">
+                      <select
+                        value={filters.assignedTo}
+                        onChange={(e) => setFilter("assignedTo", e.target.value)}
+                        className={`w-full rounded-none border py-1.5 px-2 text-xs focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]/20 ${
+                          filters.assignedTo
+                            ? "border-[var(--accent)] bg-[var(--accent)]/5 text-[var(--accent)] font-medium"
+                            : "border-slate-200 bg-white text-slate-600"
+                        }`}
+                      >
+                        <option value="">{t("vulnerabilities.all_assignees")}</option>
+                        {user && (
+                          <option value="__me__">{t("vulnerabilities.assigned_to_me")}</option>
+                        )}
+                        <option value="__unassigned__">{t("vulnerabilities.unassigned")}</option>
+                        {assignableUsers.map((u) => (
+                          <option key={u.id} value={u.id}>{u.displayName}</option>
+                        ))}
+                      </select>
+                    </td>
                     {/* Date — no filter */}
                     <td className="px-3 py-2" />
                   </tr>
@@ -507,7 +645,7 @@ export default function VulnerabilitiesPage() {
                 <tbody className="divide-y divide-slate-100">
                   {filtered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center text-slate-400 text-sm">
+                      <td colSpan={8} className="py-16 text-center text-slate-400 text-sm">
                         {allRows.length === 0
                           ? t("vulnerabilities.no_vulns")
                           : t("vulnerabilities.no_vulns_filtered")}
@@ -568,18 +706,51 @@ export default function VulnerabilitiesPage() {
                               <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${pillClass}`}>
                                 {t(`vulnerabilities.status.${row.status}`)}
                               </span>
+                              {/* Task 20: PATCH /api/vulnerabilities now requires ADMIN/SOC
+                                  (requireSecurityWrite) server-side — a VIEWER/AUDITOR/etc. would
+                                  just get a 403 from this <select>, so it isn't offered at all;
+                                  the pill above already shows the current status read-only. */}
+                              {canManageSecurity ? (
+                                <div className="relative flex items-center">
+                                  <select
+                                    value={row.status}
+                                    disabled={isUpdating}
+                                    onChange={(e) => handleStatusChange(row, e.target.value as VulnStatus)}
+                                    className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
+                                  >
+                                    {/* REABIERTA excluded — system-computed only, see EDITABLE_STATUSES comment above.
+                                        If the row is currently REABIERTA (not in this list), the <select> still shows
+                                        it correctly via `value={row.status}` even though it's not a selectable option. */}
+                                    {EDITABLE_STATUSES.map((s) => (
+                                      <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
+                                    ))}
+                                  </select>
+                                  {isUpdating && (
+                                    <RefreshCw
+                                      className="absolute -right-5 h-3.5 w-3.5 animate-spin text-[var(--accent)]"
+                                      aria-label={t("common.saving")}
+                                    />
+                                  )}
+                                </div>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          {/* Assignee (Task 21) — editable picker for ADMIN/SOC (same gate as
+                              the status <select> above, Task 20's requireSecurityWrite); read-only
+                              text for everyone else. */}
+                          <td className="px-6 py-3">
+                            {canManageSecurity ? (
                               <div className="relative flex items-center">
                                 <select
-                                  value={row.status}
+                                  value={row.assignedTo ?? ""}
                                   disabled={isUpdating}
-                                  onChange={(e) => handleStatusChange(row, e.target.value as VulnStatus)}
+                                  onChange={(e) => handleAssigneeChange(row, e.target.value || null)}
                                   className="rounded-none border border-slate-300 bg-white px-1.5 py-1 text-[11px] text-slate-600 focus:border-[var(--accent)] focus:outline-none disabled:opacity-50 disabled:cursor-wait"
                                 >
-                                  {/* REABIERTA excluded — system-computed only, see EDITABLE_STATUSES comment above.
-                                      If the row is currently REABIERTA (not in this list), the <select> still shows
-                                      it correctly via `value={row.status}` even though it's not a selectable option. */}
-                                  {EDITABLE_STATUSES.map((s) => (
-                                    <option key={s} value={s}>{t(`vulnerabilities.status.${s}`)}</option>
+                                  <option value="">{t("vulnerabilities.unassigned")}</option>
+                                  {assignableUsers.map((u) => (
+                                    <option key={u.id} value={u.id}>{u.displayName}</option>
                                   ))}
                                 </select>
                                 {isUpdating && (
@@ -589,7 +760,11 @@ export default function VulnerabilitiesPage() {
                                   />
                                 )}
                               </div>
-                            </div>
+                            ) : (
+                              <span className="text-xs text-slate-500">
+                                {row.assignedTo ? resolveAssignee(row.assignedTo) : t("vulnerabilities.unassigned")}
+                              </span>
+                            )}
                           </td>
 
                           {/* Imported date */}

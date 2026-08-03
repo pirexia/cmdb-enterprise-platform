@@ -1,5 +1,6 @@
 import {
   classifyVulnerability,
+  computeAbsentClosures,
   isSeverityAtLeast,
   isActivelyExploited,
   ACTIVE_EXPLOITATION_LABELS,
@@ -254,6 +255,76 @@ describe('isActivelyExploited', () => {
     expect(Array.from(ACTIVE_EXPLOITATION_LABELS).sort()).toEqual(
       ['Actively used (critical)', 'Easily Accessible (high)'].sort(),
     );
+  });
+});
+
+// ─── computeAbsentClosures (task 15, v3.7.0 prep) ───────────────────────────
+//
+// Note: case "3" from the design (a CI that never appears in the current
+// batch at all never gets a closure) is NOT expressable as a unit test of
+// this pure function — it is enforced entirely by the CALLER only ever
+// invoking computeAbsentClosures for CIs present in `storedVulnsByCi`, which
+// by construction only contains batch-matched CIs (see uploadReport's and
+// runImportBackground's doc comments at their call sites). That case is
+// covered at the integration level in router.test.ts instead.
+function fullStored(overrides: Partial<Vulnerability> & { status: VulnStatus }): Vulnerability {
+  return {
+    cve: overrides.cve ?? 'CVE-0000-0000',
+    key: overrides.key,
+    severity: overrides.severity ?? 'HIGH',
+    description: overrides.description ?? 'stored vuln',
+    source: overrides.source ?? 'greenbone',
+    status: overrides.status,
+    importedAt: overrides.importedAt ?? '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('computeAbsentClosures', () => {
+  const CI_ID = 'ci-1';
+
+  test('same source, open status, absent from reportedKeys -> closure generated', () => {
+    const v = fullStored({ key: 'oid-1@22/tcp', source: 'greenbone', status: 'NUEVO' });
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set());
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      ciId: CI_ID,
+      vulnKey: 'oid-1@22/tcp',
+      classification: 'RESUELTA_AUSENTE',
+      decision: 'INCLUDE',
+      existingStatus: 'NUEVO',
+    });
+  });
+
+  test('different source than the current batch -> NOT closed', () => {
+    const v = fullStored({ key: 'oid-2@22/tcp', source: 'crowdstrike', status: 'NUEVO' });
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set());
+    expect(result).toHaveLength(0);
+  });
+
+  test('already RESUELTO -> not re-closed', () => {
+    const v = fullStored({ key: 'oid-3@22/tcp', source: 'greenbone', status: 'RESUELTO' });
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set());
+    expect(result).toHaveLength(0);
+  });
+
+  test('REABIERTA counts as open -> closes if absent (confirms the REABIERTA-inclusive list, not classifier.ts\'s OPEN_STATUSES)', () => {
+    const v = fullStored({ key: 'oid-4@22/tcp', source: 'greenbone', status: 'REABIERTA' });
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set());
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ vulnKey: 'oid-4@22/tcp', classification: 'RESUELTA_AUSENTE', existingStatus: 'REABIERTA' });
+  });
+
+  test('still present in reportedKeys -> not closed', () => {
+    const v = fullStored({ key: 'oid-5@22/tcp', source: 'greenbone', status: 'NUEVO' });
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set(['oid-5@22/tcp']));
+    expect(result).toHaveLength(0);
+  });
+
+  test('unidentifiable stored entry (no key, no cve) is skipped rather than guessed at', () => {
+    const v = { status: 'NUEVO' as VulnStatus, source: 'greenbone' } as Vulnerability;
+    const result = computeAbsentClosures(CI_ID, 'greenbone', [v], new Set());
+    expect(result).toHaveLength(0);
   });
 });
 

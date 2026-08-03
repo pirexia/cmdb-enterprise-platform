@@ -8,6 +8,7 @@ const mockQueryRaw   = jest.fn();
 const mockExecuteRaw = jest.fn();
 const mockVulnUuid   = jest.fn().mockReturnValue('aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee');
 const mockBatchCreate = jest.fn();
+const mockBatchUpdate = jest.fn();
 const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 const mockTransaction = jest.fn();
 
@@ -24,7 +25,7 @@ jest.mock('@prisma/client', () => ({
       $queryRaw:   mockQueryRaw,
       $executeRaw: mockExecuteRaw,
       $transaction: mockTransaction,
-      vulnImportBatch: { create: mockBatchCreate },
+      vulnImportBatch: { create: mockBatchCreate, update: mockBatchUpdate },
       vulnImportEntry: { createMany: mockEntryCreateMany },
     };
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(instance));
@@ -37,6 +38,19 @@ jest.mock('@prisma/client', () => ({
 jest.mock('../../../services/entitySerializer', () => ({
   vulnUuid: mockVulnUuid,
 }));
+
+// runRedHatLightspeedImport (Task 4) now kicks off a background pull and
+// returns {batchId} immediately — wrap it in a jest.fn() so the happy-path
+// (202) test can stub it directly instead of driving the real token/vuln/
+// inventory HTTP clients, while every other test keeps the real
+// implementation (and the real error classes, via requireActual, so the
+// router's `instanceof` checks on the 503/409 branches stay meaningful).
+const mockRunRedHatLightspeedImport = jest.fn();
+jest.mock('../connectors/redhatLightspeed/service.js', () => {
+  const actual = jest.requireActual('../connectors/redhatLightspeed/service.js');
+  mockRunRedHatLightspeedImport.mockImplementation(actual.runRedHatLightspeedImport);
+  return { ...actual, runRedHatLightspeedImport: mockRunRedHatLightspeedImport };
+});
 
 process.env.JWT_SECRET = 'test-secret-32-chars-minimum-len!!';
 
@@ -156,6 +170,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -180,6 +195,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ active: true }]) // auth
       .mockResolvedValueOnce([]);                // matchHost → UNMATCHED, no CI vuln lookup follows
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -305,6 +321,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')
@@ -325,6 +342,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }])
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')
@@ -482,6 +500,15 @@ describe('Red Hat Lightspeed connector routes', () => {
         .post('/api/integrations/redhat-lightspeed/import')
         .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
       expect(res.status).toBe(403);
+    });
+
+    it('returns 202 with the batchId once the background pull has been queued (Task 5)', async () => {
+      mockRunRedHatLightspeedImport.mockResolvedValueOnce({ batchId: 'batch-xyz-123' });
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ batchId: 'batch-xyz-123' });
     });
   });
 });

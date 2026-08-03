@@ -23,6 +23,17 @@ export interface RagOps {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Accepts a query param as either a bare string (`?severity=A`) or an array
+// (`?severity=A&severity=B`, how Express/`qs` parses repeated keys) and
+// passes either shape through unchanged to getBatchWithEntries, which
+// normalises both via asArray. Anything else (missing, or a non-string
+// array element from a malformed query) is dropped rather than forwarded.
+function parseFilterParam(value: unknown): string | string[] | undefined {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value) && value.every((v) => typeof v === 'string')) return value as string[];
+  return undefined;
+}
+
 // The 20MB body-size ceiling for this route (spec D10) is enforced in
 // index.ts via a path-scoped `express.json({limit:'20mb'})` mounted on
 // '/api/vuln-import/upload' AHEAD of the app-wide `express.json({limit:'2mb'})`.
@@ -67,9 +78,10 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   router.get('/batches', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
     try {
       const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const source = typeof req.query.source === 'string' ? req.query.source : undefined;
       const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
       const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
-      const result = await listBatches(prisma, { status, page, pageSize });
+      const result = await listBatches(prisma, { status, source, page, pageSize });
       res.json(result);
     } catch (err) {
       console.error('[GET /api/vuln-import/batches] Error:', err);
@@ -81,10 +93,21 @@ export function createVulnImportRouter(prisma: PrismaClient, rag?: RagOps): Rout
   router.get('/batches/:id', authenticateToken, requireSecurityRead, async (req: Request, res: Response) => {
     try {
       if (!UUID_RE.test(req.params.id as string)) { res.status(404).json({ error: 'BATCH_NOT_FOUND' }); return; }
-      const classification = typeof req.query.classification === 'string' ? req.query.classification : undefined;
-      const severity = typeof req.query.severity === 'string' ? req.query.severity : undefined;
+      // classification/severity/matchConfidence accept either a single value
+      // (`?severity=HIGH`, arrives as a string) or several
+      // (`?severity=HIGH&severity=CRITICAL`, arrives as a string[] — how
+      // Express/`qs` parses repeated query keys) so the review screen's
+      // union tabs (e.g. "Accionables" = MEDIUM+HIGH+CRITICAL) can fetch
+      // "page N of the union" in one request. getBatchWithEntries normalises
+      // both shapes via asArray. `decision` stays single-value on purpose —
+      // no tab is a union of decisions (task-8c brief).
+      const classification = parseFilterParam(req.query.classification);
+      const severity = parseFilterParam(req.query.severity);
+      const matchConfidence = parseFilterParam(req.query.matchConfidence);
       const decision = typeof req.query.decision === 'string' ? req.query.decision : undefined;
-      const result = await getBatchDetail(prisma, req.params.id as string, { classification, severity, decision });
+      const page = req.query.page ? parseInt(String(req.query.page), 10) : undefined;
+      const pageSize = req.query.pageSize ? parseInt(String(req.query.pageSize), 10) : undefined;
+      const result = await getBatchDetail(prisma, req.params.id as string, { classification, severity, matchConfidence, decision, page, pageSize });
       res.json(result);
     } catch (err) {
       if (err instanceof BatchNotFoundError) { res.status(404).json({ error: 'BATCH_NOT_FOUND' }); return; }

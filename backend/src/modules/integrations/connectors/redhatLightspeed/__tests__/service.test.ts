@@ -1,8 +1,10 @@
 import { PrismaClient } from '@prisma/client';
-import { runRedHatLightspeedImport, RedHatLightspeedSyncInProgressError } from '../service.js';
+import { runRedHatLightspeedImport, RedHatLightspeedSyncInProgressError, mergeDuplicateCiEntries } from '../service.js';
+import type { NewEntryInput } from '../../../vuln-import/queries.js';
 import * as tokenClient from '../tokenClient.js';
 import * as vulnClient from '../vulnClient.js';
 import * as inventoryClient from '../inventoryClient.js';
+import { matchHost } from '../../../vuln-import/matcher.js';
 
 jest.mock('../tokenClient.js');
 jest.mock('../vulnClient.js');
@@ -207,5 +209,67 @@ describe('runRedHatLightspeedImport', () => {
     await waitForBackgroundWork();
 
     consoleErrorSpy.mockRestore();
+  });
+
+  it('merges two Insights system registrations that resolve to the same CI, deduping the shared CVE but keeping each system\'s exclusive CVE (live verification: msnetbck matched both an IPv4 and an IPv6 link-local host_address for the same physical host)', async () => {
+    (vulnClient.listSystems as jest.Mock).mockResolvedValue([
+      { inventory_id: 'inv-ipv4', display_name: 'msnetbck', os: 'RHEL 9.4', cve_count: 2 },
+      { inventory_id: 'inv-ipv6', display_name: 'msnetbck', os: 'RHEL 9.4', cve_count: 2 },
+    ]);
+    (vulnClient.listSystemCves as jest.Mock).mockImplementation((_baseUrl: string, _token: string, inventoryId: string) => {
+      const shared = { synopsis: 'CVE-2024-SHARED', cvss3_score: '7.5', impact: 'Important', known_exploit: false };
+      const exclusive = inventoryId === 'inv-ipv4'
+        ? { synopsis: 'CVE-2024-IPV4-ONLY', cvss3_score: '5.0', impact: 'Moderate', known_exploit: false }
+        : { synopsis: 'CVE-2024-IPV6-ONLY', cvss3_score: '5.0', impact: 'Moderate', known_exploit: false };
+      return Promise.resolve([shared, exclusive]);
+    });
+    (inventoryClient.getHostIdentity as jest.Mock).mockImplementation((_baseUrl: string, _token: string, inventoryId: string) =>
+      Promise.resolve(
+        inventoryId === 'inv-ipv4'
+          ? { ip: '10.100.8.97', hostname: 'msnetbck', displayName: 'msnetbck', osName: 'RHEL', osMajor: 9, osMinor: 4 }
+          : { ip: 'fe80::215:5dff:fe08:2408', hostname: 'msnetbck', displayName: 'msnetbck', osName: 'RHEL', osMajor: 9, osMinor: 4 },
+      ),
+    );
+    // Both system registrations resolve to the SAME CI — this is the real
+    // scenario: two `inventory_id`s, one physical host, one CI.
+    (matchHost as jest.Mock)
+      .mockResolvedValueOnce({ confidence: 'EXACT_IP', ci: { id: 'ci-msnetbck', name: 'msnetbck' } })
+      .mockResolvedValueOnce({ confidence: 'EXACT_HOSTNAME', ci: { id: 'ci-msnetbck', name: 'msnetbck' } });
+
+    await runRedHatLightspeedImport(prisma, 'tester@cmdb.local');
+    await waitForBackgroundWork();
+
+    const entriesCall = (prisma.vulnImportEntry.createMany as jest.Mock).mock.calls[0][0];
+    const keys: string[] = entriesCall.data.map((e: { vulnKey: string }) => e.vulnKey);
+
+    // The shared CVE must appear exactly once, not twice.
+    expect(keys.filter((k) => k === 'CVE-2024-SHARED')).toHaveLength(1);
+    // Each system's exclusive CVE must be preserved — merging must not drop
+    // real, distinct findings.
+    expect(keys).toContain('CVE-2024-IPV4-ONLY');
+    expect(keys).toContain('CVE-2024-IPV6-ONLY');
+    expect(keys).toHaveLength(3);
+  });
+
+  it('never merges AMBIGUOUS/UNMATCHED entries together, even when they share a vulnKey, since ciId is null and each represents an independent unresolved candidate', () => {
+    const shared = {
+      hostAddress: '10.1.1.1', matchConfidence: 'UNMATCHED', matchCandidates: null,
+      vulnKey: 'CVE-2024-UNMATCHED', oid: null, port: null, cves: ['CVE-2024-UNMATCHED'],
+      severityScore: 5, severity: 'Moderate', name: 'shared', summary: null, solution: null,
+      family: null, thread: null, qod: null, epssScore: null, raw: {},
+      existingStatus: null, classification: 'NEW', decision: 'INCLUDE',
+      products: [], exprtRating: null, cisaKev: false, cisaDueDate: null,
+      exploitStatus: null, daysOpen: null, externalStatus: null, cvssVersion: null,
+      redhatImpact: null, knownExploit: null, publicDate: null,
+    };
+    const entries: NewEntryInput[] = [
+      { ...shared, ciId: null, hostAddress: 'host-a' },
+      { ...shared, ciId: null, hostAddress: 'host-b' },
+      { ...shared, ciId: null, matchConfidence: 'AMBIGUOUS', matchCandidates: [{ id: 'x', name: 'x' }], hostAddress: 'host-c' },
+    ];
+
+    const merged = mergeDuplicateCiEntries(entries);
+
+    expect(merged).toHaveLength(3);
   });
 });

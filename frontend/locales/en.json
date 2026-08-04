@@ -301,7 +301,8 @@
       "source": "Source",
       "score": "CVSS Score",
       "port": "Port",
-      "family": "Family"
+      "family": "Family",
+      "assignee": "Assignee"
     },
     "status": {
       "NUEVO": "New",
@@ -341,7 +342,13 @@
       "MEDIUM": "Medium",
       "LOW": "Low",
       "INFO": "Informational"
-    }
+    },
+    "unassigned": "Unassigned",
+    "assigned_to_me": "Assigned to me",
+    "all_assignees": "All assignees",
+    "assignment_updated": "Assigned to",
+    "assignment_cleared": "Assignment cleared",
+    "assignment_update_failed": "Could not update assignment:"
   },
   "contracts": {
     "title": "Contracts & Addendums",
@@ -1555,6 +1562,11 @@
     "staging_review_cta": "Review and decide →",
     "crowdstrike_subtitle": "Endpoint Security",
     "crowdstrike_desc": "Import the Falcon agent status. Whether the agent is active, its prevention policy and recent detections will be recorded.",
+    "lightspeed_subtitle": "RHEL vulnerability scanning",
+    "lightspeed_desc": "Pulls every open CVE on your RHEL systems directly from the Red Hat Insights Vulnerability API. Requires a configured service account.",
+    "lightspeed_not_configured": "Red Hat Lightspeed connector is not configured — set REDHAT_LIGHTSPEED_CLIENT_ID/SECRET.",
+    "lightspeed_import_btn": "Import",
+    "lightspeed_success": "Red Hat Lightspeed import staged for review.",
     "how_it_works": "How it works",
     "how_it_works_body_pre": "Each connector searches for CIs in the database by name and updates them automatically. After processing, go to",
     "how_it_works_body_mid": "or",
@@ -2520,19 +2532,23 @@
       "status": {
         "PENDING": "Pending",
         "ACCEPTED": "Accepted",
-        "DISCARDED": "Discarded"
+        "DISCARDED": "Discarded",
+        "RUNNING": "Processing",
+        "FAILED": "Failed"
       },
       "singular": "batch",
       "plural": "batches",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "New",
       "EXISTENTE_PENDIENTE": "Already exists on this CI",
-      "REAPARECIDA": "Reoccurred"
+      "REAPARECIDA": "Reoccurred",
+      "RESUELTA_AUSENTE": "Resolved (no longer reported)"
     },
     "matchConfidence": {
       "EXACT_IP": "Exact IP",
@@ -2554,6 +2570,7 @@
       "discard": "Discard batch",
       "review": "Review",
       "reassignCi": "Reassign CI",
+      "createCi": "Create CI",
       "confirmAccept": "Confirm acceptance",
       "confirmDiscard": "Confirm discard",
       "bulkInclude": "Include selected",
@@ -2566,6 +2583,8 @@
       "discardConfirm": "Discard this batch? This action cannot be undone.",
       "discardSuccess": "Batch discarded",
       "filterAll": "All",
+      "filterByStatus": "Status",
+      "filterBySource": "Source",
       "noBatches": "No scans imported yet",
       "colFilename": "File",
       "colScanDate": "Scan date",
@@ -2576,7 +2595,8 @@
       "colUploadedAt": "Uploaded at",
       "pageInfo": "Page {page} of {totalPages} ({total} batches)",
       "prevPage": "Previous",
-      "nextPage": "Next"
+      "nextPage": "Next",
+      "progress": "Processing {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Critical",
@@ -2590,7 +2610,8 @@
       "actionable": "Actionable",
       "informational": "Informational",
       "attention": "Needs attention",
-      "reappeared": "Reappeared"
+      "reappeared": "Reappeared",
+      "closing": "Will be marked resolved"
     },
     "detail": {
       "title": "Batch review",
@@ -2608,7 +2629,10 @@
       "readOnlyNotice": "This batch has already been resolved (accepted or discarded) — read only.",
       "readOnlyNoAdmin": "Only an administrator or a SOC analyst can review and decide on this batch.",
       "notificationsRegion": "Notifications",
-      "closeNotification": "Close notification"
+      "closeNotification": "Close notification",
+      "entriesPageInfo": "Page {page} of {totalPages} ({total} entries)",
+      "prevPage": "Previous",
+      "nextPage": "Next"
     },
     "entry": {
       "port": "Port",
@@ -2626,21 +2650,22 @@
       "noDetails": "No description available",
       "existingPendingHint": "Won't be re-imported; only its data will be refreshed",
       "exprtRatingLabel": "ExPRT rating",
+      "redhatImpactLabel": "Red Hat impact",
       "cisaKevLabel": "CISA KEV",
       "cisaDueDateLabel": "CISA due date",
       "cisaKevWithDue": "CISA KEV — due {date}",
       "exploitStatusLabel": "Exploitation status",
       "activeExploitationBadge": "Active exploitation",
+      "knownExploitBadge": "Known exploit",
       "daysOpenLabel": "Days open",
       "productsLabel": "Affected products",
       "externalStatusLabel": "Source status",
       "cvssVersionLabel": "CVSS version"
     },
     "bulk": {
-      "includeVisible": "Include visible",
-      "excludeVisible": "Exclude visible",
-      "doneToast": "Decision applied to the visible entries",
-      "progress": "{done}/{total} applied"
+      "includeVisible": "Include all in this tab",
+      "excludeVisible": "Exclude all in this tab",
+      "doneToast": "Decision applied to all matching entries in this tab (entire batch), not just the loaded page"
     },
     "accept": {
       "button": "Accept batch",

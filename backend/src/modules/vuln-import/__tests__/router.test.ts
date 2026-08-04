@@ -22,9 +22,11 @@ const mockBatchUpdate     = jest.fn();
 
 const mockEntryGroupBy    = jest.fn();
 const mockEntryFindMany   = jest.fn();
+const mockEntryCount      = jest.fn();
 const mockEntryFindFirst  = jest.fn();
 const mockEntryUpdate     = jest.fn();
 const mockEntryUpdateMany = jest.fn();
+const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 
 const mockTransaction = jest.fn();
 
@@ -39,8 +41,8 @@ jest.mock('@prisma/client', () => ({
         findUnique: mockBatchFindUnique, update: mockBatchUpdate,
       },
       vulnImportEntry: {
-        groupBy: mockEntryGroupBy, findMany: mockEntryFindMany, findFirst: mockEntryFindFirst,
-        update: mockEntryUpdate, updateMany: mockEntryUpdateMany,
+        groupBy: mockEntryGroupBy, findMany: mockEntryFindMany, count: mockEntryCount, findFirst: mockEntryFindFirst,
+        update: mockEntryUpdate, updateMany: mockEntryUpdateMany, createMany: mockEntryCreateMany,
       },
     };
     // The real Prisma runs $transaction(fn) against an interactive tx client;
@@ -183,6 +185,7 @@ describe('POST /api/vuln-import/upload', () => {
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -196,8 +199,8 @@ describe('POST /api/vuln-import/upload', () => {
       nueva: 1, existentePendiente: 0, reaparecida: 0, preselectedInclude: 1,
     });
 
-    const createArg = mockBatchCreate.mock.calls[0][0];
-    expect(createArg.data.entries.create[0]).toMatchObject({
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0]).toMatchObject({
       ciId: CI_ID, matchConfidence: 'EXACT_IP', classification: 'NUEVA', decision: 'INCLUDE',
     });
     expect(mockExecuteRaw).toHaveBeenCalledWith(
@@ -213,6 +216,7 @@ describe('POST /api/vuln-import/upload', () => {
         { level: 2, id: 'ci-b', name: 'dup' },
       ]); // matchHost → AMBIGUOUS, no getCiVulnerabilities call follows
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -222,10 +226,10 @@ describe('POST /api/vuln-import/upload', () => {
     expect(res.status).toBe(201);
     expect(res.body.summary.ambiguous).toBe(1);
     expect(res.body.summary.matched).toBe(0);
-    const createArg = mockBatchCreate.mock.calls[0][0];
-    expect(createArg.data.entries.create[0].ciId).toBeNull();
-    expect(createArg.data.entries.create[0].matchConfidence).toBe('AMBIGUOUS');
-    expect(createArg.data.entries.create[0].matchCandidates).toEqual([
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0].ciId).toBeNull();
+    expect(entriesArg.data[0].matchConfidence).toBe('AMBIGUOUS');
+    expect(entriesArg.data[0].matchCandidates).toEqual([
       { id: 'ci-a', name: 'dup' }, { id: 'ci-b', name: 'dup' },
     ]);
   });
@@ -235,6 +239,7 @@ describe('POST /api/vuln-import/upload', () => {
       .mockResolvedValueOnce([{ active: true }])
       .mockResolvedValueOnce([]); // matchHost → UNMATCHED
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -271,6 +276,7 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                       // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -282,7 +288,8 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
 
     const createArg = mockBatchCreate.mock.calls[0][0];
     expect(createArg.data.source).toBe('crowdstrike');
-    expect(createArg.data.entries.create[0]).toMatchObject({
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0];
+    expect(entriesArg.data[0]).toMatchObject({
       vulnKey: 'CVE-2024-9999',
       products: ['JRE 1.8.0'],
       exprtRating: null,
@@ -314,6 +321,7 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
   it('201: an empty flat array is a structurally valid (if empty) CrowdStrike export, not rejected', async () => {
     mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
     mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/vuln-import/upload')
@@ -324,6 +332,81 @@ describe('POST /api/vuln-import/upload — CrowdStrike Spotlight auto-detection'
     expect(res.body.summary.totalEntries).toBe(0);
     expect(mockBatchCreate).toHaveBeenCalledTimes(1);
     expect(mockBatchCreate.mock.calls[0][0].data.source).toBe('crowdstrike');
+  });
+});
+
+// ── POST /upload — absent-closure staging (task 15, v3.7.0 prep) ───────────
+//
+// `computeAbsentClosures`'s pure-function cases (same-source close, other-
+// source no-close, RESUELTO no-close, REABIERTA closes) are covered in
+// classifier.test.ts. The one case that can only be verified at this
+// integration level is "a CI absent from the batch entirely never gets a
+// closure" — `storedVulnsByCi` (uploadReport's cache) is only ever populated
+// for hosts matched in the CURRENT report, so a stored open vulnerability on
+// some other CI is never even fetched, let alone closed.
+
+describe('POST /api/vuln-import/upload — absent-closure staging (task 15)', () => {
+  it('201: a stored, same-source, open vulnerability absent from this report becomes a RESUELTA_AUSENTE/INCLUDE closure entry alongside the normal NUEVA entry', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
+      .mockResolvedValueOnce([{
+        vulnerabilities: [{
+          key: 'stale-oid@22/tcp', cve: 'CVE-2020-0001', severity: 'HIGH',
+          description: 'stale vuln', source: 'greenbone', status: 'NUEVO',
+          importedAt: '2026-01-01T00:00:00Z',
+        }],
+      }]); // getCiVulnerabilities — one stale open greenbone vuln, not in this report
+
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: buildReport() }); // buildReport()'s only vuln has CVE-2024-0001, a different key
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary.totalEntries).toBe(2); // 1 NUEVA + 1 RESUELTA_AUSENTE closure
+
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0].data as Array<Record<string, unknown>>;
+    expect(entriesArg).toHaveLength(2);
+    const closure = entriesArg.find((e) => e.classification === 'RESUELTA_AUSENTE');
+    expect(closure).toMatchObject({
+      ciId: CI_ID, vulnKey: 'stale-oid@22/tcp', decision: 'INCLUDE', existingStatus: 'NUEVO',
+    });
+
+    // Only the matched CI is ever fetched — no other CI's vulnerabilities
+    // are queried, so no other CI could possibly get a closure entry.
+    expect(mockQueryRaw).toHaveBeenCalledTimes(3);
+    expect(entriesArg.every((e) => e.ciId === CI_ID)).toBe(true);
+  });
+
+  it('201: a stored open vulnerability from a DIFFERENT source than this batch is left untouched (no closure)', async () => {
+    mockQueryRaw
+      .mockResolvedValueOnce([{ active: true }])
+      .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost
+      .mockResolvedValueOnce([{
+        vulnerabilities: [{
+          key: 'cs-key-1', cve: 'CVE-2020-0002', severity: 'HIGH',
+          description: 'crowdstrike-sourced vuln', source: 'crowdstrike', status: 'NUEVO',
+          importedAt: '2026-01-01T00:00:00Z',
+        }],
+      }]); // getCiVulnerabilities — open, but sourced from crowdstrike, not this greenbone batch
+
+    mockBatchCreate.mockResolvedValueOnce({ id: BATCH_ID, entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: BATCH_ID, uploadedBy: 'admin@test.local' });
+
+    const res = await buildApp()
+      .post('/api/vuln-import/upload')
+      .set('Authorization', `Bearer ${makeToken('ADMIN')}`)
+      .send({ report: buildReport() });
+
+    expect(res.status).toBe(201);
+    expect(res.body.summary.totalEntries).toBe(1); // only the NUEVA entry, no closure
+
+    const entriesArg = mockEntryCreateMany.mock.calls[0][0].data as Array<Record<string, unknown>>;
+    expect(entriesArg.some((e) => e.classification === 'RESUELTA_AUSENTE')).toBe(false);
   });
 });
 
@@ -362,15 +445,69 @@ describe('GET /api/vuln-import/batches/:id', () => {
     expect(res.status).toBe(404);
   });
 
-  it('200 returns the batch and its entries', async () => {
+  it('200 returns the batch, its (paginated) entries, total, and aggregated classification counts', async () => {
     mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
     mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
     mockEntryFindMany.mockResolvedValueOnce([{ id: ENTRY_ID, batchId: BATCH_ID, classification: 'NUEVA' }]);
+    mockEntryCount.mockResolvedValueOnce(137);
+    // getBatchWithEntries issues 4 groupBy calls (classification, severity,
+    // matchConfidence, ciId — in that order, task 10 added the 4th) — one
+    // mockResolvedValueOnce per call.
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { classification: 'NUEVA', _count: { _all: 90 } },
+      { classification: 'EXISTENTE_PENDIENTE', _count: { _all: 47 } },
+    ]);
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { severity: 'CRITICAL', _count: { _all: 100 } },
+      { severity: 'LOW', _count: { _all: 37 } },
+    ]);
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { matchConfidence: 'EXACT_IP', _count: { _all: 130 } },
+      { matchConfidence: null, _count: { _all: 7 } },
+    ]);
+    // ciId groupBy — 5 distinct CIs among the matched entries.
+    mockEntryGroupBy.mockResolvedValueOnce([
+      { ciId: 'ci-1', _count: 30 },
+      { ciId: 'ci-2', _count: 25 },
+      { ciId: 'ci-3', _count: 20 },
+      { ciId: 'ci-4', _count: 15 },
+      { ciId: 'ci-5', _count: 10 },
+    ]);
 
     const res = await buildApp().get(`/api/vuln-import/batches/${BATCH_ID}`).set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
     expect(res.status).toBe(200);
     expect(res.body.batch.id).toBe(BATCH_ID);
     expect(res.body.entries).toHaveLength(1);
+    // total/byClassification come from count()/groupBy(), not from counting
+    // the (possibly single-page) entries array — 137/90/47 here deliberately
+    // don't match the 1-row `entries` array above.
+    expect(res.body.total).toBe(137);
+    expect(res.body.byClassification).toEqual({ NUEVA: 90, EXISTENTE_PENDIENTE: 47 });
+    expect(res.body.bySeverity).toEqual({ CRITICAL: 100, LOW: 37 });
+    // Null matchConfidence rows fold into the NO_MATCH_CONFIDENCE_KEY bucket.
+    expect(res.body.byMatchConfidence).toEqual({ EXACT_IP: 130, NONE: 7 });
+    // ciCount = number of DISTINCT ciId groups (5 here), not any entry count.
+    expect(res.body.ciCount).toBe(5);
+  });
+
+  it('propagates page/pageSize query params into the findMany skip/take', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ active: true }]);
+    mockBatchFindUnique.mockResolvedValueOnce({ id: BATCH_ID, status: 'PENDING' });
+    mockEntryFindMany.mockResolvedValueOnce([]);
+    mockEntryCount.mockResolvedValueOnce(0);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+    mockEntryGroupBy.mockResolvedValueOnce([]);
+
+    const res = await buildApp()
+      .get(`/api/vuln-import/batches/${BATCH_ID}?page=3&pageSize=25`)
+      .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+
+    expect(res.status).toBe(200);
+    const findManyArg = mockEntryFindMany.mock.calls.at(-1)?.[0];
+    expect(findManyArg.skip).toBe(50); // (page 3 - 1) * pageSize 25
+    expect(findManyArg.take).toBe(25);
   });
 });
 

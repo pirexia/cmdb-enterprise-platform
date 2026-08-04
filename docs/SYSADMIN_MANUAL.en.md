@@ -2599,3 +2599,35 @@ An import batch (`VulnImportBatch`) that gets uploaded and is **never accepted o
 **Nullability change on `oid`/`port`.** These two columns, previously always populated in practice (Greenbone's NVT-and-port identity), are now nullable: a CrowdStrike entry has neither an NVT nor a port, so both are `NULL` on those rows. If you have any ad-hoc SQL queries or custom reporting tooling against `vuln_import_entries` that assume `oid`/`port` are always populated, review them — any row with `source='crowdstrike'` will have them `NULL`.
 
 **20MB limit now also on `/api/integrations/crowdstrike`.** The 20MB body-size override (vs. the app-wide 2MB limit), already applied to `/api/vuln-import/upload` in v3.6.0, is now also applied to the legacy `/api/integrations/crowdstrike` endpoint, which as of this round can also receive a real Spotlight export (in addition to the original agent/EDR shape, which still works unchanged). A real single-host Spotlight export is around 686KB in the test fixture — a multi-host export can easily approach or exceed the previous 2MB limit. No configuration action is needed: the override is already registered in `index.ts` in the correct order (ahead of the global parser) for both routes.
+
+### Third source: Red Hat Lightspeed (v3.7.0)
+
+> See `docs/INTEGRATIONS.md` § 9.13 for the full architecture (the three Red Hat APIs, CVE-centric identity model, OS/EOL correction, closure sweep). This section covers only the sysadmin/operational side: how to create the service account and which variables to set.
+
+**Unlike Greenbone/CrowdStrike, this connector is live-pull** — no file is uploaded; the backend calls Red Hat's API directly. It requires a configured service account before the "Import" button works.
+
+**Step 1 — create the service account at Red Hat:**
+
+1. Sign in at [console.redhat.com](https://console.redhat.com) with the organization that has your RHEL systems registered in Insights.
+2. Go to **Identity & Access Management → Service Accounts** and click **Create service account**. Note the **Client ID** and **Client secret** shown — the secret is **shown only once**; if lost, you'll need to regenerate it (invalidating the previous one).
+3. Under **User Access → Groups**, add the service account to a group with read access to **Vulnerability** and **Inventory** (or your organization's equivalent read-only role).
+
+**Step 2 — set the environment variables** (see also `docs/INTEGRATIONS.md` § 3):
+
+```bash
+REDHAT_LIGHTSPEED_CLIENT_ID=<client id from step 1>
+REDHAT_LIGHTSPEED_CLIENT_SECRET=<client secret from step 1>
+REDHAT_LIGHTSPEED_BASE_URL=https://console.redhat.com
+```
+
+After editing `.env`, restart the backend (`podman-compose -f docker-compose.prod.yml up -d --build backend`, or this project's usual full `down`/`up` cycle) so it picks up the new variables. The connector needs no additional manual migration beyond the `prisma migrate deploy` already applied when deploying this version.
+
+**New columns, no new backup procedure.** `vuln_import_entries` gains 3 nullable columns (`redhat_impact`, `known_exploit`, `public_date`) — same pattern as the CrowdStrike Spotlight columns, covered by the regular `pg_dump` (§6), no retention-script changes needed.
+
+**The secret never appears in logs or API responses** — `GET /api/integrations/redhat-lightspeed/status` only returns `{configured, baseUrl}`.
+
+**Asynchronous import — no new infrastructure to install.** A real pull (105 systems, ~13,868 CVEs) showed that running the import synchronously inside a single HTTP request wasn't viable — the 900s timeout initially trialled for this route no longer exists, see below. `POST /api/integrations/redhat-lightspeed/import` now responds `202` immediately and the pull continues in the background **inside the same backend Node process** — there's no queue, worker, or extra process to start, monitor, or restart. Progress is tracked directly on the batch row itself (`vuln_import_batches.progress_current`/`progress_total`/`progress_phase`), visible under `/vulnerabilities/imports`.
+
+**Automatic recovery of orphaned batches on startup.** If the backend restarts (crash, `podman-compose down`/`up`, redeploy) while an import batch is in `RUNNING` state, that batch does **not** stay stuck indefinitely: on startup, the backend automatically marks any batch still in `RUNNING` from a previous run as `FAILED`, with `error_message = 'Interrumpido por reinicio del servidor'` and a `[vuln-import] Recovered N orphaned RUNNING batch(es) as FAILED on startup.` log line in the container output. No manual sysadmin action is required — whoever kicked off the import simply sees the batch as "Failed" and can re-run it. This applies to any `RUNNING` batch, not just Lightspeed's (the same mechanism would in principle cover any future import that uses the `RUNNING` state).
+
+**nginx timeout no longer needed for this route.** An earlier iteration of this work, while the flow was still synchronous, raised `proxy_read_timeout` in `nginx/conf.d/frontend.conf` to 900s specifically for `POST /api/integrations/redhat-lightspeed/import`, to give the full pull time to finish before nginx cut the connection. With the immediate `202` response that override is no longer needed and has been removed — the route once again shares the application's general timeout. If you come across references to a 900s timeout for this route in older documentation or deployment notes, they're stale.

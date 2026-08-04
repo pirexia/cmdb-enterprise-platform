@@ -14,6 +14,11 @@
 8. [LDAP / Active Directory — grupo de acceso y sincronización de usuarios (v3.5.10)](#8-ldap--active-directory--grupo-de-acceso-y-sincronización-de-usuarios-v3510)
 9. [Importación de vulnerabilidades Greenbone — formato real y staging (v3.6.0)](#9-importación-de-vulnerabilidades-greenbone--formato-real-y-staging-v360)
    - [9.12 Segunda fuente: CrowdStrike Spotlight (mismo staging, sin tag todavía)](#912-segunda-fuente-crowdstrike-spotlight-mismo-staging-sin-tag-todavía)
+   - [9.13 Tercera fuente: Red Hat Lightspeed](#913-tercera-fuente-red-hat-lightspeed--live-pull-en-vez-de-subida-de-fichero)
+   - [9.14 Cierre automático por ausencia, generalizado a las 3 fuentes](#914-cierre-automático-por-ausencia-generalizado-a-las-3-fuentes)
+   - [9.15 Importación asíncrona (Red Hat Lightspeed)](#915-importación-asíncrona-red-hat-lightspeed)
+   - [9.16 Interfaz a escala real (paginación server-side)](#916-interfaz-a-escala-real-paginación-server-side)
+   - [9.17 Asignación de responsable](#917-asignación-de-responsable)
 
 ---
 
@@ -104,6 +109,14 @@ El objetivo del patrón es que un conector nuevo (p. ej. **OLVM** o **zonas Sola
 | `VCENTER_SYNC_CRON` | `0 */6 * * *` | Expresión cron usada por el workflow n8n `"vCenter Sync"` (cada 6 horas por defecto). |
 
 Todas son **opcionales** — el conector viene desactivado de fábrica y no requiere ninguna acción para instalaciones que no usan vCenter. Reutiliza además `CMDB_SERVICE_TOKEN` (auth M2M n8n→backend) y `N8N_INTERNAL_URL`, ya existentes desde v3.0.0/v3.2.0.
+
+**Red Hat Lightspeed (v3.7.0)** — ver [§9.13](#913-tercera-fuente-red-hat-lightspeed-live-pull-en-vez-de-subida-de-fichero) para el detalle completo:
+
+| Var | Default | Explicación |
+|-----|---------|-------------|
+| `REDHAT_LIGHTSPEED_CLIENT_ID` | *(vacío)* | Client ID de la cuenta de servicio de Red Hat (console.redhat.com → Identity & Access Management → Service Accounts). Vacío ⇒ conector deshabilitado, `/redhat-lightspeed/status` lo refleja y el botón "Importar" queda desactivado en la UI. |
+| `REDHAT_LIGHTSPEED_CLIENT_SECRET` | *(vacío)* | Client secret de la misma cuenta de servicio. **Nunca se registra en logs ni se devuelve en ninguna respuesta de API.** |
+| `REDHAT_LIGHTSPEED_BASE_URL` | `https://console.redhat.com` | Host de las APIs de Insights Vulnerability + Inventory. No suele necesitar cambiarse. |
 
 ---
 
@@ -436,3 +449,85 @@ Además, los batches `PENDING` abandonados (nunca aceptados ni descartados) **no
 **Fix de UX de la pantalla de revisión, independiente de CrowdStrike.** El control de inclusión/exclusión por entrada era un botón de verbo imperativo ("Excluir"/"Incluir") que mostraba el estado ACTUAL pero se leía como una ORDEN — un usuario viendo "Excluir" en una entrada ya excluida podía razonablemente (pero incorrectamente) concluir que tenía que pulsarlo para excluirla. **El comportamiento del clasificador subyacente se verificó de forma independiente como correcto** contra datos reales de producción (las vulnerabilidades ya existentes/pendientes sí vienen excluidas por defecto) — solo cambió el texto del control de interfaz, ninguna lógica de backend. Ahora es una casilla con etiquetas orientadas al resultado ("Se importará"/"No se importará"), inequívocas sobre lo que hará realmente aceptar el lote. La etiqueta de VISUALIZACIÓN de la clasificación `EXISTENTE_PENDIENTE` (no su valor/clave subyacente, que no cambia) también se reformuló de un término técnico crudo a "Ya existe en este CI", con una explicación de apoyo de que no se reimportará, solo se refrescará.
 
 **Limitación conocida.** La verificación visual en navegador de la UI nueva (insignias, indicador de fuente, casilla reformulada) no pudo realizarse en este entorno (sin Chrome instalable, sin sudo — la misma limitación ya documentada para v3.6.0 y para v3.5.12) — todas las afirmaciones de interfaz de arriba se verificaron por revisión de código y pruebas de API en vivo, no mirando la pantalla renderizada.
+
+### 9.13 Tercera fuente: Red Hat Lightspeed — live-pull en vez de subida de fichero
+
+**Contexto.** Greenbone y CrowdStrike Spotlight son ambos conectores de "pega el JSON exportado" — el operador saca un informe de la consola de la herramienta y lo sube manualmente. Red Hat Lightspeed (Red Hat Insights) es distinto: es una **API REST en vivo** contra `console.redhat.com`, así que el botón "Importar" de la tarjeta nueva no acepta ningún fichero — llama directamente a tres APIs de Red Hat, construye el mismo lote de staging que producirían Greenbone/CrowdStrike, y redirige a la misma pantalla de revisión ya existente. Ninguna pieza del pipeline compartido (matcher, classifier, tabla `vuln_import_entries`, pantalla de revisión, transacción de aceptación) se duplicó — se extendió, siguiendo el mismo precedente que CrowdStrike Spotlight sentó en v3.6.1.
+
+**Tres APIs de Red Hat, tres roles distintos:**
+1. **Insights Vulnerability API** (`GET /api/vulnerability/v1/systems`, `GET /api/vulnerability/v1/systems/{id}/cves`) — la lista de sistemas RHEL visibles para la cuenta de servicio y, por sistema, cada CVE actualmente abierta (`cvss3_score`/`cvss2_score`, `impact`, `known_exploit`, `public_date`).
+2. **Inventory API** (`GET /api/inventory/v1/hosts/{id}`, `.../system_profile`) — IP/FQDN para el emparejamiento de CI (misma cascada de 5 niveles de `matcher.ts`, sin cambios) y la versión RHEL exacta (`operating_system.major/minor`) para la corrección de SO.
+3. **Product Life Cycle Data API** (`access.redhat.com/product-life-cycles/api/v1/products?name=Red Hat Enterprise Linux`) — **pública, sin autenticación** — fechas oficiales de fin de soporte/fin de vida por versión mayor de RHEL.
+
+**Autenticación: cuenta de servicio OAuth2 `client_credentials`.** Red Hat retiró la autenticación básica de sus APIs de Hybrid Cloud Console; el mecanismo vigente es una cuenta de servicio creada en `console.redhat.com` → Identity & Access Management → Service Accounts, con permisos de lectura sobre vulnerabilidad e inventario. El backend intercambia `client_id`/`client_secret` por un token Bearer de corta vida en cada ejecución (`tokenClient.ts`, endpoint fijo `sso.redhat.com`, nunca derivado de `REDHAT_LIGHTSPEED_BASE_URL` — A10 SSRF) y no lo persiste nunca; el token vive solo en memoria durante esa importación.
+
+**Modelo de identidad: la propia CVE, no un identificador de escáner.** A diferencia de Greenbone (`key = oid@port`) y CrowdStrike (`vulnerability_id`, no siempre un CVE), el modelo de datos de Red Hat es él mismo CVE-céntrico — el campo `synopsis` que devuelve la API **es** el identificador de CVE (p. ej. `CVE-2024-1234`), y ese es directamente el `vulnKey`/identidad usada por el resto del pipeline. No hace falta ninguna fusión de registros por producto como en CrowdStrike — Red Hat ya entrega un registro por CVE por sistema.
+
+**Severidad CVSS vs. `impact` de Red Hat — misma separación de señales que `exprtRating`.** La severidad se deriva de `cvss3_score` (o `cvss2_score` si el v3 falta) reutilizando exactamente las mismas bandas `scoreToSeverity` que Greenbone/CrowdStrike. Red Hat aporta además su propia valoración de impacto (`impact`: Low/Moderate/Important/Critical), almacenada en la nueva columna `redhat_impact` y mostrada como señal **separada**, nunca fusionada con la severidad CVSS — mismo principio ya establecido para `exprtRating` de CrowdStrike en v3.6.1.
+
+**`known_exploit` — tercera señal de premarcado forzado, independiente de CISA KEV.** `isForcedPremarked()` en `classifier.ts` ya combinaba CISA KEV y la allowlist de `exploitStatus` de CrowdStrike; Lightspeed añade `known_exploit` como una tercera condición OR, deliberadamente en su propio campo (`knownExploit`) y no fusionada con `cisaKev` — son afirmaciones distintas de fuentes distintas (el catálogo oficial CISA KEV frente al propio juicio de Red Hat), y confundirlas ocultaría precisamente los casos donde discrepan.
+
+**Corrección de SO + fechas de EOL/EOS — comportamiento nuevo, exclusivo de esta fuente.** Ni Greenbone ni CrowdStrike tocan nunca el sistema operativo de un CI. Lightspeed sí, y solo en el momento de **aceptar** el lote (nunca antes — la disciplina de staging aplica también a los hechos de SO, no solo a las vulnerabilidades): `correctOperatingSystem()` en `vuln-import/service.ts` resuelve o crea una fila `OperatingSystem` por `code` (p. ej. `RHEL_9.4`) y **siempre refresca** `CI.operatingSystemId` para los CIs emparejados en este lote — a diferencia de `hypervisorId` (marcador de clasificación fijado solo en la creación, ver §4 D5), la versión de SO es un hecho físico que el sistema externo posee y debe poder corregir en cada sync. La primera vez que se crea una fila `OperatingSystem` para una versión mayor de RHEL, se consulta la Product Life Cycle API y se registran sus fechas de fin de soporte (`os-end-of-support`) y fin de vida (`os-end-of-life`) en `operating_system_dates`, usando los `DateType` ya sembrados en el catálogo de fechas de ciclo de vida (v2.8.2) — reutilizado sin ninguna tabla nueva.
+
+**Cierre automático por ausencia — ya no es exclusivo de Lightspeed, ver [§9.14](#914-cierre-automático-por-ausencia-generalizado-a-las-3-fuentes).** La primera versión de este release limitaba el barrido de cierre a `source = 'redhat-lightspeed'`, calculado en silencio en el momento de **aceptar** el lote, sin revisión previa del operador — Lightspeed era la única fuente que garantizaba una foto completa del CI, así que parecía la única candidata segura. Un desarrollo posterior en la misma versión generalizó el mecanismo a las 3 fuentes (Greenbone, CrowdStrike, Lightspeed) y lo trasladó al momento de **subir/importar** el lote, con revisión y posibilidad de desmarcar antes de aceptar — ver §9.14 para el diseño vigente. La función vieja `sweepLightspeedClosures` ya no existe.
+
+**"CI no encontrado" ya no bloquea en silencio — acción "Crear CI".** Antes de este trabajo, un host `UNMATCHED` en cualquier fuente solo bloqueaba la aceptación (`422 UNRESOLVED_MATCHES`) sin ofrecer ninguna acción. La pantalla de revisión ya tenía un selector de reasignación manual a un CI **existente** (`CiReassignPicker` + `PATCH /api/vuln-import/batches/:id/entries/:entryId` con `{ciId}`) — lo único que faltaba era crear el CI cuando no existe ninguno. En vez de un endpoint nuevo, se añadió una opción "Crear CI" dentro del mismo selector (visible solo cuando `matchConfidence === 'UNMATCHED'`) que abre `AddCIModal` (extendido con una prop `initialValues` opcional y un `onCreated` que ahora devuelve el CI creado, ambos cambios aditivos y compatibles con su único llamador preexistente) prerrellenado con el nombre/IP/hostname del host, y al crearlo reutiliza directamente `handleReassignCi` — el mismo endpoint PATCH de siempre, sin lógica nueva de backend.
+
+**Esquema.** `VulnImportEntry` gana 3 columnas nuevas, todas nullable (`redhat_impact varchar(20)`, `known_exploit boolean`, `public_date timestamptz`) — mismo patrón aditivo que las 8 columnas de CrowdStrike en v3.6.1. El JSON `Vulnerability` persistido gana los mismos 3 campos opcionales, más `'redhat-lightspeed'` como tercer valor válido de `source`.
+
+**Endpoints.** `GET /api/integrations/redhat-lightspeed/status` (ADMIN/AUDITOR/SOC — `requireAudit`) refleja si la cuenta de servicio está configurada, sin exponer nunca el secreto. `POST /api/integrations/redhat-lightspeed/import` (ADMIN/SOC — `requireSecurityWrite`, mismo gate que `/api/vuln-import/upload`) ya **no** ejecuta el pull de forma síncrona — ver [§9.15](#915-importación-asíncrona-red-hat-lightspeed) para el comportamiento vigente (`202` inmediato, trabajo en segundo plano). `503 NOT_CONFIGURED` si faltan credenciales, `409 IMPORT_IN_PROGRESS` ante una ejecución concurrente (candado en memoria, mismo patrón que `vcenterService.ts`).
+
+**Limitación conocida / riesgo aceptado.** Las formas JSON exactas de las tres APIs de Red Hat se infirieron de su documentación pública, no de un fixture real como sí se tuvo para Greenbone/CrowdStrike — la lección de v3.6.0 (un mock inventado puede validar silenciosamente la versión equivocada de un formato) se mitiga aquí exigiendo una verificación contra una cuenta de servicio real antes de dar el conector por probado en producción, documentada aparte una vez realizada.
+
+### 9.14 Cierre automático por ausencia, generalizado a las 3 fuentes
+
+> Sustituye por completo el "barrido de cierre" descrito originalmente en §9.13 como exclusivo de Lightspeed. Este es el cambio de comportamiento de mayor impacto para el operador de todo el trabajo posterior a v3.6.1 (informalmente "v3.7.0").
+
+**Qué hace.** Al **subir/importar** un lote (Greenbone, CrowdStrike o Lightspeed — cualquiera de las 3), el sistema genera automáticamente una clasificación nueva, `RESUELTA_AUSENTE`, para toda vulnerabilidad ya almacenada en un CI que aparece en ese lote, de la **misma fuente** (`source` exacto, nunca cruzado — CrowdStrike jamás cierra algo que solo vio Greenbone) y en estado abierto (`NUEVO`/`ASIGNADO`/`EN_CURSO`/`PARADO`/`REABIERTA`), que **ya no** aparece entre lo reportado para ese CI en el lote actual. Implementado en `computeAbsentClosures()` (`backend/src/modules/vuln-import/classifier.ts`), invocado desde `writeBatchEntries`/`service.ts` en el momento de construir el lote — no en `acceptBatch()` como en el diseño original de §9.13.
+
+**Vallas de seguridad:**
+
+- **Solo se evalúan los CIs presentes en el lote actual.** Un CI que no aparece en absoluto en el fichero/pull de esta importación nunca se toca — silencio en los datos de origen nunca se interpreta como "ya no tiene nada".
+- **Coincidencia exacta de fuente.** Sólo se cierran vulnerabilidades con el mismo `source` que el lote que se está importando.
+- **El operador la ve y puede revertirla antes de aceptar.** Cada entrada `RESUELTA_AUSENTE` aparece en la pantalla de revisión con decisión `INCLUDE` por defecto (revisable, no automática como en el diseño original), en una pestaña nueva **"Se marcarán como resueltas"** — a diferencia del barrido de Lightspeed original, que no ofrecía ninguna posibilidad de revisión antes de aceptar.
+- **Reverificación al aceptar.** Dentro de la misma transacción de `acceptBatch()`, se comprueba el estado **actual** de cada vulnerabilidad candidata a cierre (por si alguien la tocó manualmente entre la subida y la aceptación, que pueden separarse por minutos u horas) — allowlist `RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES` en `service.ts`. Si ya no está en un estado abierto, el cierre se omite silenciosamente, sin error.
+
+**Carencia conocida (Lightspeed específicamente).** Un sistema RHEL que Lightspeed reporta con **0 CVEs abiertas** en la pasada actual nunca entra en el cálculo de `computeAbsentClosures` para ese CI — la dirección del error es siempre segura (deja de cerrar vulnerabilidades que en realidad ya no están, nunca cierra de más), pero significa que ese caso límite concreto no se resuelve automáticamente todavía.
+
+### 9.15 Importación asíncrona (Red Hat Lightspeed)
+
+> Contexto del bug que motivó este cambio: un pull real de Lightspeed (105 sistemas, ~13.868 CVEs) tardaba varios minutos en completarse — un pull síncrono bajo una única petición HTTP no era viable a ese volumen, ni siquiera con el timeout de nginx ampliado a 900s que se probó primero (commit `824f973`, revertido por este trabajo).
+
+`POST /api/integrations/redhat-lightspeed/import` responde ahora `202 {batchId}` de inmediato; el pull completo (las tres APIs de Red Hat, el mapeo de cada sistema, la escritura del lote) continúa en **segundo plano dentro del mismo proceso Node** — no se introdujo ninguna infraestructura nueva (nada de colas, workers ni una tabla de "jobs" separada). El propio lote (`vuln_import_batches`) es el registro de progreso: columnas nuevas `progress_phase` / `progress_current` / `progress_total` / `error_message`, y dos estados nuevos, `RUNNING` y `FAILED` (`status` sigue siendo `varchar(30)`, sin migración de enum — mismo patrón ya usado para el resto de estados de batch).
+
+**Recuperación de lotes huérfanos al arranque.** Si el proceso backend se reinicia mientras un lote está en `RUNNING` (caída, redeploy, `podman-compose down`/`up` a mitad de un pull grande), ese lote quedaría atascado en `RUNNING` para siempre sin este mecanismo. Al arrancar, `index.ts` marca automáticamente como `FAILED` (mensaje `error_message = 'Interrumpido por reinicio del servidor'`) cualquier batch que siga en `RUNNING` de una ejecución anterior — ver `docs/SYSADMIN_MANUAL.md` para el detalle operativo.
+
+**Timeout de nginx retirado.** El timeout especial de 900s para esta ruta (introducido en `824f973` cuando el flujo aún era síncrono) se retiró en `e36f3f3` — un `202` inmediato no lo necesita; la ruta vuelve a compartir el timeout general de la aplicación.
+
+**Refactor compartido: `createBatchShell` / `writeBatchEntries` / `finalizeBatch`.** El bug de fondo (`Transaction already closed` de Prisma al crear un lote con miles de entradas dentro de una única transacción interactiva con timeout de 5s) no era exclusivo de Lightspeed — podía darse igual con un fichero Greenbone/CrowdStrike suficientemente grande. `createBatchWithEntries` (la función original) se partió en tres:
+
+1. **`createBatchShell`** — crea el lote en estado `RUNNING`, transacción corta.
+2. **`writeBatchEntries`** — escribe las entradas en chunks de 500, **sin** transacción envolvente.
+3. **`finalizeBatch`** — transiciona el lote a `PENDING` o `FAILED` + auditoría, transacción corta.
+
+Los 3 flujos de subida existentes (Greenbone manual, CrowdStrike manual, Lightspeed en segundo plano) migraron a esta secuencia de 3 pasos. Dos bugs de concurrencia reales, encontrados y corregidos durante la revisión de esta fase: fuga del candado en memoria si fallaba la creación del lote (paso 1), y riesgo de caída del proceso Node si el segundo intento de marcar el lote como `FAILED` (dentro del `catch` de `finalizeBatch`) también fallaba.
+
+### 9.16 Interfaz a escala real (paginación server-side)
+
+La pantalla de revisión de un lote cargaba originalmente **todas** las entradas en el cliente de una vez — viable con las decenas de Greenbone/CrowdStrike, inviable con los ~13.868 CVEs de un pull real de Lightspeed.
+
+- `GET /api/vuln-import/batches/:id` pagina en servidor, máximo 100 entradas por página.
+- Los contadores por pestaña (clasificación / severidad / `matchConfidence`) se calculan con `groupBy` de Prisma sobre el mismo `where` que filtra las entradas — nunca contando en memoria sobre lo ya cargado en el cliente.
+- Soporte de filtro multivalor (`?severity=MEDIUM&severity=HIGH`) para las pestañas que son la unión de varios valores (p. ej. "Accionables" = MEDIUM+HIGH+CRITICAL).
+- El endpoint de decisión en bloque (`bulk-decision`) opera siempre sobre el filtro completo del lado servidor, nunca sobre la página cargada en el momento en el cliente.
+- La lista de lotes (`GET /api/vuln-import/batches`) gana filtro por fuente (`manual`/`greenbone`/`crowdstrike`/`redhat-lightspeed`), muestra los estados visuales `RUNNING`/`FAILED` con el progreso en vivo (`progress_current`/`progress_total`), y hace auto-refresco (polling cada 5s) mientras exista algún lote en curso.
+- El filtro de fuente de la vista principal `/vulnerabilities` (no la de revisión de lotes) ganó las opciones que le faltaban: `crowdstrike` y `redhat-lightspeed`.
+
+### 9.17 Asignación de responsable
+
+Una vulnerabilidad puede asignarse a un usuario `ADMIN`/`SOC` activo como responsable de resolverla. Campos nuevos en el JSON `Vulnerability` persistido en el CI: `assignedTo` / `assignedAt` / `assignedBy` — ortogonales al `status`: si la vulnerabilidad pasa después a `EN_CURSO`/`PARADO`, el responsable asignado se conserva sin cambios.
+
+- **`GET /api/vulnerabilities/assignable-users`** — lectura abierta a cualquier usuario autenticado (no solo ADMIN/SOC), para que cualquiera que vea la tabla de vulnerabilidades pueda resolver y mostrar el nombre del responsable asignado en cada fila. Aun así, solo devuelve usuarios `ADMIN`/`SOC` **activos**, y nunca su email.
+- **`PATCH /api/vulnerabilities`** — valida en servidor que el destinatario de `assignedTo` existe, está activo y tiene rol `ADMIN` o `SOC` antes de escribir nada. Asignar (`assignedTo` a un id de usuario) pone el estado en `ASIGNADO`, salvo que la vulnerabilidad ya esté `RESUELTO` o el body traiga un `status` explícito. `assignedTo: null` desasigna, limpiando `assignedTo`/`assignedAt`/`assignedBy`.
+
+**Corrección de seguridad real (A01 — control de acceso roto), no una simple feature nueva.** Hasta este trabajo, `PATCH /api/vulnerabilities` **no tenía ningún guard de rol** — cualquier usuario autenticado, incluido `VIEWER`, podía cambiar el estado de una vulnerabilidad de seguridad. El endpoint completo (cambio de estado incluido, no solo la asignación nueva) exige ahora `requireSecurityWrite` (`ADMIN`/`SOC`), el mismo gate que ya protegía `/api/vuln-import/upload` y el resto de escritura de Security. Documentado aquí como corrección de un hallazgo de seguridad, no como parte del alcance original de la feature de asignación.

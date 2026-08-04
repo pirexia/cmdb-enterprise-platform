@@ -301,7 +301,8 @@
       "source": "Fuente",
       "score": "Puntuación CVSS",
       "port": "Puerto",
-      "family": "Familia"
+      "family": "Familia",
+      "assignee": "Responsable"
     },
     "status": {
       "NUEVO": "Nuevo",
@@ -341,7 +342,13 @@
       "MEDIUM": "Media",
       "LOW": "Baja",
       "INFO": "Informativa"
-    }
+    },
+    "unassigned": "Sin asignar",
+    "assigned_to_me": "Asignadas a mí",
+    "all_assignees": "Todos los responsables",
+    "assignment_updated": "Asignado a",
+    "assignment_cleared": "Asignación eliminada",
+    "assignment_update_failed": "No se pudo actualizar la asignación:"
   },
   "contracts": {
     "title": "Contratos y Adendas",
@@ -1555,6 +1562,11 @@
     "staging_review_cta": "Revisar y decidir →",
     "crowdstrike_subtitle": "Endpoint Security",
     "crowdstrike_desc": "Importa el estado de los agentes Falcon. Se registrará si el agente está activo, su política de prevención y las detecciones recientes.",
+    "lightspeed_subtitle": "Análisis de vulnerabilidades RHEL",
+    "lightspeed_desc": "Extrae todas las CVE abiertas en tus sistemas RHEL directamente desde la API de Red Hat Insights Vulnerability. Requiere una cuenta de servicio configurada.",
+    "lightspeed_not_configured": "El conector Red Hat Lightspeed no está configurado — define REDHAT_LIGHTSPEED_CLIENT_ID/SECRET.",
+    "lightspeed_import_btn": "Importar",
+    "lightspeed_success": "Importación de Red Hat Lightspeed lista para revisión.",
     "how_it_works": "Cómo funciona",
     "how_it_works_body_pre": "Cada conector busca los CIs en la base de datos por nombre y los actualiza automáticamente. Después de procesar, ve al",
     "how_it_works_body_mid": "o al",
@@ -2520,19 +2532,23 @@
       "status": {
         "PENDING": "Pendiente",
         "ACCEPTED": "Aceptado",
-        "DISCARDED": "Descartado"
+        "DISCARDED": "Descartado",
+        "RUNNING": "Procesando",
+        "FAILED": "Fallido"
       },
       "singular": "lote",
       "plural": "lotes",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "Nueva",
       "EXISTENTE_PENDIENTE": "Ya existe en este CI",
-      "REAPARECIDA": "Reaparecida"
+      "REAPARECIDA": "Reaparecida",
+      "RESUELTA_AUSENTE": "Resuelta (ya no se reporta)"
     },
     "matchConfidence": {
       "EXACT_IP": "IP exacta",
@@ -2554,6 +2570,7 @@
       "discard": "Descartar lote",
       "review": "Revisar",
       "reassignCi": "Reasignar CI",
+      "createCi": "Crear CI",
       "confirmAccept": "Confirmar aceptación",
       "confirmDiscard": "Confirmar descarte",
       "bulkInclude": "Incluir seleccionados",
@@ -2566,6 +2583,8 @@
       "discardConfirm": "¿Descartar este lote? Esta acción no se puede deshacer.",
       "discardSuccess": "Lote descartado",
       "filterAll": "Todos",
+      "filterByStatus": "Estado",
+      "filterBySource": "Fuente",
       "noBatches": "Todavía no hay escaneos importados",
       "colFilename": "Archivo",
       "colScanDate": "Fecha de escaneo",
@@ -2576,7 +2595,8 @@
       "colUploadedAt": "Fecha de subida",
       "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
       "prevPage": "Anterior",
-      "nextPage": "Siguiente"
+      "nextPage": "Siguiente",
+      "progress": "Procesando {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Crítica",
@@ -2590,7 +2610,8 @@
       "actionable": "Accionables",
       "informational": "Informativas",
       "attention": "Requieren atención",
-      "reappeared": "Reaparecidas"
+      "reappeared": "Reaparecidas",
+      "closing": "Se marcarán como resueltas"
     },
     "detail": {
       "title": "Revisión del lote",
@@ -2608,7 +2629,10 @@
       "readOnlyNotice": "Este lote ya fue resuelto (aceptado o descartado) — solo lectura.",
       "readOnlyNoAdmin": "Solo un administrador o un analista SOC puede revisar y decidir sobre este lote.",
       "notificationsRegion": "Notificaciones",
-      "closeNotification": "Cerrar notificación"
+      "closeNotification": "Cerrar notificación",
+      "entriesPageInfo": "Página {page} de {totalPages} ({total} entradas)",
+      "prevPage": "Anterior",
+      "nextPage": "Siguiente"
     },
     "entry": {
       "port": "Puerto",
@@ -2626,21 +2650,22 @@
       "noDetails": "Sin descripción disponible",
       "existingPendingHint": "No se volverá a importar; solo se actualizan sus datos",
       "exprtRatingLabel": "Valoración ExPRT",
+      "redhatImpactLabel": "Impacto Red Hat",
       "cisaKevLabel": "CISA KEV",
       "cisaDueDateLabel": "Fecha límite CISA",
       "cisaKevWithDue": "CISA KEV — vence {date}",
       "exploitStatusLabel": "Estado de explotación",
       "activeExploitationBadge": "Explotación activa",
+      "knownExploitBadge": "Exploit conocido",
       "daysOpenLabel": "Días abierta",
       "productsLabel": "Productos afectados",
       "externalStatusLabel": "Estado en origen",
       "cvssVersionLabel": "Versión CVSS"
     },
     "bulk": {
-      "includeVisible": "Incluir visibles",
-      "excludeVisible": "Excluir visibles",
-      "doneToast": "Decisión aplicada a las entradas visibles",
-      "progress": "{done}/{total} aplicado"
+      "includeVisible": "Incluir todas (pestaña)",
+      "excludeVisible": "Excluir todas (pestaña)",
+      "doneToast": "Decisión aplicada a todas las entradas de esta pestaña en el lote completo, no solo a las de esta página"
     },
     "accept": {
       "button": "Aceptar lote",

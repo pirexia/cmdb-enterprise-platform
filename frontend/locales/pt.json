@@ -301,7 +301,8 @@
       "source": "Fonte",
       "score": "Pontuação CVSS",
       "port": "Porta",
-      "family": "Família"
+      "family": "Família",
+      "assignee": "Responsável"
     },
     "status": {
       "NUEVO": "Novo",
@@ -333,7 +334,13 @@
       "MEDIUM": "Média",
       "LOW": "Baixa",
       "INFO": "Informativa"
-    }
+    },
+    "unassigned": "Não atribuído",
+    "assigned_to_me": "Atribuídas a mim",
+    "all_assignees": "Todos os responsáveis",
+    "assignment_updated": "Atribuído a",
+    "assignment_cleared": "Atribuição removida",
+    "assignment_update_failed": "Não foi possível atualizar a atribuição:"
   },
   "contracts": {
     "title": "Contratos e Adendos",
@@ -1508,6 +1515,11 @@
     "staging_review_cta": "Rever e decidir →",
     "crowdstrike_subtitle": "Segurança de Endpoint",
     "crowdstrike_desc": "Importe o relatório de agentes CrowdStrike para atualizar o estado de proteção dos CIs.",
+    "lightspeed_subtitle": "Análise de vulnerabilidades RHEL",
+    "lightspeed_desc": "Extrai todas as CVEs abertas nos seus sistemas RHEL diretamente da API Red Hat Insights Vulnerability. Requer uma conta de serviço configurada.",
+    "lightspeed_not_configured": "O conector Red Hat Lightspeed não está configurado — defina REDHAT_LIGHTSPEED_CLIENT_ID/SECRET.",
+    "lightspeed_import_btn": "Importar",
+    "lightspeed_success": "Importação do Red Hat Lightspeed pronta para revisão.",
     "how_it_works": "Como funciona",
     "paste_json": "Cole o JSON do relatório aqui…",
     "load_json": "Carregar JSON",
@@ -2401,19 +2413,23 @@
       "status": {
         "PENDING": "Pendente",
         "ACCEPTED": "Aceito",
-        "DISCARDED": "Descartado"
+        "DISCARDED": "Descartado",
+        "RUNNING": "Processando",
+        "FAILED": "Falhou"
       },
       "singular": "lote",
       "plural": "lotes",
       "source": {
         "greenbone": "Greenbone",
-        "crowdstrike": "CrowdStrike"
+        "crowdstrike": "CrowdStrike",
+        "redhat-lightspeed": "Red Hat Lightspeed"
       }
     },
     "classification": {
       "NUEVA": "Nova",
       "EXISTENTE_PENDIENTE": "Já existe neste CI",
-      "REAPARECIDA": "Reaparecida"
+      "REAPARECIDA": "Reaparecida",
+      "RESUELTA_AUSENTE": "Resolvida (já não é reportada)"
     },
     "matchConfidence": {
       "EXACT_IP": "IP exato",
@@ -2435,6 +2451,7 @@
       "discard": "Descartar lote",
       "review": "Revisar",
       "reassignCi": "Reatribuir CI",
+      "createCi": "Criar CI",
       "confirmAccept": "Confirmar aceitação",
       "confirmDiscard": "Confirmar descarte",
       "bulkInclude": "Incluir selecionados",
@@ -2447,6 +2464,8 @@
       "discardConfirm": "Descartar este lote? Esta ação não pode ser desfeita.",
       "discardSuccess": "Lote descartado",
       "filterAll": "Todos",
+      "filterByStatus": "Status",
+      "filterBySource": "Fonte",
       "noBatches": "Ainda não há varreduras importadas",
       "colFilename": "Arquivo",
       "colScanDate": "Data da varredura",
@@ -2457,7 +2476,8 @@
       "colUploadedAt": "Enviado em",
       "pageInfo": "Página {page} de {totalPages} ({total} lotes)",
       "prevPage": "Anterior",
-      "nextPage": "Próxima"
+      "nextPage": "Próxima",
+      "progress": "Processando {current}/{total} ({phase})"
     },
     "severity": {
       "CRITICAL": "Crítica",
@@ -2471,7 +2491,8 @@
       "actionable": "Acionáveis",
       "informational": "Informativas",
       "attention": "Requerem atenção",
-      "reappeared": "Reaparecidas"
+      "reappeared": "Reaparecidas",
+      "closing": "Serão marcadas como resolvidas"
     },
     "detail": {
       "title": "Revisão do lote",
@@ -2489,7 +2510,10 @@
       "readOnlyNotice": "Este lote já foi resolvido (aceite ou descartado) — apenas leitura.",
       "readOnlyNoAdmin": "Apenas um administrador ou analista SOC pode rever e decidir sobre este lote.",
       "notificationsRegion": "Notificações",
-      "closeNotification": "Fechar notificação"
+      "closeNotification": "Fechar notificação",
+      "entriesPageInfo": "Página {page} de {totalPages} ({total} entradas)",
+      "prevPage": "Anterior",
+      "nextPage": "Seguinte"
     },
     "entry": {
       "port": "Porta",
@@ -2507,21 +2531,22 @@
       "noDetails": "Sem descrição disponível",
       "existingPendingHint": "Não será importado novamente; apenas os seus dados serão atualizados",
       "exprtRatingLabel": "Classificação ExPRT",
+      "redhatImpactLabel": "Impacto Red Hat",
       "cisaKevLabel": "CISA KEV",
       "cisaDueDateLabel": "Data limite CISA",
       "cisaKevWithDue": "CISA KEV — vence em {date}",
       "exploitStatusLabel": "Estado de exploração",
       "activeExploitationBadge": "Exploração ativa",
+      "knownExploitBadge": "Exploit conhecido",
       "daysOpenLabel": "Dias em aberto",
       "productsLabel": "Produtos afetados",
       "externalStatusLabel": "Estado na origem",
       "cvssVersionLabel": "Versão CVSS"
     },
     "bulk": {
-      "includeVisible": "Incluir visíveis",
-      "excludeVisible": "Excluir visíveis",
-      "doneToast": "Decisão aplicada às entradas visíveis",
-      "progress": "{done}/{total} aplicado"
+      "includeVisible": "Incluir todas (aba)",
+      "excludeVisible": "Excluir todas (aba)",
+      "doneToast": "Decisão aplicada a todas as entradas desta aba no lote inteiro, não apenas à página carregada"
     },
     "accept": {
       "button": "Aceitar lote",

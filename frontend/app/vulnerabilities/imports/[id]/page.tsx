@@ -15,13 +15,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, CheckCircle,
+  RefreshCw, AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, CheckCircle,
   X, Search, ChevronDown, Info, PackageCheck, Trash2,
-  ChevronUp, ShieldAlert, Flame,
+  ChevronUp, ShieldAlert, Flame, Plus,
 } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
+import AddCIModal from "@/components/AddCIModal";
 import type {
   VulnImportEntry,
   GetBatchDetailResponse,
@@ -59,7 +60,7 @@ interface Toast {
 }
 let _toastId = 0;
 
-type TabKey = "all" | "actionable" | "informational" | "attention" | "reappeared";
+type TabKey = "all" | "actionable" | "informational" | "attention" | "reappeared" | "closing";
 
 // ─── Style maps ───────────────────────────────────────────────────────────
 
@@ -75,6 +76,9 @@ const CLASSIFICATION_STYLES: Record<VulnImportClassification, string> = {
   NUEVA: "bg-emerald-100 text-emerald-700 ring-emerald-200",
   EXISTENTE_PENDIENTE: "bg-slate-100 text-slate-600 ring-slate-200",
   REAPARECIDA: "bg-purple-100 text-purple-700 ring-purple-200",
+  // Distinct from NUEVA (emerald) and EXISTENTE_PENDIENTE (slate) already
+  // used in this file's palette — teal, conveying "closing/resolving".
+  RESUELTA_AUSENTE: "bg-teal-100 text-teal-700 ring-teal-200",
 };
 
 const CONFIDENCE_STYLES: Record<string, string> = {
@@ -88,15 +92,62 @@ const CONFIDENCE_STYLES: Record<string, string> = {
   MANUAL: "bg-indigo-50 text-indigo-700 ring-indigo-200",
 };
 
+// RUNNING/FAILED added v3.7.0 (task 11) — this batch-detail page can be
+// reached for a still-processing or failed Red Hat Lightspeed batch (e.g. a
+// direct link, or navigating here before the list's own polling redirects
+// away); keep in sync with STATUS_PILL in ../page.tsx.
 const BATCH_STATUS_STYLES: Record<string, string> = {
   PENDING: "bg-blue-100 text-blue-700",
   ACCEPTED: "bg-emerald-100 text-emerald-700",
   DISCARDED: "bg-slate-200 text-slate-600",
+  RUNNING: "bg-indigo-100 text-indigo-700",
+  FAILED: "bg-red-100 text-red-700",
 };
 
 const ACTIONABLE_SEVERITIES: VulnImportSeverity[] = ["MEDIUM", "HIGH", "CRITICAL"];
 const INFORMATIONAL_SEVERITIES: VulnImportSeverity[] = ["LOW", "INFO"];
-const ATTENTION_CONFIDENCES: (MatchConfidence | null)[] = ["UNMATCHED", "AMBIGUOUS", "FUZZY"];
+// Used both to build the `?matchConfidence=` query params for the
+// "Requieren atención" tab's entries request (task 10) and as the set of
+// per-value bulk-decision calls for that same tab (BulkDecisionSchema's
+// `filter.matchConfidence` is a single free string — schemas.ts, confirmed —
+// so a union of 3 values still needs 3 separate calls, same as the existing
+// severity-union loops below).
+const ATTENTION_MATCH_CONFIDENCES: MatchConfidence[] = ["UNMATCHED", "AMBIGUOUS", "FUZZY"];
+
+// Page size for the entries list (task 10) — deliberately smaller than the
+// backend's MAX_ENTRY_PAGE_SIZE (100, queries.ts) to leave headroom rather
+// than requesting right up against the server's clamp.
+const ENTRIES_PAGE_SIZE = 50;
+
+// Translates a review-screen tab into the `?classification=/&severity=/
+// &matchConfidence=` query params GET /batches/:id expects (task 10 design —
+// each tab is a union of values in exactly one of those three columns, or no
+// filter at all for "all"). A pure, standalone function (no component state)
+// so both fetchEntries and handleBulk's loop bodies can share the same
+// tab→values mapping without duplicating the switch.
+function buildTabEntryParams(tab: TabKey): URLSearchParams {
+  const params = new URLSearchParams();
+  switch (tab) {
+    case "actionable":
+      for (const sev of ACTIONABLE_SEVERITIES) params.append("severity", sev);
+      break;
+    case "informational":
+      for (const sev of INFORMATIONAL_SEVERITIES) params.append("severity", sev);
+      break;
+    case "attention":
+      for (const mc of ATTENTION_MATCH_CONFIDENCES) params.append("matchConfidence", mc);
+      break;
+    case "reappeared":
+      params.set("classification", "REAPARECIDA");
+      break;
+    case "closing":
+      params.set("classification", "RESUELTA_AUSENTE");
+      break;
+    default:
+      break;
+  }
+  return params;
+}
 
 // CrowdStrike Spotlight `exploitStatus` labels that count as "active
 // exploitation" (task F2, spec D4). This project has no precedent for the
@@ -147,12 +198,14 @@ function ConfidencePill({ confidence, t }: { confidence: MatchConfidence | null;
 // ─── CI reassignment picker (searchable, loaded lazily from the shared CI list) ──
 
 function CiReassignPicker({
-  entry, ciOptions, ciLoading, onAssign, assigning, t,
+  entry, ciOptions, ciLoading, onAssign, onCreateCi, canCreateCi, assigning, t,
 }: {
   entry: VulnImportEntry;
   ciOptions: CiOption[];
   ciLoading: boolean;
   onAssign: (ciId: string) => void;
+  onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   assigning: boolean;
   t: (k: string) => string;
 }) {
@@ -203,6 +256,16 @@ function CiReassignPicker({
               </ul>
             </div>
           )}
+          {entry.matchConfidence === "UNMATCHED" && canCreateCi && (
+            <button
+              type="button"
+              onClick={() => { onCreateCi(entry); setOpen(false); }}
+              className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("vulnImport.actions.createCi")}
+            </button>
+          )}
           <div className="border-b border-slate-100 p-2">
             <div className="relative">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -245,7 +308,7 @@ function CiReassignPicker({
 // ─── One entry row ─────────────────────────────────────────────────────────
 
 function EntryRow({
-  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, pending, expanded, onToggleExpand, t,
+  entry, ciMap, ciOptions, ciLoading, canEdit, onToggleDecision, onReassignCi, onCreateCi, canCreateCi, pending, expanded, onToggleExpand, t,
 }: {
   entry: VulnImportEntry;
   ciMap: Map<string, CiOption>;
@@ -254,6 +317,8 @@ function EntryRow({
   canEdit: boolean;
   onToggleDecision: (entry: VulnImportEntry) => void;
   onReassignCi: (entry: VulnImportEntry, ciId: string) => void;
+  onCreateCi: (entry: VulnImportEntry) => void;
+  canCreateCi: boolean;
   pending: boolean;
   expanded: boolean;
   onToggleExpand: () => void;
@@ -266,7 +331,9 @@ function EntryRow({
   const hasDetails = !!(
     entry.summary || entry.solution || entry.family || entry.qod != null ||
     entry.exprtRating || entry.daysOpen != null || entry.products.length > 0 ||
-    entry.cvssVersion || entry.externalStatus
+    entry.cvssVersion || entry.externalStatus || entry.redhatImpact
+    // knownExploit is intentionally NOT here — like cisaKev/activelyExploited,
+    // it's shown as a collapsed-row badge above, not detail-panel content.
   );
 
   return (
@@ -289,6 +356,12 @@ function EntryRow({
               <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
                 <Flame className="h-3 w-3" />
                 {t("vulnImport.entry.activeExploitationBadge")}
+              </span>
+            )}
+            {entry.knownExploit && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-bold text-orange-800 ring-1 ring-orange-300">
+                <Flame className="h-3 w-3" />
+                {t("vulnImport.entry.knownExploitBadge")}
               </span>
             )}
             {entry.edited && (
@@ -382,6 +455,8 @@ function EntryRow({
               ciLoading={ciLoading}
               assigning={pending}
               onAssign={(ciId) => onReassignCi(entry, ciId)}
+              onCreateCi={onCreateCi}
+              canCreateCi={canCreateCi}
               t={t}
             />
           )}
@@ -406,7 +481,7 @@ function EntryRow({
               <p className="whitespace-pre-wrap text-slate-700">{entry.solution}</p>
             </div>
           )}
-          {(entry.exprtRating || entry.daysOpen != null || entry.cvssVersion) && (
+          {(entry.exprtRating || entry.daysOpen != null || entry.cvssVersion || entry.redhatImpact) && (
             <div className="flex flex-wrap gap-4">
               {entry.exprtRating && (
                 <div>
@@ -417,6 +492,17 @@ function EntryRow({
                       from the CVSS-derived `severity` pill shown in the
                       collapsed row, deliberately not merged with it. */}
                   <p className="text-slate-700">{entry.exprtRating}</p>
+                </div>
+              )}
+              {entry.redhatImpact && (
+                <div>
+                  <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    {t("vulnImport.entry.redhatImpactLabel")}
+                  </p>
+                  {/* Red Hat's own severity rating — a distinct signal from
+                      the CVSS-derived `severity` pill, deliberately not
+                      merged with it, same principle as exprtRating above. */}
+                  <p className="text-slate-700">{entry.redhatImpact}</p>
                 </div>
               )}
               {entry.daysOpen != null && (
@@ -458,7 +544,8 @@ function EntryRow({
             </div>
           )}
           {!entry.summary && !entry.solution && !entry.exprtRating && entry.daysOpen == null &&
-            entry.products.length === 0 && !entry.cvssVersion && !entry.externalStatus && (
+            entry.products.length === 0 && !entry.cvssVersion && !entry.externalStatus &&
+            !entry.redhatImpact && (
             <p className="italic text-slate-400">{t("vulnImport.entry.noDetails")}</p>
           )}
         </div>
@@ -471,14 +558,33 @@ function EntryRow({
 
 export default function VulnImportBatchDetailPage() {
   const { t } = useLanguage();
-  const { canManageSecurity } = useAuth();
+  const { canManageSecurity, isAdmin } = useAuth();
   const params = useParams();
   const router = useRouter();
   const batchId = params.id as string;
 
   const [batch, setBatch] = useState<VulnImportBatch | null>(null);
+  // The whole-batch aggregates from the UNFILTERED request (task 10 design
+  // point 1: `?page=1&pageSize=1`, no classification/severity/matchConfidence
+  // filter) — the single source of truth for tab counts AND the summary
+  // panel's classification breakdown. Deliberately NOT derived from `entries`
+  // below, which is only ever the current page of whichever tab is active.
+  const [globalStats, setGlobalStats] = useState<{
+    total: number;
+    byClassification: Partial<Record<VulnImportClassification, number>>;
+    bySeverity: Partial<Record<VulnImportSeverity, number>>;
+    byMatchConfidence: Record<string, number>;
+  } | null>(null);
+  // The current page of the currently-active tab's filtered request (task 10
+  // design point 2) — NOT the whole batch. `entriesTotal` is that same
+  // request's `total` (i.e. "how many rows match this tab's filter",
+  // independent of `globalStats.total`).
   const [entries, setEntries] = useState<VulnImportEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entriesTotal, setEntriesTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [countsLoading, setCountsLoading] = useState(true);
+  const [entriesLoading, setEntriesLoading] = useState(true);
+  const loading = countsLoading || entriesLoading;
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -488,7 +594,6 @@ export default function VulnImportBatchDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("all");
   const [pendingEntryIds, setPendingEntryIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [expandedEntryIds, setExpandedEntryIds] = useState<Set<string>>(new Set());
   const toggleExpanded = useCallback((id: string) => {
     setExpandedEntryIds((prev) => {
@@ -515,13 +620,28 @@ export default function VulnImportBatchDetailPage() {
   const dismissToast = useCallback((id: number) => setToasts((prev) => prev.filter((x) => x.id !== id)), []);
 
   // ── Data fetch ─────────────────────────────────────────────────────────
+  //
+  // Two independent requests (task 10 design), never one:
+  //   1. fetchTabCounts — `?page=1&pageSize=1`, NO filter. Only reads
+  //      `batch`/`total`/`byClassification`/`bySeverity`/`byMatchConfidence`;
+  //      `entries` from this response is discarded (pageSize=1 just avoids
+  //      over-fetching). Runs once on mount and after every mutation
+  //      (accept/discard/bulk-decision) — NOT on every tab switch or page
+  //      turn, since the whole-batch counts don't change from those.
+  //   2. fetchEntries — `?page=N&pageSize=50&...tab-filter`. Runs on mount
+  //      AND whenever the active tab or page changes (that's the entire
+  //      point of it being paginated per-tab).
+  // A batch with ~13,868 entries (a real Red Hat Lightspeed pull) made the
+  // old single unfiltered `findMany` — and this page's client-side
+  // filtering/counting over the full `entries` array — the reason this task
+  // exists; see backend/src/modules/vuln-import/queries.ts's comments on
+  // MAX_ENTRY_PAGE_SIZE and ENTRY_CHUNK_SIZE for the same order-of-magnitude
+  // problem on the write side.
 
-  const fetchBatch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setNotFound(false);
+  const fetchTabCounts = useCallback(async () => {
+    setCountsLoading(true);
     try {
-      const res = await apiFetch(`/api/vuln-import/batches/${batchId}`);
+      const res = await apiFetch(`/api/vuln-import/batches/${batchId}?page=1&pageSize=1`);
       if (res.status === 404) {
         setNotFound(true);
         return;
@@ -530,16 +650,63 @@ export default function VulnImportBatchDetailPage() {
       if (!res.ok) throw new Error((data as VulnImportErrorResponse).error ?? `Error ${res.status}`);
       const detail = data as GetBatchDetailResponse;
       setBatch(detail.batch);
-      setEntries(detail.entries);
+      setGlobalStats({
+        total: detail.total,
+        byClassification: detail.byClassification,
+        bySeverity: detail.bySeverity,
+        byMatchConfidence: detail.byMatchConfidence,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : t("common.unknown_error"));
     } finally {
-      setLoading(false);
+      setCountsLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchId]);
 
-  useEffect(() => { fetchBatch(); }, [fetchBatch]);
+  const fetchEntries = useCallback(async () => {
+    setEntriesLoading(true);
+    try {
+      const searchParams = buildTabEntryParams(activeTab);
+      searchParams.set("page", String(page));
+      searchParams.set("pageSize", String(ENTRIES_PAGE_SIZE));
+      const res = await apiFetch(`/api/vuln-import/batches/${batchId}?${searchParams.toString()}`);
+      if (res.status === 404) {
+        setNotFound(true);
+        return;
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error((data as VulnImportErrorResponse).error ?? `Error ${res.status}`);
+      const detail = data as GetBatchDetailResponse;
+      setEntries(detail.entries);
+      setEntriesTotal(detail.total);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("common.unknown_error"));
+    } finally {
+      setEntriesLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId, activeTab, page]);
+
+  // Split into two effects on purpose: fetchTabCounts only depends on
+  // `batchId` (stable for the page's lifetime) so it runs exactly once on
+  // mount; fetchEntries depends on `activeTab`/`page` too, so it (and ONLY
+  // it) re-runs on every tab switch or page turn.
+  useEffect(() => { fetchTabCounts(); }, [fetchTabCounts]);
+  useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+  // Tab click resets `page` in the SAME event-handler tick as `activeTab`
+  // (React batches both into one re-render), so fetchEntries' effect fires
+  // exactly once with the final (newTab, page=1) pair — never once with the
+  // old page under the new tab, then again with page reset to 1.
+  const handleTabChange = (tab: TabKey) => {
+    setActiveTab(tab);
+    setPage(1);
+  };
+
+  const refreshAfterMutation = useCallback(async () => {
+    await Promise.all([fetchTabCounts(), fetchEntries()]);
+  }, [fetchTabCounts, fetchEntries]);
 
   // CI list, loaded once — used both to resolve matched-CI names for display
   // and to power the reassignment picker's search. Small enough dataset
@@ -559,26 +726,34 @@ export default function VulnImportBatchDetailPage() {
   const ciMap = useMemo(() => new Map(ciOptions.map((c) => [c.id, c])), [ciOptions]);
 
   const canEdit = canManageSecurity && batch?.status === "PENDING";
+  // "Crear CI" calls POST /api/cis, which is ADMIN-only on the backend
+  // (requireAdmin) — SOC has canManageSecurity/canEdit for this review
+  // screen's other actions, but would hit a 403 here. Gate on isAdmin
+  // specifically so the option is never offered to a role that can't use it.
+  const canCreateCi = isAdmin && batch?.status === "PENDING";
 
-  // ── Tab filtering (client-side, per spec — tabs are independent views) ──
+  // ── Tab counts (task 10) — derived from `globalStats`, the UNFILTERED
+  //    whole-batch aggregates (design point 1). Independent of which tab is
+  //    active and of `page`/`entries` (the current tab's paginated,
+  //    FILTERED view, design point 2) — switching tabs or turning a page
+  //    must never change these numbers. `?? 0` everywhere per the brief: a
+  //    key with 0 matching entries is simply absent from the aggregate map
+  //    (groupBy semantics), not present with value 0. ──────────────────────
 
-  const tabCounts = useMemo(() => ({
-    all: entries.length,
-    actionable: entries.filter((e) => ACTIONABLE_SEVERITIES.includes(e.severity)).length,
-    informational: entries.filter((e) => INFORMATIONAL_SEVERITIES.includes(e.severity)).length,
-    attention: entries.filter((e) => ATTENTION_CONFIDENCES.includes(e.matchConfidence)).length,
-    reappeared: entries.filter((e) => e.classification === "REAPARECIDA").length,
-  }), [entries]);
+  const totalPages = Math.max(1, Math.ceil(entriesTotal / ENTRIES_PAGE_SIZE));
 
-  const filteredEntries = useMemo(() => {
-    switch (activeTab) {
-      case "actionable": return entries.filter((e) => ACTIONABLE_SEVERITIES.includes(e.severity));
-      case "informational": return entries.filter((e) => INFORMATIONAL_SEVERITIES.includes(e.severity));
-      case "attention": return entries.filter((e) => ATTENTION_CONFIDENCES.includes(e.matchConfidence));
-      case "reappeared": return entries.filter((e) => e.classification === "REAPARECIDA");
-      default: return entries;
-    }
-  }, [entries, activeTab]);
+  const tabCounts = useMemo(() => {
+    if (!globalStats) return { all: 0, actionable: 0, informational: 0, attention: 0, reappeared: 0, closing: 0 };
+    const { bySeverity, byMatchConfidence, byClassification } = globalStats;
+    return {
+      all: globalStats.total,
+      actionable: (bySeverity.MEDIUM ?? 0) + (bySeverity.HIGH ?? 0) + (bySeverity.CRITICAL ?? 0),
+      informational: (bySeverity.LOW ?? 0) + (bySeverity.INFO ?? 0),
+      attention: (byMatchConfidence.UNMATCHED ?? 0) + (byMatchConfidence.AMBIGUOUS ?? 0) + (byMatchConfidence.FUZZY ?? 0),
+      reappeared: byClassification.REAPARECIDA ?? 0,
+      closing: byClassification.RESUELTA_AUSENTE ?? 0,
+    };
+  }, [globalStats]);
 
   // ── Per-entry decision toggle (optimistic, rollback on failure — same
   //    pattern as /vulnerabilities' handleStatusChange) ──────────────────
@@ -625,18 +800,28 @@ export default function VulnImportBatchDetailPage() {
     }
   };
 
-  // ── Bulk decision on the currently-visible (tab-filtered) entries ───────
+  const [createCiForEntry, setCreateCiForEntry] = useState<VulnImportEntry | null>(null);
+
+  const handleCiCreated = (entry: VulnImportEntry, ci: { id: string; name: string }) => {
+    setCreateCiForEntry(null);
+    void handleReassignCi(entry, ci.id);
+  };
+
+  // ── Bulk decision on the ACTIVE TAB'S ENTIRE filter (not just the loaded
+  //    page) ─────────────────────────────────────────────────────────────
   //
-  // Where the tab's criterion is representable by BulkDecisionBody's filter
-  // vocabulary (schemas.ts BulkDecisionSchema: classification / severity —
-  // each a SINGLE value, no matchConfidence key at all), we call the real
-  // bulk-decision endpoint (possibly more than once, one call per underlying
-  // value, since "actionable"/"informational" are unions of several severity
-  // values). For "attention" (matchConfidence-based — not representable at
-  // all server-side) and "all" (no single filter maps to "everything"), we
-  // fall back to per-entry PATCH calls against exactly the entries currently
-  // visible in that tab. Either way the effect is identical: only the
-  // currently-visible set changes.
+  // Task 10 simplification: every tab's criterion is now representable by
+  // BulkDecisionBody's filter vocabulary (schemas.ts BulkDecisionSchema —
+  // re-confirmed for this task: `filter.severity`/`filter.classification`
+  // are each still a SINGLE Zod-enum value, `filter.matchConfidence` a
+  // single free string; none of the three accepts an array in the JSON
+  // body, unlike the query-string reads Task 8c added), so the per-entry
+  // PATCH fallback that used to exist for "attention"/"all" is gone — those
+  // two tabs now call bulk-decision too (a matchConfidence-value loop for
+  // "attention", and a single empty-filter call for "all", since
+  // bulkUpdateDecision's `where` reduces to just `{batchId}` when no filter
+  // field is set — queries.ts, confirmed). Every call operates on the WHOLE
+  // matching set server-side, not merely the current page.
 
   const postBulk = async (filter: Record<string, string>, decision: VulnImportDecision) => {
     const res = await apiFetch(`/api/vuln-import/batches/${batchId}/entries/bulk-decision`, {
@@ -649,78 +834,84 @@ export default function VulnImportBatchDetailPage() {
     }
   };
 
-  // Bounded-concurrency chunk size for the per-entry PATCH fallback (path b —
-  // "attention"/"all" tabs, not representable by the server's bulk-decision
-  // filter vocabulary). A real batch can have hundreds of entries; firing
-  // them all at once as a single Promise.all is a robustness gap against an
-  // admin-gated write endpoint. Kept modest and not user-configurable —
-  // this doesn't need a queue library, just bounded concurrency.
-  const BULK_PATCH_CHUNK_SIZE = 8;
-
   const handleBulk = async (decision: VulnImportDecision) => {
     setBulkLoading(true);
-    setBulkProgress(null);
-    let failedCount = 0;
     try {
       if (activeTab === "reappeared") {
         await postBulk({ classification: "REAPARECIDA" }, decision);
+      } else if (activeTab === "closing") {
+        await postBulk({ classification: "RESUELTA_AUSENTE" }, decision);
       } else if (activeTab === "actionable") {
         for (const sev of ACTIONABLE_SEVERITIES) await postBulk({ severity: sev }, decision);
       } else if (activeTab === "informational") {
         for (const sev of INFORMATIONAL_SEVERITIES) await postBulk({ severity: sev }, decision);
+      } else if (activeTab === "attention") {
+        for (const mc of ATTENTION_MATCH_CONFIDENCES) await postBulk({ matchConfidence: mc }, decision);
       } else {
-        const targets = filteredEntries.filter((e) => e.decision !== decision);
-        setBulkProgress({ done: 0, total: targets.length });
-        for (let i = 0; i < targets.length; i += BULK_PATCH_CHUNK_SIZE) {
-          const chunk = targets.slice(i, i + BULK_PATCH_CHUNK_SIZE);
-          // Promise.allSettled (not Promise.all): a single rejected/failed
-          // PATCH in a chunk must not abort the remaining chunks — those
-          // entries may otherwise never even be attempted, and whatever
-          // already-in-flight requests in THIS chunk succeeded server-side
-          // regardless of a sibling's outcome (finding #1).
-          const results = await Promise.allSettled(chunk.map((e) =>
-            apiFetch(`/api/vuln-import/batches/${batchId}/entries/${e.id}`, {
-              method: "PATCH",
-              body: JSON.stringify({ decision }),
-            })
-          ));
-          for (const r of results) {
-            if (r.status === "rejected" || !r.value.ok) failedCount += 1;
-          }
-          setBulkProgress({ done: Math.min(i + chunk.length, targets.length), total: targets.length });
-        }
-      }
-      if (failedCount > 0) {
-        throw new Error(t("vulnImport.errors.bulkFailed").replace(/:$/, "") + ` (${failedCount})`);
+        // "all" — an empty filter object means "every entry in the batch"
+        // (bulkUpdateDecision's where clause has nothing to narrow it with
+        // beyond `{batchId}`), not "no-op".
+        await postBulk({}, decision);
       }
       addToast("success", t("vulnImport.bulk.doneToast"));
     } catch (e) {
       addToast("error", `${t("vulnImport.errors.bulkFailed")} ${e instanceof Error ? e.message : t("common.unknown_error")}`);
     } finally {
-      // Unconditional resync (success OR partial/total failure): whichever
-      // entries actually got persisted server-side must be reflected on
-      // screen — a stale on-screen state that no longer matches the server
-      // is worse than an error toast alone (finding #1).
-      await fetchBatch();
+      // Unconditional resync (success OR failure): whichever entries
+      // actually got persisted server-side must be reflected on screen.
+      // Refreshes BOTH the whole-batch tab counts and the current filtered
+      // page, per the brief — decision doesn't feed any of the three
+      // groupBy aggregates, but a partial failure mid-loop (e.g. the
+      // "actionable" tab's 3-call loop failing on the 2nd call) can still
+      // leave entries/total for the active tab's page stale.
+      await refreshAfterMutation();
       setBulkLoading(false);
-      setBulkProgress(null);
     }
   };
 
   // ── Accept / discard ─────────────────────────────────────────────────────
+  //
+  // The "Aceptar" confirmation dialog's preview (task 10 design point 5) is
+  // its own fetch — `?decision=INCLUDE&page=1&pageSize=1` — fired when the
+  // dialog opens, not derived from `entries` (only the current tab's page)
+  // or `globalStats` (unfiltered, includes EXCLUDEd entries too).
 
-  const includedEntries = useMemo(() => entries.filter((e) => e.decision === "INCLUDE"), [entries]);
-  const acceptPreview = useMemo(() => {
-    const ciSet = new Set(includedEntries.map((e) => e.ciId).filter((x): x is string => !!x));
-    return {
-      total: includedEntries.length,
-      newCount: includedEntries.filter((e) => e.classification === "NUEVA").length,
-      reopenedCount: includedEntries.filter((e) => e.classification === "REAPARECIDA").length,
-      existingCount: includedEntries.filter((e) => e.classification === "EXISTENTE_PENDIENTE").length,
-      ciCount: ciSet.size,
-      unresolvedCount: includedEntries.filter((e) => e.matchConfidence === "AMBIGUOUS" || e.matchConfidence === "UNMATCHED").length,
-    };
-  }, [includedEntries]);
+  interface AcceptPreview {
+    total: number;
+    newCount: number;
+    reopenedCount: number;
+    existingCount: number;
+    ciCount: number;
+    unresolvedCount: number;
+  }
+  const [acceptPreview, setAcceptPreview] = useState<AcceptPreview | null>(null);
+  const [acceptPreviewLoading, setAcceptPreviewLoading] = useState(false);
+
+  const handleOpenAcceptConfirm = () => {
+    setShowAcceptConfirm(true);
+    setAcceptPreview(null);
+    setAcceptPreviewLoading(true);
+    (async () => {
+      try {
+        const res = await apiFetch(`/api/vuln-import/batches/${batchId}?decision=INCLUDE&page=1&pageSize=1`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((data as VulnImportErrorResponse).error ?? `Error ${res.status}`);
+        const detail = data as GetBatchDetailResponse;
+        setAcceptPreview({
+          total: detail.total,
+          newCount: detail.byClassification.NUEVA ?? 0,
+          reopenedCount: detail.byClassification.REAPARECIDA ?? 0,
+          existingCount: detail.byClassification.EXISTENTE_PENDIENTE ?? 0,
+          ciCount: detail.ciCount,
+          unresolvedCount: (detail.byMatchConfidence.AMBIGUOUS ?? 0) + (detail.byMatchConfidence.UNMATCHED ?? 0),
+        });
+      } catch (e) {
+        addToast("error", e instanceof Error ? e.message : t("common.unknown_error"));
+      } finally {
+        setAcceptPreviewLoading(false);
+      }
+    })();
+  };
 
   const handleAccept = async () => {
     setAccepting(true);
@@ -732,7 +923,7 @@ export default function VulnImportBatchDetailPage() {
         if (res.status === 422 && (data as UnresolvedMatchesLike).error === "UNRESOLVED_MATCHES") {
           setBlockingEntries((data as UnresolvedMatchesLike).entries ?? []);
           setShowAcceptConfirm(false);
-          setActiveTab("attention");
+          handleTabChange("attention");
           addToast("error", t("vulnImport.accept.blockingTitle"));
           return;
         }
@@ -741,7 +932,7 @@ export default function VulnImportBatchDetailPage() {
       setAcceptResult(data as AcceptResponse);
       setShowAcceptConfirm(false);
       addToast("success", t("vulnImport.accept.successTitle"));
-      fetchBatch();
+      await refreshAfterMutation();
     } catch (e) {
       addToast("error", `${t("vulnImport.errors.acceptFailed")} ${e instanceof Error ? e.message : t("common.unknown_error")}`);
     } finally {
@@ -757,7 +948,7 @@ export default function VulnImportBatchDetailPage() {
       if (!res.ok) throw new Error((data as VulnImportErrorResponse).error ?? `Error ${res.status}`);
       setShowDiscardConfirm(false);
       addToast("success", t("vulnImport.discard.successToast"));
-      fetchBatch();
+      await refreshAfterMutation();
     } catch (e) {
       addToast("error", `${t("vulnImport.errors.discardFailed")} ${e instanceof Error ? e.message : t("common.unknown_error")}`);
     } finally {
@@ -794,6 +985,7 @@ export default function VulnImportBatchDetailPage() {
     { key: "informational", label: t("vulnImport.tabs.informational") },
     { key: "attention", label: t("vulnImport.tabs.attention") },
     { key: "reappeared", label: t("vulnImport.tabs.reappeared") },
+    { key: "closing", label: t("vulnImport.tabs.closing") },
   ];
 
   return (
@@ -846,7 +1038,7 @@ export default function VulnImportBatchDetailPage() {
 
           <div className="flex flex-shrink-0 items-center gap-2">
             <button
-              onClick={() => fetchBatch()}
+              onClick={() => { fetchTabCounts(); fetchEntries(); }}
               className="flex items-center gap-2 rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -862,7 +1054,7 @@ export default function VulnImportBatchDetailPage() {
                   {t("vulnImport.discard.button")}
                 </button>
                 <button
-                  onClick={() => setShowAcceptConfirm(true)}
+                  onClick={handleOpenAcceptConfirm}
                   className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[var(--accent)]/90"
                 >
                   <PackageCheck className="h-4 w-4" />
@@ -961,9 +1153,9 @@ export default function VulnImportBatchDetailPage() {
               <div className="rounded-none bg-white p-5 shadow-sm ring-1 ring-slate-200">
                 <h2 className="mb-3 text-sm font-semibold text-slate-700">{t("vulnImport.detail.summary")}</h2>
                 <ul className="space-y-1.5 text-xs">
-                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.detail.entryCount")}</span><span className="font-semibold text-slate-800">{entries.length}</span></li>
-                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.classification.NUEVA")}</span><span className="font-semibold text-slate-800">{entries.filter((e) => e.classification === "NUEVA").length}</span></li>
-                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.classification.EXISTENTE_PENDIENTE")}</span><span className="font-semibold text-slate-800">{entries.filter((e) => e.classification === "EXISTENTE_PENDIENTE").length}</span></li>
+                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.detail.entryCount")}</span><span className="font-semibold text-slate-800">{tabCounts.all}</span></li>
+                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.classification.NUEVA")}</span><span className="font-semibold text-slate-800">{globalStats?.byClassification.NUEVA ?? 0}</span></li>
+                  <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.classification.EXISTENTE_PENDIENTE")}</span><span className="font-semibold text-slate-800">{globalStats?.byClassification.EXISTENTE_PENDIENTE ?? 0}</span></li>
                   <li className="flex justify-between"><span className="text-slate-500">{t("vulnImport.classification.REAPARECIDA")}</span><span className="font-semibold text-slate-800">{tabCounts.reappeared}</span></li>
                   <li className="flex justify-between border-t border-slate-100 pt-1.5"><span className="text-amber-600">{t("vulnImport.tabs.attention")}</span><span className="font-semibold text-amber-700">{tabCounts.attention}</span></li>
                 </ul>
@@ -977,7 +1169,7 @@ export default function VulnImportBatchDetailPage() {
                   {TABS.map((tab) => (
                     <button
                       key={tab.key}
-                      onClick={() => setActiveTab(tab.key)}
+                      onClick={() => handleTabChange(tab.key)}
                       className={`rounded-none px-3 py-1.5 text-xs font-semibold transition-colors ${
                         activeTab === tab.key ? "bg-slate-800 text-white" : "text-slate-500 hover:bg-slate-100"
                       }`}
@@ -986,21 +1178,14 @@ export default function VulnImportBatchDetailPage() {
                     </button>
                   ))}
                 </div>
-                {canEdit && filteredEntries.length > 0 && (
+                {canEdit && entriesTotal > 0 && (
                   <div className="flex items-center gap-2">
-                    {bulkLoading && bulkProgress && (
-                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-                        <RefreshCw className="h-3 w-3 animate-spin" />
-                        {t("vulnImport.bulk.progress")
-                          .replace("{done}", String(bulkProgress.done))
-                          .replace("{total}", String(bulkProgress.total))}
-                      </span>
-                    )}
                     <button
                       disabled={bulkLoading}
                       onClick={() => handleBulk("INCLUDE")}
                       className="rounded-none border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
                     >
+                      {bulkLoading && <RefreshCw className="mr-1 inline h-3 w-3 animate-spin" />}
                       {t("vulnImport.bulk.includeVisible")}
                     </button>
                     <button
@@ -1014,11 +1199,16 @@ export default function VulnImportBatchDetailPage() {
                 )}
               </div>
 
-              {filteredEntries.length === 0 ? (
+              {entriesLoading ? (
+                <div className="flex items-center justify-center gap-2 p-10 text-slate-400">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">{t("common.loading_data")}</span>
+                </div>
+              ) : entries.length === 0 ? (
                 <div className="p-10 text-center text-sm text-slate-400">{t("common.no_results")}</div>
               ) : (
                 <div>
-                  {filteredEntries.map((entry) => (
+                  {entries.map((entry) => (
                     <EntryRow
                       key={entry.id}
                       entry={entry}
@@ -1028,12 +1218,41 @@ export default function VulnImportBatchDetailPage() {
                       canEdit={canEdit}
                       onToggleDecision={handleToggleDecision}
                       onReassignCi={handleReassignCi}
+                      onCreateCi={setCreateCiForEntry}
+                      canCreateCi={canCreateCi}
                       pending={pendingEntryIds.has(entry.id)}
                       expanded={expandedEntryIds.has(entry.id)}
                       onToggleExpand={() => toggleExpanded(entry.id)}
                       t={t}
                     />
                   ))}
+                </div>
+              )}
+
+              {/* Pagination for the active tab's filtered entries — same
+                  visual pattern as /vulnerabilities/imports' batch list
+                  pagination (imports/page.tsx). */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
+                  <span className="text-xs text-slate-500">
+                    {t("vulnImport.detail.entriesPageInfo", { page, totalPages, total: entriesTotal })}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1 || entriesLoading}
+                      className="flex items-center gap-1 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" /> {t("vulnImport.detail.prevPage")}
+                    </button>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages || entriesLoading}
+                      className="flex items-center gap-1 rounded-none border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      {t("vulnImport.detail.nextPage")} <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1047,23 +1266,32 @@ export default function VulnImportBatchDetailPage() {
           <div className="w-full max-w-md rounded-none bg-white p-6 shadow-xl ring-1 ring-slate-200">
             <h3 className="mb-2 text-base font-bold text-slate-900">{t("vulnImport.accept.confirmTitle")}</h3>
             <p className="mb-4 text-sm text-slate-600">{t("vulnImport.accept.confirmBody")}</p>
-            <dl className="mb-4 grid grid-cols-2 gap-2 text-xs">
-              <dt className="text-slate-400">{t("vulnImport.accept.previewCi")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.ciCount}</dd>
-              <dt className="text-slate-400">{t("vulnImport.accept.previewNew")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.newCount}</dd>
-              <dt className="text-slate-400">{t("vulnImport.accept.previewReopened")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.reopenedCount}</dd>
-              <dt className="text-slate-400">{t("vulnImport.accept.previewIncluded")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.total}</dd>
-            </dl>
-            {acceptPreview.unresolvedCount > 0 && (
-              <div className="mb-4 flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                <span>{t("vulnImport.accept.unresolvedWarning").replace("{count}", String(acceptPreview.unresolvedCount))}</span>
+            {acceptPreviewLoading || !acceptPreview ? (
+              <div className="mb-4 flex items-center justify-center gap-2 py-6 text-slate-400">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span className="text-xs">{t("common.loading_data")}</span>
               </div>
+            ) : (
+              <>
+                <dl className="mb-4 grid grid-cols-2 gap-2 text-xs">
+                  <dt className="text-slate-400">{t("vulnImport.accept.previewCi")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.ciCount}</dd>
+                  <dt className="text-slate-400">{t("vulnImport.accept.previewNew")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.newCount}</dd>
+                  <dt className="text-slate-400">{t("vulnImport.accept.previewReopened")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.reopenedCount}</dd>
+                  <dt className="text-slate-400">{t("vulnImport.accept.previewIncluded")}</dt><dd className="font-semibold text-slate-800">{acceptPreview.total}</dd>
+                </dl>
+                {acceptPreview.unresolvedCount > 0 && (
+                  <div className="mb-4 flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{t("vulnImport.accept.unresolvedWarning").replace("{count}", String(acceptPreview.unresolvedCount))}</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowAcceptConfirm(false)} disabled={accepting} className="rounded-none border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">
                 {t("actions.cancel")}
               </button>
-              <button onClick={handleAccept} disabled={accepting} className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[var(--accent)]/90 disabled:opacity-50">
+              <button onClick={handleAccept} disabled={accepting || acceptPreviewLoading || !acceptPreview} className="flex items-center gap-1.5 rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[var(--accent)]/90 disabled:opacity-50">
                 {accepting && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
                 {t("vulnImport.actions.confirmAccept")}
               </button>
@@ -1089,6 +1317,18 @@ export default function VulnImportBatchDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {createCiForEntry && (
+        <AddCIModal
+          onClose={() => setCreateCiForEntry(null)}
+          onCreated={(ci) => handleCiCreated(createCiForEntry, ci)}
+          initialValues={{
+            name: createCiForEntry.hostAddress,
+            hostName: (createCiForEntry.raw as { hostname?: string } | null)?.hostname ?? "",
+            adminIp: /^\d+\.\d+\.\d+\.\d+$/.test(createCiForEntry.hostAddress) ? createCiForEntry.hostAddress : "",
+          }}
+        />
       )}
     </div>
   );

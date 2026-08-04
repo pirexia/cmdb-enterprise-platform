@@ -8,20 +8,25 @@ const mockQueryRaw   = jest.fn();
 const mockExecuteRaw = jest.fn();
 const mockVulnUuid   = jest.fn().mockReturnValue('aaaa1111-bbbb-cccc-dddd-eeeeeeeeeeee');
 const mockBatchCreate = jest.fn();
+const mockBatchUpdate = jest.fn();
+const mockEntryCreateMany = jest.fn().mockResolvedValue({ count: 0 });
 const mockTransaction = jest.fn();
 
 // POST /api/integrations/greenbone (v3.6.0 B6) now delegates to the
 // vuln-import staging module's `uploadReport()` — the mocked Prisma client
 // must therefore also support the calls that flow makes ($transaction +
-// vulnImportBatch.create), mirroring
-// modules/vuln-import/__tests__/router.test.ts's mock shape.
+// vulnImportBatch.create + vulnImportEntry.createMany, the latter added
+// when createBatchWithEntries moved off a single giant nested create to
+// chunked createMany calls — see queries.ts's ENTRY_CHUNK_SIZE comment),
+// mirroring modules/vuln-import/__tests__/router.test.ts's mock shape.
 jest.mock('@prisma/client', () => ({
   PrismaClient: jest.fn().mockImplementation(() => {
     const instance: Record<string, unknown> = {
       $queryRaw:   mockQueryRaw,
       $executeRaw: mockExecuteRaw,
       $transaction: mockTransaction,
-      vulnImportBatch: { create: mockBatchCreate },
+      vulnImportBatch: { create: mockBatchCreate, update: mockBatchUpdate },
+      vulnImportEntry: { createMany: mockEntryCreateMany },
     };
     mockTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => fn(instance));
     return instance;
@@ -33,6 +38,19 @@ jest.mock('@prisma/client', () => ({
 jest.mock('../../../services/entitySerializer', () => ({
   vulnUuid: mockVulnUuid,
 }));
+
+// runRedHatLightspeedImport (Task 4) now kicks off a background pull and
+// returns {batchId} immediately — wrap it in a jest.fn() so the happy-path
+// (202) test can stub it directly instead of driving the real token/vuln/
+// inventory HTTP clients, while every other test keeps the real
+// implementation (and the real error classes, via requireActual, so the
+// router's `instanceof` checks on the 503/409 branches stay meaningful).
+const mockRunRedHatLightspeedImport = jest.fn();
+jest.mock('../connectors/redhatLightspeed/service.js', () => {
+  const actual = jest.requireActual('../connectors/redhatLightspeed/service.js');
+  mockRunRedHatLightspeedImport.mockImplementation(actual.runRedHatLightspeedImport);
+  return { ...actual, runRedHatLightspeedImport: mockRunRedHatLightspeedImport };
+});
 
 process.env.JWT_SECRET = 'test-secret-32-chars-minimum-len!!';
 
@@ -152,6 +170,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'server01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -176,6 +195,7 @@ describe('POST /api/integrations/greenbone — processing (delegates to vuln-imp
       .mockResolvedValueOnce([{ active: true }]) // auth
       .mockResolvedValueOnce([]);                // matchHost → UNMATCHED, no CI vuln lookup follows
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/greenbone')
@@ -301,6 +321,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }]) // matchHost (EXACT_IP)
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);                  // getCiVulnerabilities
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')
@@ -321,6 +342,7 @@ describe('POST /api/integrations/crowdstrike — Spotlight format autodetection 
       .mockResolvedValueOnce([{ level: 1, id: CI_ID, name: 'workstation01' }])
       .mockResolvedValueOnce([{ vulnerabilities: [] }]);
     mockBatchCreate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', entries: [] });
+    mockBatchUpdate.mockResolvedValueOnce({ id: 'cccccccc-dddd-eeee-ffff-000000000000', uploadedBy: 'admin@test.local' });
 
     const res = await buildApp()
       .post('/api/integrations/crowdstrike')
@@ -424,5 +446,69 @@ describe('GET /api/integrations/status', () => {
       .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ldap: false, smtp: false });
+  });
+});
+
+// ── Red Hat Lightspeed connector (v3.7.0) ───────────────────────────────────────
+
+describe('Red Hat Lightspeed connector routes', () => {
+  const OLD_ENV = { ...process.env };
+  afterEach(() => {
+    process.env.REDHAT_LIGHTSPEED_CLIENT_ID = OLD_ENV.REDHAT_LIGHTSPEED_CLIENT_ID;
+    process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET = OLD_ENV.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+  });
+
+  describe('GET /api/integrations/redhat-lightspeed/status', () => {
+    it('returns 403 for VIEWER (requireAudit is ADMIN/AUDITOR/SOC only)', async () => {
+      const res = await buildApp()
+        .get('/api/integrations/redhat-lightspeed/status')
+        .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('reports unconfigured when the client credentials are blank', async () => {
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_ID;
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+      const res = await buildApp()
+        .get('/api/integrations/redhat-lightspeed/status')
+        .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ configured: false, baseUrl: 'https://console.redhat.com' });
+    });
+  });
+
+  describe('POST /api/integrations/redhat-lightspeed/import', () => {
+    it('returns 503 when the connector is not configured', async () => {
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_ID;
+      delete process.env.REDHAT_LIGHTSPEED_CLIENT_SECRET;
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ error: 'NOT_CONFIGURED' });
+    });
+
+    it('rejects a VIEWER with 403 (requireSecurityWrite is ADMIN/SOC only)', async () => {
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('VIEWER')}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects an AUDITOR with 403 (read-only role, not write-eligible)', async () => {
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('AUDITOR')}`);
+      expect(res.status).toBe(403);
+    });
+
+    it('returns 202 with the batchId once the background pull has been queued (Task 5)', async () => {
+      mockRunRedHatLightspeedImport.mockResolvedValueOnce({ batchId: 'batch-xyz-123' });
+      const res = await buildApp()
+        .post('/api/integrations/redhat-lightspeed/import')
+        .set('Authorization', `Bearer ${makeToken('ADMIN')}`);
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ batchId: 'batch-xyz-123' });
+    });
   });
 });

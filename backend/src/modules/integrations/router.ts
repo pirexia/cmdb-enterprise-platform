@@ -15,6 +15,10 @@ import { VCenterClient } from './connectors/vcenter/VCenterClient.js';
 import { runVCenterSync, buildVCenterConnector, SyncLockedError } from './vcenterService.js';
 import { runLdapGroupSync, isSyncInProgress, LdapSyncInProgressError } from './ldapSyncService.js';
 import { isGroupGateEnabled, LdapDirectoryError } from '../../services/ldapDirectory.js';
+import { loadRedHatLightspeedConfig, toPublicConfig as toPublicLightspeedConfig } from './connectors/redhatLightspeed/config.js';
+import {
+  runRedHatLightspeedImport, RedHatLightspeedNotConfiguredError, RedHatLightspeedSyncInProgressError,
+} from './connectors/redhatLightspeed/service.js';
 
 export function createIntegrationsRouter(
   prisma: PrismaClient,
@@ -354,6 +358,27 @@ export function createIntegrationsRouter(
       res.json(rows.map((r) => ({ date: r.created_at, ...(r.details as object) })));
     } catch (error) {
       console.error('[GET /api/integrations/vcenter/sync-log] Error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // ─── Red Hat Lightspeed — live-pull vulnerability connector (v3.7.0) ────────
+
+  /** GET /api/integrations/redhat-lightspeed/status — connector configured? */
+  router.get('/redhat-lightspeed/status', authenticateToken, requireAudit, (_req: Request, res: Response) => {
+    res.json(toPublicLightspeedConfig(loadRedHatLightspeedConfig()));
+  });
+
+  /** POST /api/integrations/redhat-lightspeed/import — live pull into the
+   *  vuln-import staging pipeline. See connectors/redhatLightspeed/service.ts. */
+  router.post('/redhat-lightspeed/import', authenticateToken, requireSecurityWrite, async (req: Request, res: Response) => {
+    try {
+      const result = await runRedHatLightspeedImport(prisma, req.user!.email);
+      res.status(202).json({ batchId: result.batchId });
+    } catch (err) {
+      if (err instanceof RedHatLightspeedNotConfiguredError) { res.status(503).json({ error: 'NOT_CONFIGURED' }); return; }
+      if (err instanceof RedHatLightspeedSyncInProgressError) { res.status(409).json({ error: 'IMPORT_IN_PROGRESS' }); return; }
+      console.error('[POST /api/integrations/redhat-lightspeed/import] Error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

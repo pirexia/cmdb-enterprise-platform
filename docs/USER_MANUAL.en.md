@@ -549,7 +549,7 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 | **Resolved** | Vulnerability resolved or mitigated |
 | **Reopened** | Was marked resolved and has been detected again in a later re-scan (see "The 'Reopened' status" below) |
 
-### Changing the status of a vulnerability (ADMIN only)
+### Changing the status of a vulnerability (ADMIN and SOC)
 
 1. Locate the CVE in the panel.
 2. Use the status selector in the "Status" column.
@@ -557,6 +557,16 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 4. If the server confirms the save, a green notification appears in the corner of the screen.
 5. If saving fails (network or server error), the status automatically reverts to the previous value and a red notification is shown. No manual action is required.
 6. A successful change is recorded in the Audit Log.
+
+### Assigning an owner to a vulnerability (ADMIN and SOC)
+
+Every vulnerability can be assigned to a specific user as the person responsible for resolving it.
+
+1. Locate the vulnerability in the panel.
+2. Use that row's owner selector to pick who it should be assigned to. Only active users with the ADMIN or SOC role appear.
+3. Assigning a vulnerability with no explicit status automatically moves it to "Assigned" (unless it's already "Resolved"). The assigned owner is kept even if the status later changes to "In Progress" or "On Hold" — the two are independent.
+4. To unassign, pick the empty option in the same dropdown.
+5. The assigned owner's name is visible to any user viewing the vulnerabilities table (including AUDITOR/VIEWER), even though only ADMIN and SOC can change it.
 
 ### Importing vulnerabilities from Greenbone OpenVAS
 
@@ -579,7 +589,7 @@ Click **"Vulnerabilities"** in the sidebar to see the list of all assets with de
 
 **2. The review screen**
 
-Each **batch** groups all the vulnerabilities from one report, one row (an **entry**) per finding. The screen organises entries into four tabs — these are independent filtered views over the same list, not exclusive buckets: the same entry can appear in more than one tab at once.
+Each **batch** groups all the vulnerabilities from one report, one row (an **entry**) per finding. The screen organises entries into tabs — these are independent filtered views over the same list, not exclusive buckets: the same entry can appear in more than one tab at once.
 
 | Tab | What it shows |
 |---|---|
@@ -587,6 +597,9 @@ Each **batch** groups all the vulnerabilities from one report, one row (an **ent
 | **Informational** | Findings of LOW or INFO severity |
 | **Needs attention** | Findings whose match against an existing asset isn't reliable: no match, several candidate assets, or only an approximate name match |
 | **Reappeared** | Findings that had previously been marked resolved and have reappeared in this scan |
+| **Will be marked resolved** | Vulnerabilities you already had on record for that same asset and that same source, which no longer appear in this report/pull — the system understands they've been fixed and pre-selects them for automatic closure when the batch is accepted. You can uncheck any of them before accepting if you think it's a mistake. This tab applies equally to Greenbone, CrowdStrike, and Red Hat Lightspeed — it used to exist only for Lightspeed and was applied with no chance for review. |
+
+With very large batches (for example, a Red Hat Lightspeed pull with thousands of CVEs) each tab's entries load a page at a time — use the pagination controls at the bottom of the table to move through them. Each tab's counters always reflect the true total, not just what's currently loaded, and bulk actions (include/exclude everything visible in a tab) act on that total, not just the loaded page.
 
 Each entry shows a colored pill for its classification (New / Already pending / Reappeared) and another for the asset-match confidence. Clicking **"Show details"** on an entry expands a panel with the full description and Greenbone's recommended remediation — useful for deciding whether an informational finding is still worth including.
 
@@ -643,6 +656,27 @@ Both badges (CISA KEV and active exploitation) cause the entry to come **pre-sel
 CrowdStrike also reports whether it considers a vulnerability itself "reopened" (`Reopened`). When it does, the entry is classified and pre-marked as **Reappeared** on the review screen, exactly like a Greenbone vulnerability that had gone through "Resolved" and shows up again — even if the CMDB had no prior record of it at all.
 
 **Note on the review-screen controls:** each entry's decision checkbox now states the outcome, not a command — "Will be imported" means that accepting the batch will apply that vulnerability to the asset; "Will not be imported" means it will be left out. Similarly, when an entry already exists on the asset and is still pending resolution, the label reads "Already exists on this CI" — it won't be re-imported as something new, only refreshed if you upload the same finding again.
+
+### Importing vulnerabilities from Red Hat Lightspeed
+
+Unlike Greenbone and CrowdStrike, this connector **doesn't require uploading any file** — it connects directly to the Red Hat Insights API and pulls every open CVE on your RHEL servers with a single click.
+
+1. Go to **Connectors** and locate the **Red Hat Lightspeed** card. If the "Import" button is disabled, ask your administrator to configure the service account (see the sysadmin manual).
+2. Click **Import**. The system responds immediately — **it no longer blocks the screen while the pull runs**. The new batch shows up right away under **Vulnerabilities → Imports** with a "Running" status and a progress indicator (system X of Y), while the query to Red Hat continues in the background; the list refreshes itself every few seconds while any batch is still running, with no need to reload the page. A pull covering many systems (hundreds of RHEL servers, thousands of CVEs) can take several minutes to finish — you can navigate elsewhere and come back to it later.
+3. Once the pull finishes, the batch moves to "Pending" and you can open it for review — the usual review screen, same tabs, same decision checkbox, same accept/discard button. If the pull fails partway through (for example, a network error or a credential that stopped being valid), the batch moves to "Failed" with an error message visible in the list; there's no partially-imported data left to review.
+
+**Signals specific to Lightspeed on the review screen:**
+
+| Signal | What it means |
+|---|---|
+| **Red Hat impact** | Red Hat's own rating (Low/Moderate/Important/Critical), independent of the CVSS severity you already know from the rest of the app — treat them as two distinct opinions. |
+| **Known exploit** | Red Hat flags the vulnerability as a known exploit — like CISA KEV, this pre-selects the entry for inclusion regardless of severity. |
+
+**Accepting a Lightspeed batch does one thing the other sources don't:** if Red Hat reports a different RHEL version than the asset currently has on record, it's corrected automatically — and if that RHEL version has never been seen before, its official end-of-support and end-of-life dates are filled in too.
+
+Automatic closure of vulnerabilities that no longer appear in the report (the **"Will be marked resolved"** tab) is no longer Lightspeed-only — it works the same way for Greenbone and CrowdStrike, see the review-screen section above.
+
+**If Lightspeed reports a server that doesn't exist in the CMDB:** the entry shows as "no matching asset." Next to the manual reassignment search you'll see a **Create CI** option, which opens the new-asset form pre-filled with the name, IP, and hostname from the Red Hat data.
 
 ---
 

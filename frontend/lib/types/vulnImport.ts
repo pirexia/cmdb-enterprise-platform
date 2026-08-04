@@ -54,9 +54,14 @@ export type VulnStatus =
 // ─── Core staging-workflow enums ────────────────────────────────────────────
 
 /** VulnImportBatch.status (schema.prisma ~line 1092: plain VarChar, business
- *  values assigned by service.ts: 'PENDING' on create, 'ACCEPTED'/'DISCARDED'
- *  via markBatchStatus in acceptBatch/discardBatch). */
-export type VulnImportBatchStatus = 'PENDING' | 'ACCEPTED' | 'DISCARDED';
+ *  values assigned by service.ts/queries.ts: 'RUNNING' on create
+ *  (createBatchShell, queries.ts line 150 — the batch isn't ready for review
+ *  until its entries have finished writing), 'PENDING'/'FAILED' via
+ *  finalizeBatch once the entry write completes or errors (queries.ts
+ *  ~line 204; 'FAILED' also set by recoverOrphanedRunningBatches, queries.ts
+ *  ~line 242, for a batch left RUNNING across a server restart), then
+ *  'ACCEPTED'/'DISCARDED' via markBatchStatus in acceptBatch/discardBatch. */
+export type VulnImportBatchStatus = 'PENDING' | 'ACCEPTED' | 'DISCARDED' | 'RUNNING' | 'FAILED';
 
 /** VulnImportEntry.matchConfidence (schema.prisma ~line 1110: nullable
  *  VarChar(30)). The 5-level cascade labels (matcher.ts `MatchConfidence`,
@@ -84,8 +89,10 @@ export interface VulnImportCiCandidate {
   name: string;
 }
 
-/** classifier.ts `VulnClassification` (line 16). */
-export type VulnImportClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA';
+/** classifier.ts `VulnClassification` (line 16). RESUELTA_AUSENTE added task
+ *  14 (v3.7.0 prep) — type + style/label consumers only; the classifier
+ *  doesn't produce this value yet (task 15). */
+export type VulnImportClassification = 'NUEVA' | 'EXISTENTE_PENDIENTE' | 'REAPARECIDA' | 'RESUELTA_AUSENTE';
 
 /** classifier.ts `VulnDecision` (line 17); also schemas.ts `DecisionEnum` (line 89). */
 export type VulnImportDecision = 'INCLUDE' | 'EXCLUDE';
@@ -98,16 +105,22 @@ export type VulnImportDecision = 'INCLUDE' | 'EXCLUDE';
 export type VulnImportSeverity = VulnSeverity;
 
 /** VulnImportBatch.source (schema.prisma ~line 1087: plain `VarChar(50)`,
- *  no DB enum/check constraint — genuinely a free string column). The only
- *  two values any backend code path currently writes are 'greenbone'
- *  (service.ts lines 173/314, hardcoded) and 'crowdstrike' (assigned by the
- *  v3.6.1 CrowdStrike Spotlight upload path, parallel task B2/B3 — not yet
- *  landed as of this file). Modeled as a union for autocomplete/documentation
- *  on the two known values; `VulnImportBatch.source` itself stays typed as
- *  plain `string` (see below) so a future third source, or any value that
- *  slips past this narrower alias, doesn't fail to typecheck against a
- *  genuinely unconstrained DB column. */
-export type VulnImportSource = 'greenbone' | 'crowdstrike';
+ *  no DB enum/check constraint — genuinely a free string column). Values any
+ *  backend code path currently writes: 'greenbone' (service.ts, hardcoded),
+ *  'crowdstrike' (CrowdStrike Spotlight upload path, v3.6.1), and
+ *  'redhat-lightspeed' (Red Hat Lightspeed connector, v3.7.0 — service.ts
+ *  passes `source` explicitly from the connector rather than relying on
+ *  `detectSource(body.report)`). Modeled as a union for autocomplete/
+ *  documentation on the known values; `VulnImportBatch.source` itself stays
+ *  typed as plain `string` (see below) so a future fourth source, or any
+ *  value that slips past this narrower alias, doesn't fail to typecheck
+ *  against a genuinely unconstrained DB column. Note: this is distinct from
+ *  `Vulnerability.source` (backend/src/modules/integrations/types.ts),
+ *  which additionally has a 'manual' fallback for a stored vulnerability
+ *  with no recorded source — a VulnImportBatch is never created for a
+ *  manual entry (it only exists for connector-originated staging), so
+ *  'manual' is intentionally NOT part of this alias. */
+export type VulnImportSource = 'greenbone' | 'crowdstrike' | 'redhat-lightspeed';
 
 // ─── VulnImportBatch (schema.prisma model VulnImportBatch, ~line 1084) ─────
 //
@@ -139,6 +152,16 @@ export interface VulnImportBatch {
   resolvedAt: string | null;
   resolvedBy: string | null;
   rawMeta: unknown | null;
+  /** schema.prisma ~line 1099-1102, populated only while/after `status` is
+   *  'RUNNING'/'FAILED' (Red Hat Lightspeed connector, v3.7.0 task 1/4) —
+   *  null for every batch created by the older Greenbone/CrowdStrike
+   *  synchronous upload path, which never goes through a RUNNING state. */
+  progressPhase: string | null;
+  progressCurrent: number | null;
+  progressTotal: number | null;
+  /** Populated only when `status === 'FAILED'` (queries.ts `finalizeBatch` /
+   *  `recoverOrphanedRunningBatches`); null otherwise. */
+  errorMessage: string | null;
   /** Only present on batches returned by GET /api/vuln-import/batches (list). */
   entryCount?: number;
   /** Only present on batches returned by GET /api/vuln-import/batches (list).
@@ -202,6 +225,13 @@ export interface VulnImportEntry {
    *  from it. */
   externalStatus: string | null;
   cvssVersion: string | null;
+  /** Red Hat Lightspeed's own severity rating (Low/Moderate/Important/
+   *  Critical) — a distinct signal from `severity`, never conflated with it. */
+  redhatImpact?: string | null;
+  /** Red Hat Lightspeed's own "known exploit" flag. */
+  knownExploit?: boolean | null;
+  /** CVE disclosure date (ISO string), informational. */
+  publicDate?: string | null;
   /** Raw per-vulnerability Greenbone/CrowdStrike JSON as originally parsed —
    *  shape not contractually fixed here (parser.ts / crowdstrikeParser.ts
    *  own it); treat as opaque. */
@@ -240,6 +270,10 @@ export interface BulkDecisionBody {
     classification?: VulnImportClassification;
     severity?: VulnImportSeverity;
     decision?: VulnImportDecision;
+    /** schemas.ts `MatchConfidenceFilter` (task 8b) — a plain non-empty
+     *  string, not narrowed to `MatchConfidence` here, since the backend
+     *  validates it the same way (free VarChar column, no enum). */
+    matchConfidence?: string;
   };
   decision: VulnImportDecision;
 }
@@ -277,12 +311,44 @@ export interface ListBatchesResponse {
 }
 
 /** GET /batches/:id → 200, res.json(result) where result = getBatchDetail()
- *  return = getBatchWithEntries() return (queries.ts line 162:
- *  { batch, entries }). `batch` here will NOT have entryCount/byClassification
- *  populated (see VulnImportBatch's comment above) — they are `undefined`. */
+ *  return = getBatchWithEntries() return (queries.ts `getBatchWithEntries`,
+ *  re-verified for task 8b: `{ batch, entries, total, page, pageSize,
+ *  byClassification, bySeverity, byMatchConfidence }`). `batch` here will NOT
+ *  have entryCount/byClassification populated (see VulnImportBatch's comment
+ *  above) — they are `undefined`; the top-level `byClassification` /
+ *  `bySeverity` / `byMatchConfidence` fields below are the ones that matter
+ *  for this endpoint. `entries` is only the CURRENT PAGE (Task 8 pagination,
+ *  `pageSize` capped server-side by `MAX_ENTRY_PAGE_SIZE`) — the three
+ *  `by*` count maps are aggregated over the WHOLE filtered batch via
+ *  `groupBy`, not the loaded page, which is exactly what the review screen's
+ *  tab counts need (task-8b brief). Each map's keys are whatever values
+ *  exist in the batch for that column; a value with 0 matching entries is
+ *  simply absent (groupBy semantics), same convention as
+ *  `VulnImportBatch.byClassification`. `byMatchConfidence` additionally uses
+ *  the `NO_MATCH_CONFIDENCE_KEY` ('NONE') convention (queries.ts) for any
+ *  entry whose `matchConfidence` column is null — in practice this should
+ *  never happen post-upload, but the type doesn't assume it can't. */
 export interface GetBatchDetailResponse {
   batch: VulnImportBatch;
   entries: VulnImportEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  byClassification: Partial<Record<VulnImportClassification, number>>;
+  bySeverity: Partial<Record<VulnImportSeverity, number>>;
+  /** Keys are `MatchConfidence` values, plus `'NONE'` for a null DB row
+   *  (see `NO_MATCH_CONFIDENCE_KEY` in queries.ts) — not narrowed to
+   *  `MatchConfidence` here for that reason. */
+  byMatchConfidence: Record<string, number>;
+  /** Task 10 (v3.7.0) — number of DISTINCT non-null `ciId` values among the
+   *  entries matching this request's filter (queries.ts `getBatchWithEntries`,
+   *  a 4th `groupBy(['ciId'])` alongside the three above, `ciGroups.length`).
+   *  An entry with no CI match (UNMATCHED/AMBIGUOUS, `ciId: null`) never
+   *  contributes to this count. Powers the "Aceptar" confirmation dialog's
+   *  "N CIs affected" figure (fetched via `?decision=INCLUDE`) — NOT derived
+   *  from `entries.length` or any client-side `Set`, since `entries` here is
+   *  only the current page. */
+  ciCount: number;
 }
 
 /** PATCH .../entries/:entryId → 200, res.json(updated) where updated is the

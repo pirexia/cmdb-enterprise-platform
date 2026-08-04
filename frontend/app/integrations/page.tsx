@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Bug, Shield, Upload, Play, CheckCircle, XCircle, AlertTriangle,
-  Loader2, RefreshCw, ArrowRight,
+  Loader2, RefreshCw, ArrowRight, Radar,
 } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -256,6 +256,115 @@ function IntegrationCard({
   );
 }
 
+// ─── Red Hat Lightspeed — live pull, not paste-JSON (distinct from IntegrationCard) ──
+
+function RedHatLightspeedCard() {
+  const { t } = useLanguage();
+  const [status, setStatus] = useState<{ configured: boolean; baseUrl: string } | null>(null);
+  const [state, setState] = useState<CardState>("idle");
+  const [result, setResult] = useState<StagingResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch("/api/integrations/redhat-lightspeed/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  const handleImport = async () => {
+    setState("loading");
+    setError(null);
+    setResult(null);
+    try {
+      const res = await apiFetch("/api/integrations/redhat-lightspeed/import", { method: "POST" });
+      if (!res.ok) {
+        const ct = res.headers.get("content-type") ?? "";
+        const err = ct.includes("application/json") ? await res.json() : { error: await res.text() };
+        throw new Error(err.error ?? `Error ${res.status}`);
+      }
+      const data = await res.json();
+      setResult({ ...data, message: t("integrations.lightspeed_success") } as StagingResult);
+      setState("success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("common.unknown_error"));
+      setState("error");
+    }
+  };
+
+  return (
+    <div className="bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden flex flex-col">
+      <div className="bg-[#EE0000] px-6 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
+            <Radar className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-white">Red Hat Lightspeed</h2>
+            <p className="text-xs text-white/70">{t("integrations.lightspeed_subtitle")}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 px-6 py-5 space-y-4">
+        <p className="text-sm text-slate-600">{t("integrations.lightspeed_desc")}</p>
+
+        {status && !status.configured && (
+          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {t("integrations.lightspeed_not_configured")}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleImport}
+          disabled={state === "loading" || !status?.configured}
+          className="flex items-center gap-2 rounded-none bg-[var(--accent)] px-5 py-2 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          title={!status?.configured ? t("integrations.lightspeed_not_configured") : undefined}
+        >
+          {state === "loading" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          {state === "loading" ? t("integrations.processing") : t("integrations.lightspeed_import_btn")}
+        </button>
+
+        {error && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {result && state === "success" && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
+            <div className="flex items-center gap-2 text-blue-700">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-sm font-semibold">{result.message}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-blue-700">
+              <span>{t("integrations.staging_total")}: <strong>{result.summary.totalEntries}</strong></span>
+              <span>{t("integrations.staging_matched")}: <strong>{result.summary.matched}</strong></span>
+              <span>{t("integrations.staging_nueva")}: <strong>{result.summary.nueva}</strong></span>
+              <span>{t("integrations.staging_reaparecida")}: <strong>{result.summary.reaparecida}</strong></span>
+              {(result.summary.ambiguous > 0 || result.summary.unmatched > 0) && (
+                <span className="col-span-2 text-amber-600">
+                  {result.summary.ambiguous + result.summary.unmatched} {t("integrations.staging_needs_attention")}
+                </span>
+              )}
+            </div>
+            <Link
+              href={`/vulnerabilities/imports/${result.batchId}`}
+              className="flex items-center justify-center gap-2 rounded-none bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+            >
+              {t("integrations.staging_review_cta")}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function IntegrationsPage() {
@@ -290,7 +399,7 @@ export default function IntegrationsPage() {
         </div>
 
         {/* Cards grid */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <IntegrationCard
             title="Greenbone OpenVAS"
             subtitle={t("integrations.greenbone_subtitle")}
@@ -347,6 +456,8 @@ export default function IntegrationsPage() {
   }
 ]`}
           />
+
+          <RedHatLightspeedCard />
         </div>
       </div>
     </div>

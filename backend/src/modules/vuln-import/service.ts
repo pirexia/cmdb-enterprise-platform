@@ -3,15 +3,16 @@ import type { Vulnerability, VulnSeverity } from '../integrations/types.js';
 import { parseGreenboneReport, type ParsedGreenboneScan } from './parser.js';
 import { parseCrowdStrikeReport } from './crowdstrikeParser.js';
 import { matchHost, type MatchResult } from './matcher.js';
-import { classifyVulnerability } from './classifier.js';
+import { classifyVulnerability, computeAbsentClosures } from './classifier.js';
 import { vulnImportAudit } from './audit.js';
 import {
-  createBatchWithEntries, listBatches as queryListBatches, getBatchWithEntries,
+  createBatchShell, writeBatchEntries, finalizeBatch, listBatches as queryListBatches, getBatchWithEntries,
   getBatch, getEntry, getAllEntriesForBatch, updateEntry, bulkUpdateDecision,
   markBatchStatus, ciExists, getCiVulnerabilities, updateCiVulnerabilities,
-  type NewBatchInput, type NewEntryInput, type EntryFilter,
+  type NewBatchMeta, type NewEntryInput, type EntryFilter,
 } from './queries.js';
 import type { UploadRequestBody, PatchEntryBody, BulkDecisionBody } from './schemas.js';
+import { getRhelLifecycleDates } from '../integrations/connectors/redhatLightspeed/lifecycleClient.js';
 
 // Business-logic orchestration for the Greenbone staging/review workflow.
 // Spec: docs/internal/specs/2026-07-29-v3.6.0-greenbone-real-format-staging.md
@@ -204,7 +205,27 @@ export async function uploadReport(
       daysOpen: entry.daysOpen ?? null,
       externalStatus: entry.externalStatus ?? null,
       cvssVersion: entry.cvssVersion ?? null,
+      redhatImpact: entry.redhatImpact ?? null,
+      knownExploit: entry.knownExploit ?? null,
+      publicDate: safeDate(entry.publicDate),
     });
+  }
+
+  // Absence-closure staging (task 15, v3.7.0 prep): `storedVulnsByCi` was
+  // populated above ONLY for hosts matched in THIS batch (see the loop
+  // above), so iterating its keys is exactly the "CIs present in the
+  // current batch" population the design requires — a CI with old open
+  // vulnerabilities that never appeared in this report is never in this
+  // map, and therefore never gets a closure entry. For each such CI,
+  // `reportedKeys` is this batch's own identity set for that CI (the
+  // `vulnKey` of every normal entry already pushed above with that ciId) —
+  // computeAbsentClosures closes anything from the same `source` that's
+  // open but missing from that set.
+  for (const [ciId, storedVulns] of storedVulnsByCi) {
+    const reportedKeys = new Set(
+      newEntries.filter((e) => e.ciId === ciId).map((e) => e.vulnKey),
+    );
+    newEntries.push(...computeAbsentClosures(ciId, source, storedVulns, reportedKeys));
   }
   summary.totalEntries = newEntries.length;
 
@@ -235,7 +256,7 @@ export async function uploadReport(
   const scanStart = greenboneMeta ? safeDate(greenboneMeta.scanStart) : null;
   const scanEnd = greenboneMeta ? safeDate(greenboneMeta.scanEnd) : null;
 
-  const batchInput: NewBatchInput = {
+  const batchMeta: NewBatchMeta = {
     source,
     filename,
     taskName,
@@ -244,28 +265,40 @@ export async function uploadReport(
     scanEnd,
     uploadedBy: userEmail,
     rawMeta,
-    entries: newEntries,
   };
 
-  const batch = await prisma.$transaction(async (tx) => {
-    const created = await createBatchWithEntries(tx, batchInput);
-    await vulnImportAudit(tx, 'VULN_IMPORT_UPLOAD', 'VulnImportBatch', created.id, userEmail, {
-      filename, hostCount: hostAddresses.length, ...summary,
+  // Split create→write→finalize sequence (Task 2/3) — see queries.ts's
+  // doc comments on createBatchShell/writeBatchEntries/finalizeBatch for why
+  // the old single-transaction createBatchWithEntries hit both a V8 string
+  // length limit and Prisma's interactive-transaction timeout on large
+  // reports. writeBatchEntries runs outside any transaction; a failure there
+  // is caught and recorded via finalizeBatch(..., 'FAILED', ...) rather than
+  // left as a stuck RUNNING batch.
+  const batch = await prisma.$transaction(async (tx) => createBatchShell(tx, batchMeta));
+
+  try {
+    await writeBatchEntries(prisma, batch.id, newEntries);
+    await prisma.$transaction(async (tx) => {
+      await finalizeBatch(tx, batch.id, 'PENDING');
     });
-    return created;
-  });
+  } catch (err) {
+    await prisma.$transaction(async (tx) => {
+      await finalizeBatch(tx, batch.id, 'FAILED', err instanceof Error ? err.message : String(err));
+    });
+    throw err;
+  }
 
   return { batchId: batch.id, summary };
 }
 
 // ─── List / get ─────────────────────────────────────────────────────────────
 
-export interface ListBatchesParams { status?: string; page?: number; pageSize?: number }
+export interface ListBatchesParams { status?: string; source?: string; page?: number; pageSize?: number }
 
 export async function listBatches(prisma: PrismaClient, params: ListBatchesParams) {
   const page = Math.max(1, params.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 20));
-  const { batches, total } = await queryListBatches(prisma, { status: params.status, page, pageSize });
+  const { batches, total } = await queryListBatches(prisma, { status: params.status, source: params.source, page, pageSize });
   return { batches, total, page, pageSize };
 }
 
@@ -371,6 +404,7 @@ function buildNewVulnerability(entry: {
   products: string[]; exprtRating: string | null; cisaKev: boolean; cisaDueDate: Date | null;
   exploitStatus: string | null; daysOpen: number | null; externalStatus: string | null;
   cvssVersion: string | null;
+  redhatImpact: string | null; knownExploit: boolean | null; publicDate: Date | null;
 }, now: string, source: string): Vulnerability {
   return {
     key: entry.vulnKey,
@@ -399,8 +433,79 @@ function buildNewVulnerability(entry: {
     daysOpen: entry.daysOpen ?? undefined,
     externalStatus: entry.externalStatus ?? undefined,
     cvssVersion: entry.cvssVersion ?? undefined,
+    redhatImpact: entry.redhatImpact ?? undefined,
+    knownExploit: entry.knownExploit ?? undefined,
+    publicDate: entry.publicDate ? entry.publicDate.toISOString() : undefined,
   };
 }
+
+/** Physical-fact OS correction for a Lightspeed-matched CI, run ONLY inside
+ *  acceptBatch's transaction, for batch.source === 'redhat-lightspeed'.
+ *  Unlike hypervisorId (create-once classification), operatingSystemId is
+ *  ALWAYS refreshed — the external system owns this physical fact (D5). */
+async function correctOperatingSystem(
+  tx: Prisma.TransactionClient,
+  ciId: string,
+  raw: { os_name?: string; os_major?: number; os_minor?: number },
+): Promise<void> {
+  if (!raw.os_name || raw.os_major === undefined) return;
+
+  const code = `${raw.os_name}_${raw.os_major}${raw.os_minor !== undefined ? `.${raw.os_minor}` : ''}`;
+  let os = await tx.operatingSystem.findUnique({ where: { code } });
+  if (!os) {
+    os = await tx.operatingSystem.create({
+      data: { code, name: `${raw.os_name} ${raw.os_major}${raw.os_minor !== undefined ? `.${raw.os_minor}` : ''}`, isSystem: false },
+    });
+    // Lifecycle dates only fetched on first creation of this OS row — a
+    // later accept for the same RHEL version reuses the stored dates
+    // rather than re-hitting the public API on every batch.
+    //
+    // Best-effort: this call runs inside acceptBatch's transaction (Prisma's
+    // default interactive-transaction timeout is 5s), and it hits a THIRD
+    // PARTY host outside our control. An optional EOL/EOS enrichment must
+    // never be able to fail or stall the entire batch-accept — the OS
+    // correction itself (above) is the load-bearing part; the lifecycle
+    // dates are a nice-to-have that degrades to "not set yet" on any error.
+    const lifecycle = await getRhelLifecycleDates(raw.os_major).catch((err) => {
+      console.error('[correctOperatingSystem] Product Life Cycle API lookup failed, continuing without EOL/EOS dates:', err);
+      return { eosDate: null, eolDate: null };
+    });
+    if (lifecycle.eosDate || lifecycle.eolDate) {
+      const [eosType] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "date_types" WHERE code = 'os-end-of-support' LIMIT 1`;
+      const [eolType] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "date_types" WHERE code = 'os-end-of-life' LIMIT 1`;
+      if (eosType && lifecycle.eosDate) {
+        await tx.$executeRaw`
+          INSERT INTO "operating_system_dates" (id, operating_system_id, date_type_id, date_value)
+          VALUES (gen_random_uuid(), ${os.id}::uuid, ${eosType.id}::uuid, ${lifecycle.eosDate})
+          ON CONFLICT (operating_system_id, date_type_id) DO NOTHING`;
+      }
+      if (eolType && lifecycle.eolDate) {
+        await tx.$executeRaw`
+          INSERT INTO "operating_system_dates" (id, operating_system_id, date_type_id, date_value)
+          VALUES (gen_random_uuid(), ${os.id}::uuid, ${eolType.id}::uuid, ${lifecycle.eolDate})
+          ON CONFLICT (operating_system_id, date_type_id) DO NOTHING`;
+      }
+    }
+  }
+
+  await tx.cI.update({ where: { id: ciId }, data: { operatingSystemId: os.id } });
+}
+
+/** Picks the OS hint (if any) out of a CI's batch entries' `raw` payloads —
+ *  shared by both the main accept loop and the steady-state sweep loop
+ *  below, so a re-import with nothing newly INCLUDEd still gets it. */
+function findOsHint(entries: { raw: unknown }[]): { os_name?: string; os_major?: number; os_minor?: number } | undefined {
+  return entries.map((e) => e.raw as { os_name?: string; os_major?: number; os_minor?: number }).find((r) => r?.os_name);
+}
+
+// Same "still open" list `computeAbsentClosures` (classifier.ts) uses to
+// decide whether a stored vulnerability's absence from a batch is eligible
+// for a RESUELTA_AUSENTE closure entry in the first place. Kept as a literal
+// here (not imported) deliberately — see classifier.ts's long comment on
+// `ABSENT_CLOSURE_OPEN_STATUSES` for why this exact list (including
+// REABIERTA) is the one that must never drift from this one.
+const RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES: readonly string[] =
+  ['NUEVO', 'ASIGNADO', 'EN_CURSO', 'PARADO', 'REABIERTA'];
 
 export async function acceptBatch(
   prisma: PrismaClient,
@@ -499,9 +604,29 @@ export async function acceptBatch(
             daysOpen: entry.daysOpen ?? existing.daysOpen,
             externalStatus: entry.externalStatus ?? existing.externalStatus,
             cvssVersion: entry.cvssVersion ?? existing.cvssVersion,
+            redhatImpact: entry.redhatImpact ?? existing.redhatImpact,
+            knownExploit: entry.knownExploit ?? existing.knownExploit,
+            publicDate: entry.publicDate ? entry.publicDate.toISOString() : existing.publicDate,
           });
           reopenedCount++;
           await vulnImportAudit(tx, 'VULN_REOPENED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
+        } else if (entry.classification === 'RESUELTA_AUSENTE') {
+          // Closure entry generated at upload time by computeAbsentClosures
+          // (task 15) — the operator did not uncheck it in review. Mandatory
+          // re-verification (task 16 brief, non-negotiable): the stored
+          // vulnerability may have changed between upload and accept (e.g. a
+          // manual PATCH resolved or reopened it in the meantime), so its
+          // CURRENT status is re-read from `byIdentity` (itself just loaded
+          // from the DB above, inside this same transaction) rather than
+          // trusting the snapshot the classifier saw at upload time. Only
+          // close if still open; if it's no longer open (already resolved)
+          // or no longer exists at all (some other concurrent edit removed
+          // it), this entry is simply stale — skip silently, not an error.
+          const existing = byIdentity.get(entry.vulnKey);
+          if (existing && RESUELTA_AUSENTE_REVERIFY_OPEN_STATUSES.includes(existing.status)) {
+            byIdentity.set(entry.vulnKey, { ...existing, status: 'RESUELTO', resolvedAt: now });
+            await vulnImportAudit(tx, 'VULN_AUTO_RESOLVED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
+          }
         } else {
           // EXISTENTE_PENDIENTE, decision manually flipped to INCLUDE by an
           // operator: metadata refresh only, status is explicitly untouched.
@@ -522,8 +647,45 @@ export async function acceptBatch(
         }
       }
 
+      if (batch.source === 'redhat-lightspeed') {
+        const osHint = findOsHint(entries);
+        if (osHint) await correctOperatingSystem(tx, ciId, osHint);
+      }
+
       await updateCiVulnerabilities(tx, ciId, [...byIdentity.values()]);
       touched.push({ ciId, vulnKeys: vulnKeysTouched });
+    }
+
+    // Steady-state case: a re-import where every entry for a CI classifies
+    // EXISTENTE_PENDIENTE (decision EXCLUDE by default) never puts that CI in
+    // `byCi` above. This used to also carry the closure sweep for such CIs,
+    // but that's no longer needed here (task 16): a CI with at least one
+    // pending closure (RESUELTA_AUSENTE, decision INCLUDE by default — see
+    // computeAbsentClosures) already lands in `byCi` naturally, same as any
+    // other INCLUDEd entry, and is handled by the main loop above. What's
+    // left here is OS correction alone — it must still run for a CI whose
+    // batch entries are ALL EXISTENTE_PENDIENTE/EXCLUDE (nothing to close,
+    // nothing new to review, but Lightspeed's OS report for it may still
+    // have changed since the last accept). correctOperatingSystem writes
+    // CI.operatingSystemId directly (tx.cI.update) — it never touches the
+    // `vulnerabilities` JSON column, so there is nothing to fetch from
+    // getCiVulnerabilities or write back via updateCiVulnerabilities here.
+    // Only for redhat-lightspeed batches; only for CIs with a resolved
+    // (non-blocking) match not already processed above.
+    if (batch.source === 'redhat-lightspeed') {
+      const remainingCiIds = new Set(
+        allEntries
+          .filter((e) => e.ciId && e.matchConfidence !== 'AMBIGUOUS' && e.matchConfidence !== 'UNMATCHED' && !byCi.has(e.ciId as string))
+          .map((e) => e.ciId as string),
+      );
+      for (const ciId of remainingCiIds) {
+        const entriesForCi = allEntries.filter((e) => e.ciId === ciId);
+        const osHint = findOsHint(entriesForCi);
+        if (osHint) {
+          await correctOperatingSystem(tx, ciId, osHint);
+          touched.push({ ciId, vulnKeys: [] });
+        }
+      }
     }
 
     await markBatchStatus(tx, batchId, 'ACCEPTED', userEmail);

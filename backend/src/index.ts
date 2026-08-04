@@ -2288,6 +2288,187 @@ app.patch('/api/vulnerabilities', authenticateToken, requireSecurityWrite, async
   }
 });
 
+// ── GET /api/vulnerabilities — paginated, filtered list (real-scale fix) ───
+//
+// Real production bug (found live, post-v3.7.0): the `/vulnerabilities`
+// page used to fetch EVERY CI (via fetchAllCIs, paginated at 250/page) with
+// its full `vulnerabilities` JSON array, flattening all of them into one
+// client-side array. That was fine at the scale this page was designed for
+// (hundreds of vulnerabilities) but broke completely once a real Red Hat
+// Lightspeed batch was accepted: 458,043 vulnerabilities across 290 CIs —
+// the browser tab hung trying to fetch, parse, and hold that payload. Same
+// "unbounded fetch-everything" pattern already fixed twice elsewhere in this
+// release (getBatchWithEntries/Task 8, getAllEntriesForBatch/acceptBatch) —
+// this is the third and last place it was still lurking.
+//
+// `CI.vulnerabilities` has no relational table backing it (a JSONB column
+// on `configuration_items`, unlike vuln_import_entries which is a real
+// table) — filtering/paginating means unnesting via jsonb_array_elements,
+// not a Prisma model query. Filter fragments are built with `Prisma.sql`/
+// `Prisma.join`/`Prisma.empty` (the established safe pattern in this file —
+// see the audit-trail report's date/entity filters above, or
+// modules/documents/router.ts) and shared between the COUNT and the SELECT
+// so pagination math and filtering never drift apart. `escapeLike` (already
+// imported) guards the two ILIKE filters (CI name, CVE substring).
+//
+// No role gate beyond `authenticateToken` — this mirrors GET
+// /assignable-users (Task 21's own fix: the main /vulnerabilities page is
+// visible to every authenticated role, not just ADMIN/AUDITOR/SOC, so the
+// list itself must be too; per-row WRITE actions stay gated by
+// requireSecurityWrite on the PATCH endpoint above, untouched).
+function buildVulnerabilityFilterSql(req: Request): Prisma.Sql {
+  const { search, cve, severity, status, source, assignedTo } = req.query as Record<string, string | undefined>;
+  const conds: Prisma.Sql[] = [];
+
+  if (search) conds.push(Prisma.sql`ci.name ILIKE ${'%' + escapeLike(search.trim()) + '%'} ESCAPE '\\'`);
+  if (cve)    conds.push(Prisma.sql`(v.value->>'cve') ILIKE ${'%' + escapeLike(cve.trim()) + '%'} ESCAPE '\\'`);
+  if (severity && severity !== 'ALL') conds.push(Prisma.sql`v.value->>'severity' = ${severity}`);
+  if (status && status !== 'ALL')     conds.push(Prisma.sql`v.value->>'status' = ${status}`);
+  if (source) {
+    // Stored vulnerabilities predating any `source` field are implicitly
+    // "manual" — same fallback the old client-side filter used
+    // (`r.source ?? "manual"`), reproduced here so results match exactly.
+    conds.push(source === 'manual'
+      ? Prisma.sql`(v.value->>'source' IS NULL OR v.value->>'source' = 'manual')`
+      : Prisma.sql`v.value->>'source' = ${source}`);
+  }
+  if (assignedTo === '__unassigned__') {
+    conds.push(Prisma.sql`(v.value->>'assignedTo') IS NULL`);
+  } else if (assignedTo === '__me__') {
+    conds.push(Prisma.sql`v.value->>'assignedTo' = ${req.user!.id}`);
+  } else if (assignedTo) {
+    conds.push(Prisma.sql`v.value->>'assignedTo' = ${assignedTo}`);
+  }
+
+  return conds.length > 0 ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
+}
+
+const VULN_LIST_MAX_PAGE_SIZE = 100;
+
+app.get('/api/vulnerabilities', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const page     = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const pageSize = Math.min(VULN_LIST_MAX_PAGE_SIZE, Math.max(1, parseInt(String(req.query.pageSize ?? '50'), 10) || 50));
+    const whereSql = buildVulnerabilityFilterSql(req);
+
+    const [rows, totalRows] = await Promise.all([
+      prisma.$queryRaw<{ ci_id: string; ci_name: string; ci_slug: string; vuln: unknown }[]>`
+        SELECT ci.id::text AS ci_id, ci.name AS ci_name, ci.api_slug AS ci_slug, v.value AS vuln
+        FROM "configuration_items" ci, jsonb_array_elements(ci.vulnerabilities) AS v(value)
+        ${whereSql}
+        ORDER BY (v.value->>'importedAt') DESC NULLS LAST, ci.id, (v.value->>'cve')
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `,
+      prisma.$queryRaw<{ total: bigint }[]>`
+        SELECT count(*) AS total
+        FROM "configuration_items" ci, jsonb_array_elements(ci.vulnerabilities) AS v(value)
+        ${whereSql}
+      `,
+    ]);
+
+    const data = rows.map((r) => ({
+      ...(r.vuln as Record<string, unknown>),
+      ciId: r.ci_id, ciName: r.ci_name, ciSlug: r.ci_slug,
+    }));
+
+    res.json({ data, total: Number(totalRows[0]?.total ?? 0), page, pageSize });
+  } catch (error) {
+    console.error('[GET /api/vulnerabilities] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/vulnerabilities/summary — global severity/status counts ───────
+//
+// Deliberately UNFILTERED (matches the old client-side `counts`, which was
+// always computed over `allRows` — the whole vulnerability set — never over
+// the current filter). One aggregate query, not paginated (a single-row
+// result regardless of how many vulnerabilities exist).
+app.get('/api/vulnerabilities/summary', authenticateToken, async (_req: Request, res: Response) => {
+  try {
+    const [row] = await prisma.$queryRaw<{
+      critical: bigint; high: bigint; medium: bigint; low: bigint; info: bigint;
+      resuelto: bigint; open: bigint; total: bigint;
+    }[]>`
+      SELECT
+        count(*) FILTER (WHERE v.value->>'severity' = 'CRITICAL') AS critical,
+        count(*) FILTER (WHERE v.value->>'severity' = 'HIGH')     AS high,
+        count(*) FILTER (WHERE v.value->>'severity' = 'MEDIUM')   AS medium,
+        count(*) FILTER (WHERE v.value->>'severity' = 'LOW')      AS low,
+        count(*) FILTER (WHERE v.value->>'severity' = 'INFO')     AS info,
+        count(*) FILTER (WHERE v.value->>'status' = 'RESUELTO')     AS resuelto,
+        count(*) FILTER (WHERE v.value->>'status' IS DISTINCT FROM 'RESUELTO') AS open,
+        count(*) AS total
+      FROM "configuration_items" ci, jsonb_array_elements(ci.vulnerabilities) AS v(value)
+    `;
+    res.json({
+      critical: Number(row?.critical ?? 0), high: Number(row?.high ?? 0), medium: Number(row?.medium ?? 0),
+      low: Number(row?.low ?? 0), info: Number(row?.info ?? 0), resuelto: Number(row?.resuelto ?? 0),
+      open: Number(row?.open ?? 0), total: Number(row?.total ?? 0),
+    });
+  } catch (error) {
+    console.error('[GET /api/vulnerabilities/summary] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ── GET /api/vulnerabilities/export — CSV of the current filter ────────────
+//
+// Streams a CSV of every row matching the same filters as the list endpoint
+// above (never paginated — an export needs everything the operator filtered
+// down to, not one page) but capped at VULN_EXPORT_MAX_ROWS: building the
+// whole CSV as one in-memory string is a smaller, bounded version of the
+// exact bug this endpoint's sibling was just written to fix, so a filter
+// broad enough to match hundreds of thousands of rows must be rejected with
+// a clear message telling the operator to narrow it, not silently hang.
+const VULN_EXPORT_MAX_ROWS = 50_000;
+
+function csvCell(value: unknown): string {
+  const s = value == null ? '' : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+app.get('/api/vulnerabilities/export', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const whereSql = buildVulnerabilityFilterSql(req);
+
+    const [{ total }] = await prisma.$queryRaw<{ total: bigint }[]>`
+      SELECT count(*) AS total
+      FROM "configuration_items" ci, jsonb_array_elements(ci.vulnerabilities) AS v(value)
+      ${whereSql}
+    `;
+    if (Number(total) > VULN_EXPORT_MAX_ROWS) {
+      res.status(422).json({ error: 'TOO_MANY_ROWS', total: Number(total), max: VULN_EXPORT_MAX_ROWS });
+      return;
+    }
+
+    const rows = await prisma.$queryRaw<{ ci_name: string; ci_slug: string; vuln: unknown }[]>`
+      SELECT ci.name AS ci_name, ci.api_slug AS ci_slug, v.value AS vuln
+      FROM "configuration_items" ci, jsonb_array_elements(ci.vulnerabilities) AS v(value)
+      ${whereSql}
+      ORDER BY (v.value->>'importedAt') DESC NULLS LAST, ci.id, (v.value->>'cve')
+    `;
+
+    const header = ['CI', 'Slug', 'CVE', 'Severity', 'CVSS', 'Description', 'Source', 'Status', 'Port', 'Family', 'Imported'];
+    const lines = [header.join(',')];
+    for (const r of rows) {
+      const v = r.vuln as Record<string, unknown>;
+      lines.push([
+        r.ci_name, r.ci_slug, v.cve ?? '', v.severity ?? '', v.cvss_score ?? '',
+        v.description ?? '', v.source ?? 'manual', v.status ?? '', v.port ?? '', v.family ?? '',
+        v.importedAt ? new Date(v.importedAt as string).toISOString().slice(0, 10) : '',
+      ].map(csvCell).join(','));
+    }
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="vulnerabilidades-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (error) {
+    console.error('[GET /api/vulnerabilities/export] Error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * GET /api/vulnerabilities/assignable-users
  * Lists the users a vulnerability can be assigned to: active ADMIN/SOC

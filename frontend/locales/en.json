@@ -327,6 +327,8 @@
     "download_csv": "CSV",
     "export_csv_count": "Export CSV ({count})",
     "footer_showing": "Showing {filtered} of {total} vulnerabilities",
+    "page_info": "Page {page} of {totalPages} ({total} results)",
+    "export_too_many_rows": "Too many rows to export ({total}, max {max}) — narrow the filters first",
     "active_filter": "{count} active filter",
     "active_filter_plural": "{count} active filters",
     "header_subtitle": "{total} total findings · {open} open",

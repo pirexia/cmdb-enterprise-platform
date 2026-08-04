@@ -326,6 +326,8 @@
     "update_failed": "Impossibile aggiornare lo stato:",
     "download_csv": "CSV",
     "footer_showing": "Mostrando {filtered} di {total} vulnerabilità",
+    "page_info": "Pagina {page} di {totalPages} ({total} risultati)",
+    "export_too_many_rows": "Troppe righe da esportare ({total}, massimo {max}) — restringere prima i filtri",
     "active_filter": "{count} filtro attivo",
     "active_filter_plural": "{count} filtri attivi",
     "severity": {

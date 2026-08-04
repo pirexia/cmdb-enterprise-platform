@@ -429,8 +429,38 @@ export async function getEntry(prisma: PrismaOrTx, batchId: string, entryId: str
   return prisma.vulnImportEntry.findFirst({ where: { id: entryId, batchId } });
 }
 
+// A single unbounded `findMany` over a batch's entries works fine at the
+// scale this module was originally tested at (hundreds of rows), but a real
+// Red Hat Lightspeed pull can produce hundreds of thousands — live
+// verification against a real 493,816-row batch hit Prisma's query engine
+// with `Failed to convert rust String into napi string`: the engine
+// serializes the entire result set into one string across the Rust↔Node
+// FFI boundary before `acceptBatch` ever sees it, and that string exceeded
+// whatever internal limit napi enforces. Same failure family as the
+// `RangeError: Invalid string length` `createBatchWithEntries` hit on the
+// WRITE side (see writeBatchEntries's own doc comment) — this is the read
+// side of the identical problem, previously unpaginated because
+// `getBatchWithEntries` (the review-screen path) was paginated in an
+// earlier task, but `acceptBatch`'s own `getAllEntriesForBatch` call was
+// never touched, since accepting genuinely needs every entry in one pass
+// (grouping by CI, blocking-ambiguity checks) — chunking the QUERY (not the
+// in-memory result) keeps that requirement intact while keeping each
+// individual response under the serialization ceiling.
 export async function getAllEntriesForBatch(prisma: PrismaOrTx, batchId: string) {
-  return prisma.vulnImportEntry.findMany({ where: { batchId } });
+  const entries: Awaited<ReturnType<typeof prisma.vulnImportEntry.findMany>> = [];
+  let cursor: string | undefined;
+  for (;;) {
+    const chunk = await prisma.vulnImportEntry.findMany({
+      where: { batchId },
+      orderBy: { id: 'asc' },
+      take: ENTRY_CHUNK_SIZE,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    entries.push(...chunk);
+    if (chunk.length < ENTRY_CHUNK_SIZE) break;
+    cursor = chunk[chunk.length - 1]!.id;
+  }
+  return entries;
 }
 
 export async function updateEntry(

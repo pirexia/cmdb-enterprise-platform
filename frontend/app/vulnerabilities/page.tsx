@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle, Upload } from "lucide-react";
-import { apiFetch, fetchAllCIs } from "@/lib/apiFetch";
-import { exportToCSV } from "@/lib/csvExport";
+import { Shield, RefreshCw, AlertTriangle, Search, Download, FilterX, X, CheckCircle, Upload, ChevronLeft, ChevronRight } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import type { VulnSeverity, VulnStatus } from "@/lib/types/vulnImport";
+
+// Real production bug (found live, post-v3.7.0): this page used to fetch
+// EVERY CI (fetchAllCIs) with its full `vulnerabilities` JSON array and
+// flatten all of them client-side — fine at hundreds of rows, but the
+// browser hung once a real Red Hat Lightspeed batch pushed the CMDB to
+// 458,043 vulnerabilities across 290 CIs. Filtering, pagination, and the
+// severity/status summary counts all moved server-side
+// (GET /api/vulnerabilities, /summary, /export — backend/src/index.ts,
+// "Vulnerability Lifecycle" section) — this page now only ever holds one
+// page's worth of rows in memory.
+const PAGE_SIZE = 50;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 //
@@ -43,13 +53,6 @@ interface Vulnerability {
   assignedTo?: string;  // user id
   assignedAt?: string;  // ISO date
   assignedBy?: string;  // user id of whoever made the assignment
-}
-
-interface CI {
-  id:              string;
-  name:            string;
-  apiSlug:         string;
-  vulnerabilities: Vulnerability[] | null;
 }
 
 // GET /api/vulnerabilities/assignable-users (Task 19) — ADMIN/SOC accounts
@@ -129,10 +132,19 @@ export default function VulnerabilitiesPage() {
   // vulnerabilities/imports pages of this module.
   const { user, canManageSecurity } = useAuth();
 
-  const [allRows, setAllRows] = useState<VulnRow[]>([]);
+  // `rows` holds only the CURRENT PAGE — never the whole filtered set, let
+  // alone the whole CMDB. `total` is the server-computed count for the
+  // active filter (used for pagination math and the footer), independent of
+  // `summary` below (which is always the GLOBAL, unfiltered counts — same
+  // semantics the old client-side `counts` had, computed over `allRows`
+  // before this fix, never over the current filter).
+  const [rows, setRows]       = useState<VulnRow[]>([]);
+  const [total, setTotal]     = useState(0);
+  const [page, setPage]       = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [filters, setFilters] = useState({ search: "", cve: "", severity: "ALL", status: "ALL", source: "", assignedTo: "" });
+  const [summary, setSummary] = useState({ critical: 0, high: 0, medium: 0, low: 0, info: 0, resuelto: 0, open: 0, total: 0 });
   // Task 21: assignable users for the owner picker/column/filter (Task 19's
   // GET /api/vulnerabilities/assignable-users — ADMIN/AUDITOR/SOC readable).
   // Fetched once on mount; a non-privileged VIEWER simply gets a 403 here,
@@ -141,6 +153,7 @@ export default function VulnerabilitiesPage() {
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
   const [updating, setUpdating] = useState<Set<string>>(new Set());
   const [toasts, setToasts]   = useState<Toast[]>([]);
+  const [exporting, setExporting] = useState(false);
 
   const addToast = useCallback((type: Toast["type"], message: string) => {
     const id = ++_toastId;
@@ -158,23 +171,69 @@ export default function VulnerabilitiesPage() {
   const clearFilters = () =>
     setFilters({ search: "", cve: "", severity: "ALL", status: "ALL", source: "", assignedTo: "" });
 
-  const fetchAll = async () => {
+  const buildFilterParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (filters.search) params.set("search", filters.search);
+    if (filters.cve) params.set("cve", filters.cve);
+    if (filters.severity !== "ALL") params.set("severity", filters.severity);
+    if (filters.status !== "ALL") params.set("status", filters.status);
+    if (filters.source) params.set("source", filters.source);
+    if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
+    return params;
+  }, [filters]);
+
+  const fetchPage = useCallback(async (targetPage: number) => {
     setLoading(true); setError(null);
     try {
-      const cisList = await fetchAllCIs<CI>();
-
-      const rows: VulnRow[] = [];
-      for (const ci of cisList) {
-        for (const v of ci.vulnerabilities ?? []) {
-          rows.push({ ...v, ciId: ci.id, ciName: ci.name, ciSlug: ci.apiSlug });
-        }
-      }
-      setAllRows(rows);
+      const params = buildFilterParams();
+      params.set("page", String(targetPage));
+      params.set("pageSize", String(PAGE_SIZE));
+      const res = await apiFetch(`/api/vulnerabilities?${params.toString()}`);
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const json = (await res.json()) as { data: VulnRow[]; total: number };
+      setRows(json.data);
+      setTotal(json.total);
     } catch (err) { setError(err instanceof Error ? err.message : t("common.unknown_error")); }
     finally { setLoading(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildFilterParams]);
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/vulnerabilities/summary");
+      if (res.ok) setSummary(await res.json());
+    } catch {
+      // Non-critical — the summary cards just stay at their previous values.
+    }
+  }, []);
+
+  // Debounced text filters (search/cve) — everything else (severity/status/
+  // source/assignedTo <select>s) fires immediately, same as before. Refetch
+  // whenever the *effective* (debounced) filter set changes, always
+  // resetting to page 1 — a filter change on page 5 must not silently keep
+  // showing page 5 of a completely different result set.
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFilters(filters), 300);
+    return () => clearTimeout(t);
+  }, [filters]);
+
+  useEffect(() => {
+    setPage(1);
+    fetchPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedFilters]);
+
+  useEffect(() => { fetchSummary(); }, [fetchSummary]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const goToPage = (p: number) => {
+    setPage(p);
+    fetchPage(p);
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  const refresh = () => { fetchPage(page); fetchSummary(); };
 
   // Task 21: load the assignable-users list once. Only ADMIN/SOC can act on
   // it (the picker below is gated by canManageSecurity), but ADMIN/AUDITOR/SOC
@@ -202,15 +261,18 @@ export default function VulnerabilitiesPage() {
     return assignableUsers.find((u) => u.id === id)?.displayName ?? id;
   }, [assignableUsers]);
 
-  // RAG chat deep-link: ?cve=<cve-id> pre-fills the CVE filter once rows are loaded.
+  // RAG chat deep-link: ?cve=<cve-id> pre-fills the CVE filter. Server-side
+  // filtering (this fix) means there's no longer any need to wait for rows
+  // to be loaded first — setting the filter alone triggers its own fetch via
+  // the debounced-filters effect above.
   const searchParams = useSearchParams();
   const router       = useRouter();
   useEffect(() => {
     const cve = searchParams.get("cve");
-    if (!cve || allRows.length === 0) return;
+    if (!cve) return;
     setFilters((prev) => ({ ...prev, cve }));
     router.replace("/vulnerabilities", { scroll: false });
-  }, [searchParams, allRows, router]);
+  }, [searchParams, router]);
 
   // A row's real identity is `key ?? cve` (spec D1/D1b, v3.6.0): ~96% of real
   // Greenbone findings carry no CVE, so keying by `cve` alone would silently
@@ -224,12 +286,12 @@ export default function VulnerabilitiesPage() {
     const updateKey  = `${row.ciId}:${identity}`;
 
     // Capture previous status for rollback
-    const previousStatus = allRows.find(
+    const previousStatus = rows.find(
       (r) => r.ciId === row.ciId && vulnIdentity(r) === identity
     )?.status;
 
     // Apply optimistic update immediately
-    setAllRows((prev) =>
+    setRows((prev) =>
       prev.map((r) =>
         r.ciId === row.ciId && vulnIdentity(r) === identity ? { ...r, status: newStatus } : r
       )
@@ -253,12 +315,13 @@ export default function VulnerabilitiesPage() {
       }
 
       addToast("success", `${t("vulnerabilities.status_updated")} "${t(`vulnerabilities.status.${newStatus}`)}"`);
+      void fetchSummary(); // status changed → global severity/status counts may have shifted
     } catch (err) {
       console.error("Failed to update status:", err);
 
       // Revert the optimistic update to the previous state
       if (previousStatus !== undefined) {
-        setAllRows((prev) =>
+        setRows((prev) =>
           prev.map((r) =>
             r.ciId === row.ciId && vulnIdentity(r) === identity ? { ...r, status: previousStatus } : r
           )
@@ -280,11 +343,11 @@ export default function VulnerabilitiesPage() {
     const identity  = vulnIdentity(row);
     const updateKey = `${row.ciId}:${identity}`;
 
-    const previousAssignee = allRows.find(
+    const previousAssignee = rows.find(
       (r) => r.ciId === row.ciId && vulnIdentity(r) === identity
     )?.assignedTo;
 
-    setAllRows((prev) =>
+    setRows((prev) =>
       prev.map((r) =>
         r.ciId === row.ciId && vulnIdentity(r) === identity
           ? { ...r, assignedTo: newAssignee ?? undefined }
@@ -316,7 +379,7 @@ export default function VulnerabilitiesPage() {
     } catch (err) {
       console.error("Failed to update assignee:", err);
 
-      setAllRows((prev) =>
+      setRows((prev) =>
         prev.map((r) =>
           r.ciId === row.ciId && vulnIdentity(r) === identity
             ? { ...r, assignedTo: previousAssignee }
@@ -331,63 +394,45 @@ export default function VulnerabilitiesPage() {
     }
   };
 
-  // ── Filtered rows ──────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    return allRows.filter((r) => {
-      if (filters.severity !== "ALL" && r.severity !== filters.severity) return false;
-      if (filters.status !== "ALL" && r.status !== filters.status) return false;
-      if (filters.search && !r.ciName.toLowerCase().includes(filters.search.toLowerCase())) return false;
-      if (filters.cve && !r.cve.toLowerCase().includes(filters.cve.toLowerCase())) return false;
-      if (filters.source && (r.source ?? "manual") !== filters.source) return false;
-      if (filters.assignedTo === "__unassigned__" && r.assignedTo) return false;
-      if (filters.assignedTo === "__me__" && r.assignedTo !== user?.id) return false;
-      if (filters.assignedTo && filters.assignedTo !== "__unassigned__" && filters.assignedTo !== "__me__" && r.assignedTo !== filters.assignedTo) return false;
-      return true;
-    });
-  }, [allRows, filters, user]);
-
-  const handleExportCSV = () => {
-    exportToCSV(
-      `vulnerabilidades-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        t("vulnerabilities.col_ci_affected"),
-        "Slug",
-        t("vulnerabilities.columns.cve"),
-        t("vulnerabilities.columns.severity"),
-        t("vulnerabilities.columns.score"),
-        t("vulnerabilities.columns.description"),
-        t("vulnerabilities.columns.source"),
-        t("vulnerabilities.columns.status"),
-        t("vulnerabilities.columns.port"),
-        t("vulnerabilities.columns.family"),
-        t("vulnerabilities.col_imported"),
-      ],
-      filtered.map((row) => [
-        row.ciName, row.ciSlug, row.cve || "—", row.severity,
-        row.cvss_score ?? "",
-        row.description,
-        row.source ?? "manual",
-        t(`vulnerabilities.status.${row.status}`),
-        row.port ?? "",
-        row.family ?? "",
-        row.importedAt ? new Date(row.importedAt).toLocaleDateString("es-ES") : "",
-      ])
-    );
+  // CSV export now goes through GET /api/vulnerabilities/export — the same
+  // filters as the current view, but never paginated (an export needs
+  // everything the operator filtered down to, not one page). The backend
+  // rejects (422) a filter broad enough to match more than 50,000 rows
+  // rather than building a huge CSV string in memory — the same class of
+  // bug this whole page's fix exists to close, just bounded instead of
+  // eliminated, since a real "export everything" use case exists here in a
+  // way it never did for the on-screen table.
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      const res = await apiFetch(`/api/vulnerabilities/export?${buildFilterParams().toString()}`);
+      if (!res.ok) {
+        if (res.status === 422) {
+          const body = await res.json().catch(() => ({}));
+          addToast("error", t("vulnerabilities.export_too_many_rows", { total: body.total ?? "?", max: body.max ?? "?" }));
+          return;
+        }
+        throw new Error(`Status ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `vulnerabilidades-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      addToast("error", err instanceof Error ? err.message : t("common.unknown_error"));
+    } finally {
+      setExporting(false);
+    }
   };
 
-  // ── Summary stats ──────────────────────────────────────────────────────────
-  // counts.open already treats "anything not RESUELTO" as open, so REABIERTA
-  // (which is never RESUELTO) is counted correctly here without a code
-  // change — verified by reading this filter, not assumed.
-  const counts = useMemo(() => ({
-    critical: allRows.filter((r) => r.severity === "CRITICAL").length,
-    high:     allRows.filter((r) => r.severity === "HIGH").length,
-    medium:   allRows.filter((r) => r.severity === "MEDIUM").length,
-    low:      allRows.filter((r) => r.severity === "LOW").length,
-    info:     allRows.filter((r) => r.severity === "INFO").length,
-    resuelto: allRows.filter((r) => r.status === "RESUELTO").length,
-    open:     allRows.filter((r) => r.status !== "RESUELTO").length,
-  }), [allRows]);
+  // Summary stats now come from GET /api/vulnerabilities/summary (server-
+  // side aggregate over ALL vulnerabilities, unfiltered) — see the
+  // `summary` state above. No client-side computation left.
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -431,7 +476,7 @@ export default function VulnerabilitiesPage() {
               <p className="text-sm text-slate-500 mt-0.5">
                 {loading
                   ? t("vulnerabilities.loading_records")
-                  : t("vulnerabilities.header_subtitle", { total: allRows.length, open: counts.open })}
+                  : t("vulnerabilities.header_subtitle", { total: summary.total, open: summary.open })}
               </p>
             </div>
           </div>
@@ -442,7 +487,7 @@ export default function VulnerabilitiesPage() {
             >
               <Upload className="h-3.5 w-3.5" />{t("vulnImport.title")}
             </Link>
-            <button onClick={fetchAll} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
+            <button onClick={refresh} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors">
               <RefreshCw className="h-3.5 w-3.5" />{t("actions.refresh")}
             </button>
           </div>
@@ -450,17 +495,19 @@ export default function VulnerabilitiesPage() {
       </header>
 
       <div className="px-8 py-8 w-full space-y-6">
-        {/* Summary cards */}
-        {!loading && !error && (
+        {/* Summary cards — always global (unfiltered) totals from GET
+            /api/vulnerabilities/summary, shown even while a page is loading
+            since they don't depend on `rows`. */}
+        {!error && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
             {[
-              { label: "CRITICAL", value: counts.critical, color: "bg-red-50 text-red-700 ring-red-200" },
-              { label: "HIGH",     value: counts.high,     color: "bg-orange-50 text-orange-700 ring-orange-200" },
-              { label: "MEDIUM",   value: counts.medium,   color: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
-              { label: "LOW",      value: counts.low,      color: "bg-slate-50 text-slate-600 ring-slate-200" },
-              { label: "INFO",     value: counts.info,     color: "bg-slate-50 text-slate-400 ring-slate-100" },
-              { label: t("vulnerabilities.open_label"),     value: counts.open,     color: "bg-[var(--accent)]/5 text-[var(--accent)] ring-[var(--accent)]/20" },
-              { label: t("vulnerabilities.resolved_label"), value: counts.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+              { label: "CRITICAL", value: summary.critical, color: "bg-red-50 text-red-700 ring-red-200" },
+              { label: "HIGH",     value: summary.high,     color: "bg-orange-50 text-orange-700 ring-orange-200" },
+              { label: "MEDIUM",   value: summary.medium,   color: "bg-yellow-50 text-yellow-700 ring-yellow-200" },
+              { label: "LOW",      value: summary.low,      color: "bg-slate-50 text-slate-600 ring-slate-200" },
+              { label: "INFO",     value: summary.info,     color: "bg-slate-50 text-slate-400 ring-slate-100" },
+              { label: t("vulnerabilities.open_label"),     value: summary.open,     color: "bg-[var(--accent)]/5 text-[var(--accent)] ring-[var(--accent)]/20" },
+              { label: t("vulnerabilities.resolved_label"), value: summary.resuelto, color: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
             ].map(({ label, value, color }) => (
               <div key={label} className={`px-4 py-3 ring-1 ring-inset ${color}`}>
                 <p className="text-2xl font-bold">{value}</p>
@@ -492,13 +539,15 @@ export default function VulnerabilitiesPage() {
               </>
             )}
 
-            {/* CSV Export */}
+            {/* CSV Export — exports the current FILTER (all matching rows,
+                server-side, up to the 50,000-row cap), not just the loaded page. */}
             <button
               onClick={handleExportCSV}
-              disabled={loading || filtered.length === 0}
+              disabled={loading || exporting || total === 0}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50 ml-auto order-last sm:order-none sm:ml-0"
             >
-              <Download className="h-3.5 w-3.5" />{t("vulnerabilities.export_csv_count", { count: filtered.length })}
+              {exporting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              {t("vulnerabilities.export_csv_count", { count: total })}
             </button>
           </div>
 
@@ -514,7 +563,7 @@ export default function VulnerabilitiesPage() {
               <AlertTriangle className="h-8 w-8" />
               <p className="text-sm font-medium">{t("vulnerabilities.load_error")}</p>
               <p className="text-xs text-slate-400">{error}</p>
-              <button onClick={fetchAll} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t("vulnerabilities.retry")}</button>
+              <button onClick={refresh} className="mt-2 rounded-lg bg-red-50 px-4 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100">{t("vulnerabilities.retry")}</button>
             </div>
           )}
 
@@ -643,16 +692,16 @@ export default function VulnerabilitiesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filtered.length === 0 ? (
+                  {rows.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-16 text-center text-slate-400 text-sm">
-                        {allRows.length === 0
+                        {total === 0 && activeFilterCount === 0
                           ? t("vulnerabilities.no_vulns")
                           : t("vulnerabilities.no_vulns_filtered")}
                       </td>
                     </tr>
                   ) : (
-                    filtered.map((row, i) => {
+                    rows.map((row, i) => {
                       const identity = vulnIdentity(row);
                       const key = `${row.ciId}:${identity}`;
                       const isUpdating = updating.has(key);
@@ -782,9 +831,28 @@ export default function VulnerabilitiesPage() {
             </div>
           )}
 
-          {!loading && !error && (
-            <div className="border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
-              {t("vulnerabilities.footer_showing", { filtered: filtered.length, total: allRows.length })}
+          {!loading && !error && total > 0 && (
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-3 text-xs text-slate-400">
+              <span>{t("vulnerabilities.footer_showing", { filtered: rows.length, total })}</span>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage(Math.max(1, page - 1))}
+                    disabled={page <= 1 || loading}
+                    className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />{t("vulnImport.list.prevPage")}
+                  </button>
+                  <span className="text-slate-500">{t("vulnerabilities.page_info", { page, totalPages, total })}</span>
+                  <button
+                    onClick={() => goToPage(Math.min(totalPages, page + 1))}
+                    disabled={page >= totalPages || loading}
+                    className="flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {t("vulnImport.list.nextPage")}<ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

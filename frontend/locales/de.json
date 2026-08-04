@@ -326,6 +326,8 @@
     "update_failed": "Status konnte nicht aktualisiert werden:",
     "download_csv": "CSV",
     "footer_showing": "Zeige {filtered} von {total} Schwachstellen",
+    "page_info": "Seite {page} von {totalPages} ({total} Ergebnisse)",
+    "export_too_many_rows": "Zu viele Zeilen zum Export ({total}, max. {max}) — Filter zuerst eingrenzen",
     "active_filter": "{count} aktiver Filter",
     "active_filter_plural": "{count} aktive Filter",
     "severity": {

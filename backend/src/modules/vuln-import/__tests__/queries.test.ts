@@ -5,6 +5,7 @@ import {
   finalizeBatch,
   recoverOrphanedRunningBatches,
   getBatchWithEntries,
+  getAllEntriesForBatch,
   bulkUpdateDecision,
   listBatches,
   MAX_ENTRY_PAGE_SIZE,
@@ -111,6 +112,72 @@ describe('writeBatchEntries', () => {
     await writeBatchEntries(prisma, 'batch-5', [], onProgress);
 
     expect(onProgress).not.toHaveBeenCalled();
+  });
+});
+
+// Real bug caught live (v3.7.0, post-release): accepting a real 493,816-row
+// Red Hat Lightspeed batch hit Prisma with `Failed to convert rust String
+// into napi string` — the query engine serializes an unbounded findMany's
+// entire result set into one string across the Rust<->Node FFI boundary,
+// and that string exceeded whatever limit napi enforces. Same failure
+// family as the write-side `RangeError: Invalid string length` above, this
+// time on the read side. getAllEntriesForBatch now pages the QUERY itself
+// (cursor-based, ENTRY_CHUNK_SIZE per call) while still returning one
+// concatenated in-memory array, so acceptBatch's callers don't need to
+// change at all.
+describe('getAllEntriesForBatch', () => {
+  function buildPrisma(totalRows: number) {
+    const allRows = Array.from({ length: totalRows }, (_, i) => ({
+      id: String(i + 1).padStart(6, '0'),
+      batchId: 'batch-1',
+      vulnKey: `key-${i}`,
+    }));
+    const findMany = jest.fn().mockImplementation(({ take, cursor }: { take: number; cursor?: { id: string } }) => {
+      const startIndex = cursor ? allRows.findIndex((r) => r.id === cursor.id) + 1 : 0;
+      return Promise.resolve(allRows.slice(startIndex, startIndex + take));
+    });
+    const prisma = { vulnImportEntry: { findMany } } as unknown as PrismaClient;
+    return { prisma, findMany, allRows };
+  }
+
+  it('pages a large entry set via cursor, none of the individual findMany calls carrying the full set', async () => {
+    const { prisma, findMany } = buildPrisma(1250);
+
+    const result = await getAllEntriesForBatch(prisma, 'batch-1');
+
+    // 1250 rows at 500/chunk = 3 calls (500 + 500 + 250), never one call
+    // returning all 1250 — this is the property that actually fixes the
+    // production bug (each individual Prisma response stays small).
+    expect(findMany).toHaveBeenCalledTimes(3);
+    expect(result).toHaveLength(1250);
+  });
+
+  it('returns every row exactly once, in order, across the chunk boundary', async () => {
+    const { prisma } = buildPrisma(1250);
+
+    const result = await getAllEntriesForBatch(prisma, 'batch-1');
+
+    expect(result.map((r) => r.vulnKey)).toEqual(
+      Array.from({ length: 1250 }, (_, i) => `key-${i}`),
+    );
+  });
+
+  it('makes exactly one call for a set smaller than the chunk size', async () => {
+    const { prisma, findMany } = buildPrisma(3);
+
+    const result = await getAllEntriesForBatch(prisma, 'batch-1');
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(3);
+  });
+
+  it('returns an empty array for a batch with no entries, in a single call', async () => {
+    const { prisma, findMany } = buildPrisma(0);
+
+    const result = await getAllEntriesForBatch(prisma, 'batch-1');
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(result).toEqual([]);
   });
 });
 

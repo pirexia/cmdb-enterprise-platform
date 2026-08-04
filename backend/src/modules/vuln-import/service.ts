@@ -541,8 +541,33 @@ export async function acceptBatch(
   let reopenedCount = 0;
   let refreshedCount = 0;
 
-  await prisma.$transaction(async (tx) => {
-    for (const [ciId, entries] of byCi) {
+  // One short transaction PER CI, not one giant transaction for the whole
+  // batch. Live production use hit this: accepting a real 103-CI Red Hat
+  // Lightspeed batch threw Prisma P2028 ("Transaction already closed...
+  // timeout for this transaction was 5000ms, however 5123ms passed") from
+  // inside correctOperatingSystem — the single transaction wrapping every
+  // CI in `byCi` (each doing a read, a classification pass, an optional
+  // OS-correction call that can hit a third-party API, and a write)
+  // accumulated past Prisma's default 5s interactive-transaction timeout
+  // across enough CIs. Same failure family as the original
+  // `createBatchWithEntries` bug this plan's Task 2/3 already fixed on the
+  // WRITE side — this is the accept-side twin, on a path never exercised
+  // at more than a handful of CIs until today's live verification.
+  //
+  // Splitting to per-CI transactions is safe to retry: each entry's
+  // classification (NUEVA/REAPARECIDA/RESUELTA_AUSENTE/EXISTENTE_PENDIENTE)
+  // was fixed at upload time, not recomputed here, and RESUELTA_AUSENTE's
+  // mandatory re-verification (below) already re-reads the CURRENT stored
+  // status before deciding whether to close — so re-running accept after a
+  // partial failure (some CIs committed, the batch still PENDING) reapplies
+  // the same, now-idempotent operations to already-updated CIs rather than
+  // double-applying anything harmful.
+  for (const [ciId, entries] of byCi) {
+    const ciCounts = await prisma.$transaction(async (tx) => {
+      let ciNewCount = 0;
+      let ciReopenedCount = 0;
+      let ciRefreshedCount = 0;
+
       const stored = await getCiVulnerabilities(tx, ciId);
       const now = new Date().toISOString();
       const vulnKeysTouched: string[] = [];
@@ -555,7 +580,7 @@ export async function acceptBatch(
 
         if (entry.classification === 'NUEVA') {
           byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
-          newCount++;
+          ciNewCount++;
         } else if (entry.classification === 'REAPARECIDA') {
           const existing = byIdentity.get(entry.vulnKey);
           if (!existing) {
@@ -566,7 +591,7 @@ export async function acceptBatch(
             // "reopen" — treat it as a fresh finding rather than silently
             // dropping it.
             byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
-            newCount++;
+            ciNewCount++;
             continue;
           }
           byIdentity.set(entry.vulnKey, {
@@ -608,7 +633,7 @@ export async function acceptBatch(
             knownExploit: entry.knownExploit ?? existing.knownExploit,
             publicDate: entry.publicDate ? entry.publicDate.toISOString() : existing.publicDate,
           });
-          reopenedCount++;
+          ciReopenedCount++;
           await vulnImportAudit(tx, 'VULN_REOPENED', 'CI', ciId, userEmail, { vulnKey: entry.vulnKey });
         } else if (entry.classification === 'RESUELTA_AUSENTE') {
           // Closure entry generated at upload time by computeAbsentClosures
@@ -639,10 +664,10 @@ export async function acceptBatch(
               cvss_score: entry.severityScore,
               lastSeenAt: now,
             });
-            refreshedCount++;
+            ciRefreshedCount++;
           } else {
             byIdentity.set(entry.vulnKey, buildNewVulnerability(entry, now, batch.source));
-            newCount++;
+            ciNewCount++;
           }
         }
       }
@@ -653,41 +678,80 @@ export async function acceptBatch(
       }
 
       await updateCiVulnerabilities(tx, ciId, [...byIdentity.values()]);
-      touched.push({ ciId, vulnKeys: vulnKeysTouched });
-    }
+      // Every CI mutation must carry its own audit trail in the SAME
+      // transaction (ISO 27001 A.8.15, the #172 invariant enforced
+      // everywhere else in this codebase) — NUEVA and EXISTENTE_PENDIENTE
+      // entries have no per-entry audit call above (only REAPARECIDA and
+      // RESUELTA_AUSENTE do), so without this, a CI whose entries are only
+      // NUEVA/refreshed would have its vulnerabilities write committed here
+      // with NO audit record of its own, relying entirely on the batch-level
+      // VULN_IMPORT_ACCEPT audit in the final transaction below to cover it.
+      // Now that each CI is its own transaction (this whole function's
+      // reason for existing — see the doc comment above the `for` loop),
+      // that final transaction can fail (or the process can crash) AFTER
+      // this CI's write has already durably committed, which would leave a
+      // real mutation with no audit trail at all. This per-CI audit closes
+      // that gap independently of whether the final batch-level audit ever
+      // runs.
+      await vulnImportAudit(tx, 'VULN_IMPORT_CI_ACCEPTED', 'CI', ciId, userEmail, {
+        batchId, newCount: ciNewCount, reopenedCount: ciReopenedCount, refreshedCount: ciRefreshedCount,
+      });
+      return { ciNewCount, ciReopenedCount, ciRefreshedCount, vulnKeysTouched };
+    });
 
-    // Steady-state case: a re-import where every entry for a CI classifies
-    // EXISTENTE_PENDIENTE (decision EXCLUDE by default) never puts that CI in
-    // `byCi` above. This used to also carry the closure sweep for such CIs,
-    // but that's no longer needed here (task 16): a CI with at least one
-    // pending closure (RESUELTA_AUSENTE, decision INCLUDE by default — see
-    // computeAbsentClosures) already lands in `byCi` naturally, same as any
-    // other INCLUDEd entry, and is handled by the main loop above. What's
-    // left here is OS correction alone — it must still run for a CI whose
-    // batch entries are ALL EXISTENTE_PENDIENTE/EXCLUDE (nothing to close,
-    // nothing new to review, but Lightspeed's OS report for it may still
-    // have changed since the last accept). correctOperatingSystem writes
-    // CI.operatingSystemId directly (tx.cI.update) — it never touches the
-    // `vulnerabilities` JSON column, so there is nothing to fetch from
-    // getCiVulnerabilities or write back via updateCiVulnerabilities here.
-    // Only for redhat-lightspeed batches; only for CIs with a resolved
-    // (non-blocking) match not already processed above.
-    if (batch.source === 'redhat-lightspeed') {
-      const remainingCiIds = new Set(
-        allEntries
-          .filter((e) => e.ciId && e.matchConfidence !== 'AMBIGUOUS' && e.matchConfidence !== 'UNMATCHED' && !byCi.has(e.ciId as string))
-          .map((e) => e.ciId as string),
-      );
-      for (const ciId of remainingCiIds) {
-        const entriesForCi = allEntries.filter((e) => e.ciId === ciId);
-        const osHint = findOsHint(entriesForCi);
-        if (osHint) {
+    newCount += ciCounts.ciNewCount;
+    reopenedCount += ciCounts.ciReopenedCount;
+    refreshedCount += ciCounts.ciRefreshedCount;
+    touched.push({ ciId, vulnKeys: ciCounts.vulnKeysTouched });
+  }
+
+  // Steady-state case: a re-import where every entry for a CI classifies
+  // EXISTENTE_PENDIENTE (decision EXCLUDE by default) never puts that CI in
+  // `byCi` above. This used to also carry the closure sweep for such CIs,
+  // but that's no longer needed here (task 16): a CI with at least one
+  // pending closure (RESUELTA_AUSENTE, decision INCLUDE by default — see
+  // computeAbsentClosures) already lands in `byCi` naturally, same as any
+  // other INCLUDEd entry, and is handled by the main loop above. What's
+  // left here is OS correction alone — it must still run for a CI whose
+  // batch entries are ALL EXISTENTE_PENDIENTE/EXCLUDE (nothing to close,
+  // nothing new to review, but Lightspeed's OS report for it may still
+  // have changed since the last accept). correctOperatingSystem writes
+  // CI.operatingSystemId directly (tx.cI.update) — it never touches the
+  // `vulnerabilities` JSON column, so there is nothing to fetch from
+  // getCiVulnerabilities or write back via updateCiVulnerabilities here.
+  // Only for redhat-lightspeed batches; only for CIs with a resolved
+  // (non-blocking) match not already processed above.
+  if (batch.source === 'redhat-lightspeed') {
+    const remainingCiIds = new Set(
+      allEntries
+        .filter((e) => e.ciId && e.matchConfidence !== 'AMBIGUOUS' && e.matchConfidence !== 'UNMATCHED' && !byCi.has(e.ciId as string))
+        .map((e) => e.ciId as string),
+    );
+    for (const ciId of remainingCiIds) {
+      const entriesForCi = allEntries.filter((e) => e.ciId === ciId);
+      const osHint = findOsHint(entriesForCi);
+      if (osHint) {
+        // Own short transaction, same reasoning as the main per-CI loop
+        // above — this OS-only correction is cheap on its own, but adding
+        // it to a shared transaction across every remaining CI would
+        // reintroduce the exact aggregate-timeout risk this whole change
+        // exists to remove.
+        await prisma.$transaction(async (tx) => {
           await correctOperatingSystem(tx, ciId, osHint);
-          touched.push({ ciId, vulnKeys: [] });
-        }
+        });
+        touched.push({ ciId, vulnKeys: [] });
       }
     }
+  }
 
+  // Final short transaction: mark the batch ACCEPTED and record the
+  // batch-level summary audit. Deliberately separate from every per-CI
+  // transaction above — this is the one write that must never partially
+  // apply, and by the time we reach it every CI has already been durably
+  // committed (or accept has already thrown and this line is never
+  // reached), so there is nothing left for this transaction to do other
+  // than the two rows it actually writes.
+  await prisma.$transaction(async (tx) => {
     await markBatchStatus(tx, batchId, 'ACCEPTED', userEmail);
     await vulnImportAudit(tx, 'VULN_IMPORT_ACCEPT', 'VulnImportBatch', batchId, userEmail, {
       ciCount: byCi.size, newCount, reopenedCount, refreshedCount,

@@ -745,7 +745,14 @@ describe('acceptBatch — transactional atomicity', () => {
 
     expect(result.summary.newCount).toBe(1);
     expect(committed.vulns).toHaveLength(1);
-    expect(committed.auditActions).toEqual(['VULN_IMPORT_ACCEPT']);
+    // Two audit rows now, not one: VULN_IMPORT_CI_ACCEPTED is written inside
+    // the same per-CI transaction as the vulnerability mutation itself (so a
+    // CI's write is never left without its own audit trail now that each CI
+    // is its own transaction — see acceptBatch's doc comment), and
+    // VULN_IMPORT_ACCEPT remains the separate batch-level summary audit from
+    // the final transaction. Order matches commit order: per-CI first, batch
+    // summary last.
+    expect(committed.auditActions).toEqual(['VULN_IMPORT_CI_ACCEPTED', 'VULN_IMPORT_ACCEPT']);
   });
 
   it('rolls back the CI vulnerabilities update when the audit insert fails', async () => {
@@ -754,6 +761,84 @@ describe('acceptBatch — transactional atomicity', () => {
 
     expect(committed.vulns).toHaveLength(0);
     expect(committed.auditActions).toHaveLength(0);
+  });
+
+  // Real production bug (v3.7.0, post-release): accepting a real 103-CI Red
+  // Hat Lightspeed batch threw Prisma P2028 ("Transaction already closed...
+  // timeout for this transaction was 5000ms") because every CI's read +
+  // classify + write was wrapped in ONE shared transaction. This test proves
+  // the fix directly: $transaction must be called once PER CI (plus once
+  // more for the final batch-accepted marker), never once for the whole
+  // batch — a regression here would silently reintroduce the exact bug that
+  // broke production.
+  it('opens one transaction per CI, not one shared transaction for the whole batch', async () => {
+    const ciAId = '11111111-1111-1111-1111-111111111111';
+    const ciBId = '22222222-2222-2222-2222-222222222222';
+    const CROWDSTRIKE_FIELD_DEFAULTS = {
+      products: [], exprtRating: null, cisaKev: false, cisaDueDate: null,
+      exploitStatus: null, daysOpen: null, externalStatus: null, cvssVersion: null,
+    };
+    const entryFor = (ciId: string, key: string) => ({
+      id: `entry-${key}`, batchId: BATCH_ID, ciId, matchConfidence: 'EXACT_IP', decision: 'INCLUDE',
+      classification: 'NUEVA', vulnKey: key, cves: [], oid: key, port: '443',
+      severity: 'HIGH', severityScore: 7.5, name: 'Test Vuln', summary: null,
+      solution: null, family: null, qod: null, epssScore: null,
+      ...CROWDSTRIKE_FIELD_DEFAULTS,
+    });
+
+    let transactionCallCount = 0;
+    const vulnsByCi = new Map<string, unknown[]>([[ciAId, []], [ciBId, []]]);
+    const auditActions: string[] = [];
+
+    const prisma = {
+      vulnImportBatch: { findUnique: async () => ({ id: BATCH_ID, status: 'PENDING', source: 'greenbone' }) },
+      vulnImportEntry: { findMany: async () => [entryFor(ciAId, 'oidA@443'), entryFor(ciBId, 'oidB@443')] },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+        transactionCallCount++;
+        // Each call gets its own tx double, scoped to whichever CI (if any)
+        // this particular transaction ends up writing — proving no single
+        // $transaction call is ever asked to handle more than one CI.
+        let touchedCiInThisTx: string | null = null;
+        const tx = {
+          $queryRaw: async () => {
+            // getCiVulnerabilities is only ever called for one CI per
+            // transaction in the new design — this stub can't know which
+            // until $executeRaw tells it, so return an empty starting point
+            // for whichever CI ends up written in this transaction.
+            return [{ vulnerabilities: [] }];
+          },
+          $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+            const text = strings.join('');
+            if (text.includes('audit_logs')) { auditActions.push(values[0] as string); return 1; }
+            if (text.includes('configuration_items')) {
+              // updateCiVulnerabilities: values[0] is the JSON vulnerabilities
+              // string, values[1] is the CI id (SET ... WHERE id = ...).
+              touchedCiInThisTx = values[1] as string;
+              vulnsByCi.set(touchedCiInThisTx, JSON.parse(values[0] as string));
+              return 1;
+            }
+            return 1;
+          },
+          vulnImportBatch: { update: async ({ data }: { data: Record<string, unknown> }) => ({ id: BATCH_ID, ...data }) },
+        };
+        return fn(tx);
+      },
+    };
+
+    const result = await acceptBatch(prisma as any, BATCH_ID, 'admin@test.local'); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    // 2 CIs (one transaction each) + 1 final batch-accepted transaction = 3.
+    // NOT 1 — that single-shared-transaction shape is exactly what broke in
+    // production at 103 CIs.
+    expect(transactionCallCount).toBe(3);
+    expect(result.summary.ciCount).toBe(2);
+    expect(vulnsByCi.get(ciAId)).toHaveLength(1);
+    expect(vulnsByCi.get(ciBId)).toHaveLength(1);
+    // Every CI got its own audit row (VULN_IMPORT_CI_ACCEPTED, twice), plus
+    // the one final batch-level summary (VULN_IMPORT_ACCEPT) — never fewer,
+    // confirming no CI's mutation was left without its own audit trail.
+    expect(auditActions.filter((a) => a === 'VULN_IMPORT_CI_ACCEPTED')).toHaveLength(2);
+    expect(auditActions.filter((a) => a === 'VULN_IMPORT_ACCEPT')).toHaveLength(1);
   });
 
   it('REAPARECIDA: sets REABIERTA, preserves resolvedAt, sets reopenedAt, emits VULN_REOPENED', async () => {
